@@ -108,6 +108,26 @@ None of this requires CLAN to be in the loop at runtime.
 
 ---
 
+## How CLAN fits the landscape
+
+| | Orchestration frameworks | Agent protocols | Token optimization | **CLAN** |
+|---|:---:|:---:|:---:|:---:|
+| Coordinates agents at runtime | ✅ | ✅ | ❌ | ❌ |
+| State survives framework boundaries | ❌ | ❌ | ❌ | ✅ |
+| Provenance enforced by design | ❌ | ❌ | ❌ | ✅ |
+| Human-readable artifact (in the file) | ❌ | ❌ | ❌ | ✅ |
+| Human edits attributable on the record | ❌ | ❌ | ❌ | ✅ |
+| Output contract enforced at write time | ❌ | ❌ | ❌ | ✅ |
+| Deterministic parallel merge, zero LLM | ❌ | ❌ | ❌ | ✅ |
+| Agent picks up cold from artifact alone | ❌ | ❌ | ❌ | ✅ |
+| No runtime dependency | ❌ | ❌ | ✅ | ✅ |
+| Model agnostic | 〰️ | ✅ | ✅ | ✅ |
+| Open spec, any language can implement | 〰️ | ✅ | ✅ | ✅ |
+
+〰️ = varies by tool.
+
+---
+
 ## Benchmarks
 
 258 real agents, no scripted outputs, CLAN and ad-hoc arms running concurrently on identical tasks across three campaigns. We report the most recent run, not the best one.
