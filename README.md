@@ -326,6 +326,12 @@ The CLI and SDK use [TOON (Token-Oriented Object Notation)](https://github.com/t
 
 ---
 
+## Contributing
+
+CLAN is an open spec and we'd love your help making it better. Whether that's implementing the format in another language, improving the CLI, catching edge cases in the spec, or just telling us where it broke for you — all of it matters.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started. If you're not sure where to begin, [open an issue](https://github.com/saieeshward/clan/issues/new) and we'll figure it out together.
+
 ## Feedback & Issues
 
 Found a bug or have a question? [Open an issue](https://github.com/saieeshward/clan/issues/new) on GitHub.
