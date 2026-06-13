@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! human/patches.yaml — read and write human edit patches (spec §11).
 
 use chrono::Utc;
@@ -50,11 +54,7 @@ impl Patches {
 
 /// Apply a single human patch to an open ClanFile, repack, and return the
 /// updated archive bytes. The caller is responsible for writing them to disk.
-pub fn apply_patch_and_repack(
-    clan: &ClanFile,
-    id: String,
-    content: String,
-) -> Result<Vec<u8>> {
+pub fn apply_patch_and_repack(clan: &ClanFile, id: String, content: String) -> Result<Vec<u8>> {
     // Load existing patches (or start fresh).
     let mut patches = if clan.has_entry("human/patches.yaml") {
         let bytes = clan.read_entry("human/patches.yaml")?;
@@ -69,13 +69,11 @@ pub fn apply_patch_and_repack(
     // Rebuild the archive with updated patches.yaml.
     let mut builder = ClanBuilder::new(clan.manifest().clone());
 
-    for path in clan.entry_paths()? {
+    for (path, bytes) in clan.read_all_entries()? {
         if path == "manifest.yaml" || path == "human/patches.yaml" {
             continue;
         }
-        if let Ok(bytes) = clan.read_entry(&path) {
-            builder.add_entry(path, bytes);
-        }
+        builder.add_entry(path, bytes);
     }
     builder.add_entry("human/patches.yaml", patches_yaml);
 

@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -28,10 +32,6 @@ export default function AgentPanel({ onClose }: Props) {
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    load(tab)
-  }, [tab])
-
   async function load(t: Tab) {
     setLoading(true)
     try {
@@ -44,6 +44,11 @@ export default function AgentPanel({ onClose }: Props) {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load(tab)
+  }, [tab])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'chain', label: 'Decisions' },

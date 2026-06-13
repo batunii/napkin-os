@@ -1,0 +1,249 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Needed to create the GitHub Release and upload assets.
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Create the GitHub Release up front so the CLI and desktop jobs both upload
+  # into it instead of racing to create it.
+  # ---------------------------------------------------------------------------
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" \
+            || gh release create "${{ github.ref_name }}" \
+                 --repo "${{ github.repository }}" \
+                 --title "CLAN ${{ github.ref_name }}" \
+                 --generate-notes
+
+  # ---------------------------------------------------------------------------
+  # Standalone `clan` CLI binaries for each platform, attached to the release.
+  # ---------------------------------------------------------------------------
+  cli-binaries:
+    name: CLI — ${{ matrix.target }}
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          # Intel macOS is cross-compiled from the arm64 runner — GitHub
+          # retired the macos-13 (last Intel) runner image.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          # No Windows entry: Windows ships a single combined MSI (CLI + viewer)
+          # from the `desktop` job below, not a standalone CLI archive.
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pushed tag is the single source of truth for the version. Write it
+      # into the workspace Cargo version so the built `clan` binary reports it.
+      - name: Set version from tag
+        shell: bash
+        run: bash .github/scripts/set-version.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build CLI (release)
+        run: cargo build -p clan-cli --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          staging="clan-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir "$staging"
+          cp "target/${{ matrix.target }}/release/clan" "$staging/"
+          cp README.md LICENSE NOTICE "$staging/" 2>/dev/null || true
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ASSET=$staging.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = "clan-${{ github.ref_name }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/clan.exe" $staging
+          Copy-Item README.md, LICENSE, NOTICE $staging -ErrorAction SilentlyContinue
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+          "ASSET=$staging.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+          fail_on_unmatched_files: true
+
+  # ---------------------------------------------------------------------------
+  # Desktop bundles (DMG / MSI / AppImage / .deb) via tauri-action.
+  # tauri-action creates/updates the release matching the pushed tag.
+  # ---------------------------------------------------------------------------
+  desktop:
+    name: Desktop — ${{ matrix.os }}
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Universal macOS build: one DMG that runs on Apple Silicon and Intel.
+          - os: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri-args: --target universal-apple-darwin
+          - os: ubuntu-latest
+            rust-targets: ""
+            tauri-args: ""
+          - os: windows-latest
+            rust-targets: ""
+            tauri-args: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pushed tag is the single source of truth for the version. Write it
+      # into the workspace Cargo version; tauri.conf.json has no version field,
+      # so every desktop bundle inherits it (and so does the bundled CLI).
+      - name: Set version from tag
+        shell: bash
+        run: bash .github/scripts/set-version.sh "${GITHUB_REF_NAME#v}"
+
+      # Linux WebKitGTK / packaging dependencies for Tauri v2.
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            file \
+            libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # Windows ships ONE combined MSI: build the `clan` CLI and stage it as a
+      # Tauri sidecar so the viewer installer also installs the CLI. The
+      # Windows-only tauri.windows.conf.json picks it up via externalBin and a
+      # WiX fragment (wix/cli-path.wxs) adds the install dir to the system PATH.
+      - name: Stage CLI into viewer installer (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cargo build -p clan-cli --release
+          New-Item -ItemType Directory -Force -Path app/src-tauri/binaries | Out-Null
+          Copy-Item target/release/clan.exe app/src-tauri/binaries/clan-x86_64-pc-windows-msvc.exe
+
+      # Linux .deb / .rpm install the `clan` CLI to /usr/bin (on PATH) alongside
+      # the viewer. tauri.linux.conf.json maps binaries/clan -> /usr/bin/clan via
+      # deb.files / rpm.files. The AppImage stays viewer-only (it can't place
+      # files on the host PATH), so the standalone CLI tarball is kept above.
+      - name: Stage CLI into Linux packages (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo build -p clan-cli --release
+          mkdir -p app/src-tauri/binaries
+          cp target/release/clan app/src-tauri/binaries/clan
+
+      - name: Build & publish desktop bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # app/ holds the frontend; src-tauri lives at app/src-tauri.
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: CLAN ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.tauri-args }}
+
+      # Tauri's AppImage builder (linuxdeploy-plugin-gtk) bundles a copy of
+      # libwayland-client/egl from the CI host. On end-user machines with a newer
+      # Mesa/Wayland stack, the host's libEGL_mesa driver gets paired with the
+      # stale bundled libwayland, eglGetPlatformDisplay returns EGL_BAD_PARAMETER,
+      # and WebKitGTK aborts before the window opens ("Could not create default
+      # EGL display: EGL_BAD_PARAMETER. Aborting..."). The bundled libwayland is
+      # never needed — the host always provides an ABI-compatible one — so strip
+      # it out and repack, then overwrite the published asset.
+      - name: Patch AppImage — drop bundled libwayland
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set -euo pipefail
+          # clan-app is a member of the ROOT cargo workspace, so cargo/tauri write
+          # bundles to <repo>/target/release/bundle/appimage — NOT
+          # app/src-tauri/target. Find it wherever it lands, and FAIL LOUD if it's
+          # missing: a previous version pointed at the wrong dir and silently
+          # exit-0'd, shipping unpatched AppImages that still bundled libwayland
+          # and crashed with EGL_BAD_PARAMETER on modern Mesa/Wayland.
+          appimage=$(find . -path '*/release/bundle/appimage/*.AppImage' 2>/dev/null | head -n1)
+          if [ -z "$appimage" ]; then
+            echo "::error::No AppImage found under */release/bundle/appimage — cannot strip libwayland."
+            exit 1
+          fi
+          bundle_dir=$(dirname "$appimage")
+          name=$(basename "$appimage")
+          echo "Patching $bundle_dir/$name"
+          cd "$bundle_dir"
+          ./"$name" --appimage-extract >/dev/null
+          # Remove the whole bundled libwayland set so client/cursor/egl/server
+          # all come from the host as a matched pair.
+          rm -fv squashfs-root/usr/lib/libwayland-*.so.*
+          curl -fsSL -o appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool squashfs-root "$name"
+          gh release upload "${GITHUB_REF_NAME}" "$name" --clobber

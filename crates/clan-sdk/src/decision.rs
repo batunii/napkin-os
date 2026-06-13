@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! `agent/decision-chain.yaml` model (spec §7).
 
 use serde::{Deserialize, Serialize};
@@ -22,11 +26,7 @@ pub struct Decision {
     pub fields_changed: Vec<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub pinned: bool,
-    #[serde(
-        rename = "trace-ref",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "trace-ref", default, skip_serializing_if = "Option::is_none")]
     pub trace_ref: Option<TraceRef>,
 }
 

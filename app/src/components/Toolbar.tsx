@@ -1,3 +1,9 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+import { ClanMark } from './ClanMark'
+
 interface Props {
   title?: string
   onOpen: () => void
@@ -16,7 +22,8 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0,
     userSelect: 'none',
   },
-  logo: { fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--accent)', marginRight: 8 },
+  logo: { display: 'flex', alignItems: 'center', gap: 7, marginRight: 4 },
+  logoText: { fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--accent)' },
   title: { flex: 1, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   badge: { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#1e3a2f', color: '#4ade80', border: '1px solid #166534', letterSpacing: '0.05em' },
   badgeWarn: { background: '#3a2a1e', color: 'var(--warn)', border: '1px solid #92400e' },
@@ -42,7 +49,7 @@ export default function Toolbar({
   const valid = validation === 'OK'
   return (
     <div style={s.bar}>
-      <span style={s.logo}>CLAN</span>
+      <span style={s.logo}><ClanMark size={22} animated={loading} style={{ flexShrink: 0 }} /><span style={s.logoText}>CLAN</span></span>
       <span style={s.title}>{loading ? 'Loading…' : (title ?? 'No file open')}</span>
       {validation && (
         <span

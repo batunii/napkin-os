@@ -1,9 +1,12 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Structural and content validation (spec §17).
 
 use crate::container::ClanFile;
 use crate::error::{Error, Result};
 use crate::hash;
-
 
 /// A collected set of validation problems. Empty == valid.
 #[derive(Debug, Default)]
@@ -122,6 +125,82 @@ pub fn validate(clan: &ClanFile) -> ValidationReport {
 }
 
 fn content_checks(clan: &ClanFile, report: &mut ValidationReport) {
+    let m = clan.manifest();
+
+    // View consistency (spec §23): a declared-present view must exist; an
+    // undeclared one is only worth a note.
+    if let Some(view) = &m.view {
+        if view.present && !clan.has_entry("human/index.html") {
+            report
+                .structural
+                .push("manifest.view.present is true but human/index.html is missing".into());
+        }
+        if !view.present && clan.has_entry("human/index.html") {
+            report.content.push(
+                "human/index.html exists but manifest.view.present is false — flag is out of date"
+                    .into(),
+            );
+        }
+    }
+
+    // Forked files (spec §24.1): the namespace members must exist.
+    if let Some(fork) = &m.fork {
+        for member in ["data.yaml", "decisions.yaml"] {
+            let path = format!("{}{member}", fork.namespace);
+            if !clan.has_entry(&path) {
+                report.structural.push(format!(
+                    "forked file is missing its namespace member: {path}"
+                ));
+            }
+        }
+    }
+
+    // Merge report (spec §24.4): must parse; every conflict key must exist in
+    // the (post-merge) shared data; `unresolved` must match the record.
+    if clan.has_entry(crate::merge::MERGE_REPORT_PATH) {
+        match clan
+            .read_entry(crate::merge::MERGE_REPORT_PATH)
+            .map_err(|e| e.to_string())
+            .and_then(|b| crate::merge::MergeReport::from_yaml(&b).map_err(|e| e.to_string()))
+        {
+            Ok(mr) => {
+                if mr.unresolved != mr.conflicts.len() {
+                    report.content.push(format!(
+                        "merge-report.yaml unresolved count ({}) does not match its conflict list ({})",
+                        mr.unresolved,
+                        mr.conflicts.len()
+                    ));
+                }
+                if let Ok(bytes) = clan.read_entry("shared/data.yaml") {
+                    if let Ok(data) = serde_yaml::from_slice::<serde_yaml::Value>(&bytes) {
+                        for conflict in &mr.conflicts {
+                            if data.get(conflict.key.as_str()).is_none() {
+                                report.content.push(format!(
+                                    "merge-report.yaml references key {:?} that is absent from shared/data.yaml",
+                                    conflict.key
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => report
+                .content
+                .push(format!("merge-report.yaml does not parse: {e}")),
+        }
+    }
+
+    // agent/requirements.yaml (spec §22): optional, but must parse if present.
+    if clan.has_entry("agent/requirements.yaml") {
+        if let Ok(bytes) = clan.read_entry("agent/requirements.yaml") {
+            if serde_yaml::from_slice::<serde_yaml::Value>(&bytes).is_err() {
+                report
+                    .content
+                    .push("agent/requirements.yaml does not parse as valid YAML".into());
+            }
+        }
+    }
+
     // shared/data.yaml must parse as valid YAML.
     if let Ok(bytes) = clan.read_entry("shared/data.yaml") {
         if serde_yaml::from_slice::<serde_yaml::Value>(&bytes).is_err() {
@@ -147,9 +226,7 @@ fn content_checks(clan: &ClanFile, report: &mut ValidationReport) {
 
     // decision-chain.yaml entries must have required fields.
     if let Ok(bytes) = clan.read_entry("agent/decision-chain.yaml") {
-        if let Ok(chain) =
-            serde_yaml::from_slice::<serde_yaml::Value>(&bytes)
-        {
+        if let Ok(chain) = serde_yaml::from_slice::<serde_yaml::Value>(&bytes) {
             if let Some(decisions) = chain.get("decisions").and_then(|v| v.as_sequence()) {
                 for (i, entry) in decisions.iter().enumerate() {
                     for field in &["agent", "action", "rationale", "timestamp"] {

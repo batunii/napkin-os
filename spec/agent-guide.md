@@ -14,7 +14,7 @@ CLAN (Context and Live Agent Notation) is a file format for passing structured c
 | `agent/output-schema.json` | JSON Schema | Exactly what you must return |
 | `human/patches.yaml` | YAML | Text edits made by humans (if included) |
 
-`shared/data.yaml` and `agent/decision-chain.yaml` are serialised as **TOON (Token-Oriented Object Notation)** — same data as the source YAML files, ~40% fewer tokens. Read them as structured key-value data.
+`shared/data.yaml` and `agent/decision-chain.yaml` are serialised as **TOON (Token-Oriented Object Notation)** (spec: https://github.com/toon-format/spec, © Johann Schopplich, MIT) — same data as the source YAML files, ~40% fewer tokens. Read them as structured key-value data.
 
 **⚠ Token-saving rule**: `clan read agent` includes all data (TOON-encoded). Do NOT also run `clan read data` — it returns the same content in a different format and wastes tokens.
 
@@ -25,7 +25,8 @@ CLAN (Context and Live Agent Notation) is a file format for passing structured c
 A **single JSON object** matching `agent/output-schema.json` exactly.
 
 - Return only the JSON object — no markdown wrapper, no explanation, no preamble
-- The SDK validates your output and packages it into a new `.clan` file
+- **STRICT SCHEMA ENFORCEMENT**: The SDK physically enforces JSON Schema validation. If you change the structural shape of `shared/data.yaml` (e.g., changing a field from an object to an array) without the schema contract being updated first, **the CLI will hard-reject your patch** to prevent UI breakage.
+- **SCHEMA MIGRATIONS**: If your task requires completely restructuring the file's purpose (e.g., turning an Ad Brief into a Client Deck), you MUST first update the schema using `clan patch-schema <file> <new_schema.json>`, or pass `--schema` to `clan pack`.
 - You do not write files, create ZIPs, or manage document structure
 
 ---
@@ -75,6 +76,37 @@ Available layouts: `card-grid`, `single-column`, `two-column`, `table-primary`, 
 You have full design control. Provide a complete `<!DOCTYPE html>` document for best results — full HTML documents render with no style conflicts from the viewer shell.
 
 **Lower-token path**: Instead of JSON-encoding the HTML (which expands it ~5x), write the HTML to a file and let the operator use `clan pack-html`. Add a YAML frontmatter block at the top of the HTML file to supply structured data and your decision entry — see `clan agent-help` for the format. This eliminates the JSON encoding cost entirely.
+
+> **The `structured:` block merge-patches `shared/data.yaml` (RFC 7396).** Fields you OMIT are KEPT from prior hops — only restate the keys you are changing. Do **not** re-transcribe carried-forward data (a prior hop's whole brief, an upstream agent's findings) into your frontmatter: that wastes tokens and risks transcription drift. Nest prior context under a key (e.g. `brief:`) only if you are deliberately re-shaping it; otherwise leave it untouched and it survives automatically. (To delete a key, set it to `null`.)
+
+---
+
+## Write-path decision tree
+
+Pick the command that matches what you are actually changing:
+
+| Changing | Command | Notes |
+|---|---|---|
+| Structured data only | `patch-data` | Surgical, branch-safe, lowest token cost |
+| HTML view only | `pack-html` | Full view replacement — expensive, use sparingly |
+| Both data and view | `pack-html` with `structured:` frontmatter | Legitimate but heavier; consider splitting |
+| Decision / rationale only | `patch-decision` | No data or view change |
+
+`pack-html` blocks with an error when `structured:` data is present but the HTML view is unchanged (you are doing a data-only write the expensive way). Use `patch-data` instead, or pass `--force` to override.
+
+## Surgical Patching (Lowest token cost, in-place mutation)
+
+If you only need to update a small part of the document, do not output the full JSON or full HTML. Instead, output the precise patch and instruct the operator to use one of the `clan patch-*` commands. These commands mutate the document in-place, preserving all other context automatically.
+
+- **`clan patch-html`**: Updates the DOM directly. Requires YAML frontmatter specifying `patch_selector` (e.g. `div.content`) and `patch_action` (`append`, `replace`, `prepend`), followed by the HTML snippet. **Attribution is required**: pass `--agent`/`--action`, include a `decision:` block in the frontmatter, or `--no-decision` to skip.
+- **`clan patch-data`**: Merge-patches `shared/data.yaml` using RFC 7396 JSON Merge Patch. The payload can be a file, `-` (stdin), or an inline JSON string; for single scalars use `--set key=value`. Arrays replace by default — use `--append <key>` to add to one instead of restating it. **Attribution is required**: pass `--agent` + `--action` (this records the change with exact `fields_changed` in one step), or `--no-decision` to skip recording.
+- **`clan patch-state`**: Merge-patches your private `agent/state.yaml` scratchpad using JSON Merge Patch (inline JSON / `--set` accepted).
+- **`clan patch-decision`**: Cleanly appends a standalone decision; for changes tied to data, prefer the inline `--agent`/`--action` on `patch-data`.
+- **`clan patch-context`**: Overwrites or appends to `agent/context.md` (e.g. for agent handoffs).
+- **`clan patch-asset`**: Injects or replaces a binary asset natively. **Attribution is required** (`--agent`/`--action`, or `--no-decision`) — an asset swap is a document change.
+- **`clan pack-html`**: Full view replacement from an HTML file. Add `--agent`/`--action` for inline attribution (records `human/index.html` as the changed field).
+
+See `clan agent-help` for the exact syntax of these commands.
 
 ---
 
@@ -126,12 +158,20 @@ Entries in `agent/decision-chain.yaml` beyond the verbatim window are compressed
 
 ## Data binding
 
-In full-html mode, you can reference any key from `shared/data.yaml` using double-brace syntax. The app resolves these at render time — you do not need to hardcode values.
+In full-html mode, you can reference any key from `shared/data.yaml` using double-brace syntax. The app resolves these natively at render time — you do not need to hardcode values.
 
 ```html
 <h2>{{vendor}}</h2>                    <!-- becomes: Acme Corporation -->
 <span>{{total}}</span>                 <!-- becomes: 15375.00 -->
 <span>{{line_items.0.amount}}</span>   <!-- nested: 12500.00 -->
+```
+
+If you write custom JavaScript (e.g., for drawing charts), the data is also injected globally into the document window, so you do not need to fetch or parse it:
+
+```javascript
+// Access the same data natively in scripts
+const invoiceTotal = window.__CLAN__.data.total;
+const firstItem = window.__CLAN__.data.line_items[0];
 ```
 
 ---

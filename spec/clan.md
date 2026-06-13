@@ -88,7 +88,7 @@ $schema: "spec/schemas/document-type.schema.json"
 
 ## Agent Injection Serialisation
 
-When the SDK assembles context for an agent, `shared/data.yaml` and `agent/decision-chain.yaml` are serialised as **TOON (Token-Oriented Object Notation)** — approximately 40% fewer tokens than equivalent JSON or YAML. Agent output is always returned as JSON and validated against `agent/output-schema.json` before packaging.
+When the SDK assembles context for an agent, `shared/data.yaml` and `agent/decision-chain.yaml` are serialised as **TOON (Token-Oriented Object Notation)** (open spec by Johann Schopplich — https://github.com/toon-format/spec) — approximately 40% fewer tokens than equivalent JSON or YAML. Agent output is always returned as JSON and validated against `agent/output-schema.json` before packaging.
 
 ---
 
@@ -203,6 +203,70 @@ Agent provides a complete HTML document (preferred) or fragment. The `html` fiel
 
 ---
 
+## In-Place Patching
+
+For minimal token cost, agents can bypass JSON/HTML output entirely and mutate the document in-place using precise patch formats (via `clan patch-*` CLI commands).
+
+### `patch-html`
+Target: `human/index.html`
+Format: YAML frontmatter + HTML body.
+```html
+---
+mode: patch-html
+patch_selector: "div.content"
+patch_action: "append"
+---
+<p>New content</p>
+```
+**Attribution is required by default** (like `patch-data`): pass `--agent`/`--action` on the command line, include a `decision:` block in the frontmatter, or pass `--no-decision` to skip recording the view change.
+
+### `patch-data` & `patch-state`
+Target: `shared/data.yaml` or `agent/state.yaml`
+Format: a JSON payload, supplied as a file path, `-` for stdin, or an **inline JSON string** (anything starting with `{`/`[`). For single scalars use `--set key=value` (repeatable; values parse as JSON when possible, else as a string). Applied using RFC 7396 JSON Merge Patch — keys you omit are kept, so send only what changes (set a key to `null` to delete it). The same merge-patch semantics apply to the `structured:` block of `pack-html`/`pack` frontmatter: never re-transcribe carried-forward data, just patch what you change.
+
+**Arrays replace by default** (RFC 7396). To *add* an item to an array key without restating the whole array, pass `--append <key>` (repeatable) — the patch's array is concatenated onto the existing one (the `append` merge policy).
+
+**Attribution is required by default** on `patch-data`: pass `--agent <name> --action "<what changed>"` (optional `--rationale`, `--pinned`). This records one decision whose `fields_changed` is **exactly** the keys you patched. Pass `--no-decision` to opt out (e.g. a private scratch write); a `--no-decision` write adds **no** chain entry. Settling a contested key with attribution records the adjudication in the same step — no separate `patch-decision` needed.
+
+### `patch-decision`
+Target: `agent/decision-chain.yaml`
+Format: CLI flags `--agent`, `--action`, `--rationale` to append cleanly. Use this for a decision that isn't tied to a specific data change; data changes are better recorded inline on `patch-data` (above).
+
+### `patch-context`
+Target: `agent/context.md`
+Format: Markdown payload (overwrites or appends via `--append`).
+
+### `patch-asset`
+Target: `human/assets/`
+Format: Binary/text injection natively into the ZIP without touching any other files. **Attribution is required by default** (`--agent`/`--action`, or `--no-decision`) — an asset swap is a document change and is recorded in the chain.
+
+### `patch-requirements`
+Target: `agent/requirements.yaml`
+Format: YAML declaring tool/capability needs. Surfaced in agent context; receiving orchestrators warn (not fail) on unmet requirements.
+
+---
+
+## Parallel Work (fork/join)
+
+Multiple agents work on one document by forking: `clan fork <file> --agents a,b,c --output-dir <dir>` gives each agent its own branch file with a private namespace `agents/<id>/`. On a branch file:
+
+- Write data ONLY via `clan patch-data <branch> <json> --namespace` (lands in `agents/<id>/data.yaml`)
+- Record decisions via `clan patch-decision` (auto-routed to `agents/<id>/decisions.yaml`)
+- Writes to `shared/` or `human/` are rejected until the branches are joined
+- Prose/narrative fields that siblings also write (`assumptions`, `summary`, `notes`) collide under the default last-write fold — prefix them with your agent id (`assumptions_<you>`) or expect the merge to flag them as contested
+
+Per-branch tasking: `clan fork ... --context-dir <dir>` uses `<agent>.md` as that branch's `agent/context.md`, so branches get role-specific tasks instead of inheriting the parent's.
+
+`clan merge <branches...> --output <out>` folds all namespaces into `shared/data.yaml` deterministically using per-key policies (`last-write` default; `append`, `max`, `min`, `agent-priority` via manifest `merge_policies` or `--policy key=policy`). Keys where branches disagreed are recorded in `merge-report.yaml` with winner/loser provenance (and an `append` suggestion when all values are prose) — read with `clan read report`, settle with `patch-data` + `patch-decision`.
+
+---
+
+## Optional Human View
+
+The structured members are canonical; the HTML view is derivable. `--no-render` on `create`/`pack` produces agent-only files; `clan render <file>` materialises the view on demand at any hop. The manifest `view: {present, renderable, stale}` block tracks the state.
+
+---
+
 ## Security Rules
 
 - `<script>` tags and `on*` event handlers are permitted — the iframe sandbox runs them in a null origin with no access to Tauri IPC or parent app state
@@ -222,4 +286,4 @@ Agent provides a complete HTML document (preferred) or fragment. The `html` fiel
 
 ## Licence
 
-CLAN Specification — Apache License 2.0
+CLAN Specification — CLAN Specification License (see LICENSE-SPEC in the repository). Reference SDK — MPL-2.0.

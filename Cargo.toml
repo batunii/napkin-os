@@ -3,12 +3,18 @@ resolver = "2"
 members = ["crates/clan-sdk", "crates/clan-cli", "app/src-tauri"]
 
 [workspace.package]
-version = "1.0.0"
+# Single source of truth for CLI + Tauri bundle versions. CI overwrites this
+# from the pushed git tag (see .github/workflows/release.yml); this committed
+# value is the fallback for local / non-tag builds.
+version = "1.1.4"
 edition = "2021"
-license = "Apache-2.0"
-repository = "https://github.com/saieeshward/xon"
-authors = ["CLAN contributors"]
+license = "MPL-2.0"
+repository = "https://github.com/saieeshward/clan"
+authors = ["Sai Eeshwar", "Shreyansh Soni"]
 rust-version = "1.74"
+description = "CLAN — Context and Live Agent Notation: a portable file format for agent-readable documents and pipelines."
+keywords = ["clan", "agent", "ai", "document", "pipeline"]
+categories = ["encoding", "file-formats", "parser-implementations"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -19,7 +25,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 jsonschema = "0.26"
-ammonia = "4"
+lol_html = "2.1.0"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"

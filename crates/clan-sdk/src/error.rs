@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Error types for the CLAN SDK.
 
 use thiserror::Error;
@@ -36,4 +40,10 @@ pub enum Error {
 
     #[error("unsupported output mode: {0}")]
     UnsupportedMode(String),
+
+    #[error("forked-file namespace violation: {0}")]
+    NamespaceViolation(String),
+
+    #[error("merge error: {0}")]
+    Merge(String),
 }

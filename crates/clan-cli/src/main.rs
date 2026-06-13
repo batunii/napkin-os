@@ -1,25 +1,33 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! `clan` — command-line tool for CLAN files.
 //!
 //! Usage:
-//!   clan create --title "My Doc" --brief "…" [--type invoice] <output.clan>
+//!   clan create --title "My Doc" --brief "…" [--type invoice] --output <output.clan>
 //!   clan validate <file.clan>
 //!   clan read agent <file.clan>
 //!   clan read human <file.clan>
 //!   clan read data <file.clan>
 //!   clan info <file.clan>
+//!   clan edit <file.clan>
+//!   clan patch-html --output <next.clan> <parent.clan> <patch.html>
 //!   clan pack --output <next.clan> [--delta "…"] <parent.clan> <output.json>
-//!   clan pack-html --output <next.clan> [--delta "…"] <parent.clan> <output.html>
+//!   clan pack-html --output <next.clan> [--assets <dir>] [--delta "…"] <parent.clan> <output.html>
 //!   clan export-static <file.clan> [--output static.json]
 //!   clan agent-help
 
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
 use clan_sdk::{
-    assemble, create, export_static, pack, pack_html, validate, AgentOutput, ClanFile,
-    CreateOptions, InjectOptions, PackOptions,
+    assemble, create, export_static, fork_with_contexts, merge, pack, pack_html, patch_context,
+    patch_data_namespaced, patch_decision, patch_requirements, patch_state, render, validate,
+    AgentOutput, ClanFile, CreateOptions, DecisionEntry, InjectOptions, MergeOptions,
+    MergePolicies, PackOptions, MERGE_REPORT_PATH,
 };
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -28,6 +36,10 @@ use clan_sdk::{
     version = env!("CARGO_PKG_VERSION"),
 )]
 struct Cli {
+    /// Suppress `next:` teaching hints (spec §27). CLAN_NO_HINTS=1 does the same.
+    #[arg(long, global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -46,7 +58,65 @@ enum Commands {
         #[arg(long = "doc-type")]
         doc_type: Option<String>,
         /// Output path for the new .clan file.
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Agent-only file: skip the human view (spec §23). Any later hop can
+        /// materialise it with `clan render`.
+        #[arg(long)]
+        no_render: bool,
+        /// Seed `agent/output-schema.json` with this JSON Schema instead of the
+        /// permissive `{type:object}` stub — gives the first agent real field
+        /// guidance (F9).
+        #[arg(long, value_name = "PATH")]
+        schema: Option<PathBuf>,
+        /// Seed `agent/requirements.yaml` with declared tool/capability needs.
+        #[arg(long, value_name = "PATH")]
+        requirements: Option<PathBuf>,
+        /// Deprecated: positional output path. Use --output instead.
+        #[arg(value_name = "OUTPUT", conflicts_with = "output", hide = true)]
+        positional_output: Option<PathBuf>,
+    },
+    /// Fork a file into one branch per agent for parallel work (spec §24.1).
+    /// Each agent writes only inside its own `agents/<id>/` namespace.
+    Fork {
+        /// Parent .clan file.
+        parent: PathBuf,
+        /// Comma-separated agent ids (e.g. researcher,analyst,critic).
+        #[arg(long, value_delimiter = ',', required = true)]
+        agents: Vec<String>,
+        /// Directory to write `<agent>.clan` branch files into.
+        #[arg(long, value_name = "DIR")]
+        output_dir: PathBuf,
+        /// Optional directory of per-branch tasks: a file `<agent>.md` becomes
+        /// that branch's agent/context.md, so branches get role-specific tasks
+        /// instead of inheriting the parent's (F7).
+        #[arg(long, value_name = "DIR")]
+        context_dir: Option<PathBuf>,
+    },
+    /// Join fork branches into one merged file (spec §24.3): a deterministic
+    /// per-key fold — conflicts land in merge-report.yaml, not failures.
+    Merge {
+        /// Branch .clan files (2 or more), folded in argument order.
+        #[arg(required = true, num_args = 2..)]
+        branches: Vec<PathBuf>,
+        /// Output path for the merged .clan file.
+        #[arg(long)]
         output: PathBuf,
+        /// Per-key policy overrides, e.g. --policy findings=append --policy score=max.
+        /// Policies: last-write (default), append, max, min, agent-priority.
+        #[arg(long = "policy", value_name = "KEY=POLICY")]
+        policies: Vec<String>,
+        /// Drop the agents/<id>/ namespaces instead of keeping them as provenance.
+        #[arg(long)]
+        prune_namespaces: bool,
+        /// Human-readable description of the merge.
+        #[arg(long)]
+        delta: Option<String>,
+    },
+    /// Materialise the human view from the structured members (spec §23).
+    Render {
+        /// The .clan file to render in-place.
+        file: PathBuf,
     },
     /// Validate a .clan file and print a report.
     Validate {
@@ -62,9 +132,7 @@ enum Commands {
         section: ReadSection,
     },
     /// Show manifest metadata.
-    Info {
-        file: PathBuf,
-    },
+    Info { file: PathBuf },
     /// Pack a new .clan from a parent file and agent JSON output.
     Pack {
         /// Parent .clan file.
@@ -74,10 +142,172 @@ enum Commands {
         /// Output path for the new .clan file.
         #[arg(long)]
         output: PathBuf,
+        /// Optional new JSON schema to override the parent's schema.
+        #[arg(long)]
+        schema: Option<PathBuf>,
         /// Human-readable description of what changed.
         #[arg(long)]
         delta: Option<String>,
     },
+    /// Interactively edit a .clan file's data and UI in your default $EDITOR.
+    Edit {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+    },
+    /// Apply an HTML patch in-place without creating intermediate files.
+    /// The patch file should contain YAML frontmatter with `mode: patch-html`.
+    PatchHtml {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// HTML patch file (or `-` for stdin).
+        html_file: String,
+        /// Human-readable description of what changed.
+        #[arg(long)]
+        delta: Option<String>,
+        /// Agent recording this change (required unless the HTML frontmatter
+        /// already carries a decision, or `--no-decision` is set).
+        #[arg(long)]
+        agent: Option<String>,
+        /// Short description of the change (see `--agent`).
+        #[arg(long)]
+        action: Option<String>,
+        /// Detailed rationale for the change (optional).
+        #[arg(long)]
+        rationale: Option<String>,
+        /// Pin the recorded decision so it stays highly visible.
+        #[arg(long)]
+        pinned: bool,
+        /// Skip recording a decision for this view change.
+        #[arg(long = "no-decision")]
+        no_decision: bool,
+        /// CSS selector for the element to patch (e.g. `#risk-rows`, `body`).
+        /// Overrides any `patch_selector` in frontmatter and forces patch-html
+        /// (DOM patch) mode. Without it, the fragment lands at the end of <body>.
+        #[arg(long)]
+        selector: Option<String>,
+        /// How to apply the fragment to the matched element: `append` (default),
+        /// `prepend`, `replace`, `before`, or `after`. Overrides frontmatter
+        /// `patch_action`. (Distinct from `--action`, which is the attribution.)
+        #[arg(long = "patch-action")]
+        patch_action: Option<String>,
+    },
+    /// Surgically patch `shared/data.yaml` inside a .clan file using JSON Merge Patch (RFC 7396).
+    PatchData {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// JSON patch: a file path, `-` for stdin, or an inline JSON string
+        /// (anything starting with `{` or `[`). Optional when `--set` is given.
+        json_file: Option<String>,
+        /// On a forked branch file: write into your `agents/<id>/` namespace
+        /// instead of the (locked) shared data (spec §24.1).
+        #[arg(long)]
+        namespace: bool,
+        /// Set a single scalar key inline: `--set key=value` (repeatable).
+        /// Values parse as JSON when possible (numbers/bools/null), else as a
+        /// string. Merged on top of any JSON patch.
+        #[arg(long = "set", value_name = "KEY=VALUE")]
+        set: Vec<String>,
+        /// Append to an array key instead of replacing it (repeatable). RFC 7396
+        /// replaces arrays wholesale; this concatenates the patch's array onto
+        /// the existing one for the named key (spec §24.3 `append`).
+        #[arg(long = "append", value_name = "KEY")]
+        append: Vec<String>,
+        /// Agent recording this change (required unless `--no-decision`).
+        #[arg(long)]
+        agent: Option<String>,
+        /// Short description of the change (required unless `--no-decision`).
+        #[arg(long)]
+        action: Option<String>,
+        /// Detailed rationale for the change (optional).
+        #[arg(long)]
+        rationale: Option<String>,
+        /// Pin the recorded decision so it stays highly visible.
+        #[arg(long)]
+        pinned: bool,
+        /// Skip recording a decision entry for this change (opts out of the
+        /// default attribution requirement).
+        #[arg(long = "no-decision")]
+        no_decision: bool,
+    },
+    /// Surgically patch `agent/output-schema.json` inside a .clan file.
+    PatchSchema {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// JSON Schema file (or `-` for stdin).
+        schema_file: String,
+    },
+    /// Append a new decision entry to `shared/decision-chain.yaml` inside a .clan file.
+    PatchDecision {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// Name of the agent making the decision.
+        #[arg(long)]
+        agent: String,
+        /// Short description of the action taken.
+        #[arg(long)]
+        action: String,
+        /// Detailed rationale for the decision.
+        #[arg(long)]
+        rationale: String,
+        /// Pin this decision to ensure it remains highly visible.
+        #[arg(long)]
+        pinned: bool,
+    },
+    /// Surgically patch `agent/state.yaml` inside a .clan file using JSON Merge Patch (RFC 7396).
+    PatchState {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// JSON patch: a file path, `-` for stdin, or an inline JSON string
+        /// (anything starting with `{` or `[`). Optional when `--set` is given.
+        json_file: Option<String>,
+        /// Set a single scalar key inline: `--set key=value` (repeatable).
+        #[arg(long = "set", value_name = "KEY=VALUE")]
+        set: Vec<String>,
+    },
+    /// Overwrite or append to `agent/context.md` inside a .clan file.
+    PatchContext {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// Markdown file containing the context (or `-` for stdin).
+        markdown_file: String,
+        /// Append rather than overwrite.
+        #[arg(long)]
+        append: bool,
+    },
+    /// Inject or replace an asset (e.g. image) in `human/assets/` inside a .clan file.
+    PatchAsset {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// Internal path within `human/assets/` (e.g. `logo.png`).
+        internal_path: String,
+        /// Local file containing the asset.
+        local_file: PathBuf,
+        /// Agent recording this asset change (required unless `--no-decision`).
+        #[arg(long)]
+        agent: Option<String>,
+        /// Short description of the change (required unless `--no-decision`).
+        #[arg(long)]
+        action: Option<String>,
+        /// Detailed rationale for the change (optional).
+        #[arg(long)]
+        rationale: Option<String>,
+        /// Pin the recorded decision so it stays highly visible.
+        #[arg(long)]
+        pinned: bool,
+        /// Skip recording a decision for this asset change.
+        #[arg(long = "no-decision")]
+        no_decision: bool,
+    },
+    /// Write or replace `agent/requirements.yaml` — declared tool/capability
+    /// needs (spec §22 layer 5). Surfaced in agent context and warned (not
+    /// failed) on by receiving orchestrators.
+    PatchRequirements {
+        /// The .clan file to edit in-place.
+        file: PathBuf,
+        /// YAML requirements file (or `-` for stdin).
+        requirements_file: String,
+    },
+
     /// Export a .clan as a single JSON blob for SDK-less agents.
     ExportStatic {
         file: PathBuf,
@@ -96,9 +326,32 @@ enum Commands {
         /// Output path for the new .clan file.
         #[arg(long)]
         output: PathBuf,
+        /// Optional directory containing binary/text assets to mount.
+        #[arg(long)]
+        assets: Option<PathBuf>,
+        /// Optional new JSON schema to override the parent's schema.
+        #[arg(long)]
+        schema: Option<PathBuf>,
         /// Human-readable description of what changed.
         #[arg(long)]
         delta: Option<String>,
+        /// Agent recording this view change; enables inline attribution without
+        /// a separate `clan patch-decision` call (F17). Must be paired with --action.
+        #[arg(long)]
+        agent: Option<String>,
+        /// Short description of the view change (F17). Must be paired with --agent.
+        #[arg(long)]
+        action: Option<String>,
+        /// Detailed rationale for the change (optional).
+        #[arg(long)]
+        rationale: Option<String>,
+        /// Pin the recorded decision so it stays highly visible.
+        #[arg(long)]
+        pinned: bool,
+        /// Proceed even when `structured:` data is present but the HTML view is
+        /// unchanged — overrides the data-only-write guard (F18).
+        #[arg(long)]
+        force: bool,
     },
     /// Print a compact agent-oriented quick reference (< 200 tokens).
     /// Use this instead of --help when operating as an AI agent.
@@ -112,39 +365,383 @@ enum ReadSection {
         file: PathBuf,
         #[arg(long)]
         no_patches: bool,
+        /// Skip the agent guide body (for agents that already read it);
+        /// prints a one-line note with the guide digest instead.
+        #[arg(long)]
+        skip_guide: bool,
     },
     /// Print human/index.html.
     Human { file: PathBuf },
     /// Print shared/data.yaml.
     Data { file: PathBuf },
-    /// Print agent/decision-chain.yaml.
+    /// Print agent/decision-chain.yaml. (Alias: `decisions`.)
+    #[command(alias = "decisions")]
     Chain { file: PathBuf },
+    /// Print merge-report.yaml (contested keys from the last merge), TOON-encoded.
+    Report { file: PathBuf },
+}
+
+/// ASCII banner shown once, on the first ever run of the CLI (#31).
+const WELCOME_BANNER: &str = r#"
+   _____ _        _    _   _
+  / ____| |      / \  | \ | |
+ | |    | |     / _ \ |  \| |
+ | |____| |___ / ___ \| |\  |
+  \_____|_____/_/   \_\_| \_|
+"#;
+
+/// Resolve the directory holding the first-run marker:
+/// $CLAN_CONFIG_DIR, then $XDG_CONFIG_HOME/clan, then ~/.config/clan.
+fn banner_config_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("CLAN_CONFIG_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        return Some(PathBuf::from(xdg).join("clan"));
+    }
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|home| PathBuf::from(home).join(".config").join("clan"))
+}
+
+/// Print the welcome banner on the very first run, then never again.
+/// stderr only — stdout belongs to command output and is often piped.
+/// CLAN_NO_BANNER=1 disables it entirely (no marker is written either);
+/// an unwritable config dir silently skips the banner.
+fn maybe_show_welcome_banner() {
+    if std::env::var_os("CLAN_NO_BANNER").is_some() {
+        return;
+    }
+    let Some(dir) = banner_config_dir() else {
+        return;
+    };
+    let marker = dir.join("welcomed");
+    if marker.exists() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    // Only greet if the marker sticks, so a read-only config dir doesn't
+    // produce the banner on every run.
+    if std::fs::write(&marker, env!("CARGO_PKG_VERSION")).is_err() {
+        return;
+    }
+    eprintln!(
+        "{WELCOME_BANNER}\n  CLAN v{} — Context and Live Agent Notation\n  Documents that carry their own context. Run `clan agent-help` to get started.\n",
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 fn main() -> Result<()> {
+    maybe_show_welcome_banner();
     let cli = Cli::parse();
+    let hints = Hints::new(cli.quiet);
     match cli.command {
         Commands::Create {
             title,
             brief,
             doc_type,
             output,
-        } => cmd_create(title, brief, doc_type, output),
-        Commands::Validate { file, strict } => cmd_validate(file, strict),
+            no_render,
+            schema,
+            requirements,
+            positional_output,
+        } => {
+            let output = match (output, positional_output) {
+                (Some(path), _) => path,
+                (None, Some(path)) => {
+                    eprintln!(
+                        "warning: the positional output path is deprecated; use --output <PATH>"
+                    );
+                    path
+                }
+                (None, None) => anyhow::bail!("missing output path: pass --output <PATH>"),
+            };
+            cmd_create(
+                title,
+                brief,
+                doc_type,
+                output,
+                no_render,
+                schema,
+                requirements,
+                &hints,
+            )
+        }
+        Commands::Fork {
+            parent,
+            agents,
+            output_dir,
+            context_dir,
+        } => cmd_fork(parent, agents, output_dir, context_dir, &hints),
+        Commands::Merge {
+            branches,
+            output,
+            policies,
+            prune_namespaces,
+            delta,
+        } => cmd_merge(branches, output, policies, prune_namespaces, delta, &hints),
+        Commands::Render { file } => cmd_render(file, &hints),
+        Commands::Validate { file, strict } => cmd_validate(file, strict, &hints),
         Commands::Read { section } => cmd_read(section),
         Commands::Info { file } => cmd_info(file),
         Commands::Pack {
             parent,
             output_json,
             output,
+            schema,
             delta,
-        } => cmd_pack(parent, output_json, output, delta),
+        } => cmd_pack(parent, output_json, output, schema, delta, &hints),
+        Commands::Edit { file } => cmd_edit(file),
+        Commands::PatchHtml {
+            file,
+            html_file,
+            delta,
+            agent,
+            action,
+            rationale,
+            pinned,
+            no_decision,
+            selector,
+            patch_action,
+        } => cmd_patch_html(
+            file,
+            html_file,
+            delta,
+            agent,
+            action,
+            rationale,
+            pinned,
+            no_decision,
+            selector,
+            patch_action,
+        ),
+        Commands::PatchData {
+            file,
+            json_file,
+            namespace,
+            set,
+            append,
+            agent,
+            action,
+            rationale,
+            pinned,
+            no_decision,
+        } => cmd_patch_data(
+            file,
+            json_file,
+            namespace,
+            set,
+            append,
+            agent,
+            action,
+            rationale,
+            pinned,
+            no_decision,
+            &hints,
+        ),
+        Commands::PatchSchema { file, schema_file } => cmd_patch_schema(file, schema_file),
+        Commands::PatchDecision {
+            file,
+            agent,
+            action,
+            rationale,
+            pinned,
+        } => cmd_patch_decision(file, agent, action, rationale, pinned, &hints),
+        Commands::PatchState {
+            file,
+            json_file,
+            set,
+        } => cmd_patch_state(file, json_file, set),
+        Commands::PatchContext {
+            file,
+            markdown_file,
+            append,
+        } => cmd_patch_context(file, markdown_file, append),
+        Commands::PatchAsset {
+            file,
+            internal_path,
+            local_file,
+            agent,
+            action,
+            rationale,
+            pinned,
+            no_decision,
+        } => cmd_patch_asset(
+            file,
+            internal_path,
+            local_file,
+            agent,
+            action,
+            rationale,
+            pinned,
+            no_decision,
+        ),
+        Commands::PatchRequirements {
+            file,
+            requirements_file,
+        } => cmd_patch_requirements(file, requirements_file),
         Commands::ExportStatic { file, output } => cmd_export_static(file, output),
-        Commands::PackHtml { parent, html_file, output, delta } => {
-            cmd_pack_html(parent, html_file, output, delta)
+        Commands::PackHtml {
+            parent,
+            html_file,
+            output,
+            assets,
+            schema,
+            delta,
+            agent,
+            action,
+            rationale,
+            pinned,
+            force,
+        } => cmd_pack_html(
+            parent, html_file, output, assets, schema, delta, agent, action, rationale, pinned,
+            force, &hints,
+        ),
+        Commands::AgentHelp => {
+            cmd_agent_help();
+            Ok(())
         }
-        Commands::AgentHelp => { cmd_agent_help(); Ok(()) }
     }
+}
+
+/// Teaching hints (spec §27): deterministic, bounded (≤3 lines), and
+/// precondition-gated — a hint never mentions a capability whose
+/// preconditions are absent from the file's state. Emitted on the diagnostic
+/// stream (stderr) so stdout stays pure data; suppressed by --quiet or
+/// CLAN_NO_HINTS=1.
+struct Hints {
+    enabled: bool,
+}
+
+impl Hints {
+    fn new(quiet: bool) -> Self {
+        Self {
+            enabled: !quiet && std::env::var("CLAN_NO_HINTS").map_or(true, |v| v.is_empty()),
+        }
+    }
+
+    fn emit<S: AsRef<str>>(&self, lines: &[S]) {
+        if !self.enabled {
+            return;
+        }
+        for line in lines.iter().take(3) {
+            eprintln!("next: {}", line.as_ref());
+        }
+    }
+}
+
+/// Hints derived purely from a written file's state (spec §27.1): each line's
+/// precondition is the manifest/member state that makes it actionable.
+///
+/// `patch_keys`: when `Some`, the stale-view hint is filtered by F2b binding
+/// coverage — keys that are `{{bound}}` in the HTML auto-render, so no hint.
+fn file_state_hints(
+    clan: &ClanFile,
+    path: &std::path::Path,
+    patch_keys: Option<&[String]>,
+) -> Vec<String> {
+    let mut hints = Vec::new();
+    let m = clan.manifest();
+    let p = path.display();
+
+    if let Some(fork) = &m.fork {
+        hints.push(format!(
+            "you are branch agent '{}'; write only inside {} (patch-data --namespace, patch-decision auto-routes)",
+            fork.agent_id, fork.namespace
+        ));
+    }
+    if clan.has_entry(MERGE_REPORT_PATH) {
+        if let Ok(report) = clan.read_entry(MERGE_REPORT_PATH) {
+            if let Ok(report) = clan_sdk::MergeReport::from_yaml(&report) {
+                if report.unresolved > 0 {
+                    hints.push(format!(
+                        "{} contested key(s) in merge-report.yaml — `clan read report {p}`, then adjudicate with patch-data + patch-decision",
+                        report.unresolved
+                    ));
+                }
+            }
+        }
+    }
+    if let Some(view) = &m.view {
+        if !view.present && view.renderable {
+            hints.push(format!(
+                "file is agent-only; `clan render {p}` materialises the human view when needed"
+            ));
+        } else if view.present && view.stale {
+            // F2b: when we know which keys changed, suppress the hint if every
+            // changed key has a {{key}} binding in the HTML view (it auto-renders).
+            let suppress = if let Some(keys) = patch_keys {
+                if keys.is_empty() {
+                    false
+                } else {
+                    let html = clan
+                        .read_entry_string("human/index.html")
+                        .unwrap_or_default();
+                    let bound = extract_binding_keys(&html);
+                    keys.iter().all(|k| bound.contains(k.as_str()))
+                }
+            } else {
+                false
+            };
+
+            if suppress {
+                // All changed keys are bound — view will auto-render, no hint needed.
+            } else if let Some(keys) = patch_keys {
+                // Some keys are unbound — name them specifically (F2b).
+                let html = clan
+                    .read_entry_string("human/index.html")
+                    .unwrap_or_default();
+                let bound = extract_binding_keys(&html);
+                let unbound: Vec<&str> = keys
+                    .iter()
+                    .filter(|k| !bound.contains(k.as_str()))
+                    .map(String::as_str)
+                    .collect();
+                if !unbound.is_empty() {
+                    let names = unbound.join(", ");
+                    hints.push(format!(
+                        "data key(s) not reflected in view ({names}) — use pack-html or patch-html to show them"
+                    ));
+                }
+            } else {
+                // No key context — generic stale hint (F2, hand-authored aware).
+                if view.source.as_deref() == Some("agent") {
+                    hints.push(format!(
+                        "human view is stale and hand-authored — re-run `clan pack-html` to refresh it (or `clan render {p}` to REPLACE it with the default theme, discarding the custom design)"
+                    ));
+                } else {
+                    hints.push(format!(
+                        "human view is stale — `clan render {p}` to refresh"
+                    ));
+                }
+            }
+        }
+    }
+    hints
+}
+
+/// Extract top-level key names referenced by `{{key}}` or `{{key.path}}` in HTML.
+fn extract_binding_keys(html: &str) -> std::collections::HashSet<String> {
+    let mut keys = std::collections::HashSet::new();
+    let mut rest = html;
+    while let Some(start) = rest.find("{{") {
+        rest = &rest[start + 2..];
+        if let Some(end) = rest.find("}}") {
+            let binding = &rest[..end];
+            let key = binding.split('.').next().unwrap_or("").trim();
+            if !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                keys.insert(key.to_string());
+            }
+            rest = &rest[end + 2..];
+        } else {
+            break;
+        }
+    }
+    keys
 }
 
 fn cmd_create(
@@ -152,27 +749,180 @@ fn cmd_create(
     brief: String,
     doc_type: Option<String>,
     output: PathBuf,
+    no_render: bool,
+    schema_path: Option<PathBuf>,
+    requirements_path: Option<PathBuf>,
+    hints: &Hints,
 ) -> Result<()> {
+    let schema = match schema_path {
+        Some(p) => Some(
+            std::fs::read_to_string(&p)
+                .with_context(|| format!("could not read schema {}", p.display()))?,
+        ),
+        None => None,
+    };
     let bytes = create(CreateOptions {
         title: title.clone(),
         brief,
         document_type: doc_type,
+        no_render,
+        schema,
     })
     .context("failed to create .clan file")?;
+
+    // Seed requirements.yaml if supplied (F8) — one extra generation.
+    let bytes = if let Some(p) = requirements_path {
+        let req = std::fs::read_to_string(&p)
+            .with_context(|| format!("could not read {}", p.display()))?;
+        let clan = ClanFile::from_bytes(bytes)?;
+        patch_requirements(&clan, &req).context("failed to seed requirements.yaml")?
+    } else {
+        bytes
+    };
+
     std::fs::write(&output, &bytes)
         .with_context(|| format!("could not write {}", output.display()))?;
+    let clan = ClanFile::from_bytes(bytes.clone())?;
     eprintln!(
         "created {} ({} bytes)  id={}",
         output.display(),
         bytes.len(),
-        ClanFile::from_bytes(bytes)?.manifest().id
+        clan.manifest().id
     );
+    let mut lines = vec![format!("clan read agent {}", output.display())];
+    lines.extend(file_state_hints(&clan, &output, None));
+    hints.emit(&lines);
     Ok(())
 }
 
-fn cmd_validate(file: PathBuf, strict: bool) -> Result<()> {
-    let clan = ClanFile::open(&file)
-        .with_context(|| format!("could not open {}", file.display()))?;
+fn cmd_fork(
+    parent_path: PathBuf,
+    agents: Vec<String>,
+    output_dir: PathBuf,
+    context_dir: Option<PathBuf>,
+    hints: &Hints,
+) -> Result<()> {
+    let parent = open(&parent_path)?;
+    // Per-branch task overrides: <agent>.md in --context-dir (F7).
+    let contexts = match &context_dir {
+        Some(dir) => {
+            let mut map = std::collections::BTreeMap::new();
+            for agent in &agents {
+                let p = dir.join(format!("{}.md", agent.trim()));
+                if p.is_file() {
+                    map.insert(
+                        agent.trim().to_string(),
+                        std::fs::read_to_string(&p)
+                            .with_context(|| format!("could not read {}", p.display()))?,
+                    );
+                }
+            }
+            Some(map)
+        }
+        None => None,
+    };
+    let branches =
+        fork_with_contexts(&parent, &agents, contexts.as_ref()).context("fork failed")?;
+    std::fs::create_dir_all(&output_dir)
+        .with_context(|| format!("could not create {}", output_dir.display()))?;
+    for (agent_id, bytes) in &branches {
+        let path = output_dir.join(format!("{agent_id}.clan"));
+        std::fs::write(&path, bytes)
+            .with_context(|| format!("could not write {}", path.display()))?;
+        eprintln!("forked {} for agent '{agent_id}'", path.display());
+    }
+    hints.emit(&[
+        format!(
+            "each agent writes only inside its own agents/<id>/ namespace ({} branches, conflicts impossible by construction)",
+            branches.len()
+        ),
+        format!(
+            "when all branches are done: clan merge {}\\*.clan --output <merged.clan>",
+            output_dir.display()
+        ),
+    ]);
+    Ok(())
+}
+
+fn cmd_merge(
+    branch_paths: Vec<PathBuf>,
+    output: PathBuf,
+    policy_args: Vec<String>,
+    prune_namespaces: bool,
+    delta: Option<String>,
+    hints: &Hints,
+) -> Result<()> {
+    let mut branches = Vec::with_capacity(branch_paths.len());
+    for path in &branch_paths {
+        branches.push(open(path)?);
+    }
+
+    let policies = if policy_args.is_empty() {
+        None
+    } else {
+        let mut keys = std::collections::BTreeMap::new();
+        for arg in &policy_args {
+            let (key, policy) = arg
+                .split_once('=')
+                .with_context(|| format!("invalid --policy {arg:?}: expected KEY=POLICY"))?;
+            keys.insert(key.to_string(), policy.to_string());
+        }
+        Some(MergePolicies {
+            default: None,
+            keys,
+        })
+    };
+
+    let outcome = merge(
+        &branches,
+        MergeOptions {
+            policies,
+            prune_namespaces,
+            delta,
+        },
+    )
+    .context("merge failed")?;
+    std::fs::write(&output, &outcome.bytes)
+        .with_context(|| format!("could not write {}", output.display()))?;
+    eprintln!(
+        "merged {} branches into {} ({} contested key(s))",
+        branches.len(),
+        output.display(),
+        outcome.report.unresolved
+    );
+    if outcome.report.unresolved > 0 {
+        hints.emit(&[
+            format!(
+                "{} contested key(s) recorded in merge-report.yaml — `clan read report {}`",
+                outcome.report.unresolved,
+                output.display()
+            ),
+            "adjudicate each in one step: clan patch-data <file> <json> --agent <you> --action \"adjudicated <key>\" (settles the key AND records the decision)".to_string(),
+        ]);
+    } else {
+        hints.emit(&[format!(
+            "clean merge — clan read agent {} to continue",
+            output.display()
+        )]);
+    }
+    Ok(())
+}
+
+fn cmd_render(file: PathBuf, hints: &Hints) -> Result<()> {
+    let clan = open(&file)?;
+    let bytes = render(&clan).context("render failed")?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("materialised human view in {}", file.display());
+    hints.emit(&[format!(
+        "open in the viewer, or `clan read human {}` to print the HTML",
+        file.display()
+    )]);
+    Ok(())
+}
+
+fn cmd_validate(file: PathBuf, strict: bool, hints: &Hints) -> Result<()> {
+    let clan =
+        ClanFile::open(&file).with_context(|| format!("could not open {}", file.display()))?;
     let report = validate(&clan);
     println!("{}", report.display());
     if !report.is_valid() {
@@ -181,17 +931,23 @@ fn cmd_validate(file: PathBuf, strict: bool) -> Result<()> {
     if strict && !report.is_content_valid() {
         std::process::exit(2);
     }
+    hints.emit(&file_state_hints(&clan, &file, None));
     Ok(())
 }
 
 fn cmd_read(section: ReadSection) -> Result<()> {
     match section {
-        ReadSection::Agent { file, no_patches } => {
+        ReadSection::Agent {
+            file,
+            no_patches,
+            skip_guide,
+        } => {
             let clan = open(&file)?;
             let ctx = assemble(
                 &clan,
                 &InjectOptions {
                     include_patches: !no_patches,
+                    skip_guide,
                 },
             )
             .context("failed to assemble agent context")?;
@@ -208,6 +964,17 @@ fn cmd_read(section: ReadSection) -> Result<()> {
         ReadSection::Chain { file } => {
             let clan = open(&file)?;
             print!("{}", clan.read_entry_string("agent/decision-chain.yaml")?);
+        }
+        ReadSection::Report { file } => {
+            let clan = open(&file)?;
+            if !clan.has_entry(MERGE_REPORT_PATH) {
+                anyhow::bail!(
+                    "no merge report: {} was not produced by `clan merge` (or its report was pruned)",
+                    file.display()
+                );
+            }
+            let yaml = clan.read_entry(MERGE_REPORT_PATH)?;
+            print!("{}", clan_sdk::yaml_to_toon(&yaml)?);
         }
     }
     Ok(())
@@ -239,34 +1006,39 @@ fn cmd_pack(
     parent_path: PathBuf,
     output_json: String,
     output: PathBuf,
+    schema_path: Option<PathBuf>,
     delta: Option<String>,
+    hints: &Hints,
 ) -> Result<()> {
     let parent = open(&parent_path)?;
 
-    let json = if output_json == "-" {
-        use std::io::Read;
-        let mut s = String::new();
-        std::io::stdin().read_to_string(&mut s)?;
-        s
-    } else {
-        std::fs::read_to_string(&output_json)
-            .with_context(|| format!("could not read {output_json}"))?
-    };
+    let json = read_source(&output_json)?;
 
     let agent_output = AgentOutput::from_json(&json).context("failed to parse agent output")?;
+    let schema_override = if let Some(sp) = schema_path {
+        Some(
+            std::fs::read_to_string(&sp)
+                .with_context(|| format!("could not read schema {}", sp.display()))?,
+        )
+    } else {
+        None
+    };
+
     let opts = PackOptions {
         delta,
         output_path: Some(parent_path.display().to_string()),
+        schema_override,
         ..Default::default()
     };
     let bytes = pack(&parent, agent_output, opts, None).context("pack failed")?;
     std::fs::write(&output, &bytes)
         .with_context(|| format!("could not write {}", output.display()))?;
-    eprintln!(
-        "packed {} ({} bytes)",
-        output.display(),
-        bytes.len()
-    );
+    eprintln!("packed {} ({} bytes)", output.display(), bytes.len());
+    hints.emit(&file_state_hints(
+        &ClanFile::from_bytes(bytes)?,
+        &output,
+        None,
+    ));
     Ok(())
 }
 
@@ -285,82 +1057,627 @@ fn cmd_export_static(file: PathBuf, output: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_pack_html(
     parent_path: PathBuf,
     html_file: String,
     output: PathBuf,
+    assets_dir: Option<PathBuf>,
+    schema_path: Option<PathBuf>,
     delta: Option<String>,
+    agent: Option<String>,
+    action: Option<String>,
+    rationale: Option<String>,
+    pinned: bool,
+    force: bool,
+    hints: &Hints,
 ) -> Result<()> {
     let parent = open(&parent_path)?;
+    let raw_html = read_source(&html_file)?;
 
-    let raw_html = if html_file == "-" {
+    // F18: guard against pack-html being used as a data-only write path.
+    let structured_hint = check_pack_html_write_path(&raw_html, &parent, force)?;
+
+    // F17: inline attribution — both flags required together, or neither.
+    let decision = match (agent, action) {
+        (Some(agent_name), Some(act)) => Some(DecisionEntry {
+            agent_name,
+            action: act,
+            rationale: rationale.unwrap_or_default(),
+            pinned,
+            fields_changed: Some(vec!["human/index.html".to_string()]),
+        }),
+        (Some(_), None) | (None, Some(_)) => {
+            anyhow::bail!("--agent and --action must be provided together");
+        }
+        (None, None) => None,
+    };
+
+    let mut assets_map = std::collections::HashMap::new();
+    if let Some(dir) = assets_dir {
+        if dir.is_dir() {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        let bytes = std::fs::read(&path)?;
+                        assets_map.insert(name.to_string(), bytes);
+                    }
+                }
+            }
+        }
+    }
+
+    let schema_override = if let Some(sp) = schema_path {
+        Some(
+            std::fs::read_to_string(&sp)
+                .with_context(|| format!("could not read schema {}", sp.display()))?,
+        )
+    } else {
+        None
+    };
+
+    let bytes = clan_sdk::pack::pack_html_with(
+        &parent,
+        &raw_html,
+        Some(assets_map),
+        schema_override,
+        delta,
+        decision,
+        None,
+    )
+    .context("pack-html failed")?;
+    std::fs::write(&output, &bytes)
+        .with_context(|| format!("could not write {}", output.display()))?;
+    eprintln!("packed {} ({} bytes)", output.display(), bytes.len());
+
+    let mut hint_lines: Vec<String> = Vec::new();
+    if let Some(h) = structured_hint {
+        hint_lines.push(h);
+    }
+    hint_lines.extend(file_state_hints(
+        &ClanFile::from_bytes(bytes)?,
+        &output,
+        None,
+    ));
+    hints.emit(&hint_lines);
+    Ok(())
+}
+
+/// F18 write-path guard. Returns:
+/// - `Ok(None)`        — no structured data, proceed silently
+/// - `Ok(Some(hint))`  — view changing + structured data; proceed with a hint
+/// - `Err`             — structured data but view unchanged and --force not given; block
+fn check_pack_html_write_path(
+    raw_html: &str,
+    parent: &ClanFile,
+    force: bool,
+) -> Result<Option<String>> {
+    let (has_structured, html_body) = clan_sdk::pack::inspect_html_frontmatter(raw_html);
+    if !has_structured {
+        return Ok(None);
+    }
+    let existing_view = parent
+        .read_entry_string("human/index.html")
+        .unwrap_or_default();
+    if html_body.trim() == existing_view.trim() {
+        if !force {
+            anyhow::bail!(
+                "pack-html carries `structured:` data but the HTML view is unchanged — \
+                 use `patch-data` for data-only writes (faster, safe on branches)\n\
+                 pass --force to use pack-html anyway"
+            );
+        }
+        eprintln!("note: pack-html used for data-only write; prefer `patch-data` next time");
+        Ok(None)
+    } else {
+        Ok(Some(
+            "structured: data in pack-html; for data-only fields `patch-data` is faster and branch-safe".to_string(),
+        ))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
+fn cmd_patch_html(
+    file: PathBuf,
+    html_file: String,
+    delta: Option<String>,
+    agent: Option<String>,
+    action: Option<String>,
+    rationale: Option<String>,
+    pinned: bool,
+    no_decision: bool,
+    selector: Option<String>,
+    patch_action: Option<String>,
+) -> Result<()> {
+    let clan = open(&file)?;
+    let raw_html = read_source(&html_file)?;
+
+    // Validate --patch-action up front so the error names the legal verbs
+    // rather than silently falling through to `append` in the SDK.
+    if let Some(pa) = patch_action.as_deref() {
+        const ACTIONS: [&str; 5] = ["append", "prepend", "replace", "before", "after"];
+        if !ACTIONS.contains(&pa) {
+            anyhow::bail!(
+                "unknown --patch-action {pa:?}; expected one of: {}",
+                ACTIONS.join(", ")
+            );
+        }
+    }
+
+    // F15: a view change must be attributed unless the frontmatter already
+    // carries a decision or `--no-decision` is set. fields_changed is left to
+    // pack() to derive from any structured delta in the frontmatter.
+    let decision_override = match (agent, action) {
+        (Some(agent_name), Some(action)) => Some(DecisionEntry {
+            agent_name,
+            action,
+            rationale: rationale.unwrap_or_default(),
+            pinned,
+            fields_changed: None,
+        }),
+        _ if no_decision || clan_sdk::pack::frontmatter_has_decision(&raw_html) => None,
+        _ => anyhow::bail!(
+            "this view change needs attribution: pass --agent <name> --action \"<what changed>\", \
+             include a `decision:` block in the HTML frontmatter, or --no-decision to skip"
+        ),
+    };
+
+    let targeting = clan_sdk::PatchTargeting {
+        selector,
+        action: patch_action,
+        force_patch_mode: true,
+    };
+    let bytes = clan_sdk::pack::pack_html_targeted(
+        &clan,
+        &raw_html,
+        None,
+        None,
+        delta,
+        decision_override,
+        targeting,
+        None,
+    )?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Patched {} in-place", file.display());
+    Ok(())
+}
+
+fn cmd_edit(file: PathBuf) -> Result<()> {
+    let clan = open(&file)?;
+    let temp_dir = tempfile::tempdir()?;
+    let html_path = temp_dir.path().join("index.html");
+
+    let existing_html = clan
+        .read_entry_string("human/index.html")
+        .unwrap_or_default();
+    let existing_data = clan
+        .read_entry_string("shared/data.yaml")
+        .unwrap_or_default();
+
+    let mut content = String::new();
+    if !existing_data.is_empty() {
+        content.push_str("---\nstructured:\n");
+        for line in existing_data.lines() {
+            content.push_str(&format!("  {}\n", line));
+        }
+        content.push_str("---\n");
+    }
+    content.push_str(&existing_html);
+    std::fs::write(&html_path, &content)?;
+
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+    let status = std::process::Command::new(editor)
+        .arg(&html_path)
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("Editor exited with non-zero status");
+    }
+
+    let new_content = std::fs::read_to_string(&html_path)?;
+    if new_content == content {
+        eprintln!("No changes made.");
+        return Ok(());
+    }
+
+    let bytes = pack_html(
+        &clan,
+        &new_content,
+        None,
+        None,
+        Some("interactive human edit".into()),
+        None,
+    )?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Updated {}", file.display());
+    Ok(())
+}
+
+fn cmd_agent_help() {
+    print!("CLAN v{} AGENT PROTOCOL\n", env!("CARGO_PKG_VERSION"));
+    print!(
+        r#"Format: ZIP archive (.clan). Mutate ONLY via CLI.
+
+# READ
+clan read agent <file>    => Context, state, data, history (USE THIS FIRST)
+clan read human <file>    => Rendered HTML
+clan info <file>          => Manifest/lineage
+
+# WRITE (Full Replace)
+1. JSON Mode: clan pack --output <out> [--schema <schema>] <in> <json_file>
+API Input Wrapper:
+{{"mode":"full-html","structured":{{...}},"human":{{"html":"...","css":"...","assets":{{"img.png":"..."}}}},"decision":{{"agent":"X","action":"Y","rationale":"Z"}}}}
+*(Note: output-schema.json ONLY validates the 'structured' payload object, not this API wrapper)*
+
+2. HTML Mode (Token-efficient): clan pack-html --output <out> [--schema <schema>] [--agent X --action Y] <in> <html_file>
+API Input Wrapper:
+---
+structured: {{...}}
+decision: {{agent: X, action: Y, rationale: Z}}
+---
+<!DOCTYPE html><html>...
+(Hint: Use {{{{key}}}} for templating, or window.__CLAN__.data in JS)
+(Hint: frontmatter `structured:` MERGE-PATCHES shared/data.yaml — fields you OMIT are KEPT from prior hops. Only restate what you change; do NOT re-transcribe carried data.)
+(Hint: --agent/--action on pack-html records an inline attribution entry — same as patch-data; or put `decision:` in frontmatter.)
+
+# WRITE PATH — pick the right command
+data only       → patch-data   (surgical, branch-safe, lowest cost)
+view only       → pack-html    (full HTML replacement, expensive — use sparingly)
+data + view     → pack-html with structured: frontmatter  (legitimate but heavier)
+decision only   → patch-decision
+pack-html blocks if structured: is present but the view is unchanged; pass --force to override.
+
+# PATCH (In-place, Lowest Token Cost, Preferred)
+1. DOM: clan patch-html <file> <patch_file> --selector '#id' [--patch-action append|prepend|replace|before|after] --agent X --action Y
+   (attribution REQUIRED; or a `decision:` block in frontmatter, or --no-decision)
+   --selector targets the element (e.g. '#risk-rows' to add a <tr> INSIDE that tbody); --patch-action defaults to append.
+   WITHOUT --selector the fragment lands at the end of <body> — so a bare <tr> ends up OUTSIDE its table. Always pass --selector for in-element edits.
+   (--action is the attribution verb for the decision chain; --patch-action is the DOM operation. They are different.)
+Equivalent via frontmatter (if you prefer a self-describing patch file):
+---
+mode: patch-html
+patch_selector: '#risk-rows'
+patch_action: 'append' | 'prepend' | 'replace' | 'before' | 'after'
+---
+<tr><td>New row</td></tr>
+
+2. Data: clan patch-data <file> <json-or-inline> --agent X --action Y [--rationale Z] [--pinned]
+      <json> may be a file, `-` (stdin), or an inline JSON string. Or set scalars: --set key=value (repeatable).
+      RFC7396 Merge Patch of shared/data.yaml (MUST conform to output-schema.json); keys you omit are KEPT.
+      Arrays REPLACE by default — to add an item use --append <key> (repeatable; concatenates instead).
+      Attribution is REQUIRED: --agent + --action record the change with exact fields_changed. Use --no-decision to skip.
+3. State: clan patch-state <file> <json|-|inline> [--set key=value]   (RFC7396 Merge Patch agent/state.yaml)
+4. Notes: clan patch-context <file> <md> [--append]
+5. History: clan patch-decision <file> --agent X --action Y --rationale Z
+6. Asset: clan patch-asset <file> <path/in/zip> <local_file> --agent X --action Y   (attribution REQUIRED; or --no-decision)
+7. Schema: clan patch-schema <file> <schema.json>
+
+# PARALLEL (fork/join, spec S24)
+clan fork <file> --agents a,b,c --output-dir <dir>   => one branch per agent
+On a BRANCH file: write ONLY your namespace agents/<you>/ :
+  clan patch-data <branch> <json> --namespace        (your data)
+  clan patch-decision <branch> --agent <you> ...     (auto-routed)
+clan merge <branches...> --output <out> [--policy key=append|max|min|last-write|agent-priority]
+clan read report <file>   => contested keys (adjudicate in one step: patch-data <file> <json> --agent <you> --action "adjudicated <key>")
+(Tip: prose fields siblings also write — assumptions/summary/notes — collide under last-write. Prefix with your agent id, or merge with --policy <key>=append.)
+clan fork ... --context-dir <dir>   => per-branch task: <agent>.md becomes that branch's context
+
+# VIEW (optional, spec S23)
+clan create/pack --no-render  => agent-only file (no HTML at each hop)
+clan create --schema <file>   => seed a real output schema (field guidance for agents)
+clan render <file>            => materialise the human view on demand
+clan patch-requirements <file> <yaml>  => declare tool/capability needs (agent/requirements.yaml)
+
+# VERIFY
+clan validate <file>
+
+Commands print `next:` hints gated on file state (suppress: --quiet / CLAN_NO_HINTS=1).
+"#
+    );
+}
+
+fn open(path: &PathBuf) -> Result<ClanFile> {
+    ClanFile::open(path).with_context(|| format!("could not open {}", path.display()))
+}
+
+/// Read a file argument, or stdin when it is `-`, stripping a leading UTF-8
+/// BOM. PowerShell 5.1's `Out-File` writes a BOM by default, which otherwise
+/// makes `serde_json` reject the very first byte with an opaque "expected
+/// value at line 1 column 1" (F3).
+fn read_source(arg: &str) -> Result<String> {
+    let raw = if arg == "-" {
         use std::io::Read;
         let mut s = String::new();
         std::io::stdin().read_to_string(&mut s)?;
         s
     } else {
-        std::fs::read_to_string(&html_file)
-            .with_context(|| format!("could not read {html_file}"))?
+        std::fs::read_to_string(arg).with_context(|| format!("could not read {arg}"))?
     };
+    Ok(raw
+        .strip_prefix('\u{feff}')
+        .map(str::to_string)
+        .unwrap_or(raw))
+}
 
-    let bytes = pack_html(&parent, &raw_html, delta, None).context("pack-html failed")?;
-    std::fs::write(&output, &bytes)
-        .with_context(|| format!("could not write {}", output.display()))?;
-    eprintln!("packed {} ({} bytes)", output.display(), bytes.len());
+/// Read a JSON patch from an inline literal, a file path, or stdin (`-`).
+/// Inline detection (F13): an argument whose first non-space byte is `{` or `[`
+/// is treated as the JSON itself, not a path — removing the most common
+/// first-try agent failure (passing JSON where a path was expected).
+fn read_json_arg(arg: &str) -> Result<String> {
+    let trimmed = arg.trim_start_matches('\u{feff}');
+    let head = trimmed.trim_start();
+    if head.starts_with('{') || head.starts_with('[') {
+        return Ok(trimmed.to_string());
+    }
+    read_source(arg)
+}
+
+/// Build a JSON object from `--set key=value` pairs (F13). Each value parses as
+/// JSON when it can (numbers, bools, null, quoted strings, arrays/objects),
+/// otherwise it is taken as a bare string.
+fn patch_from_set(pairs: &[String]) -> Result<serde_json::Value> {
+    let mut map = serde_json::Map::new();
+    for p in pairs {
+        let (k, v) = p
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("--set expects key=value, got {p:?}"))?;
+        let val =
+            serde_json::from_str(v).unwrap_or_else(|_| serde_json::Value::String(v.to_string()));
+        map.insert(k.to_string(), val);
+    }
+    Ok(serde_json::Value::Object(map))
+}
+
+/// Resolve a JSON patch from an optional positional arg (file/stdin/inline) and
+/// any `--set` pairs, merging the latter on top. Errors if neither is given.
+fn resolve_json_patch(json_file: &Option<String>, set: &[String]) -> Result<serde_json::Value> {
+    let mut patch = match json_file {
+        Some(arg) => {
+            serde_json::from_str(&read_json_arg(arg)?).context("invalid JSON patch provided")?
+        }
+        None => serde_json::Value::Object(Default::default()),
+    };
+    if !set.is_empty() {
+        let overlay = patch_from_set(set)?;
+        match (patch.as_object_mut(), overlay.as_object()) {
+            (Some(base), Some(extra)) => {
+                for (k, v) in extra {
+                    base.insert(k.clone(), v.clone());
+                }
+            }
+            _ => patch = overlay,
+        }
+    }
+    if json_file.is_none() && set.is_empty() {
+        anyhow::bail!(
+            "no patch given — pass a JSON file, `-` for stdin, an inline JSON string ({{…}}), or --set key=value"
+        );
+    }
+    Ok(patch)
+}
+
+/// Build the optional decision for a mutating patch, enforcing the F15
+/// attribution requirement unless `--no-decision` is set. `fields_changed` is
+/// the exact set of merge-patch keys.
+fn decision_for_patch(
+    agent: Option<String>,
+    action: Option<String>,
+    rationale: Option<String>,
+    pinned: bool,
+    no_decision: bool,
+    patch: &serde_json::Value,
+) -> Result<Option<DecisionEntry>> {
+    if no_decision {
+        return Ok(None);
+    }
+    match (agent, action) {
+        (Some(agent_name), Some(action)) => Ok(Some(DecisionEntry {
+            agent_name,
+            action,
+            rationale: rationale.unwrap_or_default(),
+            pinned,
+            fields_changed: Some(
+                patch
+                    .as_object()
+                    .map(|o| o.keys().cloned().collect())
+                    .unwrap_or_default(),
+            ),
+        })),
+        _ => anyhow::bail!(
+            "this change needs attribution: pass --agent <name> --action \"<what changed>\" \
+             (optional --rationale, --pinned), or --no-decision to skip recording it"
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_patch_data(
+    file: PathBuf,
+    json_file: Option<String>,
+    namespace: bool,
+    set: Vec<String>,
+    append: Vec<String>,
+    agent: Option<String>,
+    action: Option<String>,
+    rationale: Option<String>,
+    pinned: bool,
+    no_decision: bool,
+    hints: &Hints,
+) -> Result<()> {
+    let clan = open(&file)?;
+    let patch = resolve_json_patch(&json_file, &set)?;
+
+    // Track which contested keys this write settles, for the adjudication hint.
+    let contested_before: Vec<String> = clan
+        .read_entry(MERGE_REPORT_PATH)
+        .ok()
+        .and_then(|b| clan_sdk::MergeReport::from_yaml(&b).ok())
+        .map(|r| r.conflicts.iter().map(|c| c.key.clone()).collect())
+        .unwrap_or_default();
+
+    let mut decision_recorded = false;
+    let bytes = if namespace {
+        // Branch writes are provenance-tracked by the merge fold, not a shared
+        // decision; attribution flags don't apply here.
+        patch_data_namespaced(&clan, &patch)?
+    } else {
+        // A forked file rejects shared writes outright (teaching error). Don't
+        // demand attribution for a write that can't land — let the SDK guard
+        // speak first.
+        let decision = if clan.manifest().fork.is_some() {
+            None
+        } else {
+            decision_for_patch(agent, action, rationale, pinned, no_decision, &patch)?
+        };
+        decision_recorded = decision.is_some();
+        let opts = clan_sdk::pack::PatchDataOptions {
+            append_keys: append,
+            decision,
+        };
+        clan_sdk::pack::patch_data_with(&clan, &patch, opts, None)?
+    };
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Patched data in-place: {}", file.display());
+
+    let next = ClanFile::from_bytes(bytes)?;
+    let mut lines: Vec<String> = Vec::new();
+    if !namespace {
+        let settled: Vec<&String> = contested_before
+            .iter()
+            .filter(|k| patch.get(k.as_str()).is_some())
+            .collect();
+        if !settled.is_empty() {
+            let keys = settled
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            // With attribution given (F15), the adjudication is already in the
+            // chain — confirm it. Without it (`--no-decision`), point to the
+            // separate patch-decision step.
+            if decision_recorded {
+                lines.push(format!(
+                    "{} contested key(s) settled and recorded under your attribution ({keys})",
+                    settled.len()
+                ));
+            } else {
+                lines.push(format!(
+                    "{} contested key(s) settled — record the adjudication: clan patch-decision {} --agent <you> --action \"adjudicated {keys}\" --rationale \"...\"",
+                    settled.len(),
+                    file.display(),
+                ));
+            }
+        }
+    }
+    // F2b: pass changed top-level keys so the stale hint can check {{binding}} coverage.
+    let changed_keys: Vec<String> = patch
+        .as_object()
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+    lines.extend(file_state_hints(&next, &file, Some(&changed_keys)));
+    hints.emit(&lines);
     Ok(())
 }
 
-fn cmd_agent_help() {
-    // Deliberately terse — every line here costs agent tokens.
-    print!(r#"CLAN agent-help  (clan {version})
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fn cmd_patch_schema(file: PathBuf, schema_file: String) -> Result<()> {
+    let clan = open(&file)?;
+    let raw_schema = read_source(&schema_file)?;
 
-STEP 1 — Read your task (ONE command, not two):
-  clan read agent <file.clan>
-  ⚠ This includes all data. Do NOT also run `clan read data` — same content, wasted tokens.
-
-STEP 2a — Produce output as JSON (standard path):
-  Write a JSON file matching this shape:
-  {{
-    "mode": "full-html",
-    "structured": {{ "key": "value" }},
-    "human": {{
-      "html": "<!DOCTYPE html>...",
-      "css": "",
-      "assets": {{ "chart.svg": "<svg>...</svg>" }}
-    }},
-    "decision": {{
-      "agent": "your-name", "action": "what you did", "rationale": "why"
-    }}
-  }}
-  Then pack:  clan pack --output next.clan --delta "..." parent.clan output.json
-
-STEP 2b — Produce output as a raw HTML file (lower token cost, preferred):
-  Write a .html file. Optionally add YAML frontmatter at the very top:
-  ---
-  structured:
-    key_finding: "example"
-  decision:
-    agent: "agent3"
-    action: "produced final design"
-    rationale: "..."
-  ---
-  <!DOCTYPE html>
-  ...
-  Then pack:  clan pack-html --output next.clan --delta "..." parent.clan output.html
-
-STEP 3 — Verify:
-  clan info next.clan
-  clan validate next.clan
-
-OTHER COMMANDS (don't waste tokens on these unless you need them):
-  clan read human <file>   print current html
-  clan read chain <file>   print decision history only
-  clan info <file>         manifest metadata
-  clan validate <file>     structural check
-"#, version = env!("CARGO_PKG_VERSION"));
+    let bytes = clan_sdk::pack::patch_schema(&clan, &raw_schema, None)?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Patched schema in-place: {}", file.display());
+    Ok(())
 }
 
-fn open(path: &PathBuf) -> Result<ClanFile> {
-    ClanFile::open(path).with_context(|| format!("could not open {}", path.display()))
+fn cmd_patch_decision(
+    file: PathBuf,
+    agent: String,
+    action: String,
+    rationale: String,
+    pinned: bool,
+    hints: &Hints,
+) -> Result<()> {
+    let clan = open(&file)?;
+    let forked_ns = clan.manifest().fork_namespace().map(str::to_string);
+
+    let entry = DecisionEntry {
+        agent_name: agent,
+        action,
+        rationale,
+        pinned,
+        fields_changed: None,
+    };
+
+    let bytes = patch_decision(&clan, entry, None)?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Appended decision in-place: {}", file.display());
+    if let Some(ns) = forked_ns {
+        hints.emit(&[format!(
+            "decision recorded in your branch namespace ({ns}decisions.yaml); it folds into the shared chain at clan merge"
+        )]);
+    }
+    Ok(())
+}
+
+fn cmd_patch_state(file: PathBuf, json_file: Option<String>, set: Vec<String>) -> Result<()> {
+    let clan = open(&file)?;
+    let patch = resolve_json_patch(&json_file, &set)?;
+
+    let bytes = patch_state(&clan, &patch)?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Patched state in-place: {}", file.display());
+    Ok(())
+}
+
+fn cmd_patch_context(file: PathBuf, markdown_file: String, append: bool) -> Result<()> {
+    let clan = open(&file)?;
+    let text = read_source(&markdown_file)?;
+
+    let bytes = patch_context(&clan, &text, append)?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Patched context in-place: {}", file.display());
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_patch_asset(
+    file: PathBuf,
+    internal_path: String,
+    local_file: PathBuf,
+    agent: Option<String>,
+    action: Option<String>,
+    rationale: Option<String>,
+    pinned: bool,
+    no_decision: bool,
+) -> Result<()> {
+    let clan = open(&file)?;
+    let bytes = std::fs::read(&local_file)
+        .with_context(|| format!("could not read {}", local_file.display()))?;
+
+    // F15: an asset change is a document mutation — attribute it (no data
+    // fields change, so fields_changed is empty). --no-decision opts out.
+    let decision = decision_for_patch(
+        agent,
+        action,
+        rationale,
+        pinned,
+        no_decision,
+        &serde_json::Value::Object(Default::default()),
+    )?;
+    let out_bytes = clan_sdk::pack::patch_asset_with(&clan, &internal_path, bytes, decision)?;
+    std::fs::write(&file, &out_bytes)?;
+    eprintln!("Patched asset in-place: {}", file.display());
+    Ok(())
+}
+
+fn cmd_patch_requirements(file: PathBuf, requirements_file: String) -> Result<()> {
+    let clan = open(&file)?;
+    let yaml = read_source(&requirements_file)?;
+    let bytes = patch_requirements(&clan, &yaml)?;
+    std::fs::write(&file, &bytes)?;
+    eprintln!("Wrote requirements in-place: {}", file.display());
+    Ok(())
 }

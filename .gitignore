@@ -1,6 +1,21 @@
 .DS_Store
+.agents/
+.claude/
 *.clan.bak
 *.tmp
 .env
 target/
-Cargo.lock
+target-gnu/
+
+# Editor autosave / lock / swap files (Emacs #file#, *~, .#file; Vim *.swp)
+\#*\#
+*~
+.\#*
+*.swp
+
+# Cargo.lock is committed: this workspace builds binaries (clan-cli) and the
+# Tauri app, and the release pipeline needs reproducible dependency versions.
+# (Floating deps previously pulled a broken `time` release and failed CI.)
+
+# CLI sidecar staged into the viewer MSI during the release build (see release.yml).
+app/src-tauri/binaries/
