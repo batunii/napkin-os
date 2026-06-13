@@ -6,19 +6,19 @@
   </picture>
 </p>
 
-# CLAN — Context and Live Agent Notation
+# CLAN - Context and Live Agent Notation
 
 [![CI](https://github.com/saieeshward/clan/actions/workflows/ci.yml/badge.svg)](https://github.com/saieeshward/clan/actions/workflows/ci.yml)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
 ![Rust 1.74+](https://img.shields.io/badge/rust-1.74%2B-orange.svg)
 
-> A file format for agent-to-agent handoffs. Not a framework, not a runtime.
+> Not a framework. Not a runtime. A file format - where the hard parts are solved by design.
 
 ---
 
-Multi-agent pipelines break at boundaries. State lives in memory or in a database tied to whichever framework is running — so when you hand work to a different team, a different model, or a different tool, you're starting over. The artifact doesn't travel. Provenance doesn't travel. The output contract doesn't travel.
+Multi-agent pipelines break at boundaries. State lives in memory or in a database tied to whichever framework is running - so when you hand work to a different team, a different model, or a different tool, you're starting over. The artifact doesn't travel. Provenance doesn't travel. The output contract doesn't travel.
 
-CLAN is a file format that fixes the artifact, not the runtime. A `.clan` file is a standard ZIP containing the task spec, decision history, output schema, and a rendered human view — everything a fresh agent needs to continue without a briefing. Attribution is enforced at write time by the CLI; a mutation without `--agent` and `--action` is rejected the same way a JSON parser rejects malformed syntax. Parallel agents write into separate namespaces, so collisions are impossible by construction and the merge is deterministic with zero LLM tokens.
+CLAN is a file format that fixes the artifact, not the runtime. A `.clan` file is a standard ZIP containing the task spec, decision history, output schema, and a rendered human view - everything a fresh agent needs to continue without a briefing. Attribution is enforced at write time by the CLI; a mutation without `--agent` and `--action` is rejected the same way a JSON parser rejects malformed syntax. Parallel agents write into separate namespaces, so collisions are impossible by construction and the merge is deterministic with zero LLM tokens.
 
 There's no CLAN runtime, no CLAN cloud. Any language can read and write the format. The Rust CLI and SDK are a reference implementation.
 
@@ -27,7 +27,7 @@ There's no CLAN runtime, no CLAN cloud. Any language can read and write the form
 ## What it looks like
 
 ```
-my-document.clan          ← standard ZIP — open it with anything
+my-document.clan          ← standard ZIP - open it with anything
 ├── manifest.yaml         ← identity, lineage, file registry with checksums
 ├── spec/
 │   ├── clan.md           ← the full spec, embedded in every file
@@ -36,7 +36,7 @@ my-document.clan          ← standard ZIP — open it with anything
 │   └── data.yaml         ← canonical facts; agents and humans read the same data
 ├── agent/
 │   ├── context.md        ← the current agent's task
-│   ├── output-schema.json← what this agent must produce — validated at pack time
+│   ├── output-schema.json← what this agent must produce - validated at pack time
 │   ├── state.yaml        ← current document state
 │   └── decision-chain.yaml ← every decision, attributed, compressed beyond the window
 ├── agents/               ← per-agent namespaces; writes outside your namespace are rejected
@@ -48,7 +48,7 @@ my-document.clan          ← standard ZIP — open it with anything
     └── assets/
 ```
 
-Plain text inside a standard ZIP. A typical `.clan` file is 30–80 KB on disk — the text compresses well, and the decision chain is capped at ~15 KB regardless of pipeline length.
+Plain text inside a standard ZIP. A typical `.clan` file is 30–80 KB on disk - the text compresses well, and the decision chain is capped at ~15 KB regardless of pipeline length.
 
 ---
 
@@ -94,7 +94,7 @@ clan merge branches/*.clan --output merged.clan
 # Deterministic. Zero LLM tokens. Contested keys in merge-report.yaml with both sides.
 ```
 
-Every command emits a `next:` hint. In benchmarks, agents given only "there's a `clan` CLI — figure it out" reached correct usage in under 4 discovery commands with zero violations.
+Every command emits a `next:` hint. In benchmarks, agents given only "there's a `clan` CLI - figure it out" reached correct usage in under 4 discovery commands with zero violations.
 
 ---
 
@@ -102,7 +102,7 @@ Every command emits a `next:` hint. In benchmarks, agents given only "there's a 
 
 The properties are structural, not runtime-enforced.
 
-Provenance works because the CLI rejects mutations without `--agent` and `--action` — it's not a convention, it's a parse error. Parallel safety works because forked agents write into `agents/<id>/` — a different path by construction, so there's nothing to lock. The merge is purely mechanical. Human edits land in the file as `edited_by: human` patches — timestamped, in the decision chain, provable. The embedded spec means a cold agent can open the file and orient itself without a system prompt or briefing doc.
+Provenance works because the CLI rejects mutations without `--agent` and `--action` - it's not a convention, it's a parse error. Parallel safety works because forked agents write into `agents/<id>/` - a different path by construction, so there's nothing to lock. The merge is purely mechanical. Human edits land in the file as `edited_by: human` patches - timestamped, in the decision chain, provable. The embedded spec means a cold agent can open the file and orient itself without a system prompt or briefing doc.
 
 None of this requires CLAN to be in the loop at runtime.
 
@@ -144,7 +144,7 @@ None of this requires CLAN to be in the loop at runtime.
 | Contested-key fork/merge: all conflicts recalled with winner + loser provenance | 4/4 keys | 4/4 | ✅ PASS |
 | Metamorphosis: doc transforms fully per hop, nothing lost | 5/5 checks | all | ✅ PASS |
 | Teachability: unguided agents reach correct protocol from `agent-help` alone | 0 violations, all attributed | 0 | ✅ PASS |
-| Cold resume: fresh agent finds correct next step from artifact alone | oriented, no rework | — | ✅ PASS |
+| Cold resume: fresh agent finds correct next step from artifact alone | oriented, no rework | - | ✅ PASS |
 | Agent guide byte-identical within a build (prompt-cache friendly) | 1 hash / build | 1 | ✅ PASS |
 | Workspace unit + integration tests | 186 / 186 | all | ✅ PASS |
 | CLI conformance harness (macOS + Windows) | 26 / 26, 0 hard failures | all | ✅ PASS |
@@ -153,11 +153,11 @@ None of this requires CLAN to be in the loop at runtime.
 
 ### Where CLAN loses
 
-**Short chains.** The format carries scaffolding — schema, decision chain, guide digest — that a flat pile of markdown doesn't. At 3 hops, that's overhead with no payoff. If your pipeline is short and your prompts are disciplined, ad-hoc will be leaner on raw input size.
+**Short chains.** The format carries scaffolding - schema, decision chain, guide digest - that a flat pile of markdown doesn't. At 3 hops, that's overhead with no payoff. If your pipeline is short and your prompts are disciplined, ad-hoc will be leaner on raw input size.
 
 **The synthesis-hop result isn't robust.** 0.487× in one run, 1.047× in the next. It's in the scorecard and marked red.
 
-**Provenance is only as truthful as the agents.** In one of five heavy reps, an agent wrote attributed decisions for edits it never made. CLAN records who acted and when — it can't verify the agent's account of what they did. Run a verifier hop in any pipeline where fidelity matters.
+**Provenance is only as truthful as the agents.** In one of five heavy reps, an agent wrote attributed decisions for edits it never made. CLAN records who acted and when - it can't verify the agent's account of what they did. Run a verifier hop in any pipeline where fidelity matters.
 
 **Wall-time savings are modest.** ~12–18% on 8–10 hop chains.
 
@@ -167,8 +167,8 @@ None of this requires CLAN to be in the loop at runtime.
 
 | Command | What it does |
 |---|---|
-| `clan read agent` | Full accumulated context as one optimized prompt — compressed data, decision tail digest, guide |
-| `clan patch-data --set k=v` | Write one field with attribution — rejected without `--agent` and `--action` |
+| `clan read agent` | Full accumulated context as one optimized prompt - compressed data, decision tail digest, guide |
+| `clan patch-data --set k=v` | Write one field with attribution - rejected without `--agent` and `--action` |
 | `clan patch-html --selector` | Update one element of the human view |
 | `clan merge` | Merge parallel branches deterministically, zero LLM tokens |
 | `clan validate` | Check the output contract against the schema at any point |
@@ -190,7 +190,7 @@ A Tauri desktop app renders the human view with click-to-edit. Edits land in the
 
 ## Status
 
-**v1.1** — fork/join concurrency, deferred human-view rendering, conflict adjudication, self-teaching CLI. Verified by 186 Rust tests + 26-test black-box conformance in CI, with [binaries for every platform on the Releases page](https://github.com/saieeshward/clan/releases).
+**v1.1** - fork/join concurrency, deferred human-view rendering, conflict adjudication, self-teaching CLI. Verified by 186 Rust tests + 26-test black-box conformance in CI, with [binaries for every platform on the Releases page](https://github.com/saieeshward/clan/releases).
 
 ## Maintainers
 
@@ -206,10 +206,10 @@ The CLI and SDK use [TOON (Token-Oriented Object Notation)](https://github.com/t
 
 ## License
 
-[MPL-2.0](LICENSE) — the spec is open; implementations in any language are welcome.
+[MPL-2.0](LICENSE) - the spec is open; implementations in any language are welcome.
 
 ---
 
 ## Contributing
 
-Open spec — contributions welcome. Implementing the format in another language, improving the CLI, catching spec edge cases, or filing a bug report all help. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started, or [open an issue](https://github.com/saieeshward/clan/issues/new) if you're not sure where to begin.
+Open spec - contributions welcome. Implementing the format in another language, improving the CLI, catching spec edge cases, or filing a bug report all help. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started, or [open an issue](https://github.com/saieeshward/clan/issues/new) if you're not sure where to begin.
