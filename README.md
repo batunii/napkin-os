@@ -296,14 +296,6 @@ A Tauri desktop app renders the human view with click-to-edit. Edits go into the
 
 ---
 
-## Name
-
-**CLAN** — **C**ontext and **L**ive **A**gent **N**otation.
-
-Like a clan, every file carries shared lineage — connecting it to every document that came before it.
-
----
-
 ## Status
 
 **v1.1** — fork/join concurrency, deferred human-view rendering, conflict adjudication, self-teaching CLI. Verified by 186 Rust tests + 26-test black-box conformance in CI, with [binaries for every platform on the Releases page](https://github.com/saieeshward/clan/releases).
