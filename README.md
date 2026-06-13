@@ -34,55 +34,17 @@ The reason it's hard isn't the agents or the models or the frameworks. It's that
 
 ---
 
-## Design, not runtime
+## What makes CLAN different
 
-This is the part worth understanding.
+Most tools solve one layer: routing, prompting, memory, cost. None of them produce an artifact that you can hand to a different team, a different model, a different framework — and have the work continue without re-briefing.
 
-CLAN doesn't sit between your agents. It doesn't hook into your framework. It doesn't route calls or manage state at runtime. It has no opinions about which model you use, which orchestrator you run, or which environment you're in.
+**CLAN's USPs are structural, not claimed:**
 
-It's a file format. Like JSON. Like PDF. The properties aren't delivered by a CLAN process — they're structural.
-
-**Provenance exists because the format requires attribution on every write.** Not because CLAN is watching — because a mutation without `--agent` and `--action` is rejected at the CLI level, the same way a JSON parser rejects malformed JSON. The decision chain is part of the file's structure, not a side log.
-
-**Parallel safety exists because the namespace design makes collisions impossible by construction.** Forked agents write into `agents/<id>/` — a different path by definition. They cannot touch each other's keys. The merge is deterministic and purely mechanical: zero LLM tokens, zero runtime coordination. Contested keys surface in `merge-report.yaml` with both sides documented.
-
-**Human readability exists because the format carries the HTML.** The human view isn't generated on request by a CLAN service — it's inside the ZIP. Open the file with anything. The data and the view are the same artifact; they can't drift.
-
-**The format is self-describing because every `.clan` file contains its own spec.** An agent that has never heard of CLAN can open the file, read the embedded guide, and know exactly what to do. No training required. No integration required.
-
-None of this depends on CLAN being "in the loop." The file does the work.
-
----
-
-## What everything else leaves out
-
-The tools people use today each solve a real problem — just not this one.
-
-**Orchestration frameworks** give you a runtime for coordinating agents. State lives in memory, or in a database your framework manages. That works well inside one pipeline, on one team, in one environment. The moment you hand the work to a different framework, a different team, or a different model provider, the state doesn't travel. There's no artifact. You're back to re-briefing from scratch or writing glue code the next tool can't read. And if something went wrong three hops ago, there's no record you can inspect — because the record was in memory.
-
-**Agent communication protocols** solve the transport layer. They define how agents send messages to each other at runtime. They don't define what the artifact looks like after the conversation ends. There's no provenance baked into the message. There's no human view. There's no output contract. Message persistence isn't even guaranteed. When the session ends, the work is a summary in someone's context window.
-
-**Token optimization tools** make your inputs cheaper — by compressing what reaches the model. That's a real and useful problem. But it's a different layer entirely. A cheaper input is not a richer artifact. It doesn't make the handoff safer, the provenance traceable, or the human edits attributable. It just costs less to feed the same incomplete context.
-
-None of these tools are wrong. They just don't produce an artifact that survives the boundary crossing. CLAN is what you put at the boundary.
-
-### How CLAN sits relative to the landscape
-
-| | Orchestration frameworks | Agent protocols | Token optimization | **CLAN** |
-|---|:---:|:---:|:---:|:---:|
-| Coordinates agents at runtime | ✅ | ✅ | ❌ | ❌ |
-| State survives framework boundaries | ❌ | ❌ | ❌ | ✅ |
-| Provenance enforced by design | ❌ | ❌ | ❌ | ✅ |
-| Human-readable artifact (in the file) | ❌ | ❌ | ❌ | ✅ |
-| Human edits attributable on the record | ❌ | ❌ | ❌ | ✅ |
-| Output contract enforced at write time | ❌ | ❌ | ❌ | ✅ |
-| Deterministic parallel merge, zero LLM | ❌ | ❌ | ❌ | ✅ |
-| Agent picks up cold from artifact alone | ❌ | ❌ | ❌ | ✅ |
-| No runtime dependency | ❌ | ❌ | ✅ | ✅ |
-| Model agnostic | 〰️ | ✅ | ✅ | ✅ |
-| Open spec, any language can implement | 〰️ | ✅ | ✅ | ✅ |
-
-〰️ = varies by tool.
+- **The artifact IS the audit trail.** Provenance isn't logged to a sidecar — it's part of the file. Attribution is enforced at write time by the CLI, the same way a JSON parser enforces syntax. You can't accidentally skip it.
+- **Any model. Any framework. No lock-in.** A `.clan` file is a ZIP. There's no CLAN runtime, no CLAN cloud, no CLAN agent. It works with GPT-4, Claude, Gemini, open-source models, or whatever ships next year.
+- **A cold agent can pick up from the file alone.** No briefing document. No summary passed in a system prompt. The file carries the spec, the context, the decision history, and the output contract. Three reads and a fresh agent knows exactly where it is.
+- **Human sign-off is provable, not assumed.** Every human edit lands in the file as `edited_by: human` — timestamped, attributed, in the decision chain. In a regulated context, that's a compliance property. In any context, it means you can prove a human reviewed the work.
+- **Parallel safety without a coordinator.** Forked agents write into separate namespaces — collisions are structurally impossible. The merge is deterministic and costs zero LLM tokens. No orchestrator needed to make parallel work safe.
 
 ---
 
@@ -111,6 +73,8 @@ my-document.clan          ← standard ZIP — open it with anything
 ```
 
 Plain text. Standard ZIP. No proprietary encoding. Any language can read and write `.clan` — the Rust SDK is a reference implementation, not a gate.
+
+Despite the structure, a typical `.clan` file is 30–80 KB on disk. It's a ZIP — the text compresses well, and the decision chain is capped at ~15 KB by design regardless of pipeline length.
 
 ---
 
@@ -168,7 +132,83 @@ The CLI teaches itself — every command emits a `next:` hint. In our benchmark,
 
 ---
 
+## Where CLAN fits
+
+CLAN is useful anywhere that work crosses a boundary — between agents, between teams, between sessions, or into a compliance review. Some concrete places it's been applied:
+
+**Multi-agent research pipelines** — a researcher, an analyst, a risk reviewer, and a compliance checker all running in parallel on the same document. Each writes to their own namespace. The merge is deterministic. Nothing is silently dropped.
+
+**Regulated document workflows** — medical, legal, and financial teams where human sign-off isn't just a process step but a proof requirement. CLAN makes "a human reviewed this, at this time, and changed this field" part of the file's structure, not a claim in a log.
+
+**Long-running projects spanning multiple sessions** — weeks of work that moves between different models, different agents, and different team members. A fresh agent opening the file can orient and continue without a briefing call.
+
+**Cross-team and cross-framework handoffs** — one team runs LangChain, the next runs Claude directly, the next is a human in a browser. The `.clan` file is the contract between them. No glue code. No re-briefing.
+
+**Content and publishing pipelines** — research → draft → legal review → editorial → publish. Each hop is attributed. Each decision is on the record. Roll back to any point in the chain.
+
+**Due diligence and M&A workstreams** — parallel analysts covering financials, legal exposure, technical risk, and market position. The merge surfaces every contested finding, with both sides documented, before synthesis.
+
+**Code review pipelines** — security, performance, correctness, and API compatibility agents running in parallel on the same diff. Parallel safety means no agent clobbers another's findings.
+
+**Grant and proposal writing** — multiple contributors across weeks, with human review checkpoints that need to be demonstrable to the funder, not just logged internally.
+
+---
+
+## Design, not runtime
+
+This is the part worth understanding.
+
+CLAN doesn't sit between your agents. It doesn't hook into your framework. It doesn't route calls or manage state at runtime. It has no opinions about which model you use, which orchestrator you run, or which environment you're in.
+
+It's a file format. Like JSON. Like PDF. The properties aren't delivered by a CLAN process — they're structural.
+
+**Provenance exists because the format requires attribution on every write.** Not because CLAN is watching — because a mutation without `--agent` and `--action` is rejected at the CLI level, the same way a JSON parser rejects malformed JSON. The decision chain is part of the file's structure, not a side log.
+
+**Parallel safety exists because the namespace design makes collisions impossible by construction.** Forked agents write into `agents/<id>/` — a different path by definition. They cannot touch each other's keys. The merge is deterministic and purely mechanical: zero LLM tokens, zero runtime coordination. Contested keys surface in `merge-report.yaml` with both sides documented.
+
+**Human readability exists because the format carries the HTML.** The human view isn't generated on request by a CLAN service — it's inside the ZIP. Open the file with anything. The data and the view are the same artifact; they can't drift.
+
+**The format is self-describing because every `.clan` file contains its own spec.** An agent that has never heard of CLAN can open the file, read the embedded guide, and know exactly what to do. No training required. No integration required.
+
+None of this depends on CLAN being "in the loop." The file does the work.
+
+---
+
+## What everything else leaves out
+
+The tools people use today each solve a real problem — just not this one.
+
+**Orchestration frameworks** give you a runtime for coordinating agents. State lives in memory, or in a database your framework manages. That works well inside one pipeline, on one team, in one environment. The moment you hand the work to a different framework, a different team, or a different model provider, the state doesn't travel. There's no artifact. You're back to re-briefing from scratch or writing glue code the next tool can't read. And if something went wrong three hops ago, there's no record you can inspect — because the record was in memory.
+
+**Agent communication protocols** solve the transport layer. They define how agents send messages to each other at runtime. They don't define what the artifact looks like after the conversation ends. There's no provenance baked into the message. There's no human view. There's no output contract. Message persistence isn't even guaranteed. When the session ends, the work is a summary in someone's context window.
+
+**Token optimization tools** make your inputs cheaper — by compressing what reaches the model. That's a real and useful problem. But it's a different layer entirely. A cheaper input is not a richer artifact. It doesn't make the handoff safer, the provenance traceable, or the human edits attributable. It just costs less to feed the same incomplete context.
+
+None of these tools are wrong. They just don't produce an artifact that survives the boundary crossing. CLAN is what you put at the boundary.
+
+### How CLAN sits relative to the landscape
+
+| | Orchestration frameworks | Agent protocols | Token optimization | **CLAN** |
+|---|:---:|:---:|:---:|:---:|
+| Coordinates agents at runtime | ✅ | ✅ | ❌ | ❌ |
+| State survives framework boundaries | ❌ | ❌ | ❌ | ✅ |
+| Provenance enforced by design | ❌ | ❌ | ❌ | ✅ |
+| Human-readable artifact (in the file) | ❌ | ❌ | ❌ | ✅ |
+| Human edits attributable on the record | ❌ | ❌ | ❌ | ✅ |
+| Output contract enforced at write time | ❌ | ❌ | ❌ | ✅ |
+| Deterministic parallel merge, zero LLM | ❌ | ❌ | ❌ | ✅ |
+| Agent picks up cold from artifact alone | ❌ | ❌ | ❌ | ✅ |
+| No runtime dependency | ❌ | ❌ | ✅ | ✅ |
+| Model agnostic | 〰️ | ✅ | ✅ | ✅ |
+| Open spec, any language can implement | 〰️ | ✅ | ✅ | ✅ |
+
+〰️ = varies by tool.
+
+---
+
 ## What the benchmarks say
+
+Most teams publish the run that makes them look best. We publish the latest run — including the cells marked red. If a claim didn't hold up, it's in the scorecard with its actual measured value. The full scorecard below is the same table we use internally to decide what ships.
 
 258 real agents. No scripted outputs. CLAN and ad-hoc arms running concurrently on identical tasks. Three campaigns.
 
@@ -283,3 +323,9 @@ The CLI and SDK use [TOON (Token-Oriented Object Notation)](https://github.com/t
 ## License
 
 [MPL-2.0](LICENSE) — the spec is open; implementations in any language are welcome.
+
+---
+
+## Feedback & Issues
+
+Found a bug or have a question? [Open an issue](https://github.com/saieeshward/clan/issues/new) on GitHub.
