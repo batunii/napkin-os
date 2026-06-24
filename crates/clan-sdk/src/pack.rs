@@ -1395,6 +1395,8 @@ mod tests {
             view: None,
             fork: None,
             merge_policies: None,
+            app: None,
+            signature: None,
             external: vec![],
             files: vec![
                 entry(

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Brief Maker</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#0f1117;--surface:#141922;--border:#1e2d45;--text:#e2e8f0;--muted:#64748b;--accent:#6366f1;--teal:#2dd4cf}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:780px;margin:0 auto;padding:32px 28px 80px}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .trust{font-size:10px;padding:2px 8px;border-radius:999px;background:#10241b;color:#4ade80;border:1px solid #166534}
+  h1 input{font-size:30px;font-weight:700;letter-spacing:-.02em;color:var(--text);background:transparent;border:none;outline:none;width:100%;font-family:inherit}
+  .client input{font-size:14px;color:var(--muted);background:transparent;border:none;outline:none;width:100%;margin-bottom:18px;font-family:inherit}
+  .gen{display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px;margin:8px 0 26px}
+  .gen textarea{flex:1;background:transparent;border:none;outline:none;color:var(--text);resize:none;font-size:14px;font-family:inherit;min-height:38px}
+  .gen button,.lock{background:linear-gradient(135deg,var(--accent),var(--teal));color:#fff;border:none;border-radius:10px;padding:0 16px;font-size:13px;font-weight:600;cursor:pointer}
+  .gen button:disabled{opacity:.5;cursor:default}
+  .field{margin:16px 0}
+  label{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  input.f,textarea.f{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;outline:none}
+  input.f:focus,textarea.f:focus{border-color:var(--accent)}
+  textarea.f{resize:vertical;min-height:64px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .tag{font-size:12px;padding:3px 10px;border-radius:999px;background:#1e2d45;color:var(--teal)}
+  .footer{display:flex;align-items:center;gap:12px;margin-top:28px}
+  .locked-badge{font-size:12px;color:#4ade80}
+  .muted{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="eyebrow">Creative Brief</span>
+    <span class="trust" id="trust" style="display:none">🛡 trusted app</span>
+  </div>
+  <h1><input class="hf" data-k="project_name" placeholder="Untitled campaign" /></h1>
+  <div class="client"><input class="hf" data-k="client" placeholder="Client name" /></div>
+
+  <div class="gen">
+    <textarea id="prompt" placeholder="Describe the campaign and I'll draft the brief…"></textarea>
+    <button id="genBtn">Generate</button>
+  </div>
+
+  <div class="field"><label>Campaign objective</label><textarea class="f" data-k="campaign_objective" placeholder="What should this campaign achieve?"></textarea></div>
+  <div class="field"><label>Key message</label><textarea class="f" data-k="key_message" placeholder="The single most important thing to land"></textarea></div>
+
+  <div class="field"><label>Target audience</label>
+    <div class="grid3">
+      <input class="f" data-k="target_audience.demographics" placeholder="Demographics" />
+      <input class="f" data-k="target_audience.psychographics" placeholder="Psychographics" />
+      <input class="f" data-k="target_audience.platform" placeholder="Platform" />
+    </div>
+  </div>
+
+  <div class="field"><label>Brand tone (comma separated)</label>
+    <input class="f" id="tone" placeholder="irreverent, direct, youthful" />
+    <div class="tags" id="toneTags"></div>
+  </div>
+
+  <div class="field"><label>Deliverables (comma separated)</label>
+    <input class="f" id="deliverables" placeholder="Hero film, 6x social cutdowns, OOH" />
+  </div>
+
+  <div class="grid3">
+    <div class="field"><label>Budget tier</label><input class="f" data-k="budget_tier" placeholder="e.g. Tier 2" /></div>
+    <div class="field"><label>Timeline</label><input class="f" data-k="timeline" placeholder="e.g. 6 weeks" /></div>
+    <div class="field"><label>&nbsp;</label><button class="lock" id="lockBtn" style="width:100%">Lock brief</button></div>
+  </div>
+
+  <div class="footer">
+    <span class="locked-badge" id="lockedBadge" style="display:none">✓ Locked for handoff</span>
+    <span class="muted" id="status"></span>
+  </div>
+</div>
+
+<script>
+  var clanScheme = navigator.userAgent.includes('Windows') ? 'http://clan.localhost' : 'clan://localhost';
+  function data(){ return (window.__CLAN__ && window.__CLAN__.data) || {}; }
+  function get(path){ return path.split('.').reduce(function(o,k){return (o==null)?undefined:o[k];}, data()); }
+
+  // Render every bound field from the data layer.
+  function render(){
+    var d = data();
+    document.querySelectorAll('[data-k]').forEach(function(el){
+      var v = get(el.getAttribute('data-k'));
+      if (v !== undefined && v !== null && document.activeElement !== el) el.value = v;
+    });
+    var tone = d.brand_tone || [];
+    document.getElementById('tone').value = Array.isArray(tone) ? tone.join(', ') : (tone||'');
+    var tags = document.getElementById('toneTags'); tags.innerHTML='';
+    (Array.isArray(tone)?tone:[]).forEach(function(t){ var s=document.createElement('span'); s.className='tag'; s.textContent=t; tags.appendChild(s); });
+    var del = d.deliverables || [];
+    document.getElementById('deliverables').value = Array.isArray(del) ? del.join(', ') : (del||'');
+    var locked = !!d.locked;
+    document.getElementById('lockedBadge').style.display = locked ? 'inline' : 'none';
+    document.getElementById('lockBtn').textContent = locked ? 'Unlock' : 'Lock brief';
+  }
+
+  function patch(path, value){ if (window.clan) window.clan.patchData(path, value, { actor:'human', pinned:true }); }
+
+  // Bound text fields write straight to the data layer on change.
+  document.querySelectorAll('[data-k]').forEach(function(el){
+    el.addEventListener('change', function(){ patch(el.getAttribute('data-k'), el.value); });
+  });
+  document.getElementById('tone').addEventListener('change', function(e){
+    patch('brand_tone', e.target.value.split(',').map(function(s){return s.trim();}).filter(Boolean));
+  });
+  document.getElementById('deliverables').addEventListener('change', function(e){
+    patch('deliverables', e.target.value.split(',').map(function(s){return s.trim();}).filter(Boolean));
+  });
+
+  // Generate: one REST call via the unified proxy. The agent returns brief
+  // fields; we write them to the data layer (attributed to the model).
+  document.getElementById('genBtn').addEventListener('click', function(){
+    var btn = this, prompt = document.getElementById('prompt').value.trim();
+    if (!prompt || !window.clan) return;
+    btn.disabled = true; document.getElementById('status').textContent = 'Generating…';
+    window.clan.apiProxy('agent', { input: prompt, task: 'draft_brief' }).then(function(res){
+      if (res && res.ok && res.data && typeof res.data === 'object') {
+        Object.keys(res.data).forEach(function(k){ if (window.clan) window.clan.patchData(k, res.data[k], { actor:'analysis-model', pinned:false }); });
+        document.getElementById('status').textContent = 'Brief drafted from agent.';
+      } else {
+        document.getElementById('status').textContent = (res && res.error) ? res.error : 'No agent connected — edit fields manually.';
+      }
+    }).catch(function(e){ document.getElementById('status').textContent = String(e); })
+      .finally(function(){ btn.disabled = false; });
+  });
+
+  // Lock toggles the handoff flag and fires a native notification — a scoped
+  // capability only a TRUSTED (signed) app gets.
+  document.getElementById('lockBtn').addEventListener('click', function(){
+    var locked = !data().locked;
+    patch('locked', locked);
+    if (locked && window.napkin && window.napkin.notify) {
+      window.napkin.notify('Brief locked', (data().project_name || 'Brief') + ' is ready for handoff.');
+    }
+  });
+
+  render();
+  window.addEventListener('clan:dataupdated', render);
+  window.addEventListener('napkin:ready', function(e){
+    if (e.detail && e.detail.trusted) document.getElementById('trust').style.display = 'inline';
+  });
+</script>
+</body>
+</html>

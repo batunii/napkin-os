@@ -21,3 +21,6 @@ zip.workspace = true
 jsonschema.workspace = true
 thiserror.workspace = true
 lol_html.workspace = true
+ed25519-dalek.workspace = true
+rand_core.workspace = true
+base64.workspace = true

@@ -11,8 +11,9 @@ use crate::error::{Error, Result};
 /// Major format version this SDK produces and supports.
 pub const CLAN_VERSION: u32 = 1;
 /// Minor format version this SDK produces (1: view/fork/merge_policies
-/// manifest fields, multi-parent lineage, merge-report — spec §22–§27).
-pub const CLAN_VERSION_MINOR: u32 = 1;
+/// manifest fields, multi-parent lineage, merge-report — spec §22–§27;
+/// 2: the `app` block — template-as-application, Napkin Studio OS).
+pub const CLAN_VERSION_MINOR: u32 = 2;
 
 /// The root `manifest.yaml` structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,10 +45,72 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merge_policies: Option<MergePolicies>,
 
+    /// App block — present on a template app (`document_type: template`) and,
+    /// in a lightweight form, on instances created from one. Drives the Napkin
+    /// Studio OS launcher and the template-as-application model. Absent on
+    /// every pre-v1.2 file, so older readers ignore it (template apps degrade
+    /// to plain documents).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<AppInfo>,
+
+    /// Publisher signature over the app's code (the trust gate for granting an
+    /// app direct host access). Asymmetric (ed25519): signed with the
+    /// publisher's private key, verified against the viewer's embedded public
+    /// key. Covers app code only — survives data edits and forks. Absent on
+    /// unsigned files (which the viewer sandboxes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<Signature>,
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub external: Vec<ExternalRef>,
 
     pub files: Vec<FileEntry>,
+}
+
+/// An ed25519 signature over an app's code entries + identity (spec §29, v1.2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Signature {
+    /// Base64-encoded 64-byte ed25519 signature.
+    pub sig: String,
+    /// Archive paths covered by the signature, in the order they were hashed.
+    pub signed: Vec<String>,
+    /// Identifier of the key that produced this signature (which publisher).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+}
+
+/// App metadata for a template-as-application CLAN file (spec §28, v1.2).
+///
+/// A template app carries the full block; an instance forked from a template
+/// keeps a lightweight copy (so the viewer can show "this is an <app> v<x>
+/// document") while its `document_type` is no longer `"template"`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppInfo {
+    /// Human-facing app name, e.g. "Brief Maker".
+    pub name: String,
+    /// Stable app identifier, reverse-dns or slug, e.g. "ie.napkin.brief".
+    pub app_id: String,
+    /// App version (semver), distinct from the CLAN format version.
+    pub version: String,
+    /// Archive path to the app icon, e.g. "app/icon.svg".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Presentation entry point inside the archive.
+    #[serde(default = "default_entry")]
+    pub entry: String,
+    /// Archive path to the data schema (defaults to the agent output schema).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    /// Archive paths to prompt-template refs used for agent-assisted fills.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prompt_templates: Vec<String>,
+    /// Archive path to seed data applied to a new instance (sample-data mode).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_seed: Option<String>,
+}
+
+fn default_entry() -> String {
+    "human/index.html".to_string()
 }
 
 /// Lineage block — records the parent CLAN file (spec §12).
@@ -270,6 +333,44 @@ impl Manifest {
                 check(policy, format!("merge_policies.keys.{key}"));
             }
         }
+        // Template apps (document_type: template) must carry a well-formed app
+        // block, and the files it points at must exist in the registry.
+        if self.document_type.as_deref() == Some("template") {
+            match &self.app {
+                None => problems
+                    .push("document_type is \"template\" but the manifest has no app block".into()),
+                Some(app) => {
+                    if app.name.trim().is_empty() {
+                        problems.push("app.name is empty".into());
+                    }
+                    if app.app_id.trim().is_empty() {
+                        problems.push("app.app_id is empty".into());
+                    }
+                    if app.version.trim().is_empty() {
+                        problems.push("app.version is empty".into());
+                    }
+                    if self.file_by_path(&app.entry).is_none() {
+                        problems.push(format!(
+                            "app.entry {:?} is not in the file registry",
+                            app.entry
+                        ));
+                    }
+                    if let Some(schema) = &app.schema {
+                        if self.file_by_path(schema).is_none() {
+                            problems.push(format!(
+                                "app.schema {schema:?} is not in the file registry"
+                            ));
+                        }
+                    }
+                    if let Some(icon) = &app.icon {
+                        if self.file_by_path(icon).is_none() {
+                            problems
+                                .push(format!("app.icon {icon:?} is not in the file registry"));
+                        }
+                    }
+                }
+            }
+        }
         problems
     }
 
@@ -338,6 +439,8 @@ mod tests {
             view: None,
             fork: None,
             merge_policies: None,
+            app: None,
+            signature: None,
             external: vec![],
             files: vec![FileEntry {
                 id: "canonical-data".into(),

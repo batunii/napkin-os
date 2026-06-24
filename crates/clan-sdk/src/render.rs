@@ -25,6 +25,18 @@ pub fn render(clan: &ClanFile) -> Result<Vec<u8>> {
     let now = Utc::now().to_rfc3339();
     let manifest = clan.manifest();
 
+    // Defense in depth (beyond the CLI hint): never overwrite a hand-authored
+    // app view. Template apps and their instances set `view.source = "app"`;
+    // their presentation layer is code, not a derivable default-theme view.
+    if manifest.view.as_ref().and_then(|v| v.source.as_deref()) == Some("app") {
+        return Err(crate::error::Error::OutputRejected(
+            "this file carries an authored app view (view.source: app) — \
+             `clan render` would clobber it. The view is the app, not a \
+             derivable artifact."
+                .into(),
+        ));
+    }
+
     let data: serde_yaml::Value = clan
         .read_entry("shared/data.yaml")
         .ok()

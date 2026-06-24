@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Napkin Studio</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#0f1117; --surface:#141922; --border:#1e2d45; --text:#e2e8f0; --muted:#64748b;
+    --accent:#6366f1; --teal:#2dd4cf; --warn:#f59e0b;
+  }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 0 32px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .hero { display:flex; flex-direction:column; align-items:center; gap:16px; margin-top:12vh; margin-bottom:26px; }
+  .banner { font-family:'Space Grotesk', system-ui, sans-serif; font-weight:600; font-size:44px;
+    letter-spacing:-0.01em; color:#eceefb; display:flex; align-items:center; gap:14px; }
+  .banner .studio { color: var(--teal); font-weight:500; }
+  .sub { color: var(--muted); font-size:14px; }
+
+  .composer { width:100%; max-width:720px; background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:14px; display:flex; flex-direction:column; gap:10px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.25); }
+  textarea { width:100%; min-height:56px; max-height:220px; resize:none; border:none; outline:none;
+    background:transparent; color:var(--text); font-size:16px; line-height:1.5; font-family:inherit; }
+  .row { display:flex; align-items:center; justify-content:space-between; }
+  .endpoint { font-size:11px; color:var(--muted); font-family:monospace; }
+  .send { width:36px; height:36px; border-radius:10px; border:none; cursor:pointer; color:#fff; font-size:16px;
+    background:linear-gradient(135deg, var(--accent), var(--teal)); display:flex; align-items:center; justify-content:center; }
+  .send:disabled { opacity:.4; cursor:default; }
+  .result { width:100%; max-width:720px; margin-top:8px; padding:12px 14px; border-radius:12px;
+    background:var(--surface); border:1px solid var(--border); font-size:13px; white-space:pre-wrap;
+    word-break:break-word; max-height:200px; overflow-y:auto; }
+  .result.err { border-color:#92400e; color:var(--warn); }
+
+  .divider { width:100%; max-width:720px; display:flex; align-items:center; gap:12px; color:var(--muted);
+    font-size:11px; letter-spacing:0.12em; text-transform:uppercase; margin:30px 0 4px; }
+  .line { flex:1; height:1px; background:var(--border); }
+
+  .grid { width:100%; max-width:720px; display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:14px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;
+    display:flex; flex-direction:column; gap:8px; cursor:pointer; transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .open-card { background:transparent; border:1px dashed var(--border); border-radius:12px; padding:16px;
+    display:flex; flex-direction:column; gap:8px; cursor:pointer; justify-content:center; align-items:center;
+    color:var(--muted); min-height:96px; }
+  .icon { width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg, var(--accent), var(--teal));
+    display:flex; align-items:center; justify-content:center; font-size:20px; color:#fff; font-weight:700; }
+  .card-name { font-size:13px; font-weight:600; color:var(--text); }
+  .card-ver { font-size:11px; color:var(--muted); }
+  .footer { margin-top:auto; padding:32px 0 24px; font-size:11px; color:var(--muted); letter-spacing:.04em; }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <div class="banner">
+      <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Napkin Studio">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#2dd4cf"/></linearGradient></defs>
+        <path d="M22 14h56c4.4 0 8 3.6 8 8v40L62 86H22c-4.4 0-8-3.6-8-8V22c0-4.4 3.6-8 8-8z" fill="url(#g)"/>
+        <path d="M86 62L62 86V70c0-4.4 3.6-8 8-8h16z" fill="#0f1117" fill-opacity="0.55"/>
+        <path d="M86 62L62 86V70c0-4.4 3.6-8 8-8h16z" fill="none" stroke="#2dd4cf" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      Napkin <span class="studio">Studio</span>
+    </div>
+    <div class="sub">Let's start here.</div>
+  </div>
+
+  <div class="composer">
+    <textarea id="prompt" placeholder="Describe what you want to make…" rows="2"></textarea>
+    <div class="row">
+      <span class="endpoint" id="endpoint"></span>
+      <button class="send" id="send" title="Send to agent (Enter)">↑</button>
+    </div>
+  </div>
+  <div class="result" id="result" style="display:none"></div>
+
+  <div class="divider"><div class="line"></div> or start from <div class="line"></div></div>
+  <div class="grid" id="grid"></div>
+
+  <div class="footer">powered by CLAN</div>
+
+<script>
+  var clanScheme = navigator.userAgent.includes('Windows') ? 'http://clan.localhost' : 'clan://localhost';
+
+  // Show where the prompt goes.
+  fetch(clanScheme + '/agent-endpoint').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('endpoint').textContent = d.endpoint ? '→ ' + d.endpoint : '';
+  }).catch(function(){});
+
+  // Render the installed-apps grid from the host.
+  function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function loadApps() {
+    fetch(clanScheme + '/apps').then(function(r){return r.json();}).then(function(apps){
+      var grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      apps.forEach(function(app){
+        var card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = '<div class="icon">' + escapeHtml((app.name||'?').slice(0,1).toUpperCase()) + '</div>' +
+          '<div class="card-name">' + escapeHtml(app.name) + '</div>' +
+          '<div class="card-ver">v' + escapeHtml(app.version) + ' · new document</div>';
+        card.addEventListener('click', function(){ launch(app.app_id); });
+        grid.appendChild(card);
+      });
+      // "Open a .clan file" card
+      var open = document.createElement('div');
+      open.className = 'open-card';
+      open.innerHTML = '<div style="font-size:22px">📂</div><div style="font-size:12px">Open a .clan file</div>';
+      open.addEventListener('click', function(){ fetch(clanScheme + '/open-file', { method:'POST' }); });
+      grid.appendChild(open);
+    }).catch(function(){});
+  }
+  loadApps();
+
+  // Data-driven default: a home configured with data.autolaunch = "<app_id>"
+  // opens that app on load. Same code path as a card click — handy for kiosk
+  // setups and for proving the launch chain end to end.
+  try {
+    var auto = window.__CLAN__ && window.__CLAN__.data && window.__CLAN__.data.autolaunch;
+    if (auto) setTimeout(function(){ launch(auto); }, 400);
+  } catch (e) {}
+
+  // Clicking a card inside THIS clan file launches ANOTHER clan file.
+  function launch(appId) {
+    fetch(clanScheme + '/launch', { method:'POST', body: JSON.stringify({ app_id: appId }) })
+      .then(function(r){ return r.json(); })
+      .then(function(res){ if (!res || !res.ok) showResult('Launch failed: ' + JSON.stringify(res), true); })
+      .catch(function(e){ showResult('Launch failed: ' + e, true); });
+  }
+
+  function showResult(text, isErr) {
+    var el = document.getElementById('result');
+    el.style.display = 'block';
+    el.className = 'result' + (isErr ? ' err' : '');
+    el.textContent = text;
+  }
+
+  // Prompt → agent.
+  var sendBtn = document.getElementById('send');
+  var ta = document.getElementById('prompt');
+  function send() {
+    var text = ta.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true; sendBtn.textContent = '…';
+    fetch(clanScheme + '/api-proxy', { method:'POST', body: JSON.stringify({ request_kind: 'agent', payload: { input: text } }) })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        var body = (res && res.error) ? res.error : (typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2));
+        showResult(res && res.ok ? body : (body || 'no agent connected'), !(res && res.ok));
+      })
+      .catch(function(e){ showResult(String(e), true); })
+      .finally(function(){ sendBtn.disabled = false; sendBtn.textContent = '↑'; });
+  }
+  sendBtn.addEventListener('click', send);
+  ta.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  ta.addEventListener('input', function(){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,220)+'px'; });
+</script>
+</body>
+</html>

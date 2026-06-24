@@ -22,10 +22,11 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clan_sdk::{
-    assemble, create, export_static, fork_with_contexts, merge, pack, pack_html, patch_context,
-    patch_data_namespaced, patch_decision, patch_requirements, patch_state, render, validate,
-    AgentOutput, ClanFile, CreateOptions, DecisionEntry, InjectOptions, MergeOptions,
-    MergePolicies, PackOptions, MERGE_REPORT_PATH,
+    assemble, create, export_static, fork_with_contexts, generate_keypair, instantiate,
+    make_template, merge, pack, pack_html, patch_context, patch_data_namespaced, patch_decision,
+    patch_requirements, patch_state, render, sign_app, validate, AgentOutput, AppInfo, ClanFile,
+    CreateOptions, DecisionEntry, InjectOptions, InstantiateOptions, MakeTemplateOptions,
+    MergeOptions, MergePolicies, PackOptions, MERGE_REPORT_PATH,
 };
 use clap::{Parser, Subcommand};
 
@@ -92,6 +93,38 @@ enum Commands {
         /// instead of inheriting the parent's (F7).
         #[arg(long, value_name = "DIR")]
         context_dir: Option<PathBuf>,
+    },
+    /// Create a working document from a template app (Napkin Studio OS).
+    /// `clan new` copies a template's presentation + schema into a fresh
+    /// instance, provenance-linked to the template via lineage.
+    New {
+        /// The template .clan file (document_type: template).
+        template: PathBuf,
+        /// Output path for the new instance .clan file.
+        #[arg(long, value_name = "PATH")]
+        output: PathBuf,
+        /// Title for the instance (defaults to the app name).
+        #[arg(long)]
+        title: Option<String>,
+        /// document_type for the instance (defaults to "document").
+        #[arg(long = "type")]
+        doc_type: Option<String>,
+        /// Seed the instance with the template's sample data instead of an
+        /// empty data layer.
+        #[arg(long)]
+        with_sample_data: bool,
+    },
+    /// Manage template apps (Napkin Studio OS): scaffold, inspect, and list.
+    App {
+        #[command(subcommand)]
+        command: AppCommands,
+    },
+    /// Generate an ed25519 signing keypair for publishing trusted apps.
+    /// Keep the private seed SECRET; embed the public key in the viewer.
+    Keygen {
+        /// Identifier for this key (e.g. "napkin-2026"), printed for reference.
+        #[arg(long, default_value = "napkin")]
+        key_id: String,
     },
     /// Join fork branches into one merged file (spec §24.3): a deterministic
     /// per-key fold — conflicts land in merge-report.yaml, not failures.
@@ -358,6 +391,61 @@ enum Commands {
     AgentHelp,
 }
 
+/// `clan app <subcommand>` — template-app management (Napkin Studio OS).
+#[derive(Subcommand)]
+enum AppCommands {
+    /// Promote an existing authored .clan into a template app, or scaffold a
+    /// new one. Sets document_type: template and attaches the app block.
+    Init {
+        /// Source .clan to promote. If omitted, a blank template is scaffolded.
+        #[arg(long, value_name = "PATH")]
+        from: Option<PathBuf>,
+        /// Human-facing app name (e.g. "Brief Maker").
+        #[arg(long)]
+        name: String,
+        /// Stable app id, reverse-dns or slug (e.g. ie.napkin.brief).
+        #[arg(long = "app-id")]
+        app_id: String,
+        /// App version (semver).
+        #[arg(long, default_value = "0.1.0")]
+        version: String,
+        /// Archive path to the app icon (must already be inside --from).
+        #[arg(long)]
+        icon: Option<String>,
+        /// Presentation entry point inside the archive.
+        #[arg(long, default_value = "human/index.html")]
+        entry: String,
+        /// Output path for the template .clan file.
+        #[arg(long, value_name = "PATH")]
+        output: PathBuf,
+    },
+    /// Sign an app's code with a publisher private key, producing a trusted
+    /// .clan the viewer will grant scoped host access.
+    Sign {
+        /// The app .clan to sign.
+        file: PathBuf,
+        /// Private signing key: a base64 seed, or a path to a file containing it.
+        #[arg(long, value_name = "SEED_OR_PATH")]
+        key: String,
+        /// Identifier recorded in the signature (which key signed it).
+        #[arg(long, default_value = "napkin")]
+        key_id: String,
+        /// Output path (defaults to overwriting the input file in place).
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+    },
+    /// Print the app metadata of a template (or instance) .clan file.
+    Info {
+        file: PathBuf,
+    },
+    /// List template apps found in a directory (the app library).
+    List {
+        /// Directory to scan (defaults to the Napkin app library).
+        #[arg(long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+    },
+}
+
 #[derive(Subcommand)]
 enum ReadSection {
     /// Print the assembled agent context (TOON-encoded).
@@ -473,6 +561,15 @@ fn main() -> Result<()> {
             output_dir,
             context_dir,
         } => cmd_fork(parent, agents, output_dir, context_dir, &hints),
+        Commands::New {
+            template,
+            output,
+            title,
+            doc_type,
+            with_sample_data,
+        } => cmd_new(template, output, title, doc_type, with_sample_data, &hints),
+        Commands::App { command } => cmd_app(command, &hints),
+        Commands::Keygen { key_id } => cmd_keygen(key_id),
         Commands::Merge {
             branches,
             output,
@@ -705,7 +802,14 @@ fn file_state_hints(
                 }
             } else {
                 // No key context — generic stale hint (F2, hand-authored aware).
-                if view.source.as_deref() == Some("agent") {
+                if view.source.as_deref() == Some("app") {
+                    // Authored app view (template-as-application): the view IS
+                    // the app. `clan render` refuses to touch it; the app
+                    // re-renders itself from shared/data.yaml at view time.
+                    hints.push(
+                        "human view is an authored app (view.source: app) — it renders itself from shared/data.yaml; nothing to refresh, and `clan render` will not overwrite it".to_string()
+                    );
+                } else if view.source.as_deref() == Some("agent") {
                     hints.push(format!(
                         "human view is stale and hand-authored — re-run `clan pack-html` to refresh it (or `clan render {p}` to REPLACE it with the default theme, discarding the custom design)"
                     ));
@@ -842,6 +946,184 @@ fn cmd_fork(
         ),
     ]);
     Ok(())
+}
+
+fn cmd_new(
+    template_path: PathBuf,
+    output: PathBuf,
+    title: Option<String>,
+    doc_type: Option<String>,
+    with_sample_data: bool,
+    hints: &Hints,
+) -> Result<()> {
+    let template = open(&template_path)?;
+    let bytes = instantiate(
+        &template,
+        InstantiateOptions {
+            title: title.unwrap_or_default(),
+            document_type: doc_type,
+            fresh_data: !with_sample_data,
+            instance_id: None,
+        },
+    )
+    .context("failed to instantiate template")?;
+    std::fs::write(&output, &bytes)
+        .with_context(|| format!("could not write {}", output.display()))?;
+    let clan = ClanFile::from_bytes(bytes.clone())?;
+    eprintln!(
+        "created {} ({} bytes)  id={}",
+        output.display(),
+        bytes.len(),
+        clan.manifest().id
+    );
+    let mut lines = vec![format!("clan read agent {}", output.display())];
+    lines.extend(file_state_hints(&clan, &output, None));
+    hints.emit(&lines);
+    Ok(())
+}
+
+fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
+    match command {
+        AppCommands::Init {
+            from,
+            name,
+            app_id,
+            version,
+            icon,
+            entry,
+            output,
+        } => {
+            // Source the file to promote: an existing authored .clan, or a
+            // freshly scaffolded blank document.
+            let source = match from {
+                Some(p) => open(&p)?,
+                None => {
+                    let bytes = create(CreateOptions {
+                        title: name.clone(),
+                        brief: format!("Authored template app: {name}"),
+                        document_type: None,
+                        no_render: false,
+                        schema: None,
+                    })
+                    .context("failed to scaffold template")?;
+                    ClanFile::from_bytes(bytes)?
+                }
+            };
+            let app = AppInfo {
+                name: name.clone(),
+                app_id,
+                version,
+                icon,
+                entry,
+                schema: Some("agent/output-schema.json".into()),
+                prompt_templates: vec![],
+                data_seed: None,
+            };
+            let bytes = make_template(&source, app, MakeTemplateOptions::default())
+                .context("failed to make template")?;
+            std::fs::write(&output, &bytes)
+                .with_context(|| format!("could not write {}", output.display()))?;
+            let clan = ClanFile::from_bytes(bytes.clone())?;
+            // Surface any structural problems with the new template up front.
+            let problems = clan.manifest().structural_problems();
+            eprintln!("created template {} ({} bytes)", output.display(), bytes.len());
+            if problems.is_empty() {
+                hints.emit(&[
+                    format!("clan new {} --output instance.clan", output.display()),
+                    "edit human/index.html to read from window.__CLAN__.data".to_string(),
+                ]);
+            } else {
+                hints.emit(&problems);
+            }
+            Ok(())
+        }
+        AppCommands::Sign {
+            file,
+            key,
+            key_id,
+            output,
+        } => {
+            // --key is a base64 seed, or a path to a file holding one.
+            let seed = if std::path::Path::new(&key).is_file() {
+                std::fs::read_to_string(&key)
+                    .with_context(|| format!("could not read key file {key}"))?
+                    .trim()
+                    .to_string()
+            } else {
+                key.clone()
+            };
+            let clan = open(&file)?;
+            let signed = sign_app(&clan, &seed, Some(key_id)).context("signing failed")?;
+            let out = output.unwrap_or_else(|| file.clone());
+            std::fs::write(&out, &signed)
+                .with_context(|| format!("could not write {}", out.display()))?;
+            eprintln!("signed {} ({} bytes)", out.display(), signed.len());
+            hints.emit(&["the viewer will grant this app scoped host access if its embedded public key matches".to_string()]);
+            Ok(())
+        }
+        AppCommands::Info { file } => {
+            let clan = open(&file)?;
+            let m = clan.manifest();
+            match &m.app {
+                None => {
+                    eprintln!("{}: no app block (not a template app)", file.display());
+                }
+                Some(app) => {
+                    println!("name:     {}", app.name);
+                    println!("app_id:   {}", app.app_id);
+                    println!("version:  {}", app.version);
+                    println!("entry:    {}", app.entry);
+                    if let Some(icon) = &app.icon {
+                        println!("icon:     {icon}");
+                    }
+                    if let Some(schema) = &app.schema {
+                        println!("schema:   {schema}");
+                    }
+                    println!(
+                        "is_template: {}",
+                        m.document_type.as_deref() == Some("template")
+                    );
+                }
+            }
+            Ok(())
+        }
+        AppCommands::List { dir } => {
+            let dir = dir.unwrap_or_else(app_library_dir);
+            if !dir.is_dir() {
+                eprintln!("no app library at {} (nothing installed)", dir.display());
+                return Ok(());
+            }
+            let mut found = 0;
+            for entry in std::fs::read_dir(&dir)
+                .with_context(|| format!("could not read {}", dir.display()))?
+            {
+                let path = entry?.path();
+                // Apps live as <app-id>/app.clan or as flat <name>.clan files.
+                let candidates = if path.is_dir() {
+                    vec![path.join("app.clan")]
+                } else if path.extension().and_then(|e| e.to_str()) == Some("clan") {
+                    vec![path]
+                } else {
+                    vec![]
+                };
+                for c in candidates {
+                    if let Ok(clan) = ClanFile::open(&c) {
+                        let m = clan.manifest();
+                        if m.document_type.as_deref() == Some("template") {
+                            if let Some(app) = &m.app {
+                                println!("{}  {}  v{}", app.app_id, app.name, app.version);
+                                found += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if found == 0 {
+                eprintln!("no template apps found in {}", dir.display());
+            }
+            Ok(())
+        }
+    }
 }
 
 fn cmd_merge(
@@ -1379,8 +1661,34 @@ Commands print `next:` hints gated on file state (suppress: --quiet / CLAN_NO_HI
     );
 }
 
+fn cmd_keygen(key_id: String) -> Result<()> {
+    let (private_seed, public_key) = generate_keypair();
+    // Public key → goes in the viewer (safe to publish). Private seed → SECRET.
+    println!("key_id:      {key_id}");
+    println!("public_key:  {public_key}");
+    println!("private_seed: {private_seed}");
+    eprintln!();
+    eprintln!("next: embed public_key in the viewer; keep private_seed secret (e.g. a gitignored file or OS keychain)");
+    eprintln!("      sign apps with:  clan app sign <app.clan> --key <private_seed> --key-id {key_id}");
+    Ok(())
+}
+
 fn open(path: &PathBuf) -> Result<ClanFile> {
     ClanFile::open(path).with_context(|| format!("could not open {}", path.display()))
+}
+
+/// The Napkin Studio OS app library directory the launcher and `clan app list`
+/// scan for installed template apps. Honors `NAPKIN_APPS_DIR`, then
+/// `$XDG_DATA_HOME`, then `~/.local/share`.
+fn app_library_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("NAPKIN_APPS_DIR") {
+        return PathBuf::from(dir);
+    }
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join("napkin-studio").join("apps")
 }
 
 /// Read a file argument, or stdin when it is `-`, stripping a leading UTF-8

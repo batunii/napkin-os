@@ -1,6 +1,6 @@
 {
-  "productName": "CLAN Viewer",
-  "identifier": "ai.clan.viewer",
+  "productName": "Napkin Studio OS",
+  "identifier": "ie.napkin.studio",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -10,7 +10,7 @@
   "app": {
     "windows": [
       {
-        "title": "CLAN Viewer",
+        "title": "Napkin Studio OS",
         "width": 1280,
         "height": 820,
         "resizable": true,

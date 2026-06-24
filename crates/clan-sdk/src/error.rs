@@ -46,4 +46,7 @@ pub enum Error {
 
     #[error("merge error: {0}")]
     Merge(String),
+
+    #[error("signing error: {0}")]
+    Signing(String),
 }

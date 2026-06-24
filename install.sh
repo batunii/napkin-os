@@ -84,7 +84,7 @@ EOF
 # ── Viewer (interactive) ───────────────────────────────────────────────────────
 
 echo ""
-printf "Would you like to install the CLAN Viewer (desktop app)? [y/N] "
+printf "Would you like to install the Napkin Studio OS (desktop app)? [y/N] "
 read -r INSTALL_VIEWER </dev/tty
 
 if [[ "$INSTALL_VIEWER" =~ ^[Yy]$ ]]; then
@@ -93,25 +93,25 @@ if [[ "$INSTALL_VIEWER" =~ ^[Yy]$ ]]; then
 
   case "$OS" in
     Darwin)
-      VIEWER_FILE="CLAN.Viewer_${VERSION}_universal.dmg"
+      VIEWER_FILE="Napkin.Studio.OS_${VERSION}_universal.dmg"
       VIEWER_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${VIEWER_FILE}"
       VIEWER_DEST="$DOWNLOADS/$VIEWER_FILE"
 
-      echo "Downloading CLAN Viewer..."
+      echo "Downloading Napkin Studio OS..."
       curl -fsSL --progress-bar "$VIEWER_URL" -o "$VIEWER_DEST"
 
       echo ""
-      echo "✓ CLAN Viewer downloaded to $VIEWER_DEST"
+      echo "✓ Napkin Studio OS downloaded to $VIEWER_DEST"
       echo ""
       echo "To install:"
       echo "  1. Open $VIEWER_DEST"
-      echo "  2. Drag CLAN Viewer to your Applications folder"
+      echo "  2. Drag Napkin Studio OS to your Applications folder"
       echo "  3. On first launch, clear the Gatekeeper warning:"
-      echo "     xattr -d com.apple.quarantine \"/Applications/CLAN Viewer.app\""
-      echo "     open \"/Applications/CLAN Viewer.app\""
+      echo "     xattr -d com.apple.quarantine \"/Applications/Napkin Studio OS.app\""
+      echo "     open \"/Applications/Napkin Studio OS.app\""
       echo ""
       echo "To open any .clan file in the viewer:"
-      echo "  open -a \"CLAN Viewer\" your-file.clan"
+      echo "  open -a \"Napkin Studio OS\" your-file.clan"
 
       # Offer to open the DMG immediately
       echo ""
@@ -123,22 +123,22 @@ if [[ "$INSTALL_VIEWER" =~ ^[Yy]$ ]]; then
       ;;
 
     Linux)
-      VIEWER_FILE="CLAN.Viewer_${VERSION}_amd64.AppImage"
+      VIEWER_FILE="Napkin.Studio.OS_${VERSION}_amd64.AppImage"
       VIEWER_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${VIEWER_FILE}"
       VIEWER_DEST="$DOWNLOADS/$VIEWER_FILE"
 
-      echo "Downloading CLAN Viewer..."
+      echo "Downloading Napkin Studio OS..."
       curl -fsSL --progress-bar "$VIEWER_URL" -o "$VIEWER_DEST"
       chmod +x "$VIEWER_DEST"
 
       echo ""
-      echo "✓ CLAN Viewer downloaded to $VIEWER_DEST"
+      echo "✓ Napkin Studio OS downloaded to $VIEWER_DEST"
       echo ""
       echo "To launch:"
       echo "  $VIEWER_DEST"
       echo ""
       echo "To make it easier to run, create an alias:"
-      echo "  echo \"alias clan-viewer='$VIEWER_DEST'\" >> ~/.bashrc && source ~/.bashrc"
+      echo "  echo \"alias napkin='$VIEWER_DEST'\" >> ~/.bashrc && source ~/.bashrc"
       echo ""
       echo "To open any .clan file:"
       echo "  $VIEWER_DEST your-file.clan"

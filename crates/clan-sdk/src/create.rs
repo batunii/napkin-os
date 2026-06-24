@@ -63,6 +63,8 @@ pub fn create(opts: CreateOptions) -> Result<Vec<u8>> {
         }),
         fork: None,
         merge_policies: None,
+        app: None,
+        signature: None,
         external: vec![],
         files,
     };

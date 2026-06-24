@@ -16,6 +16,16 @@
 
 ---
 
+## Napkin Studio OS - the app platform built on CLAN
+
+**[Napkin Studio OS](app/)** is a provenance-native application platform built on the CLAN format. It is a thin, stateless desktop *rendering environment* that runs many apps from one viewer - each app is a developer-authored `.clan` **template** whose presentation layer renders from the data inside the file. Creating a document is copying a template (`clan new`); the result is a portable `.clan` you can hand to anyone and open as an app.
+
+The relationship is deliberate: **CLAN is the open file format; Napkin Studio OS is the platform on top of it.** The format, the `.clan` extension, the `clan` CLI, and the SDK stay open and unbranded; the desktop product is Napkin Studio OS. *Powered by CLAN.*
+
+See the [Provenance-Native Applications](app/) model: the template is the application, the data layer is what AI and humans write (with attribution), and the rendering environment is a commodity host exposing a `clan://` API (`patch-data`, `fork`, `upload-asset`, `assets/*`, `api-proxy`).
+
+---
+
 Multi-agent pipelines break at boundaries. State lives in memory or in a database tied to whichever framework is running - so when you hand work to a different team, a different model, or a different tool, you're starting over. The artifact doesn't travel. Provenance doesn't travel. The output contract doesn't travel.
 
 CLAN is a file format that fixes the artifact, not the runtime. A `.clan` file is a standard ZIP containing the task spec, decision history, output schema, and a rendered human view - everything a fresh agent needs to continue without a briefing. Attribution is enforced at write time by the CLI; a mutation without `--agent` and `--action` is rejected the same way a JSON parser rejects malformed syntax. Parallel agents write into separate namespaces, so collisions are impossible by construction and the merge is deterministic with zero LLM tokens.
