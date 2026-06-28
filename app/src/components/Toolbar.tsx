@@ -11,17 +11,18 @@ interface Props {
   onHome: () => void
   onOpenFile: () => void
   onToggleAgent: () => void
-  onToggleEdit: () => void
+  onToggleSidebar: () => void
   onWorkspace: () => void
+  onSave: () => void
   agentPanelOpen: boolean
-  editMode: boolean
+  sidebarOpen: boolean
   loading: boolean
   validation?: string
 }
 
 const s: Record<string, React.CSSProperties> = {
   bar: {
-    height: 48, background: '#0a0d14', borderBottom: '1px solid var(--border)',
+    height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border)',
     display: 'flex', alignItems: 'center', padding: '0 12px', gap: 10, flexShrink: 0,
     userSelect: 'none',
   },
@@ -49,12 +50,19 @@ const s: Record<string, React.CSSProperties> = {
 }
 
 export default function Toolbar({
-  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleEdit, onWorkspace,
-  agentPanelOpen, editMode, loading, validation,
+  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave,
+  agentPanelOpen, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
   return (
     <div style={s.bar}>
+      <button
+        style={{ ...s.btn, ...(sidebarOpen ? s.btnActive : {}), padding: '0 9px' }}
+        onClick={onToggleSidebar}
+        title={sidebarOpen ? 'Hide details' : 'Show details'}
+      >
+        ☰
+      </button>
       <button style={s.home} onClick={onHome} title="Back to apps">
         <NapkinLogo size={16} compact />
       </button>
@@ -76,16 +84,9 @@ export default function Toolbar({
           {valid ? '✓ valid' : '⚠ issues'}
         </span>
       )}
-      {editMode && <span style={s.editBadge}>● EDITING</span>}
       <button style={s.btn} onClick={onOpenFile}>📂 Open</button>
+      <button style={s.btn} onClick={onSave} title="Save a copy of this .clan to share">💾 Save As</button>
       <button style={s.btn} onClick={onWorkspace} title="Lineage & provenance">🧬 Lineage</button>
-      <button
-        style={{ ...s.btn, ...(editMode ? s.btnEdit : {}) }}
-        onClick={onToggleEdit}
-        title={editMode ? 'Exit edit mode' : 'Edit'}
-      >
-        {editMode ? '✏️ Done' : '✏️ Edit'}
-      </button>
       <button
         style={{ ...s.btn, ...(agentPanelOpen ? s.btnActive : {}) }}
         onClick={onToggleAgent}

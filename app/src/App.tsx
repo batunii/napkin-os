@@ -2,10 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
 import AppRuntime from './shell/AppRuntime'
@@ -48,6 +48,23 @@ export interface OpenResult {
   trusted: boolean
 }
 
+// Theme keys an immersive app may recolor → CSS variables on the shell root.
+const THEME_VARS: Record<string, string> = {
+  accent: '--accent', bg: '--bg', surface: '--surface',
+  text: '--text', border: '--border', muted: '--muted',
+}
+function applyTheme(colors: Record<string, string> | null | undefined) {
+  if (!colors) return
+  const root = document.documentElement
+  for (const [k, v] of Object.entries(colors)) {
+    if (THEME_VARS[k] && typeof v === 'string') root.style.setProperty(THEME_VARS[k], v)
+  }
+}
+function resetTheme() {
+  const root = document.documentElement
+  for (const v of Object.values(THEME_VARS)) root.style.removeProperty(v)
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [running, setRunning] = useState<RunningApp | null>(null)
@@ -66,6 +83,7 @@ export default function App() {
 
   // Open the home CLAN app as the current document and render it.
   const openHome = useCallback(async () => {
+    resetTheme() // home and other apps use the default Napkin theme
     try {
       const open = await invoke<OpenResult>('open_home')
       const html = open.has_human_view ? await invoke<string>('get_human_html') : ''
@@ -79,6 +97,7 @@ export default function App() {
   }, [refreshApps])
 
   const runArtifact = useCallback(async (open: OpenResult) => {
+    resetTheme() // clear any prior app's theme before this one (re)applies its own
     const html = open.has_human_view ? await invoke<string>('get_human_html') : ''
     setRunning({ artifactPath: open.path, open, htmlContent: html, editMode: false })
     setScreen('app')
@@ -107,6 +126,19 @@ export default function App() {
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
 
+  // Save/export the open .clan. Shared by the toolbar Save As button and the
+  // in-app "lock also saves" request. Reads the latest running app via a ref so
+  // the once-registered event listener never goes stale.
+  const runningRef = useRef<RunningApp | null>(null)
+  useEffect(() => { runningRef.current = running }, [running])
+  const saveCurrent = useCallback(async () => {
+    const r = runningRef.current
+    if (!r) return
+    const base = (r.open.manifest.title || 'document').replace(/[^\w.-]+/g, '-')
+    const path = await saveDialog({ defaultPath: `${base}.clan`, filters: [{ name: 'CLAN Files', extensions: ['clan'] }] })
+    if (path) await invoke('save_clan_to', { path }).catch(console.error)
+  }, [])
+
   useEffect(() => {
     openHome()
     invoke<string | null>('take_launch_file').then(p => { if (p) openPath(p) }).catch(() => {})
@@ -116,18 +148,19 @@ export default function App() {
       listen<string>('open-file', e => { if (e.payload) openPath(e.payload) }),
       listen<string>('clan-open-document', e => { if (e.payload) openPath(e.payload) }),
       listen('clan-open-file-request', () => { handleOpenFile() }),
+      listen('clan-request-save', () => { saveCurrent() }),
+      listen<string>('clan-title-changed', e => {
+        if (e.payload) setRunning(r => (r ? { ...r, open: { ...r.open, manifest: { ...r.open.manifest, title: e.payload } } } : r))
+      }),
       listen<{ title: string; body: string }>('napkin-notify', e => {
         if (e.payload) { setToast(e.payload); setTimeout(() => setToast(null), 4000) }
       }),
+      listen<Record<string, string>>('clan-theme-changed', e => { applyTheme(e.payload) }),
     ]
     return () => { subs.forEach(s => s.then(f => f())) }
-  }, [openHome, openPath, handleOpenFile])
+  }, [openHome, openPath, handleOpenFile, saveCurrent])
 
   const goHome = useCallback(() => { openHome() }, [openHome])
-
-  const toggleEdit = useCallback(() => {
-    setRunning(r => (r ? { ...r, editMode: !r.editMode } : r))
-  }, [])
 
   const onInstall = useCallback(async () => {
     if (!pendingLaunch) return
@@ -160,7 +193,7 @@ export default function App() {
       )}
 
       {screen === 'app' && running ? (
-        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onToggleEdit={toggleEdit} />
+        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} />
       ) : home ? (
         // The home page is a CLAN file, rendered full-bleed with no doc chrome.
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>

@@ -102,11 +102,10 @@ impl ClanFile {
         let mut archive = ZipArchive::new(cursor)?;
         let mut entries = Vec::with_capacity(archive.len());
         for i in 0..archive.len() {
-            let mut file = archive.by_index(i)?;
+            let file = archive.by_index(i)?;
             let name = file.name().to_string();
-            let mut buf = Vec::with_capacity(file.size() as usize);
-            file.read_to_end(&mut buf)?;
-            entries.push((name, buf));
+            let size = file.size();
+            entries.push((name, read_zip_entry(file, size)?));
         }
         Ok(entries)
     }
@@ -124,16 +123,41 @@ impl ClanFile {
     }
 }
 
+/// A ZIP entry's uncompressed `size()` comes from an attacker-controlled header.
+/// We therefore never pre-allocate based on it (a lying header could trigger a
+/// giant up-front allocation), and we cap how much we'll inflate so a small
+/// compressed entry can't expand into a decompression bomb. Genuinely huge media
+/// should be external-referenced rather than embedded (spec §13).
+const MAX_ENTRY_BYTES: u64 = 1 << 30; // 1 GiB per entry
+const ALLOC_HINT_CAP: usize = 16 << 20; // 16 MiB pre-allocation hint ceiling
+
+/// Read a ZIP entry safely: clamp the allocation hint to the declared size *or*
+/// the cap (whichever is smaller), and bound decompression to `MAX_ENTRY_BYTES`.
+fn read_zip_entry<R: Read>(mut file: R, declared_size: u64) -> Result<Vec<u8>> {
+    let hint = declared_size.min(ALLOC_HINT_CAP as u64) as usize;
+    let mut buf = Vec::with_capacity(hint);
+    // Read one byte past the limit so an overrun is detectable.
+    file.by_ref()
+        .take(MAX_ENTRY_BYTES + 1)
+        .read_to_end(&mut buf)?;
+    if buf.len() as u64 > MAX_ENTRY_BYTES {
+        return Err(Error::Validation(format!(
+            "ZIP entry exceeds the {} MiB limit (possible decompression bomb)",
+            MAX_ENTRY_BYTES >> 20
+        )));
+    }
+    Ok(buf)
+}
+
 /// Read a single named entry from raw ZIP bytes.
 fn read_named(raw: &[u8], path: &str) -> Result<Vec<u8>> {
     let cursor = Cursor::new(raw);
     let mut archive = ZipArchive::new(cursor)?;
-    let mut file = archive
+    let file = archive
         .by_name(path)
         .map_err(|_| Error::EntryNotFound(path.to_string()))?;
-    let mut buf = Vec::with_capacity(file.size() as usize);
-    file.read_to_end(&mut buf)?;
-    Ok(buf)
+    let size = file.size();
+    read_zip_entry(file, size)
 }
 
 /// Writer for a new `.clan` archive.

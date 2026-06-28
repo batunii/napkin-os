@@ -202,15 +202,37 @@ pub fn make_template(
         None
     };
 
+    // A template app is not a task — it carries a BARE agent context, not the
+    // verbose "produce a rich rendering" brief that `create` seeds. The app
+    // owns its presentation; an agent only writes structured data. The context
+    // grows from here via the decision chain as the document is filled.
+    let schema_path = app
+        .schema
+        .clone()
+        .unwrap_or_else(|| "agent/output-schema.json".into());
+    let app_context = format!(
+        "# {name}\n\n\
+         This is a Napkin app document. The presentation in `{entry}` renders from \
+         `shared/data.yaml`; do not generate or edit HTML.\n\n\
+         To contribute, write structured fields matching `{schema}` via `patch-data`. \
+         Every write is attributed and appended to the decision chain — this context is \
+         intentionally minimal and grows as the document is filled.\n",
+        name = app.name,
+        entry = app.entry,
+        schema = schema_path,
+    );
+
     manifest.app = Some(app);
 
     let mut builder = ClanBuilder::new(manifest);
     for (path, bytes) in clan.read_all_entries()? {
-        if path == MANIFEST_PATH || path == APP_MANIFEST_PATH {
+        // Replace the scaffold's verbose context with the bare app context.
+        if path == MANIFEST_PATH || path == APP_MANIFEST_PATH || path == "agent/context.md" {
             continue;
         }
         builder.add_entry(path, bytes);
     }
+    builder.add_entry("agent/context.md", app_context.into_bytes());
     if let Some(bytes) = app_manifest_yaml {
         builder.add_entry(APP_MANIFEST_PATH, bytes);
     }

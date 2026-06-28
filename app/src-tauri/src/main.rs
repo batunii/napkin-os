@@ -9,8 +9,8 @@ use std::sync::Mutex;
 
 use clan_sdk::{
     apply_patch_and_repack, create, fork, instantiate, make_template, patch_asset_with,
-    patch_data_with, validate, AppInfo, ClanBuilder, ClanFile, CreateOptions, DecisionEntry,
-    InstantiateOptions, MakeTemplateOptions, PatchDataOptions,
+    patch_context, patch_data_with, validate, AppInfo, ClanBuilder, ClanFile, CreateOptions,
+    DecisionEntry, InstantiateOptions, MakeTemplateOptions, PatchDataOptions,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,7 +65,7 @@ const NAPKIN_PUBLIC_KEY: &str = "iE5TL/Am5Tu4jktPTXNp52HhgJWo8eLoDKgjtlyZ4fc=";
 /// Scoped capabilities a trusted app may use (the allowlist — extend as needed).
 /// Untrusted apps get none of these; they keep only the safe clan:// data/asset
 /// /proxy routes.
-const TRUSTED_CAPABILITIES: &[&str] = &["notify"];
+const TRUSTED_CAPABILITIES: &[&str] = &["notify", "set-theme"];
 
 #[derive(Serialize, Deserialize)]
 struct ManifestInfo {
@@ -776,6 +776,25 @@ fn do_patch_data(body: &str, state: &AppState) -> RouteResult {
 
     let mut guard = state.current.lock().unwrap();
     let loaded = guard.as_mut().ok_or((409, "no file open".to_string()))?;
+
+    // No-op guard: if applying the patch changes nothing, skip entirely — no
+    // rewrite, no decision-chain entry. Stops redundant "edits" (e.g. opening a
+    // field and saving without changing it) from polluting the provenance.
+    if append_keys.is_empty() {
+        let existing: Value = loaded
+            .clan
+            .read_entry("shared/data.yaml")
+            .ok()
+            .and_then(|b| serde_yaml::from_slice::<serde_yaml::Value>(&b).ok())
+            .and_then(|y| serde_json::to_value(y).ok())
+            .unwrap_or(Value::Object(Default::default()));
+        let mut merged = existing.clone();
+        json_merge(&mut merged, &patch);
+        if merged == existing {
+            return Ok(serde_json::json!({ "ok": true, "noop": true, "keys": [] }));
+        }
+    }
+
     let opts = PatchDataOptions {
         append_keys,
         decision,
@@ -785,6 +804,27 @@ fn do_patch_data(body: &str, state: &AppState) -> RouteResult {
     std::fs::write(&loaded.path, &new_bytes).map_err(|e| (500, e.to_string()))?;
     loaded.clan = ClanFile::from_bytes(new_bytes).map_err(|e| (500, e.to_string()))?;
     Ok(serde_json::json!({ "ok": true, "keys": keys }))
+}
+
+/// RFC 7396 JSON Merge Patch applied in place — used only to test whether a
+/// patch would actually change anything (the no-op guard).
+fn json_merge(target: &mut Value, patch: &Value) {
+    match patch {
+        Value::Object(pm) => {
+            if !target.is_object() {
+                *target = Value::Object(Default::default());
+            }
+            let tm = target.as_object_mut().unwrap();
+            for (k, v) in pm {
+                if v.is_null() {
+                    tm.remove(k);
+                } else {
+                    json_merge(tm.entry(k.clone()).or_insert(Value::Null), v);
+                }
+            }
+        }
+        _ => *target = patch.clone(),
+    }
 }
 
 /// `POST /fork` — fork into ≥2 branch siblings written next to the parent.
@@ -884,6 +924,42 @@ fn do_serve_asset(rel: &str, state: &AppState) -> std::result::Result<(String, V
         .read_entry(&full)
         .map_err(|_| (404, format!("asset not found: {rel}")))?;
     Ok((content_type_for(rel).to_string(), bytes))
+}
+
+/// Update the open document's title (e.g. to the AI-set brief name) and repack
+/// in place. Title is not covered by the app signature, so trust is preserved.
+fn do_set_title(title: &str, state: &AppState) -> RouteResult {
+    let mut guard = state.current.lock().unwrap();
+    let loaded = guard.as_mut().ok_or((409, "no file open".to_string()))?;
+    let mut manifest = loaded.clan.manifest().clone();
+    manifest.title = title.to_string();
+    let mut builder = ClanBuilder::new(manifest);
+    for (p, b) in loaded
+        .clan
+        .read_all_entries()
+        .map_err(|e| (500, e.to_string()))?
+    {
+        if p == "manifest.yaml" {
+            continue;
+        }
+        builder.add_entry(p, b);
+    }
+    let bytes = builder.build().map_err(|e| (500, e.to_string()))?;
+    std::fs::write(&loaded.path, &bytes).map_err(|e| (500, e.to_string()))?;
+    loaded.clan = ClanFile::from_bytes(bytes).map_err(|e| (500, e.to_string()))?;
+    Ok(serde_json::json!({ "ok": true, "title": title }))
+}
+
+/// Replace or append `agent/context.md` — the running brief context downstream
+/// agents read. Used by the first generate (full context) and human notes.
+fn do_set_context(markdown: &str, append: bool, state: &AppState) -> RouteResult {
+    let mut guard = state.current.lock().unwrap();
+    let loaded = guard.as_mut().ok_or((409, "no file open".to_string()))?;
+    let bytes = patch_context(&loaded.clan, markdown, append)
+        .map_err(|e| (sdk_status(&e), e.to_string()))?;
+    std::fs::write(&loaded.path, &bytes).map_err(|e| (500, e.to_string()))?;
+    loaded.clan = ClanFile::from_bytes(bytes).map_err(|e| (500, e.to_string()))?;
+    Ok(serde_json::json!({ "ok": true }))
 }
 
 /// `GET /chain` — the decision chain as JSON (lazy fetch for the view).
@@ -1009,7 +1085,45 @@ async fn do_api_proxy(app: tauri::AppHandle, body: String) -> tauri::http::Respo
         .unwrap_or("agent")
         .to_string();
     let payload = req.get("payload").cloned().unwrap_or(Value::Null);
-    json_resp(200, &proxy_call(&app, &kind, payload).await)
+    // Enrich with the open artifact's intelligence layer so lineage, decisions,
+    // schema, and context travel to the agent — not just what the iframe sent.
+    let clan_ctx = clan_context_for_agent(app.state::<AppState>().inner());
+    let outgoing = serde_json::json!({ "request_kind": kind, "payload": payload, "clan": clan_ctx });
+    json_resp(200, &proxy_call(&app, &kind, outgoing).await)
+}
+
+/// The provenance bundle an agent needs to fill the boxes coherently: the
+/// schema (what boxes exist), current data (the brief so far), the decision
+/// chain (what's been decided + by whom), the agent context, and lineage. Built
+/// host-side from the open document.
+fn clan_context_for_agent(st: &AppState) -> Value {
+    let guard = st.current.lock().unwrap();
+    let Some(loaded) = guard.as_ref() else {
+        return Value::Null;
+    };
+    let clan = &loaded.clan;
+    let yaml_to_json = |p: &str| -> Value {
+        clan.read_entry(p)
+            .ok()
+            .and_then(|b| serde_yaml::from_slice::<serde_yaml::Value>(&b).ok())
+            .and_then(|y| serde_json::to_value(y).ok())
+            .unwrap_or(Value::Null)
+    };
+    let schema: Value = clan
+        .read_entry("agent/output-schema.json")
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
+    let m = clan.manifest();
+    serde_json::json!({
+        "document_type": m.document_type,
+        "app": m.app.as_ref().map(|a| serde_json::json!({ "name": a.name, "app_id": a.app_id, "version": a.version })),
+        "schema": schema,
+        "data": yaml_to_json("shared/data.yaml"),
+        "decision_chain": yaml_to_json("agent/decision-chain.yaml"),
+        "context": clan.read_entry_string("agent/context.md").unwrap_or_default(),
+        "lineage": m.lineage.as_ref().map(|l| serde_json::json!({ "parent_id": l.parent_id, "delta": l.delta })),
+    })
 }
 
 /// Parse `k=v&k=v` query strings (small, dependency-free).
@@ -1045,6 +1159,44 @@ fn app_library_dir(app: &tauri::AppHandle) -> PathBuf {
         .app_data_dir()
         .map(|d| d.join("apps"))
         .unwrap_or_else(|_| PathBuf::from("apps"))
+}
+
+#[derive(Serialize)]
+struct RecentDoc {
+    title: String,
+    path: String,
+    app_id: Option<String>,
+    updated_at: String,
+}
+
+/// Recent document instances (newest first) from the per-user documents dir.
+fn scan_recent(app: &tauri::AppHandle) -> Vec<RecentDoc> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map(|d| d.join("documents"))
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("clan") {
+                continue;
+            }
+            if let Ok(clan) = ClanFile::open(&p) {
+                let m = clan.manifest();
+                out.push(RecentDoc {
+                    title: m.title.clone(),
+                    path: p.display().to_string(),
+                    app_id: m.app.as_ref().map(|a| a.app_id.clone()),
+                    updated_at: m.updated_at.clone(),
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    out.truncate(12);
+    out
 }
 
 /// Scan the app library for installed template apps. Shared by the `list_apps`
@@ -1175,7 +1327,7 @@ fn ensure_home_clan(app: &tauri::AppHandle) -> std::result::Result<PathBuf, Stri
         .app_data_dir()
         .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join("home-v5.clan");
+    let path = dir.join("home-v6.clan");
     if path.exists() {
         return Ok(path);
     }
@@ -1224,6 +1376,17 @@ fn ensure_home_clan(app: &tauri::AppHandle) -> std::result::Result<PathBuf, Stri
 fn open_home(app: tauri::AppHandle, state: State<AppState>) -> Result<OpenResult, String> {
     let path = ensure_home_clan(&app)?;
     do_open_clan(path.display().to_string(), &state)
+}
+
+/// Save (export) the current open `.clan` to a chosen path — the single-file
+/// handoff. Edits already persist in place on every write; this copies the
+/// artifact somewhere shareable. The frontend supplies the path from a native
+/// save dialog.
+#[tauri::command]
+fn save_clan_to(path: String, state: State<AppState>) -> Result<(), String> {
+    let guard = state.current.lock().unwrap();
+    let loaded = guard.as_ref().ok_or("no file open")?;
+    std::fs::write(&path, loaded.clan.raw_bytes()).map_err(|e| e.to_string())
 }
 
 // ── Home-screen agent prompt ─────────────────────────────────────────────────
@@ -1390,6 +1553,20 @@ fn main() {
                 },
                 // Launcher routes — let a home CLAN app list and launch apps.
                 "/apps" => json_resp(200, &serde_json::json!(scan_apps(&app))),
+                "/recent" => json_resp(200, &serde_json::json!(scan_recent(&app))),
+                "/open" => {
+                    let v: Value = serde_json::from_str(
+                        &String::from_utf8(request.body().clone()).unwrap_or_default(),
+                    )
+                    .unwrap_or(Value::Null);
+                    match v.get("path").and_then(|x| x.as_str()) {
+                        Some(p) => {
+                            let _ = app.emit("clan-open-document", p.to_string());
+                            json_resp(200, &serde_json::json!({ "ok": true }))
+                        }
+                        None => err_resp(400, "missing path"),
+                    }
+                }
                 "/agent-endpoint" => json_resp(
                     200,
                     &serde_json::json!({ "endpoint": agent_base_url(&app) }),
@@ -1422,6 +1599,43 @@ fn main() {
                     // The host owns the file dialog; ask the shell to run it.
                     let _ = app.emit("clan-open-file-request", ());
                     json_resp(200, &serde_json::json!({ "ok": true }))
+                }
+                "/set-title" => {
+                    let v: Value = serde_json::from_str(
+                        &String::from_utf8(request.body().clone()).unwrap_or_default(),
+                    )
+                    .unwrap_or(Value::Null);
+                    match v.get("title").and_then(|x| x.as_str()) {
+                        Some(t) if !t.trim().is_empty() => match do_set_title(t, st) {
+                            Ok(r) => {
+                                let _ = app.emit("clan-title-changed", t.to_string());
+                                json_resp(200, &r)
+                            }
+                            Err((c, m)) => err_resp(c, &m),
+                        },
+                        _ => err_resp(400, "missing title"),
+                    }
+                }
+                "/request-save" => {
+                    // A doc (e.g. a locked brief) asks the shell to export/save it.
+                    let _ = app.emit("clan-request-save", ());
+                    json_resp(200, &serde_json::json!({ "ok": true }))
+                }
+                "/set-context" => {
+                    let v: Value = serde_json::from_str(
+                        &String::from_utf8(request.body().clone()).unwrap_or_default(),
+                    )
+                    .unwrap_or(Value::Null);
+                    let md = v.get("markdown").and_then(|x| x.as_str()).unwrap_or("");
+                    let append = v.get("append").and_then(|x| x.as_bool()).unwrap_or(false);
+                    if md.trim().is_empty() {
+                        err_resp(400, "missing markdown")
+                    } else {
+                        match do_set_context(md, append, st) {
+                            Ok(r) => json_resp(200, &r),
+                            Err((c, m)) => err_resp(c, &m),
+                        }
+                    }
                 }
                 // Scoped host capabilities — only for trusted (signed) apps.
                 "/capabilities" => {
@@ -1464,6 +1678,28 @@ fn main() {
                         json_resp(200, &serde_json::json!({ "ok": true }))
                     }
                 }
+                "/set-theme" => {
+                    // Recolor the viewer chrome — a scoped capability only a
+                    // signed (trusted) app may use.
+                    let trusted = st
+                        .current
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .map(|c| c.trusted)
+                        .unwrap_or(false);
+                    if !trusted {
+                        err_resp(403, "capability 'set-theme' requires a signed (trusted) app")
+                    } else {
+                        let v: Value = serde_json::from_str(
+                            &String::from_utf8(request.body().clone()).unwrap_or_default(),
+                        )
+                        .unwrap_or(Value::Null);
+                        // Pass the theme object straight through to the shell.
+                        let _ = app.emit("clan-theme-changed", v);
+                        json_resp(200, &serde_json::json!({ "ok": true }))
+                    }
+                }
                 p if p.starts_with("/assets/") => {
                     let rel = p.strip_prefix("/assets/").unwrap_or("");
                     match do_serve_asset(rel, st) {
@@ -1495,7 +1731,7 @@ fn main() {
             open_clan, get_human_html, get_data, get_chain, get_agent_state, get_context,
             save_patch, set_edit_mode, update_preview_html, take_launch_file,
             list_apps, install_app, new_document_from_app, agent_prompt, agent_endpoint,
-            open_home
+            open_home, save_clan_to
         ])
         .run(tauri::generate_context!())
         .expect("error while running Napkin Studio OS");
@@ -1998,6 +2234,26 @@ mod tests {
         let (_dir, state) = open_temp_clan();
         assert!(do_patch_data(r#"{"patch":"nope"}"#, &state).is_err());
         assert!(do_patch_data("not json", &state).is_err());
+    }
+
+    #[test]
+    fn patch_data_noop_skips_unchanged_write() {
+        let (dir, state) = open_temp_clan();
+        let path = dir.path().join("test.clan");
+        let body = r#"{"patch":{"verdict":"HubSpot"},"agent":"human","action":"set"}"#;
+        do_patch_data(body, &state).unwrap();
+        let chain1 = ClanFile::open(&path)
+            .unwrap()
+            .read_entry_string("agent/decision-chain.yaml")
+            .unwrap();
+        // Same value again → no-op: no rewrite, no new decision.
+        let res = do_patch_data(body, &state).unwrap();
+        assert_eq!(res["noop"], true, "unchanged patch must be a no-op");
+        let chain2 = ClanFile::open(&path)
+            .unwrap()
+            .read_entry_string("agent/decision-chain.yaml")
+            .unwrap();
+        assert_eq!(chain1, chain2, "no-op must not append a decision");
     }
 
     #[test]

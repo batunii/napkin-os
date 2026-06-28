@@ -45,10 +45,13 @@ export const STRUCTURED_EDIT_BRIDGE = `
     return root;
   }
 
+  // patchData('dot.path', value, opts)  OR  patchData({k:v, ...}, opts) for a
+  // multi-field write recorded as ONE attributed decision.
   function patchData(path, value, opts) {
-    opts = opts || {};
+    var patchObj, isObj = (path !== null && typeof path === 'object');
+    if (isObj) { patchObj = path; opts = value || {}; } else { opts = opts || {}; patchObj = nest(path, value); }
     var body = {
-      patch: nest(path, value),
+      patch: patchObj,
       agent: opts.actor || 'human',
       action: opts.action || 'edit',
       rationale: opts.rationale || '',
@@ -58,8 +61,9 @@ export const STRUCTURED_EDIT_BRIDGE = `
       .then(function(r) { return r.json(); })
       .then(function(res) {
         if (res && res.ok) {
-          setByPath(window.__CLAN__.data, path, value);
-          window.dispatchEvent(new CustomEvent('clan:dataupdated', { detail: { path: path, value: value } }));
+          if (isObj) { Object.keys(patchObj).forEach(function(k){ window.__CLAN__.data[k] = patchObj[k]; }); }
+          else { setByPath(window.__CLAN__.data, path, value); }
+          window.dispatchEvent(new CustomEvent('clan:dataupdated', { detail: {} }));
         }
         return res;
       });
@@ -83,6 +87,20 @@ export const STRUCTURED_EDIT_BRIDGE = `
       .then(function(r) { return r.json(); });
   }
 
+  function setTitle(title) {
+    return fetch(clanScheme + '/set-title', { method: 'POST', body: JSON.stringify({ title: title }) })
+      .then(function(r) { return r.json(); });
+  }
+
+  function requestSave() {
+    return fetch(clanScheme + '/request-save', { method: 'POST' }).then(function(r) { return r.json(); });
+  }
+
+  function setContext(markdown, append) {
+    return fetch(clanScheme + '/set-context', { method: 'POST', body: JSON.stringify({ markdown: markdown, append: !!append }) })
+      .then(function(r) { return r.json(); });
+  }
+
   // Public API authored apps can call.
   window.clan = {
     data: function() { return window.__CLAN__.data; },
@@ -90,6 +108,9 @@ export const STRUCTURED_EDIT_BRIDGE = `
     apiProxy: apiProxy,
     uploadAsset: uploadAsset,
     fork: fork,
+    setTitle: setTitle,
+    requestSave: requestSave,
+    setContext: setContext,
     isEditing: function() { return window.__clan_edit_mode; }
   };
 
@@ -103,6 +124,13 @@ export const STRUCTURED_EDIT_BRIDGE = `
     if ((c.allowed || []).indexOf('notify') !== -1) {
       window.napkin.notify = function(title, body) {
         return fetch(clanScheme + '/notify', { method: 'POST', body: JSON.stringify({ title: title, body: body }) })
+          .then(function(r){ return r.json(); });
+      };
+    }
+    if ((c.allowed || []).indexOf('set-theme') !== -1) {
+      // Recolor the viewer chrome (trusted apps only). colors: {accent, teal, bg, surface, text}
+      window.napkin.setTheme = function(colors) {
+        return fetch(clanScheme + '/set-theme', { method: 'POST', body: JSON.stringify(colors || {}) })
           .then(function(r){ return r.json(); });
       };
     }
