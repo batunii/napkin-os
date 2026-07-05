@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,16..72,300;0,16..72,400;0,16..72,500;1,16..72,400&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  textarea,input{font-family:inherit;}
+  ::selection{background:#DEDDFB;}
+  ::placeholder{color:var(--faint);opacity:1;}
+  :root{
+    --page:#F6F5F1; --surface:#ffffff; --surface-2:#FBFAF7; --hover:#FCFBF7;
+    --bar:rgba(255,255,255,.6); --chrome:rgba(246,245,241,.82);
+    --border:#E7E4DC; --border-2:#E0DCD2; --border-soft:#F0EEE8; --track:#EBE9E2;
+    --ink:#16150F; --text:#1A1916; --text-input:#26241E; --text-2:#56524A; --text-3:#7C786E; --muted:#8A867C; --faint:#A29E94; --slash:#C9C5BB;
+    --tab-bg:#1A1916; --tab-fg:#ffffff; --logo:#1A1916;
+    --line-mute:#DAD6CC; --stripe-a:#E4E0D6; --stripe-b:#EFEDE7;
+    --tile-a:#EEECE6; --tile-b:#F6F5F1;
+    --skel-a:#EDECFB; --skel-b:#DAD9F8;
+    --needs-bg:#FBF1DD; --needs-fg:#9A6B12;
+    --swatch-ring:#E0DCD2; --swatch-edge:#ffffff;
+  }
+  [data-theme="dark"]{
+    --page:#141318; --surface:#1F1D24; --surface-2:#26242D; --hover:#272530;
+    --bar:rgba(31,29,36,.55); --chrome:rgba(20,19,24,.82);
+    --border:#302E38; --border-2:#3A3743; --border-soft:#2A2832; --track:#2A2832;
+    --ink:#F4F2EC; --text:#ECE9E2; --text-input:#E4E0D8; --text-2:#B9B4A9; --text-3:#948F85; --muted:#8B867C; --faint:#6E6961; --slash:#494650;
+    --tab-bg:#F0EEE8; --tab-fg:#1A1916; --logo:#F0EEE8;
+    --line-mute:#3A3743; --stripe-a:#2C2A33; --stripe-b:#242229;
+    --tile-a:#242229; --tile-b:#1B1A20;
+    --skel-a:#2A2838; --skel-b:#3B3653;
+    --needs-bg:#3A2E18; --needs-fg:#E0A94C;
+    --swatch-ring:#3A3743; --swatch-edge:#1F1D24;
+  }
+  @keyframes shimmer{from{background-position:-200% 0}to{background-position:200% 0}}
+  @keyframes slide{from{background-position:200% 0}to{background-position:-200% 0}}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div data-theme="{{ themeMode }}" style="min-height:100vh;background:{{ pageBg }};font-family:'Geist',system-ui,sans-serif;color:var(--text);transition:background .35s ease,color .35s ease;-webkit-font-smoothing:antialiased;">
+
+  <sc-if value="{{ anyBusy }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;top:0;left:0;right:0;height:2px;z-index:60;background:{{ progressBg }};background-size:200% 100%;animation:slide 1.05s linear infinite;"></div>
+  </sc-if>
+
+  <!-- ============ START / NEW BRIEF ============ -->
+  <sc-if value="{{ isStart }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:12px;padding:0 30px;height:60px;border-bottom:1px solid var(--border);">
+      <div style="width:18px;height:18px;border-radius:50%;background:var(--logo);"></div>
+      <span style="font:500 13px/1 'Geist Mono',monospace;color:var(--text);">napkin</span>
+      <span style="color:var(--slash);font-weight:300;">/</span>
+      <span style="font:500 13px/1 Geist,sans-serif;color:var(--text-2);">Brief Builder</span>
+      <div style="flex:1;"></div>
+      <button onClick="{{ toggleDark }}" style="{{ darkBtnStyle }}">{{ darkGlyph }}</button>
+    </div>
+
+    <div style="max-width:760px;margin:0 auto;padding:56px 30px 100px;animation:fadeUp .4s ease;">
+      <div style="font:400 12px/1 'Geist Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:16px;">New brief</div>
+      <h1 style="margin:0;font:400 44px/1.05 Newsreader,Georgia,serif;letter-spacing:-.01em;color:var(--ink);">Start a brief</h1>
+      <p style="margin:16px 0 36px;font:300 17px/1.6 Geist,sans-serif;color:var(--text-3);max-width:54ch;">Bring in whatever you have. Our agents draft every section of the brief — then you edit, regenerate, or lock anything by hand.</p>
+
+      <!-- SOURCE INPUT -->
+      <div style="font:500 11px/1 'Geist Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);margin-bottom:10px;">Source material</div>
+      <div style="border:1.5px solid var(--border-2);border-radius:14px;background:var(--surface);overflow:hidden;">
+        <textarea value="{{ source }}" onChange="{{ onSourceInput }}" placeholder="Paste a client brief, meeting notes, an email thread or a call transcript — or attach a file below." style="width:100%;min-height:148px;border:none;outline:none;resize:none;background:transparent;padding:18px;font:400 15px/1.6 Geist,sans-serif;color:var(--text-input);display:block;"></textarea>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--border-soft);background:var(--surface-2);">
+          <button style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid var(--border-2);background:var(--surface);border-radius:8px;font:500 12px/1 Geist,sans-serif;color:var(--text-2);cursor:pointer;">＋ Attach file</button>
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 11px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font:400 12px/1 'Geist Mono',monospace;color:var(--text-2);">
+            <span style="width:7px;height:7px;border-radius:2px;background:#D24B3E;"></span>client_brief.pdf
+          </div>
+          <div style="flex:1;"></div>
+          <span style="font:400 11px/1 'Geist Mono',monospace;color:{{ aiAccent }};">✦ 12 sections will be drafted</span>
+        </div>
+      </div>
+
+      <!-- BRIEF NAME -->
+      <div style="margin-top:28px;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);margin-bottom:10px;">Brief name</div>
+      <input value="{{ title }}" onChange="{{ onTitleInput }}" placeholder="e.g. Volkswagen Commercial Vehicles" style="width:100%;border:1.5px solid var(--border-2);border-radius:11px;background:var(--surface);padding:13px 15px;font:400 15px Geist,sans-serif;color:var(--text-input);outline:none;">
+
+      <!-- FORMAT PICKER -->
+      <div style="margin-top:32px;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);margin-bottom:12px;">Format</div>
+      <div style="display:flex;gap:14px;">
+        <button onClick="{{ setTrad }}" style="{{ tradCard }}">
+          <div style="display:flex;flex-direction:column;gap:5px;height:42px;justify-content:center;">
+            <span style="height:5px;width:100%;border-radius:2px;background:var(--line-mute);"></span>
+            <span style="height:5px;width:80%;border-radius:2px;background:var(--line-mute);"></span>
+            <span style="height:5px;width:90%;border-radius:2px;background:var(--line-mute);"></span>
+          </div>
+          <div><div style="font:500 14px/1.2 Geist,sans-serif;color:var(--text);">Traditional</div><div style="font:400 12px/1.4 Geist,sans-serif;color:var(--muted);margin-top:3px;">Clean, document-style brief.</div></div>
+        </button>
+        <button onClick="{{ setCreative }}" style="{{ creativeCard }}">
+          <div style="display:flex;gap:5px;height:42px;align-items:flex-end;">
+            <span style="flex:1;height:28px;border-radius:4px;background:repeating-linear-gradient(45deg,var(--stripe-a) 0 5px,var(--stripe-b) 5px 10px);"></span>
+            <span style="flex:1;height:42px;border-radius:4px;background:repeating-linear-gradient(45deg,var(--stripe-a) 0 5px,var(--stripe-b) 5px 10px);"></span>
+            <span style="flex:1;height:34px;border-radius:4px;background:repeating-linear-gradient(45deg,var(--stripe-a) 0 5px,var(--stripe-b) 5px 10px);"></span>
+          </div>
+          <div><div style="font:500 14px/1.2 Geist,sans-serif;color:var(--text);">Creative</div><div style="font:400 12px/1.4 Geist,sans-serif;color:var(--muted);margin-top:3px;">Adds moodboards & territory.</div></div>
+        </button>
+        <button onClick="{{ setFull }}" style="{{ fullCard }}">
+          <div style="display:flex;align-items:center;gap:6px;height:42px;">
+            <span style="width:16px;height:16px;border-radius:50%;background:#2C4BD4;"></span>
+            <span style="width:16px;height:16px;border-radius:50%;background:#1F7A5A;"></span>
+            <span style="width:16px;height:16px;border-radius:50%;background:#B0541E;"></span>
+            <span style="width:0;height:0;border-left:11px solid var(--text);border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:4px;"></span>
+          </div>
+          <div><div style="font:500 14px/1.2 Geist,sans-serif;color:var(--text);">Full Creative</div><div style="font:400 12px/1.4 Geist,sans-serif;color:var(--muted);margin-top:3px;">Theme, film, audio & mood.</div></div>
+        </button>
+      </div>
+
+      <div style="margin-top:36px;display:flex;align-items:center;gap:16px;">
+        <button onClick="{{ generate }}" style="display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border:none;border-radius:11px;background:{{ aiAccent }};color:#fff;font:500 15px/1 Geist,sans-serif;cursor:pointer;box-shadow:0 2px 8px {{ aiAccentShadow }};"><span style="font-size:15px;">✦</span> Generate brief</button>
+        <span style="font:400 13px/1 Geist,sans-serif;color:var(--faint);">Agents draft all sections in a few seconds.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ GENERATING ============ -->
+  <sc-if value="{{ isGenerating }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:12px;padding:0 30px;height:60px;border-bottom:1px solid var(--border);">
+      <div style="width:18px;height:18px;border-radius:50%;background:var(--logo);"></div>
+      <span style="font:500 13px/1 'Geist Mono',monospace;color:var(--text);">napkin</span>
+      <span style="color:var(--slash);font-weight:300;">/</span>
+      <span style="font:500 13px/1 Geist,sans-serif;color:var(--text-2);">Brief Builder</span>
+      <div style="flex:1;"></div>
+      <button onClick="{{ toggleDark }}" style="{{ darkBtnStyle }}">{{ darkGlyph }}</button>
+    </div>
+    <div style="max-width:620px;margin:0 auto;padding:56px 30px 100px;animation:fadeUp .4s ease;">
+      <div style="font:400 12px/1 'Geist Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:{{ aiAccent }};margin-bottom:16px;">Drafting</div>
+      <h1 style="margin:0 0 8px;font:400 34px/1.12 Newsreader,Georgia,serif;color:var(--ink);">Agents are writing your brief</h1>
+      <p style="margin:0 0 30px;font:300 15px/1.5 Geist,sans-serif;color:var(--text-3);">One agent per section, working from <span style="font-family:'Geist Mono',monospace;font-size:13px;">client_brief.pdf</span>.</p>
+      <div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden;">
+        <sc-for list="{{ fields }}" as="field" hint-placeholder-count="12">
+          <div style="display:flex;align-items:center;gap:14px;padding:13px 18px;border-top:1px solid var(--border-soft);">
+            <sc-if value="{{ field.gdone }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:50%;background:{{ aiAccent }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;">✓</span></sc-if>
+            <sc-if value="{{ field.gworking }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:50%;border:2px solid var(--skel-b);border-top-color:{{ aiAccent }};animation:spin .7s linear infinite;flex:none;"></span></sc-if>
+            <sc-if value="{{ field.gqueued }}" hint-placeholder-val="{{ true }}"><span style="width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border-2);flex:none;"></span></sc-if>
+            <span style="flex:1;font:500 14px/1 Geist,sans-serif;color:{{ field.genTitleColor }};">{{ field.label }}</span>
+            <span style="font:400 11px/1 'Geist Mono',monospace;color:var(--faint);">{{ field.genStatus }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ EDITOR ============ -->
+  <sc-if value="{{ isEditor }}" hint-placeholder-val="{{ false }}">
+    <div style="position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:20px;padding:0 30px;height:60px;background:var(--chrome);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:10px;flex:none;">
+        <div style="width:18px;height:18px;border-radius:50%;background:var(--logo);"></div>
+        <span style="font:500 13px/1 'Geist Mono',monospace;color:var(--text);">napkin</span>
+        <button onClick="{{ newBrief }}" style="margin-left:6px;display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--border-2);background:var(--surface);border-radius:8px;font:500 12px/1 Geist,sans-serif;color:var(--text-2);cursor:pointer;">＋ New brief</button>
+      </div>
+      <div style="flex:1;display:flex;justify-content:center;">
+        <div style="display:flex;gap:3px;padding:4px;background:var(--track);border-radius:999px;">
+          <button onClick="{{ setTrad }}" style="{{ tradTab }}">Traditional</button>
+          <button onClick="{{ setCreative }}" style="{{ creativeTab }}">Creative</button>
+          <button onClick="{{ setFull }}" style="{{ fullTab }}">Full Creative</button>
+        </div>
+      </div>
+      <div style="flex:none;display:flex;align-items:center;gap:12px;">
+        <button onClick="{{ toggleDark }}" style="{{ darkBtnStyle }}">{{ darkGlyph }}</button>
+        <button onClick="{{ regenAll }}" style="{{ regenAllStyle }}"><span style="font-size:13px;">✦</span> Regenerate all</button>
+      </div>
+    </div>
+
+    <sc-if value="{{ isFull }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:22px;padding:13px 30px;background:var(--bar);border-bottom:1px solid var(--border);flex-wrap:wrap;animation:fadeUp .35s ease;">
+        <span style="font:500 10px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);">Background</span>
+        <div style="display:flex;gap:9px;align-items:center;" title="Solid hue">
+          <sc-for list="{{ solidThemes }}" as="t" hint-placeholder-count="5"><button onClick="{{ t.on }}" style="{{ t.style }}"></button></sc-for>
+        </div>
+        <span style="width:1px;height:18px;background:var(--border-2);"></span>
+        <div style="display:flex;gap:9px;align-items:center;" title="Gradient">
+          <sc-for list="{{ gradientThemes }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.on }}" style="{{ t.style }}"></button></sc-for>
+        </div>
+        <span style="width:1px;height:18px;background:var(--border-2);"></span>
+        <div style="display:flex;gap:9px;align-items:center;" title="Image">
+          <sc-for list="{{ imageThemes }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.on }}" title="{{ t.label }}" style="{{ t.style }}"></button></sc-for>
+          <button title="Upload image" style="width:28px;height:28px;border-radius:8px;cursor:pointer;background:var(--surface);border:1.5px dashed var(--border-2);color:var(--faint);font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;">＋</button>
+        </div>
+        <span style="width:1px;height:22px;background:var(--border-2);"></span>
+        <span style="font:500 10px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);">Media</span>
+        <div style="display:flex;gap:9px;">
+          <button style="{{ mediaBtnStyle }}">✦ Generate hero film</button>
+          <button style="{{ mediaBtnStyle }}">✦ Generate radio :30</button>
+          <button style="{{ mediaBtnStyle }}">✦ Generate moodboard</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="max-width:{{ contentMax }};margin:0 auto;padding:0 30px 120px;transition:max-width .3s;">
+
+      <sc-if value="{{ notFull }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:52px 0 14px;">
+          <sc-if value="{{ showProvenance }}" hint-placeholder-val="{{ true }}">
+            <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:20px;padding:6px 12px;background:{{ chipBg }};border:1px solid {{ chipBorder }};border-radius:999px;font:400 11px/1 'Geist Mono',monospace;color:{{ aiAccent }};letter-spacing:.02em;"><span>✦</span> Generated from client_brief.pdf</div>
+          </sc-if>
+          <div style="font:300 13px/1 'Geist Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:12px;">Creative Brief</div>
+          <input value="{{ title }}" onChange="{{ onTitleInput }}" style="width:100%;border:none;outline:none;background:transparent;padding:0;margin:0;font:400 50px/1.06 Newsreader,Georgia,serif;letter-spacing:-.01em;color:var(--ink);">
+          <div style="margin-top:14px;font:400 15px/1 Geist,sans-serif;color:var(--text-3);">Radio · OOH · Digital &nbsp;—&nbsp; Irish market &nbsp;—&nbsp; peak sales period</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isFull }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:64px 0 24px;animation:fadeUp .4s ease;">
+          <div style="width:46px;height:3px;background:{{ accent }};margin-bottom:26px;"></div>
+          <div style="font:400 13px/1 'Geist Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:{{ accent }};margin-bottom:20px;">{{ title }}</div>
+          <h1 style="margin:0;font:400 italic 56px/1.18 Newsreader,Georgia,serif;letter-spacing:-.01em;color:var(--ink);max-width:18ch;">“{{ smp }}”</h1>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showExtras }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:30px 0 8px;animation:fadeUp .4s ease;">
+          <div style="font:500 10px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:18px;">Creative territory</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+            <div style="{{ tileStyle }}aspect-ratio:4/5;"><span style="{{ tileCap }}">van hero — product</span></div>
+            <div style="{{ tileStyle }}aspect-ratio:4/5;"><span style="{{ tileCap }}">on-site / trade</span></div>
+            <div style="{{ tileStyle }}aspect-ratio:4/5;"><span style="{{ tileCap }}">craft detail</span></div>
+            <div style="{{ tileStyle }}aspect-ratio:4/5;"><span style="{{ tileCap }}">irish landscape</span></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isFull }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:34px 0 8px;display:grid;grid-template-columns:1.4fr 1fr;gap:16px;animation:fadeUp .4s ease;">
+          <div style="{{ tileStyle }}aspect-ratio:16/9;position:relative;">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><div style="width:0;height:0;border-left:18px solid {{ accent }};border-top:12px solid transparent;border-bottom:12px solid transparent;"></div></div>
+            <span style="position:absolute;left:14px;bottom:12px;{{ tileCap }}">hero film — 30s</span>
+          </div>
+          <div style="{{ tileStyle }}aspect-ratio:16/9;position:relative;">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:3px;padding:0 24px;">
+              <span style="width:3px;height:18px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:34px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:12px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:40px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:22px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:30px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:14px;background:{{ accent }};opacity:.7;border-radius:2px;"></span><span style="width:3px;height:26px;background:{{ accent }};opacity:.7;border-radius:2px;"></span>
+            </div>
+            <span style="position:absolute;left:14px;bottom:12px;{{ tileCap }}">radio cutdown — :30</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="margin-top:34px;">
+        <sc-for list="{{ fields }}" as="field" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:212px 1fr;gap:44px;padding:30px 0;border-top:1px solid var(--border);">
+            <div style="display:flex;flex-direction:column;gap:13px;">
+              <div style="font:500 11px/1.4 'Geist Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2);">{{ field.label }}</div>
+              <sc-if value="{{ field.isOpenQ }}" hint-placeholder-val="{{ false }}"><span style="align-self:flex-start;padding:3px 8px;border-radius:5px;background:var(--needs-bg);color:var(--needs-fg);font:500 10px/1 'Geist Mono',monospace;letter-spacing:.04em;">NEEDS INPUT</span></sc-if>
+              <sc-if value="{{ showProvenance }}" hint-placeholder-val="{{ true }}">
+                <sc-if value="{{ field.showAi }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;align-items:center;gap:5px;font:400 10px/1 'Geist Mono',monospace;color:{{ aiAccent }};"><span style="width:5px;height:5px;border-radius:50%;background:{{ aiAccent }};"></span>AI generated</span></sc-if>
+                <sc-if value="{{ field.showEdited }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:5px;font:400 10px/1 'Geist Mono',monospace;color:var(--muted);"><span style="width:5px;height:5px;border-radius:50%;background:var(--muted);"></span>Edited by you</span></sc-if>
+              </sc-if>
+              <div style="display:flex;flex-direction:column;gap:9px;margin-top:2px;">
+                <button onClick="{{ field.onRegen }}" style="{{ regenBtnStyle }}" style-hover="filter:brightness(1.05);"><span style="font-size:12px;">✦</span> Regenerate</button>
+                <button onClick="{{ field.onLock }}" style="display:inline-flex;align-items:center;gap:9px;background:none;border:none;cursor:pointer;padding:0;{{ field.lockTextStyle }}"><span style="{{ field.trackStyle }}"><span style="{{ field.knobStyle }}"></span></span>{{ field.lockLabel }}</button>
+                <button onClick="{{ field.onAdd }}" style="align-self:flex-start;background:none;border:none;cursor:pointer;padding:0;font:400 12px/1 Geist,sans-serif;color:var(--muted);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--border-2);" style-hover="color:var(--text-2);">+ Add detail</button>
+              </div>
+            </div>
+            <div style="min-width:0;margin:-8px -12px;padding:8px 12px;border-radius:9px;transition:background .15s;" style-hover="background:var(--hover);">
+              <sc-if value="{{ field.thinking }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:11px;padding-top:5px;">
+                  <div style="height:13px;width:100%;border-radius:3px;background:linear-gradient(90deg,var(--skel-a),var(--skel-b),var(--skel-a));background-size:200% 100%;animation:shimmer 1.15s linear infinite;"></div>
+                  <div style="height:13px;width:92%;border-radius:3px;background:linear-gradient(90deg,var(--skel-a),var(--skel-b),var(--skel-a));background-size:200% 100%;animation:shimmer 1.15s linear infinite;"></div>
+                  <div style="height:13px;width:64%;border-radius:3px;background:linear-gradient(90deg,var(--skel-a),var(--skel-b),var(--skel-a));background-size:200% 100%;animation:shimmer 1.15s linear infinite;"></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ field.showText }}" hint-placeholder-val="{{ true }}">
+                <textarea ref="{{ field.ref }}" value="{{ field.value }}" onChange="{{ field.onInput }}" readOnly="{{ field.busy }}" rows="2" style="width:100%;border:none;outline:none;resize:none;background:transparent;padding:0;margin:0;display:block;overflow:hidden;white-space:pre-wrap;font:400 16.5px/1.62 Geist,sans-serif;color:var(--text-input);"></textarea>
+                <sc-if value="{{ field.streaming }}" hint-placeholder-val="{{ false }}"><div style="{{ generatingStyle }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ aiAccent }};animation:pulse 1s ease infinite;"></span>generating…</div></sc-if>
+                <sc-if value="{{ field.detailOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="{{ detailBoxStyle }}">
+                    <span style="color:{{ aiAccent }};font-size:13px;">✦</span>
+                    <input value="{{ detailText }}" onChange="{{ onDetailText }}" placeholder="Tell the AI what to add…" style="flex:1;border:none;background:transparent;outline:none;font:400 14px Geist,sans-serif;color:var(--text-input);">
+                    <button onClick="{{ field.onDetailSubmit }}" style="{{ sendBtnStyle }}">Add</button>
+                  </div>
+                </sc-if>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:920},&quot;startMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;traditional&quot;,&quot;creative&quot;,&quot;full&quot;],&quot;default&quot;:&quot;traditional&quot;,&quot;tsType&quot;:&quot;'traditional'|'creative'|'full'&quot;},&quot;dark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;aiAccent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#5D5FEF&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showProvenance&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: 'start',
+    mode: 'traditional',
+    bgId: 'blue',
+    dark: false,
+    title: 'Volkswagen Commercial Vehicles',
+    source: '',
+    detailFor: null,
+    detailText: '',
+    fields: [
+      { id:'background', label:'Background', agent:'Context agent', vIdx:0, locked:false, status:'idle', variants:[
+        "VWCV needs an advertising campaign across Radio, OOH and Digital to assist with the sale of Volkswagen Commercial Vehicles in the Irish market during the busiest vehicle sales period.",
+        "Volkswagen Commercial Vehicles requires an integrated Radio, OOH and Digital campaign to drive sales across Ireland through the peak vehicle-buying window of the year."
+      ]},
+      { id:'objectives', label:'Objectives', agent:'Objectives agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Commercial — assist with the sale of Volkswagen Commercial Vehicles in the Irish market.\nBehavioural — none stated.\nAttitudinal — none stated.",
+        "Commercial — grow VWCV's share of the Irish commercial-vehicle market during peak season.\nBehavioural — prompt qualified buyers to book a named test drive.\nAttitudinal — reframe VW vans as the standard-setter, not the familiar option."
+      ]},
+      { id:'audience', label:'Audience', agent:'Audience agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Irish business customers (90%) and lifestyle customers (10%).",
+        "Predominantly Irish trade and business buyers (90%), with a smaller lifestyle and leisure segment (10%)."
+      ]},
+      { id:'competitor', label:'Competitor context', agent:'Market agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Ford owns the Irish working-van, community-hero territory.",
+        "Ford holds the dependable 'working van, local hero' space in Ireland — VW must claim higher ground rather than compete on familiarity."
+      ]},
+      { id:'insight', label:'The insight', agent:'Insight agent', vIdx:0, locked:false, status:'idle', variants:[
+        "They view their van as a business card, not a toolbox, because its image proves their competence, which forces the brand to deliver engineering that commands respect rather than merely feels familiar.",
+        "For these owners the van is a statement of standards, not just a tool — so the brand has to earn respect through engineering, not trade on familiarity."
+      ]},
+      { id:'smp', label:'Single-minded proposition', agent:'Proposition agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Engineering that proves your standards before you ever have to defend them.",
+        "Built to your standards — so you never have to justify the choice.",
+        "The van that makes the case for you."
+      ]},
+      { id:'rtb', label:'Reasons to believe', agent:'Evidence agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Space for needs and dreams. For people on a mission.\nReliable, utility-driven, inspiring.\nSuccess, Freedom, Future.",
+        "Engineered for the demands of the working day — and the ambition behind it.\nProven reliability you can stake a reputation on.\nDesign and detailing that signal competence at a glance."
+      ]},
+      { id:'response', label:'Desired response', agent:'Response agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Think — VW's commercial vans are engineered to meet my business standards before any issue arises, so I can trust they'll perform when I need them most.\nFeel — confident and quietly proud to run a fleet that has proven its worth before I have to defend the choice.\nDo — visit a VW dealer and request a test drive of the specific commercial model by name.",
+        "Think — these vans are built to a standard above what I'd settle for, so the risk is taken out of the decision.\nFeel — assured, and a little proud, to be associated with them.\nDo — name the model and book a test drive at my local VW dealer."
+      ]},
+      { id:'tone', label:'Tone & world', agent:'Tone agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Precision, design and ambition.",
+        "Exacting, considered and quietly confident — precision worn as a point of pride."
+      ]},
+      { id:'budget', label:'Budget & scope', agent:'Scope agent', vIdx:0, locked:false, status:'idle', variants:[
+        "None stated. Each party bears its own costs.",
+        "Not yet defined — each party currently bears its own costs pending a confirmed media budget."
+      ]},
+      { id:'mandatories', label:'Mandatories', agent:'Compliance agent', vIdx:0, locked:false, status:'idle', variants:[
+        "Radio, OOH and Digital channels · business and lifestyle audiences · busiest sales period.",
+        "Must run across Radio, OOH and Digital · must address both business and lifestyle buyers · must land in the peak sales period."
+      ]},
+      { id:'questions', label:'Open questions', agent:'Diligence agent', kind:'open', vIdx:0, locked:false, status:'idle', variants:[
+        "What is the budget, and the specific media budget for the campaign?\nWhat are the exact dates for the busiest vehicle-sales period?\nWhat production level is expected?\nWill the pitched concept go live, or start fresh after appointment?",
+        "Confirm total and media budget.\nConfirm the precise peak-season window.\nConfirm expected production scale.\nConfirm whether the pitch concept becomes the first live campaign."
+      ]}
+    ]
+  };
+
+  constructor(props){
+    super(props);
+    this._timers = {};
+    this.state.mode = props.startMode || 'traditional';
+    this.state.dark = !!props.dark;
+    this.state.fields.forEach(f => { f.value = ''; });
+  }
+
+  componentWillUnmount(){ Object.values(this._timers).forEach(clearTimeout); }
+
+  _patch(id, patch){ this.setState(s => ({ fields: s.fields.map(f => f.id === id ? { ...f, ...patch } : f) })); }
+
+  generate(){
+    this.setState(s => ({ view:'generating', fields: s.fields.map(f => ({ ...f, status:'queued', value:'', edited:false })) }));
+    this._genDone = 0;
+    const list = this.state.fields;
+    list.forEach((f, k) => {
+      this._timers['g'+k] = setTimeout(() => {
+        this._patch(f.id, { status:'thinking' });
+        this._timers[f.id] = setTimeout(() => this._streamGen(f.id, f.variants[f.vIdx] || f.variants[0]), 300);
+      }, k * 420);
+    });
+  }
+
+  _streamGen(id, text){
+    this._patch(id, { status:'streaming' });
+    const step = Math.max(1, Math.round(text.length / 40));
+    let i = 0;
+    const tick = () => {
+      i = Math.min(text.length, i + step);
+      this._patch(id, { value: text.slice(0, i) });
+      if (i < text.length) this._timers[id] = setTimeout(tick, 16);
+      else {
+        this._patch(id, { status:'idle' });
+        this._genDone++;
+        if (this._genDone >= this.state.fields.length) this._timers.done = setTimeout(() => this.setState({ view:'editor' }), 750);
+      }
+    };
+    tick();
+  }
+
+  newBrief(){ this.setState({ view:'start' }); }
+  toggleDark(){ this.setState(s => ({ dark: !s.dark })); }
+
+  regen(id){
+    const f = this.state.fields.find(x => x.id === id);
+    if (!f) return;
+    if (this._timers[id]) clearTimeout(this._timers[id]);
+    this._patch(id, { status:'thinking' });
+    this._timers[id] = setTimeout(() => {
+      const nIdx = (f.vIdx + 1) % f.variants.length;
+      this._patch(id, { vIdx:nIdx, edited:false });
+      this._stream(id, f.variants[nIdx], 0);
+    }, 720);
+  }
+
+  _stream(id, text, start){
+    this._patch(id, { status:'streaming' });
+    const step = Math.max(1, Math.round(text.length / 55));
+    let i = start;
+    const tick = () => {
+      i = Math.min(text.length, i + step);
+      this._patch(id, { value: text.slice(0, i) });
+      if (i < text.length) this._timers[id] = setTimeout(tick, 18);
+      else this._patch(id, { status:'idle' });
+    };
+    tick();
+  }
+
+  regenAll(){
+    const open = this.state.fields.filter(f => !f.locked);
+    open.forEach((f, k) => setTimeout(() => this.regen(f.id), k * 150));
+  }
+
+  toggleLock(id){ const f = this.state.fields.find(x => x.id === id); if (f) this._patch(id, { locked: !f.locked }); }
+  editField(id, val){ this._patch(id, { value: val, edited:true }); }
+  setMode(m){ this.setState({ mode:m }); }
+  openDetail(id){ this.setState({ detailFor:id, detailText:'' }); }
+
+  submitDetail(id){
+    const f = this.state.fields.find(x => x.id === id);
+    if (!f) return;
+    const add = this._detailLine(id);
+    const base = f.value || '';
+    const target = base + (base ? '\n' : '') + add;
+    this.setState({ detailFor:null, detailText:'' });
+    this._patch(id, { status:'thinking', edited:true });
+    if (this._timers[id]) clearTimeout(this._timers[id]);
+    this._timers[id] = setTimeout(() => this._stream(id, target, base.length + (base ? 1 : 0)), 620);
+  }
+
+  _detailLine(id){
+    const m = {
+      background: "Timing is critical: the campaign must be in-market before the registration-plate change drives the seasonal spike.",
+      objectives: "Secondary — lift consideration among first-time VWCV buyers currently defaulting to the category leader.",
+      audience: "Skews owner-operators and small-fleet decision-makers who buy on reputation as much as spec.",
+      competitor: "Whitespace exists in 'engineering that earns respect' — a claim Ford's everyman positioning leaves open.",
+      insight: "The proof is social: peers and clients read the van before they read the work.",
+      smp: "Support line: standards you can see, before you have to say a word.",
+      rtb: "Class-leading residual values and total cost of ownership back the reliability claim with numbers.",
+      response: "Barrier to clear — the perception that VW is a premium price for a job a cheaper van could do.",
+      tone: "Reference world: architecture, motorsport engineering and precision tooling — never lifestyle cliché.",
+      budget: "Recommend ring-fencing production separately from media so the idea isn't compromised by buying.",
+      mandatories: "Include a clear dealer test-drive call to action in every channel.",
+      questions: "Also confirm: which commercial models are in scope (Transporter, Crafter, Caddy, ID. Buzz Cargo)?"
+    };
+    return m[id] || "Added supporting detail to strengthen this section.";
+  }
+
+  _tint(hex){
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    const mix = c => Math.round(c * 0.055 + 247 * 0.945);
+    return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+  }
+
+  renderVals(){
+    const s = this.state;
+    const dark = s.dark;
+    const A = this.props.aiAccent || '#5D5FEF';
+    const Asoft = A + (dark ? '26' : '14'), Aborder = A + (dark ? '4D' : '33');
+    const PRESETS = [
+      { id:'blue',   group:'solid',    accent:'#2C4BD4' },
+      { id:'green',  group:'solid',    accent:'#1F7A5A' },
+      { id:'rust',   group:'solid',    accent:'#B0541E' },
+      { id:'violet', group:'solid',    accent:'#6741D9' },
+      { id:'ink',    group:'solid',    accent:'#2A2824' },
+      { id:'sunrise',group:'gradient', accent:'#B0541E', page:'linear-gradient(135deg,#FDEFE3 0%,#F8E7EF 48%,#E9ECFC 100%)' },
+      { id:'dawn',   group:'gradient', accent:'#6741D9', page:'linear-gradient(135deg,#EAF2FF 0%,#F1ECFF 48%,#FDEFF4 100%)' },
+      { id:'meadow', group:'gradient', accent:'#1F7A5A', page:'linear-gradient(135deg,#ECF6EA 0%,#F5F3E0 48%,#E5F1F3 100%)' },
+      { id:'coast',  group:'image', label:'Coastline', accent:'#2C4BD4', page:'radial-gradient(120% 95% at 82% -10%,#D6E4FB 0%,#EDF2F7 46%,#F4F0E7 100%)' },
+      { id:'dusk',   group:'image', label:'Dusk',      accent:'#B0541E', page:'radial-gradient(120% 100% at 12% -10%,#FBE3D2 0%,#F4E0DE 46%,#ECE6F0 100%)' },
+      { id:'studio', group:'image', label:'Studio',    accent:'#3A3833', page:'linear-gradient(180deg,#F3F2EE 0%,#E8E6E0 100%)' }
+    ];
+    const preset = PRESETS.find(p => p.id === s.bgId) || PRESETS[0];
+    const accent = dark ? this._lighten(preset.accent) : preset.accent;
+    const presetPage = dark
+      ? `radial-gradient(125% 100% at 82% -12%, ${preset.accent}3D 0%, ${preset.accent}14 42%, transparent 78%), #141318`
+      : (preset.page || this._tint(preset.accent));
+    const isFull = s.mode === 'full';
+    const isEditor = s.view === 'editor';
+    const showProvenance = this.props.showProvenance !== false;
+
+    const tab = on => "padding:7px 16px;border:none;border-radius:999px;font:500 13px/1 Geist,sans-serif;cursor:pointer;transition:.18s;white-space:nowrap;" + (on ? "background:var(--tab-bg);color:var(--tab-fg);box-shadow:0 1px 3px rgba(0,0,0,.2);" : "background:transparent;color:var(--text-3);");
+    const card = on => `flex:1;text-align:left;padding:16px;border:1.5px solid ${on ? A : 'var(--border-2)'};border-radius:13px;background:${on ? Asoft : 'var(--surface)'};cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:14px;`;
+
+    const swatch = (p, round) => {
+      const sel = p.id === s.bgId;
+      const bg = p.page || p.accent;
+      return {
+        on: () => this.setState({ bgId: p.id }),
+        label: p.label || '',
+        style: `width:28px;height:28px;border-radius:${round ? '50%' : '8px'};cursor:pointer;background:${bg};border:2px solid var(--swatch-edge);box-shadow:0 0 0 ${sel ? '2px ' + (dark ? this._lighten(p.accent) : p.accent) : '1px var(--swatch-ring)'};transition:.15s;`
+      };
+    };
+    const solidThemes    = PRESETS.filter(p => p.group === 'solid').map(p => swatch(p, true));
+    const gradientThemes = PRESETS.filter(p => p.group === 'gradient').map(p => swatch(p, false));
+    const imageThemes    = PRESETS.filter(p => p.group === 'image').map(p => swatch(p, false));
+
+    const fields = s.fields.map(f => {
+      const thinking = f.status === 'thinking', streaming = f.status === 'streaming', idle = f.status === 'idle';
+      const gworking = thinking || streaming, gdone = idle, gqueued = f.status === 'queued';
+      return {
+        id:f.id, label:f.label, value:f.value, locked:f.locked,
+        thinking, streaming, busy: !idle, showText: !thinking,
+        isOpenQ: f.kind === 'open',
+        showAi: idle && !f.edited, showEdited: idle && !!f.edited,
+        gworking, gdone, gqueued,
+        genStatus: gdone ? 'done' : (gworking ? 'writing…' : 'queued'),
+        genTitleColor: (gdone || gworking) ? 'var(--text)' : 'var(--faint)',
+        lockLabel: f.locked ? 'Locked' : 'Lock from AI',
+        detailOpen: s.detailFor === f.id,
+        lockTextStyle: `font:400 12px/1 Geist,sans-serif;color:${f.locked ? A : 'var(--muted)'};`,
+        trackStyle: `width:30px;height:18px;border-radius:999px;position:relative;flex:none;transition:.18s;background:${f.locked ? A : 'var(--border-2)'};`,
+        knobStyle: `position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.18s;transform:translateX(${f.locked ? '12px' : '0'});box-shadow:0 1px 2px rgba(0,0,0,.25);`,
+        onInput: e => this.editField(f.id, e.target.value),
+        onRegen: () => this.regen(f.id),
+        onLock: () => this.toggleLock(f.id),
+        onAdd: () => this.openDetail(f.id),
+        onDetailSubmit: () => this.submitDetail(f.id),
+        ref: el => { if (el){ el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }
+      };
+    });
+
+    const smp = (s.fields.find(f => f.id === 'smp') || {}).value || '';
+
+    return {
+      view:s.view, isStart: s.view === 'start', isGenerating: s.view === 'generating', isEditor,
+      mode:s.mode, isFull, notFull: !isFull, showExtras: s.mode !== 'traditional',
+      fields, accent, smp, aiAccent:A, aiAccentShadow: A + '55', showProvenance,
+      solidThemes, gradientThemes, imageThemes,
+      themeMode: dark ? 'dark' : 'light',
+      darkGlyph: dark ? '☀' : '☾',
+      darkBtnStyle: 'width:34px;height:34px;border-radius:9px;border:1px solid var(--border-2);background:var(--surface);color:var(--text-2);cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;flex:none;transition:.15s;',
+      toggleDark: () => this.toggleDark(),
+      title:s.title, source:s.source,
+      onTitleInput: e => this.setState({ title: e.target.value }),
+      onSourceInput: e => this.setState({ source: e.target.value }),
+      generate: () => this.generate(),
+      newBrief: () => this.newBrief(),
+      anyBusy: isEditor && s.fields.some(f => f.status !== 'idle'),
+      pageBg: (isFull && isEditor) ? presetPage : 'var(--page)',
+      progressBg: `linear-gradient(90deg, transparent, ${A}, transparent)`,
+      chipBg: Asoft, chipBorder: Aborder,
+      contentMax: s.mode === 'traditional' ? '880px' : '1080px',
+      tradTab: tab(s.mode === 'traditional'), creativeTab: tab(s.mode === 'creative'), fullTab: tab(isFull),
+      tradCard: card(s.mode === 'traditional'), creativeCard: card(s.mode === 'creative'), fullCard: card(isFull),
+      setTrad: () => this.setMode('traditional'), setCreative: () => this.setMode('creative'), setFull: () => this.setMode('full'),
+      regenAll: () => this.regenAll(),
+      regenAllStyle: `display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:none;border-radius:9px;background:${A};color:#fff;font:500 13px/1 Geist,sans-serif;cursor:pointer;box-shadow:0 1px 4px ${A}55;transition:.15s;`,
+      regenBtnStyle: `display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:6px 11px;border:1px solid ${Aborder};background:${Asoft};color:${A};border-radius:8px;font:500 12px/1 Geist,sans-serif;cursor:pointer;transition:.15s;`,
+      generatingStyle: `margin-top:10px;display:inline-flex;align-items:center;gap:7px;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.05em;color:${A};`,
+      detailBoxStyle: `margin-top:13px;display:flex;gap:8px;align-items:center;background:${Asoft};border:1px solid ${Aborder};border-radius:10px;padding:8px 8px 8px 13px;`,
+      sendBtnStyle: `padding:7px 15px;border:none;border-radius:7px;background:${A};color:#fff;font:500 12px/1 Geist,sans-serif;cursor:pointer;`,
+      mediaBtnStyle: `padding:7px 13px;border:1px solid var(--border-2);background:var(--surface);border-radius:8px;font:500 12px/1 Geist,sans-serif;color:var(--text-2);cursor:pointer;`,
+      tileStyle: "border-radius:10px;border:1px solid var(--border);background-image:repeating-linear-gradient(45deg,var(--tile-a) 0 9px,var(--tile-b) 9px 18px);position:relative;overflow:hidden;display:flex;align-items:flex-end;",
+      tileCap: "margin:12px;font:400 10px/1.3 'Geist Mono',monospace;color:var(--faint);letter-spacing:.02em;",
+      detailText: s.detailText,
+      onDetailText: e => this.setState({ detailText: e.target.value })
+    };
+  }
+
+  _lighten(hex){
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    const up = c => Math.round(c + (255 - c) * 0.42);
+    const x = c => up(c).toString(16).padStart(2,'0');
+    return `#${x(r)}${x(g)}${x(b)}`;
+  }
+}
+</script>
+</body>
+</html>

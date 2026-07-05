@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Creative Brief",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "project_name": { "type": "string" },
+    "client": { "type": "string" },
+    "background": { "type": "string" },
+    "objectives": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "commercial": { "type": "string" },
+        "behavioural": { "type": "string" },
+        "attitudinal": { "type": "string" }
+      }
+    },
+    "audience": { "type": "string" },
+    "competitor_context": { "type": "string" },
+    "insight": { "type": "string" },
+    "single_minded_proposition": { "type": "string" },
+    "reasons_to_believe": { "type": "array", "items": { "type": "string" } },
+    "desired_response": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "think": { "type": "string" },
+        "feel": { "type": "string" },
+        "do": { "type": "string" }
+      }
+    },
+    "tone_and_world": { "type": "array", "items": { "type": "string" } },
+    "budget_and_scope": { "type": "string" },
+    "mandatories": { "type": "array", "items": { "type": "string" } },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "reference_assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "type": { "type": "string" },
+          "name": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "brief_input": { "type": "string" },
+    "brief_style": { "type": "string", "enum": ["basic", "creative", "immersive"] },
+    "theme": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "bg": { "type": "string" },
+        "bg2": { "type": "string" },
+        "grad": { "type": "boolean" },
+        "accent": { "type": "string" },
+        "text": { "type": "string" },
+        "font": { "type": "string" }
+      }
+    },
+    "field_styles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "font": { "type": "string" },
+          "size": { "type": "string" },
+          "color": { "type": "string" }
+        }
+      }
+    },
+    "locked_fields": { "type": "array", "items": { "type": "string" } },
+    "locked": { "type": "boolean" }
+  }
+}

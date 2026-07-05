@@ -128,9 +128,16 @@ def build_prompt(payload: dict, clan: dict) -> str:
         )
     else:
         att = payload.get("attachments") or data.get("reference_assets") or []
-        att_lines = "\n".join(
-            f"  - {a.get('label') or a.get('name')} ({a.get('type')})" for a in att
-        ) or "  (none)"
+        _al = []
+        for a in att:
+            label = a.get("label") or a.get("name")
+            _al.append(f"  - {label} ({a.get('type')})")
+            txt = (a.get("extracted_text") or "").strip()
+            if txt:
+                _al.append(f"    ┌─ extracted content of {label} ─")
+                _al.append("\n".join("    │ " + ln for ln in txt.splitlines()))
+                _al.append("    └─")
+        att_lines = "\n".join(_al) or "  (none)"
         locked = data.get("locked_fields") or []
         lock_line = ", ".join(locked) if locked else "(none)"
         suffix = (
@@ -140,7 +147,8 @@ def build_prompt(payload: dict, clan: dict) -> str:
             f"CLIENT INPUT (messy brief):\n{user_input}\n\n"
             f"ATTACHED REFERENCE FILES:\n{att_lines}\n\n"
             f"LOCKED FIELDS — do NOT change these, keep their current values: {lock_line}\n\n"
-            "TASK: Draft the full creative brief from the client input.\n"
+            "TASK: Draft the full creative brief from the client input AND the "
+            "extracted content of the attached reference files above.\n"
             "Output a JSON object with the schema's top-level keys, PLUS:\n"
             '  - "rationale": <= 2 sentences on the key choices.\n'
             '  - "context": a SHORT markdown brief for the next agent (client, requirement, '
@@ -179,6 +187,10 @@ class Handler(BaseHTTPRequestHandler):
             "chain": len(json.dumps(clan.get("decision_chain", {}))),
             "context": len(clan.get("context", "") or ""),
             "input": len(payload.get("input", "") or ""),
+            "attach_text": sum(
+                len(a.get("extracted_text") or "")
+                for a in (payload.get("attachments") or [])
+            ),
         }
         task = payload.get("task", "draft_brief")
         print(

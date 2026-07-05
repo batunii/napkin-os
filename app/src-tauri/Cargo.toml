@@ -18,3 +18,5 @@ clan-sdk = { path = "../../crates/clan-sdk" }
 tempfile = "3"
 # AI inference proxy (clan://api-proxy). rustls avoids OpenSSL/AppImage pain.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Extract text from attached PDFs so the agent sees document contents, not just names.
+pdf-extract = "0.7"

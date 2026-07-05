@@ -875,6 +875,45 @@ fn sanitize_asset_name(name: &str) -> Option<String> {
     Some(n.to_string())
 }
 
+/// Cap on extracted text we cache + send, to bound the agent's token cost
+/// (~6k tokens). The full asset always stays in the archive; this only limits
+/// what the agent reads.
+const MAX_EXTRACT_CHARS: usize = 24_000;
+
+/// Pull readable text out of an uploaded asset so the agent sees document
+/// *contents*, not just a filename. Plain-text family is decoded directly;
+/// PDFs go through `pdf_extract` (wrapped in `catch_unwind` — malformed PDFs
+/// can panic deep in the parser). Returns None for binary formats and empties.
+fn extract_text(name: &str, bytes: &[u8]) -> Option<String> {
+    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    let raw = match ext.as_str() {
+        "txt" | "text" | "md" | "markdown" | "csv" | "tsv" | "json" | "yaml" | "yml" | "log" => {
+            String::from_utf8_lossy(bytes).into_owned()
+        }
+        "pdf" => {
+            let owned = bytes.to_vec();
+            std::panic::catch_unwind(move || pdf_extract::extract_text_from_mem(&owned).ok())
+                .ok()
+                .flatten()?
+        }
+        _ => return None,
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(clamp_chars(trimmed, MAX_EXTRACT_CHARS))
+}
+
+fn clamp_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max).collect();
+    out.push_str("\n\n[… truncated for length …]");
+    out
+}
+
 /// `POST /upload-asset?name=&agent=` — store a binary asset inside the archive.
 fn do_upload_asset(name: &str, agent: Option<&str>, body: Vec<u8>, state: &AppState) -> RouteResult {
     let name = sanitize_asset_name(name).ok_or((400, "invalid asset name".to_string()))?;
@@ -887,11 +926,25 @@ fn do_upload_asset(name: &str, agent: Option<&str>, body: Vec<u8>, state: &AppSt
         pinned: false,
         fields_changed: None,
     });
+    // Extract text BEFORE the bytes are moved into the repack.
+    let extracted = extract_text(&name, &body);
     let new_bytes = patch_asset_with(&loaded.clan, &name, body, decision)
         .map_err(|e| (sdk_status(&e), e.to_string()))?;
     std::fs::write(&loaded.path, &new_bytes).map_err(|e| (500, e.to_string()))?;
     loaded.clan = ClanFile::from_bytes(new_bytes).map_err(|e| (500, e.to_string()))?;
-    Ok(serde_json::json!({ "ok": true, "internal_path": format!("human/assets/{name}") }))
+    // Cache the extracted text as a sidecar INSIDE the .clan so it travels with
+    // the document and is never re-extracted. No decision entry (it's a cache,
+    // not an authored decision), and it stays out of the data layer.
+    let mut extracted_chars = 0usize;
+    if let Some(text) = extracted {
+        extracted_chars = text.chars().count();
+        let sidecar = format!("human/assets/.extracted/{name}.txt");
+        if let Ok(nb) = patch_asset_with(&loaded.clan, &sidecar, text.into_bytes(), None) {
+            std::fs::write(&loaded.path, &nb).map_err(|e| (500, e.to_string()))?;
+            loaded.clan = ClanFile::from_bytes(nb).map_err(|e| (500, e.to_string()))?;
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "internal_path": format!("human/assets/{name}"), "extracted_chars": extracted_chars }))
 }
 
 fn content_type_for(rel: &str) -> &'static str {
@@ -1084,12 +1137,42 @@ async fn do_api_proxy(app: tauri::AppHandle, body: String) -> tauri::http::Respo
         .and_then(|v| v.as_str())
         .unwrap_or("agent")
         .to_string();
-    let payload = req.get("payload").cloned().unwrap_or(Value::Null);
+    let mut payload = req.get("payload").cloned().unwrap_or(Value::Null);
+    // Splice each attachment's cached extracted text (the `.extracted/` sidecar)
+    // into the payload so the agent reads document contents, not just filenames.
+    attach_extracted_text(app.state::<AppState>().inner(), &mut payload);
     // Enrich with the open artifact's intelligence layer so lineage, decisions,
     // schema, and context travel to the agent — not just what the iframe sent.
     let clan_ctx = clan_context_for_agent(app.state::<AppState>().inner());
     let outgoing = serde_json::json!({ "request_kind": kind, "payload": payload, "clan": clan_ctx });
     json_resp(200, &proxy_call(&app, &kind, outgoing).await)
+}
+
+/// For each attachment carrying a `name`, read its cached extracted-text
+/// sidecar from the open .clan and splice it in as `extracted_text`. Read at
+/// call time so the text never has to live in the data layer or be re-extracted.
+fn attach_extracted_text(st: &AppState, payload: &mut Value) {
+    let guard = st.current.lock().unwrap();
+    let Some(loaded) = guard.as_ref() else {
+        return;
+    };
+    let Some(atts) = payload
+        .get_mut("attachments")
+        .and_then(|v| v.as_array_mut())
+    else {
+        return;
+    };
+    for a in atts.iter_mut() {
+        let Some(name) = a.get("name").and_then(|v| v.as_str()).map(str::to_string) else {
+            continue;
+        };
+        let sidecar = format!("human/assets/.extracted/{name}.txt");
+        if let Ok(text) = loaded.clan.read_entry_string(&sidecar) {
+            if let Some(obj) = a.as_object_mut() {
+                obj.insert("extracted_text".into(), Value::String(text));
+            }
+        }
+    }
 }
 
 /// The provenance bundle an agent needs to fill the boxes coherently: the
