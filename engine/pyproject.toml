@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "napkin-briefing"
+version = "0.3.0"
+description = "Napkin briefing tool — no-loss client-brief parsing + RAG-grounded strategy (Loops 1–7)"
+readme = "README.md"
+license = "MPL-2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pdfplumber>=0.11",   # .pdf ingestion
+    "python-docx>=1.1",   # .docx ingestion
+]
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=6"]            # richer frontmatter parsing in the RAG build (stdlib fallback exists)
+dotenv = ["python-dotenv>=1"]   # optional; parse_brief has a dependency-free .env fallback
+vision = ["PyMuPDF>=1.24"]      # scanned-PDF / image transcription path
+anthropic = ["anthropic>=0.39"] # optional Claude provider link
+all = ["PyYAML>=6", "python-dotenv>=1", "PyMuPDF>=1.24", "anthropic>=0.39"]
+
+[project.scripts]
+napkin-brief = "parse_brief:main"
+
+# Flat layout on purpose: every core script anchors paths to its own directory
+# (HERE = Path(__file__).parent), so `pip install -e .` from the repo root is the
+# supported install — the console script resolves schemas/rag/reference in-repo.
+# Moving modules into src/ breaks every HERE-relative path (see docs/REORG-PLAN.md §8).
+[tool.setuptools]
+py-modules = [
+    "parse_brief", "golden_critic", "check_invariants",
+    "ingest_ipa", "ingest_cannes", "ingest_effie", "ingest_dandad",
+]

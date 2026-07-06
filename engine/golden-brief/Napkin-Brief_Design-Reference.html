@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4 portrait; margin: 18mm 19mm 16mm 19mm;
+    @bottom-left { content: "Napkin Brief · Golden Brief template"; font-family: "Lato"; font-size: 7pt; color: #9a978f; letter-spacing: .4pt; }
+    @bottom-right { content: "Design reference · " counter(page) " / " counter(pages); font-family: "Lato"; font-size: 7pt; color: #9a978f; letter-spacing: .4pt; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Lato"; color: #1b1b22; font-size: 10pt; line-height: 1.5; }
+  .serif { font-family: "Bitstream Charter", serif; }
+
+  /* ---- header ---- */
+  .kicker { display: flex; justify-content: space-between; font-size: 8pt; letter-spacing: 2pt; text-transform: uppercase; color: #9a978f; font-weight: 700; }
+  .kicker .r { color: #b11e2e; }
+  .brandline { font-size: 9pt; letter-spacing: 3pt; text-transform: uppercase; color: #b11e2e; font-weight: 700; margin-top: 16pt; }
+  h1.title { font-family: "Bitstream Charter", serif; font-size: 33pt; font-weight: 700; letter-spacing: -0.4pt; line-height: 1.02; margin-top: 2pt; color: #161620; }
+  .metarow { display: flex; flex-wrap: wrap; gap: 0 14pt; margin-top: 10pt; font-size: 8.5pt; color: #6e6e78; align-items: center; }
+  .metarow b { color: #1b1b22; font-weight: 700; }
+  .metarow .pill { background: #f1ece4; color: #5c5950; padding: 2pt 8pt; border-radius: 20pt; font-size: 7.5pt; letter-spacing: .6pt; text-transform: uppercase; font-weight: 700; }
+  .metarow .health { margin-left: auto; text-align: right; }
+  .metarow .health .n { font-family: "Bitstream Charter", serif; font-size: 17pt; color: #2f7d56; font-weight: 700; }
+  .rule { border-bottom: 1.2pt solid #1b1b22; margin: 12pt 0 0; }
+  .hair { border-bottom: 0.6pt solid #e4e0d8; }
+
+  /* ---- zone heading ---- */
+  .zone { font-size: 8.5pt; letter-spacing: 2.4pt; text-transform: uppercase; color: #b11e2e; font-weight: 700; margin: 20pt 0 2pt; }
+  .zone .z { color: #c9c5bc; }
+
+  /* ---- field ---- */
+  .field { padding: 11pt 0 12pt; border-bottom: 0.6pt solid #e9e5dd; page-break-inside: avoid; }
+  .fhead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4pt; }
+  .label { font-size: 10pt; font-weight: 700; letter-spacing: .2pt; color: #161620; }
+  .label .id { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; color: #b6b2a8; margin-left: 6pt; letter-spacing: 0; }
+  .meta { font-size: 7.5pt; color: #9a978f; white-space: nowrap; }
+  .dot { display: inline-block; width: 5pt; height: 5pt; border-radius: 50%; vertical-align: 0.5pt; margin-right: 3pt; }
+  .d-cs { background: #2f7d56; } .d-inf { background: #2d6da4; } .d-miss { background: #c79100; }
+  .conf { color: #b6b2a8; margin-left: 8pt; }
+  .value { font-family: "Bitstream Charter", serif; font-size: 11.5pt; line-height: 1.5; color: #2a2a32; }
+  .value .lead { color: #b11e2e; font-weight: 700; font-family: "Lato"; font-size: 8.5pt; letter-spacing: .8pt; text-transform: uppercase; margin-right: 5pt; }
+
+  .obj { display: grid; grid-template-columns: 88pt 1fr; gap: 3pt 10pt; margin-top: 2pt; }
+  .obj .k { font-family: "Lato"; font-size: 7.5pt; letter-spacing: 1pt; text-transform: uppercase; color: #9a978f; font-weight: 700; padding-top: 3pt; }
+  .obj .v { font-family: "Bitstream Charter", serif; font-size: 11pt; color: #2a2a32; }
+
+  /* ---- spark / hero ---- */
+  .spark { page-break-before: always; }
+  .insight-lead { font-family: "Bitstream Charter", serif; font-size: 15pt; line-height: 1.42; color: #2a2a32; margin: 6pt 0 0; }
+  .smp-wrap { margin: 22pt 0 18pt; padding: 22pt 26pt; background: #f7f0ee; border-left: 3pt solid #b11e2e; }
+  .smp-kicker { font-size: 8pt; letter-spacing: 2.4pt; text-transform: uppercase; color: #b11e2e; font-weight: 700; }
+  .smp { font-family: "Bitstream Charter", serif; font-size: 27pt; line-height: 1.12; color: #161620; margin-top: 8pt; font-weight: 700; letter-spacing: -0.3pt; }
+  .smp-foot { font-size: 7.5pt; color: #9a978f; margin-top: 11pt; }
+  .smp-foot .tick { color: #2f7d56; font-weight: 700; }
+
+  .tfd { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14pt; margin-top: 4pt; }
+  .tfd .k { font-size: 7.5pt; letter-spacing: 1.2pt; text-transform: uppercase; color: #b11e2e; font-weight: 700; margin-bottom: 2pt; }
+  .tfd .v { font-family: "Bitstream Charter", serif; font-size: 11pt; line-height: 1.35; color: #2a2a32; }
+  .rtb { font-family: "Bitstream Charter", serif; font-size: 11.5pt; color: #2a2a32; margin-top: 2pt; }
+  .rtb b { color: #b11e2e; }
+
+  /* ---- gate ---- */
+  .gate { page-break-before: always; }
+  .gatebox { background: #161620; color: #f3f1ec; padding: 18pt 22pt; margin-top: 6pt; }
+  .gatebox .gk { font-size: 8pt; letter-spacing: 2.4pt; text-transform: uppercase; color: #e6a3a9; font-weight: 700; }
+  .gatebox .crit { font-family: "Bitstream Charter", serif; font-size: 14pt; line-height: 1.4; margin-top: 7pt; color: #fbfaf7; }
+  .signrow { display: flex; gap: 30pt; margin-top: 16pt; font-size: 8.5pt; color: #b9b6b0; }
+  .signrow .ln { display: block; border-bottom: 0.6pt solid #565660; width: 130pt; margin-top: 14pt; }
+
+  .oq { margin-top: 16pt; padding: 13pt 16pt; background: #fbf4e4; border-left: 3pt solid #c79100; }
+  .oq .ok { font-size: 8pt; letter-spacing: 1.8pt; text-transform: uppercase; color: #8a6500; font-weight: 700; }
+  .oq .item { font-family: "Bitstream Charter", serif; font-size: 10.5pt; color: #5a4a16; margin-top: 6pt; }
+  .oq .sev { font-family: "Lato"; font-size: 6.5pt; letter-spacing: .8pt; text-transform: uppercase; background: #c79100; color: #fff; padding: 1pt 6pt; border-radius: 10pt; font-weight: 700; vertical-align: 1.5pt; margin-right: 6pt; }
+
+  .legend { display: flex; gap: 16pt; margin-top: 20pt; padding-top: 10pt; border-top: 0.6pt solid #e4e0d8; font-size: 7.5pt; color: #9a978f; }
+  .src { font-size: 7pt; color: #b6b2a8; margin-top: 8pt; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+  <!-- ============ PAGE 1 ============ -->
+  <div class="kicker"><span>Napkin Brief</span><span class="r">Golden Brief template · v1</span></div>
+
+  <div class="brandline">Lager Co</div>
+  <h1 class="title">Earn Your Round</h1>
+  <div class="metarow">
+    <span class="pill">Launch</span>
+    <span>Status&nbsp; <b>In review</b></span>
+    <span>·</span>
+    <span>11 Jun 2026</span>
+    <span>·</span>
+    <span>Client lead <b>—</b></span>
+    <span>Agency <b>—</b></span>
+    <span class="health"><span style="font-size:7pt;letter-spacing:1pt;text-transform:uppercase;color:#9a978f;">Brief health</span><br><span class="n">86</span><span style="font-size:8pt;color:#b6b2a8;">/100</span></span>
+  </div>
+  <div class="rule"></div>
+
+  <div class="zone"><span class="z">Zone 1 —</span> Why we&rsquo;re here</div>
+
+  <div class="field">
+    <div class="fhead"><span class="label">Background <span class="id">background</span></span><span class="meta"><span class="dot d-cs"></span>client-stated<span class="conf">conf .92</span></span></div>
+    <div class="value">Sales have plateaued and under-35s see us as &ldquo;their dad&rsquo;s beer.&rdquo; A new low-carb variant launches in Q3 &mdash; our one shot to feel relevant to a younger drinker.</div>
+  </div>
+
+  <div class="field">
+    <div class="fhead"><span class="label">Objectives <span class="id">objectives</span></span><span class="meta"><span class="dot d-inf"></span>inferred<span class="conf">conf .74</span></span></div>
+    <div class="obj">
+      <div class="k">Commercial</div><div class="v">+8% volume share among 18&ndash;34s within 12 months</div>
+      <div class="k">Behavioural</div><div class="v">100,000 under-35s trial the new variant</div>
+      <div class="k">Attitudinal</div><div class="v">Shift &ldquo;not for me&rdquo; &rarr; &ldquo;for people like me&rdquo;</div>
+    </div>
+  </div>
+
+  <div class="zone"><span class="z">Zone 2 —</span> Who, and what we have</div>
+
+  <div class="field">
+    <div class="fhead"><span class="label">Audience <span class="id">audience</span></span><span class="meta"><span class="dot d-inf"></span>inferred<span class="conf">conf .70</span></span></div>
+    <div class="value">Conor, 29, Dublin. Drinks craft cans because they signal taste, not tradition. Wouldn&rsquo;t be seen holding a pint of the &ldquo;big&rdquo; lager &mdash; that&rsquo;s his uncle&rsquo;s drink.</div>
+  </div>
+
+  <div class="field">
+    <div class="fhead"><span class="label">Budget &amp; scope <span class="id">budget_scope</span></span><span class="meta"><span class="dot d-miss"></span>needs client<span class="conf">conf .55</span></span></div>
+    <div class="value">&euro;1.2m working media <span style="color:#9a978f;">(assumed)</span>. National reach unrealistic &mdash; prioritise four cities + always-on social.</div>
+  </div>
+
+  <div class="field">
+    <div class="fhead"><span class="label">Competitor context <span class="id">competitor_context</span></span><span class="meta"><span class="dot d-inf"></span>inferred<span class="conf">conf .68</span></span></div>
+    <div class="value">Rivals all claim heritage, mateship and &ldquo;the perfect pint.&rdquo; White space: nobody owns &ldquo;the drink that signals your taste.&rdquo;</div>
+  </div>
+
+  <!-- ============ PAGE 2 — THE SPARK ============ -->
+  <div class="spark">
+    <div class="zone"><span class="z">Zone 3 —</span> The spark</div>
+
+    <div class="field" style="border-bottom:none;">
+      <div class="fhead"><span class="label">The insight <span class="id">insight</span></span><span class="meta"><span class="dot d-inf"></span>inferred<span class="conf">conf .78</span></span></div>
+      <div class="insight-lead">They don&rsquo;t reject us on taste &mdash; choosing a drink is choosing a tribe, and ours signals the wrong one. So the job isn&rsquo;t taste, it&rsquo;s belonging.</div>
+    </div>
+
+    <div class="smp-wrap">
+      <div class="smp-kicker">Single-minded proposition</div>
+      <div class="smp serif">The lager that earns its place in your round.</div>
+      <div class="smp-foot"><span class="tick">&#10003;</span> one sentence &nbsp;&middot;&nbsp; <span class="tick">&#10003;</span> single-minded &nbsp;&middot;&nbsp; <span class="tick">&#10003;</span> ownable &nbsp;&middot;&nbsp; <span class="tick">&#10003;</span> derives from the insight</div>
+    </div>
+
+    <div class="field">
+      <div class="fhead"><span class="label">Reasons to believe <span class="id">reasons_to_believe</span></span><span class="meta"><span class="dot d-inf"></span>inferred<span class="conf">conf .72</span></span></div>
+      <div class="rtb">Small-batch brewed &nbsp;<b>&middot;</b>&nbsp; 3g carbs &nbsp;<b>&middot;</b>&nbsp; chosen #1 in a blind taste test of under-30s</div>
+    </div>
+
+    <div class="field">
+      <div class="fhead"><span class="label">Desired response <span class="id">desired_response</span></span><span class="meta"><span class="dot d-inf"></span>inferred<span class="conf">conf .70</span></span></div>
+      <div class="tfd">
+        <div><div class="k">Think</div><div class="v">&ldquo;This one&rsquo;s actually for me.&rdquo;</div></div>
+        <div><div class="k">Feel</div><div class="v">Quietly proud to order it.</div></div>
+        <div><div class="k">Do</div><div class="v">Ask for it by name at the bar.</div></div>
+      </div>
+    </div>
+
+    <div class="zone"><span class="z">Zone 4 —</span> How, and the guardrails</div>
+
+    <div class="field">
+      <div class="fhead"><span class="label">Tone, world &amp; distinctive assets <span class="id">tone_world_assets</span></span><span class="meta"><span class="dot d-cs"></span>client-stated<span class="conf">conf .85</span></span></div>
+      <div class="value">Dry, confident, never try-hard. Always carry through: the red flash, the &ldquo;O,&rdquo; the two-note sound sting.</div>
+    </div>
+
+    <div class="field" style="border-bottom:none;">
+      <div class="fhead"><span class="label">Mandatories &amp; practicalities <span class="id">mandatories</span></span><span class="meta"><span class="dot d-cs"></span>client-stated<span class="conf">conf .90</span></span></div>
+      <div class="value">3&times;30s + 6s cutdowns + OOH + social. Responsibility message required. Live by 1 Sept. Don&rsquo;t reference competitors.</div>
+    </div>
+  </div>
+
+  <!-- ============ PAGE 3 — THE GATE ============ -->
+  <div class="gate">
+    <div class="zone"><span class="z">The gate —</span> evaluation &amp; sign-off</div>
+
+    <div class="gatebox">
+      <div class="gk">We&rsquo;ll judge the work against</div>
+      <div class="crit">&ldquo;Does it make a 29-year-old proud to order it at the bar?&rdquo;</div>
+      <div class="signrow">
+        <div>Approved by client<span class="ln"></span></div>
+        <div>Accepted by agency<span class="ln"></span></div>
+        <div>Date<span class="ln" style="width:90pt;"></span></div>
+      </div>
+    </div>
+
+    <div class="oq">
+      <div class="ok">Open questions for the client</div>
+      <div class="item"><span class="sev">High</span>Is the Q3 launch date fixed, or a target? <span style="color:#9a8a5a;">— blocks mandatories</span></div>
+      <div class="item"><span class="sev">Med</span>Confirm working media budget &mdash; &euro;1.2m assumed. <span style="color:#9a8a5a;">— blocks budget &amp; scope</span></div>
+    </div>
+
+    <div class="legend">
+      <span><span class="dot d-cs"></span>client-stated</span>
+      <span><span class="dot d-inf"></span>inferred by agent</span>
+      <span><span class="dot d-miss"></span>needs client confirmation</span>
+      <span style="margin-left:auto;">conf = agent confidence (0&ndash;1)</span>
+    </div>
+
+    <div class="src">Structure: 10 craft fields + 2 agent fields (competitor context, open questions) + the sign-off gate, in 4 zones. Built on the IPA / BetterBriefs best-practice guide (&ldquo;The best way for a client to brief an agency,&rdquo; with Mark Ritson) and the brief structures of BBH, TBWA, Wieden+Kennedy, Mother and AMV BBDO. This page is a visual reference for the rendered output; the source of truth is golden_brief.schema.js.</div>
+  </div>
+
+</body>
+</html>

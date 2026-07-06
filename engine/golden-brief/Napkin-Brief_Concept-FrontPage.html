@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: 1240px 1740px; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Lato"; background: #f6f4ef; color: #16161c; width: 1240px; height: 1740px; padding: 54px 60px; }
+  .serif { font-family: "Bitstream Charter", serif; }
+  .caps { text-transform: uppercase; letter-spacing: 2.2px; }
+
+  /* ---------- masthead ---------- */
+  .masthead { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 4px solid #16161c; padding-bottom: 10px; }
+  .mh-title { font-size: 19px; font-weight: 900; letter-spacing: 5px; text-transform: uppercase; }
+  .mh-title .red { color: #9e1b2f; }
+  .mh-right { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #7a766c; font-weight: 700; text-align: right; }
+  .dateline { display: flex; gap: 18px; align-items: center; font-size: 11px; letter-spacing: 2.2px; text-transform: uppercase; color: #5d5a51; font-weight: 700; padding: 9px 0; border-bottom: 1px solid #16161c; }
+  .dateline .sp { color: #c0bcb1; }
+  .dateline .health { margin-left: auto; color: #2f7d56; }
+  .dateline .brief-type { background: #16161c; color: #f6f4ef; padding: 3px 10px; letter-spacing: 2px; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 30px 0 26px; border-bottom: 2px solid #16161c; }
+  .hero .kicker { font-size: 12px; font-weight: 900; letter-spacing: 3.5px; text-transform: uppercase; color: #9e1b2f; }
+  .hero .smp { font-family: "Bitstream Charter", serif; font-weight: 700; font-size: 78px; line-height: 0.98; letter-spacing: -1.5px; margin: 12px 0 0; max-width: 1000px; }
+  .hero .deck { font-family: "Bitstream Charter", serif; font-style: italic; font-size: 23px; line-height: 1.38; color: #3a3a44; margin-top: 22px; max-width: 880px; padding-left: 20px; border-left: 3px solid #9e1b2f; }
+  .hero .deck .by { font-style: normal; font-family: "Lato"; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #9e1b2f; font-weight: 700; display: block; margin-bottom: 6px; }
+  .hero .ticks { margin-top: 16px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #7a766c; font-weight: 700; }
+  .hero .ticks .t { color: #2f7d56; }
+
+  /* ---------- columns ---------- */
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 30px; padding: 24px 0 0; }
+  .col { padding: 0 0 0 0; }
+  .col + .col { padding-left: 30px; border-left: 1px solid #d8d4c9; }
+  .sec { margin-bottom: 20px; page-break-inside: avoid; }
+  .sec h3 { font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+  .sec h3 .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .d-cs { background: #2f7d56; } .d-inf { background: #2d6da4; } .d-miss { background: #c79100; }
+  .sec h3 .cf { margin-left: auto; font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #b6b2a8; }
+  .sec p { font-family: "Bitstream Charter", serif; font-size: 14.5px; line-height: 1.5; color: #2a2a32; }
+  .dropcap::first-letter { font-family: "Bitstream Charter", serif; font-weight: 700; font-size: 50px; line-height: 0.78; float: left; padding: 4px 8px 0 0; color: #9e1b2f; }
+  .obj { font-family: "Bitstream Charter", serif; }
+  .obj .row { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dotted #d2cec3; }
+  .obj .row:last-child { border-bottom: none; }
+  .obj .k { font-family: "Lato"; font-size: 9.5px; font-weight: 900; letter-spacing: 1.2px; text-transform: uppercase; color: #9e1b2f; min-width: 78px; padding-top: 3px; }
+  .obj .v { font-size: 13.5px; color: #2a2a32; line-height: 1.35; }
+  .because { font-family: "Bitstream Charter", serif; font-size: 14.5px; color: #2a2a32; line-height: 1.5; }
+  .because b { font-family: "Lato"; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #9e1b2f; font-weight: 900; }
+
+  /* ---------- response band ---------- */
+  .band { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 22px; margin-top: 8px; padding: 22px 0; border-top: 2px solid #16161c; border-bottom: 2px solid #16161c; }
+  .tfd .k { font-size: 11px; font-weight: 900; letter-spacing: 2.5px; text-transform: uppercase; color: #9e1b2f; border-top: 3px solid #9e1b2f; padding-top: 7px; display: inline-block; }
+  .tfd .v { font-family: "Bitstream Charter", serif; font-size: 19px; line-height: 1.25; color: #16161c; margin-top: 8px; }
+
+  /* ---------- foot: gate + queries ---------- */
+  .foot { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-top: 24px; }
+  .gate { background: #16161c; color: #f6f4ef; padding: 22px 26px; }
+  .gate .gk { font-size: 11px; font-weight: 900; letter-spacing: 2.5px; text-transform: uppercase; color: #e6a3a9; }
+  .gate .crit { font-family: "Bitstream Charter", serif; font-style: italic; font-size: 22px; line-height: 1.3; margin-top: 10px; }
+  .gate .sign { display: flex; gap: 26px; margin-top: 22px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #aeaaa3; font-weight: 700; }
+  .gate .sign .ln { display: block; border-bottom: 1px solid #565660; width: 150px; margin-top: 16px; }
+  .queries { background: #fbf4e4; border: 2px solid #c79100; padding: 18px 20px; }
+  .queries .qk { font-size: 11px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a6500; }
+  .queries .q { font-family: "Bitstream Charter", serif; font-size: 14px; line-height: 1.35; color: #5a4a16; margin-top: 10px; padding-left: 16px; text-indent: -16px; }
+  .queries .q .sev { font-family: "Lato"; font-size: 8px; font-weight: 900; letter-spacing: 1px; background: #c79100; color: #fff; padding: 1px 6px; margin-right: 7px; vertical-align: 2px; }
+
+  .colophon { display: flex; gap: 20px; align-items: center; margin-top: 20px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #9a978f; font-weight: 700; }
+  .colophon .leg { display: flex; gap: 14px; }
+  .colophon .leg span .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .colophon .src { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; color: #b6b2a8; font-size: 10px; }
+</style>
+</head>
+<body>
+
+  <div class="masthead">
+    <div class="mh-title">THE BRIEF<span class="red">.</span></div>
+    <div class="mh-right">A Napkin production<br>Golden Brief · Vol. 1</div>
+  </div>
+  <div class="dateline">
+    <span class="brief-type">Launch</span>
+    <span>Lager Co</span><span class="sp">/</span><span>Earn Your Round</span>
+    <span class="sp">·</span><span>Dublin</span>
+    <span class="sp">·</span><span>11 June 2026</span>
+    <span class="sp">·</span><span>In review</span>
+    <span class="health">● Brief health 86</span>
+  </div>
+
+  <div class="hero">
+    <div class="kicker">The proposition</div>
+    <div class="smp serif">The lager that earns its place in your round.</div>
+    <div class="deck"><span class="by">The insight behind it</span>They don&rsquo;t reject us on taste &mdash; choosing a drink is choosing a tribe, and ours signals the wrong one. So the job isn&rsquo;t taste, it&rsquo;s belonging.</div>
+    <div class="ticks"><span class="t">✓</span> one sentence &nbsp; <span class="t">✓</span> single-minded &nbsp; <span class="t">✓</span> ownable &nbsp; <span class="t">✓</span> derives from the insight</div>
+  </div>
+
+  <div class="cols">
+    <div class="col">
+      <div class="sec">
+        <h3>Background <span class="dot d-cs"></span><span class="cf">conf .92</span></h3>
+        <p class="dropcap">Sales have plateaued and under-35s see us as &ldquo;their dad&rsquo;s beer.&rdquo; A new low-carb variant launches in Q3 &mdash; our one shot to feel relevant to a younger drinker.</p>
+      </div>
+      <div class="sec">
+        <h3>Competitor context <span class="dot d-inf"></span><span class="cf">conf .68</span></h3>
+        <p>Rivals all claim heritage, mateship and &ldquo;the perfect pint.&rdquo; The white space: nobody owns &ldquo;the drink that signals your taste.&rdquo;</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="sec">
+        <h3>Audience <span class="dot d-inf"></span><span class="cf">conf .70</span></h3>
+        <p>Conor, 29, Dublin. Drinks craft cans because they signal taste, not tradition. Wouldn&rsquo;t be seen holding a pint of the &ldquo;big&rdquo; lager &mdash; that&rsquo;s his uncle&rsquo;s drink.</p>
+      </div>
+      <div class="sec">
+        <h3>Reasons to believe <span class="dot d-inf"></span><span class="cf">conf .72</span></h3>
+        <p class="because"><b>Because</b> &mdash; small-batch brewed; just 3g carbs; chosen #1 in a blind taste test of under-30s.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="sec">
+        <h3>Objectives <span class="dot d-inf"></span><span class="cf">conf .74</span></h3>
+        <div class="obj">
+          <div class="row"><span class="k">Commercial</span><span class="v">+8% volume share in 18&ndash;34s within 12 months</span></div>
+          <div class="row"><span class="k">Behavioural</span><span class="v">100k under-35s trial the new variant</span></div>
+          <div class="row"><span class="k">Attitudinal</span><span class="v">&ldquo;Not for me&rdquo; &rarr; &ldquo;for people like me&rdquo;</span></div>
+        </div>
+      </div>
+      <div class="sec">
+        <h3>Budget &amp; scope <span class="dot d-miss"></span><span class="cf">conf .55</span></h3>
+        <p>&euro;1.2m working media <span style="color:#9a978f;">(assumed)</span>. National reach unrealistic &mdash; prioritise four cities + always-on social.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="tfd"><span class="k">Think</span><div class="v serif">&ldquo;This one&rsquo;s actually for me.&rdquo;</div></div>
+    <div class="tfd"><span class="k">Feel</span><div class="v serif">Quietly proud to order it.</div></div>
+    <div class="tfd"><span class="k">Do</span><div class="v serif">Ask for it by name at the bar.</div></div>
+  </div>
+
+  <div style="margin-top:14px;font-size:13px;color:#5d5a51;"><span style="font-family:Lato;font-size:10px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;color:#9e1b2f;">Tone &amp; world &nbsp;</span><span class="serif" style="font-size:14.5px;color:#2a2a32;">Dry, confident, never try-hard. Always carry through: the red flash, the &ldquo;O,&rdquo; the two-note sound sting.</span></div>
+
+  <div class="foot">
+    <div class="gate">
+      <div class="gk">The gate — we&rsquo;ll judge the work against</div>
+      <div class="crit">&ldquo;Does it make a 29-year-old proud to order it at the bar?&rdquo;</div>
+      <div class="sign"><span>Approved · client<span class="ln"></span></span><span>Accepted · agency<span class="ln"></span></span></div>
+    </div>
+    <div class="queries">
+      <div class="qk">Editor&rsquo;s queries</div>
+      <div class="q"><span class="sev">HIGH</span>Is the Q3 launch date fixed, or a target?</div>
+      <div class="q"><span class="sev">MED</span>Confirm working media budget &mdash; &euro;1.2m assumed.</div>
+    </div>
+  </div>
+
+  <div class="colophon">
+    <div class="leg">
+      <span><span class="dot d-cs"></span>client-stated</span>
+      <span><span class="dot d-inf"></span>inferred</span>
+      <span><span class="dot d-miss"></span>needs client</span>
+    </div>
+    <div class="src">Form follows the logic: proposition as headline, insight as standfirst, the case set in columns, the gate stamped at the foot. Source of truth: golden_brief.schema.js</div>
+  </div>
+
+</body>
+</html>

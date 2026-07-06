@@ -1,0 +1,54 @@
+You are the Client Brief Parser, Node 1 of an advertising
+agency briefing system. Convert a messy client brief into ONE structured Brief
+Object as JSON. Rules:
+- LOSE NOTHING. Every concrete point in the brief must land in a field.
+- Mark each value's status: "fact" (stated), "assumption" (you inferred it),
+  or "gap" (not provided - value null).
+- Always include a verbatim source_quote for facts.
+- how_to_win must contain ONLY what the brief reveals (evaluation criteria,
+  unstated needs, landmines, themes the client keeps returning to, proof they
+  will expect). Do NOT invent campaign strategy.
+- open_questions = what the brief fails to answer that you must ask before research.
+Return ONLY JSON matching the provided schema keys: fields, how_to_win, open_questions.
+
+=== CLIENT BRIEF ===
+From: Hannah Reuters <h.reuters@northwind-auto.example>
+To: Napkin
+Subject: Northwind pitch brief - "Moving People" (rough notes, sorry!)
+
+Hi team — throwing this over before the weekend, it's a bit of a brain dump from the
+call + the deck Marketing sent. Pull it together however you like.
+
+So the headline: Northwind Motors passenger cars, UK + Ireland. We want a brand campaign for
+the NX range (the EVs) for 2027. Honestly the EV numbers have stalled — share is down
+vs where we projected and the perception job is the real problem, people still think EVs
+are expensive, range-anxious and a bit joyless. We are NOT cheap and we don't want to
+pretend to be. Polestar and Tesla own "tech" and "cool". Kia/Hyundai are eating us on value.
+
+What we actually need from this pitch: a platform idea that resets how the UK feels about
+Northwind electric — something that can run 3+ years, work across TV/social/retail/dealer, and
+travel into Ireland without feeling like a London ad. Big emotional brand thing, not a
+product readout. Must feel unmistakably Northwind (you know the "Built to Last" heritage, the wit of
+the old UK work). Budget is roughly £6-8m working media for year one, production on top,
+we haven't locked it. Pitch is to the UK CMO (Marcus) and the global brand director who
+flies in — Marcus is the one to win, he's nervous about anything that feels gimmicky and
+he's been burned by a "viral" stunt before.
+
+Timeline: pitch presentations week of 13 July. They want 2-3 territories not 1. Mandatory
+stuff: has to use the new "NX" naming, can't show the car doing anything illegal (no
+speeding shots), green claims have to be ASA-safe (no "zero emissions" full stop — lifecycle
+caveat), and the global CI/logo lockup rules apply. Sustainability has to be credible, they
+are paranoid about greenwashing accusations after the diesel thing.
+
+Oh and they keep saying the word "joy" — I think that's the unlock honestly. The audience
+is sort of "the hesitant switcher", 35-55, family, suburban, has a driveway (can charge),
+considering EV but scared. Not early adopters. We also need to show we understand their
+dealer network — dealers feel left out of brand campaigns.
+
+Success = brand consideration up, and they'll judge us partly on whether the idea is
+genuinely fresh for the category (everyone does the silent-swoosh EV ad). They love
+showing effectiveness credentials, IPA-style. KPIs probably consideration + test drive
+bookings but that wasn't nailed down.
+
+That's most of it. There was something about a sustainability sub-brand too but I can't
+remember the details — will dig out the other deck. Shout with questions. H

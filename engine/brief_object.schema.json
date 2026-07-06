@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BriefObject",
+  "description": "Output of the briefing tool, Loops 1-2. loop1_capture is faithful, no-RAG capture + win-rules + a no-loss ledger. loop2_brief shapes that into a first-round agency brief + open questions. Every captured value carries provenance and a fact/assumption/gap status so the brief is auditable.",
+  "type": "object",
+  "required": ["meta", "loop1_capture", "loop2_brief"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["source_files", "parsed_at", "parser_version", "extraction_mode"],
+      "properties": {
+        "client": {"type": ["string", "null"]},
+        "project": {"type": ["string", "null"]},
+        "source_files": {"type": "array", "items": {"type": "string"}},
+        "parsed_at": {"type": "string", "format": "date-time"},
+        "parser_version": {"type": "string"},
+        "prompt_version": {"type": "string"},
+        "extraction_mode": {"type": "string",
+          "description": "heuristic, or provider:model (e.g. nim:nvidia/...)"}
+      }
+    },
+    "loop1_capture": {
+      "type": "object",
+      "description": "Loop 1 - IPA: background + objectives. NO RAG. Faithful capture only.",
+      "required": ["fields", "how_to_win", "no_loss_ledger"],
+      "properties": {
+        "fields": {
+          "type": "object",
+          "description": "Structured capture. Each entry uses the Captured shape.",
+          "additionalProperties": {"$ref": "#/$defs/capturedOrList"}
+        },
+        "how_to_win": {
+          "type": "object",
+          "description": "Win-rules the BRIEF reveals - not generated strategy.",
+          "properties": {
+            "stated_evaluation_criteria": {"type": "array", "items": {"$ref": "#/$defs/evidenced"}},
+            "unstated_needs": {"type": "array", "items": {"$ref": "#/$defs/evidenced"}},
+            "likely_landmines": {"type": "array", "items": {"$ref": "#/$defs/evidenced"}},
+            "winning_themes": {"type": "array", "items": {"$ref": "#/$defs/evidenced"}},
+            "proof_required": {"type": "array", "items": {"$ref": "#/$defs/evidenced"}}
+          }
+        },
+        "no_loss_ledger": {
+          "type": "object",
+          "required": ["total_segments", "mapped_segments", "coverage_pct", "unmapped"],
+          "properties": {
+            "total_segments": {"type": "integer"},
+            "mapped_segments": {"type": "integer"},
+            "coverage_pct": {"type": "number"},
+            "unmapped": {"type": "array", "items": {"type": "object", "properties": {
+              "segment": {"type": "string"}, "source_ref": {"type": "string"}}}}
+          }
+        },
+        "review": {"$ref": "#/$defs/review"}
+      }
+    },
+    "loop2_brief": {
+      "type": "object",
+      "description": "Loop 2 - IPA: objective + role. The first-round agency brief.",
+      "required": ["problem", "objective", "audience", "scope", "open_questions"],
+      "properties": {
+        "problem": {"$ref": "#/$defs/captured"},
+        "objective": {"$ref": "#/$defs/captured"},
+        "audience": {"$ref": "#/$defs/captured"},
+        "key_message": {"$ref": "#/$defs/captured",
+          "description": "BetterBriefs: the ONE single-minded message."},
+        "evaluation_criteria": {"$ref": "#/$defs/captured",
+          "description": "BetterBriefs: how the work will be judged, agreed upfront."},
+        "not_doing": {"$ref": "#/$defs/captured",
+          "description": "BetterBriefs: strategic sacrifice - who/what this brief is NOT for."},
+        "scope": {"$ref": "#/$defs/captured"},
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["question", "why_it_matters"],
+            "properties": {
+              "question": {"type": "string"},
+              "why_it_matters": {"type": "string"},
+              "priority": {"enum": ["blocker", "important", "nice_to_have"]}
+            }
+          }
+        },
+        "review": {"$ref": "#/$defs/review"}
+      }
+    },
+    "betterbriefs_scorecard": {
+      "type": "object",
+      "description": "Quality of the CLIENT brief judged against the BetterBriefs rubric (reference/betterbriefs/). Presence lives in loop1; this scores present-but-vague.",
+      "required": ["dimensions", "single_mindedness", "mode"],
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dimension", "verdict"],
+            "properties": {
+              "dimension": {"enum": ["objectives_quality", "audience_vividness",
+                "single_minded_message", "evaluation_criteria", "budget_interlock",
+                "strategic_clarity", "language"]},
+              "verdict": {"enum": ["pass", "vague", "missing"]},
+              "evidence": {"type": "string"},
+              "fix": {"type": "string"}
+            }
+          }
+        },
+        "single_mindedness": {
+          "type": "object",
+          "description": "One brief = one strategy. If the client bundled several jobs, split_into lists the separate briefs.",
+          "properties": {
+            "verdict": {"enum": ["single", "multiple"]},
+            "split_into": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "summary": {"type": "string"},
+        "mode": {"enum": ["llm", "heuristic"]}
+      }
+    }
+  },
+  "$defs": {
+    "captured": {
+      "type": "object",
+      "required": ["value", "status"],
+      "properties": {
+        "value": {"type": ["string", "null"]},
+        "status": {"enum": ["fact", "assumption", "gap"]},
+        "source_quote": {"type": ["string", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "objective_type": {"enum": ["commercial", "behavioural", "attitudinal"]}
+      }
+    },
+    "capturedOrList": {
+      "oneOf": [{"$ref": "#/$defs/captured"},
+                {"type": "array", "items": {"$ref": "#/$defs/captured"}}]
+    },
+    "evidenced": {
+      "type": "object",
+      "required": ["point", "evidence"],
+      "properties": {"point": {"type": "string"}, "evidence": {"type": "string"}}
+    },
+    "review": {
+      "type": "object",
+      "description": "The self-critique (REVIEW step) of the loop.",
+      "properties": {"passed": {"type": "boolean"},
+                     "flags": {"type": "array", "items": {"type": "string"}}}
+    }
+  }
+}

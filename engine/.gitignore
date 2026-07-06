@@ -1,0 +1,25 @@
+.env
+outputs/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# generated / rebuildable artifacts
+rag/index/
+rag/index.offline.bak/
+rag/_testindex/
+rag/_index_test/
+rag/_index_v2/
+rag/_index*/
+
+# OS / tooling junk
+.DS_Store
+.playwright-mcp/
+
+# raw corpus exports (proprietary, never in the public repo)
+reference/_raw/
+reference/rag/
+reference/rag_test/
+
+# real client briefs — never ship
+samples/client_briefs/
