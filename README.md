@@ -24,6 +24,8 @@ The relationship is deliberate: **CLAN is the open file format; Napkin Studio OS
 
 See the [Provenance-Native Applications](app/) model: the template is the application, the data layer is what AI and humans write (with attribution), and the rendering environment is a commodity host exposing a `clan://` API (`patch-data`, `fork`, `upload-asset`, `assets/*`, `api-proxy`).
 
+**Brief Maker + the briefing engine.** The flagship app is [Brief Maker](app/templates/brief-maker/) — creative-brief authoring whose Generate flow runs on the real **[napkin briefing engine](engine/)** (Loops 1–7: no-loss capture, BetterBriefs scorecard, RAG-grounded strategy over award corpora, golden-brief fill, plus a research agent). The pipeline contract travels **inside the template** (`agent/requirements.yaml`, `app/pipeline.yaml`), so every instantiated Brief Maker app declares the same pipeline; [`engine/agent-server/`](engine/agent-server/) is the reference backend (`mock-agent/` remains the keyless demo). Wiring: [`docs/workspace.example.yaml`](docs/workspace.example.yaml).
+
 ---
 
 Multi-agent pipelines break at boundaries. State lives in memory or in a database tied to whichever framework is running - so when you hand work to a different team, a different model, or a different tool, you're starting over. The artifact doesn't travel. Provenance doesn't travel. The output contract doesn't travel.

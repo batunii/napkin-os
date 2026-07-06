@@ -1,0 +1,15 @@
+# Capability requirements (CLAN spec §22) for the Brief Maker application.
+# This file travels verbatim into every app instantiated from this template,
+# so any orchestrator opening a Brief Maker .clan can check capability fit.
+# Orchestrators SHOULD warn (not fail) on unmet requirements: without them the
+# app still runs in keyless/demo mode (heuristic capture, no strategy fill).
+requires:
+  tools:
+    - name: llm_inference
+      why: "extract and synthesise brief fields (Loops 1-7 of the briefing pipeline)"
+    - name: retrieval
+      why: "ground insight/SMP/RTBs in award-corpora precedent (ipa · cannes · effie · dandad + planner playbooks; remote Qdrant collection)"
+    - name: web_search
+      why: "research agent: live client/market/competitor context feeding the draft dossier"
+  model_hints:
+    min_context_tokens: 32000

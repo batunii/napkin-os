@@ -1,0 +1,36 @@
+# Brief Maker pipeline contract.
+# Travels verbatim into every instance (CLAN instantiation copies all members),
+# so any agent or backend continuing a Brief Maker .clan knows the pipeline it
+# must speak. The reference implementation is engine/agent-server/ in this repo.
+pipeline: napkin-briefing
+version: 1
+request_kind: agent            # host proxy route; a dedicated `research` kind is reserved
+endpoint_default: http://localhost:8787
+
+tasks:
+  draft_brief:
+    sends: { input: string, attachments: "reference_assets with host-extracted text" }
+    flow:
+      - research dossier (corpus retrieval + optional web) — planner-facing
+        context panel only; never enters capture
+      - loop 1 · no-loss capture (RAG-FREE — the one hard rule)
+      - loop 2 · working brief + open questions + BetterBriefs scorecard
+      - loops 3-7 · RAG-grounded strategy (insight, SMP, RTBs, desired response)
+        when the backend has keys + the retrieval store
+    returns: >
+      bare JSON of schema.json top-level fields, plus meta keys `rationale` and
+      `context` (stripped by the app before patching). Empty fields are OMITTED,
+      never sent as "" — regenerating must not clobber planner-filled boxes.
+  regenerate_field:
+    sends: { field: "literal dotted key, e.g. objectives.commercial", input: "planner guidance" }
+    returns: '{ "<literal dotted key>": <string|array per schema>, "rationale": "..." }'
+
+grounding:
+  corpora: [ipa, cannes, effie, dandad, playbook, template]
+  store: qdrant (remote); collection default napkin_rag_v2
+  citation_format: "source › section"
+  invariant: retrieval never touches Loop-1 capture; research output is labelled
+    supporting context and never alters the client's own words.
+
+errors: non-2xx status; the host strips error bodies, diagnostics live in the
+  backend log. A 200 body must never contain an `error` key.

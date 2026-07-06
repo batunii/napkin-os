@@ -1,0 +1,23 @@
+# Napkin Studio host configuration — copy to <app-config-dir>/workspace.yaml
+# (macOS: ~/Library/Application Support/<bundle-id>/workspace.yaml).
+# Secrets live next to it in secrets.yaml; templates never see them.
+#
+# Endpoint resolution per request_kind: proxies.<kind> → agent_url →
+# NAPKIN_AGENT_URL env → http://localhost:8787.
+
+# Single uniform backend (the briefing engine — engine/agent-server):
+agent_url: http://localhost:8787
+
+# Per-kind routing. `agent` serves the Brief Maker draft/regenerate tasks;
+# `research` is reserved for a future dedicated research UI — today the
+# research agent runs inside the engine's draft flow.
+proxies:
+  agent:
+    endpoint: http://localhost:8787
+  research:
+    endpoint: http://localhost:8787
+  # Remote example, with a host-held secret:
+  # agent:
+  #   endpoint: https://briefing.internal.example/agent
+  #   auth_kind: bearer          # or x-api-key
+  #   secret_ref: briefing_api   # key in secrets.yaml

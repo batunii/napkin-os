@@ -1,0 +1,274 @@
+{
+ "meta": {
+  "client": "Northwind Motors",
+  "project": "Moving People",
+  "source_files": [
+   "messy_brief_sample.txt"
+  ],
+  "parsed_at": "2026-07-06T19:11:37",
+  "parser_version": "0.3.0",
+  "extraction_mode": "heuristic",
+  "prompt_version": "loop12-v2-betterbriefs"
+ },
+ "loop1_capture": {
+  "fields": {
+   "business_problem": {
+    "value": "Honestly the EV numbers have stalled — share is down vs where we projected and the perception job is the real problem, people still think EVs are expensive, range-anxious and a bit joyless.",
+    "status": "fact",
+    "source_quote": "Honestly the EV numbers have stalled — share is down vs where we projected and the perception job is the real problem, people still think EVs are expensive, range-anxious and a bit joyless.",
+    "confidence": 0.6
+   },
+   "competitors_market": {
+    "value": "Polestar and Tesla own \"tech\" and \"cool\".",
+    "status": "fact",
+    "source_quote": "Polestar and Tesla own \"tech\" and \"cool\".",
+    "confidence": 0.6
+   },
+   "mandatories": [
+    {
+     "value": "Must feel unmistakably Northwind (you know the \"Built to Last\" heritage, the wit of the old UK work).",
+     "status": "fact",
+     "source_quote": "Must feel unmistakably Northwind (you know the \"Built to Last\" heritage, the wit of the old UK work).",
+     "confidence": 0.6
+    },
+    {
+     "value": "Mandatory",
+     "status": "fact",
+     "source_quote": "Mandatory",
+     "confidence": 0.6
+    },
+    {
+     "value": "stuff: has to use the new \"NX\" naming, can't show the car doing anything illegal (no speeding shots), green claims have to be ASA-safe (no \"zero emissions\" full stop — lifecycle caveat), and the global CI/logo lockup rules apply.",
+     "status": "fact",
+     "source_quote": "stuff: has to use the new \"NX\" naming, can't show the car doing anything illegal (no speeding shots), green claims have to be ASA-safe (no \"zero emissions\" full stop — lifecycle caveat), and the global CI/logo lockup rules apply.",
+     "confidence": 0.6
+    },
+    {
+     "value": "There was something about a sustainability sub-brand too but I can't remember the details — will dig out the other deck.",
+     "status": "fact",
+     "source_quote": "There was something about a sustainability sub-brand too but I can't remember the details — will dig out the other deck.",
+     "confidence": 0.6
+    }
+   ],
+   "budget": {
+    "value": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it.",
+    "status": "fact",
+    "source_quote": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it.",
+    "confidence": 0.6
+   },
+   "decision_makers": [
+    {
+     "value": "Pitch is to the UK CMO (Marcus) and the global brand director who flies in — Marcus is the one to win, he's nervous about anything that feels gimmicky and he's been burned by a \"viral\" stunt before.",
+     "status": "fact",
+     "source_quote": "Pitch is to the UK CMO (Marcus) and the global brand director who flies in — Marcus is the one to win, he's nervous about anything that feels gimmicky and he's been burned by a \"viral\" stunt before.",
+     "confidence": 0.6
+    }
+   ],
+   "timeline": [
+    {
+     "value": "Timeline: pitch presentations week of 13 July.",
+     "status": "fact",
+     "source_quote": "Timeline: pitch presentations week of 13 July.",
+     "confidence": 0.6
+    }
+   ],
+   "target_audience": {
+    "value": "The audience is sort of \"the hesitant switcher\", 35-55, family, suburban, has a driveway (can charge), considering EV but scared.",
+    "status": "fact",
+    "source_quote": "The audience is sort of \"the hesitant switcher\", 35-55, family, suburban, has a driveway (can charge), considering EV but scared.",
+    "confidence": 0.6
+   },
+   "success_metrics": [
+    {
+     "value": "Success = brand consideration up, and they'll judge us partly on whether the idea is genuinely fresh for the category (everyone does the silent-swoosh EV ad).",
+     "status": "fact",
+     "source_quote": "Success = brand consideration up, and they'll judge us partly on whether the idea is genuinely fresh for the category (everyone does the silent-swoosh EV ad).",
+     "confidence": 0.6
+    },
+    {
+     "value": "They love showing effectiveness credentials, IPA-style.",
+     "status": "fact",
+     "source_quote": "They love showing effectiveness credentials, IPA-style.",
+     "confidence": 0.6
+    },
+    {
+     "value": "KPIs probably consideration + test drive bookings but that wasn't nailed down.",
+     "status": "fact",
+     "source_quote": "KPIs probably consideration + test drive bookings but that wasn't nailed down.",
+     "confidence": 0.6
+    }
+   ]
+  },
+  "how_to_win": {},
+  "no_loss_ledger": {
+   "total_segments": 30,
+   "mapped_segments": 14,
+   "coverage_pct": 46.7,
+   "unmapped": [
+    {
+     "segment": "From: Hannah Reuters <h.reuters@northwind-auto.example> To: Napkin",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Subject: Northwind pitch brief - \"Moving People\" (rough notes, sorry!)",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Hi team — throwing this over before the weekend, it's a bit of a brain dump from the call + the deck Marketing sent.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Pull it together however you like.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "So the headline: Northwind Motors passenger cars, UK + Ireland.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "We want a brand campaign for the NX range (the EVs) for 2027.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "We are NOT cheap and we don't want to pretend to be.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "What we actually need from this pitch: a platform idea that resets how the UK feels about Northwind electric — something that can run 3+ years, work across TV/social/retail/dealer, and travel into Ireland without feeling like a London ad.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Big emotional brand thing, not a product readout.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "They want 2-3 territories not 1.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Sustainability has to be credible, they are paranoid about greenwashing accusations after the diesel thing.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Oh and they keep saying the word \"joy\" — I think that's the unlock honestly.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Not early adopters.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "We also need to show we understand their dealer network — dealers feel left out of brand campaigns.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "That's most of it.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Shout with questions.",
+     "source_ref": "messy_brief_sample.txt"
+    }
+   ]
+  },
+  "review": {
+   "passed": false,
+   "flags": [
+    "Coverage 46.7% < 85% — 16 segments need a home (re-pass)."
+   ]
+  }
+ },
+ "loop2_brief": {
+  "problem": {
+   "value": "Honestly the EV numbers have stalled — share is down vs where we projected and the perception job is the real problem, people still think EVs are expensive, range-anxious and a bit joyless.",
+   "status": "fact"
+  },
+  "objective": {
+   "value": "Success = brand consideration up, and they'll judge us partly on whether the idea is genuinely fresh for the category (everyone does the silent-swoosh EV ad).; They love showing effectiveness credentials, IPA-style.; KPIs probably consideration + test drive bookings but that wasn't nailed down.",
+   "status": "fact"
+  },
+  "audience": {
+   "value": "The audience is sort of \"the hesitant switcher\", 35-55, family, suburban, has a driveway (can charge), considering EV but scared.",
+   "status": "fact"
+  },
+  "key_message": {
+   "value": null,
+   "status": "gap"
+  },
+  "evaluation_criteria": {
+   "value": null,
+   "status": "gap"
+  },
+  "not_doing": {
+   "value": null,
+   "status": "gap"
+  },
+  "scope": {
+   "value": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it. · Timeline: pitch presentations week of 13 July.",
+   "status": "fact"
+  },
+  "open_questions": [
+   {
+    "question": "What is the key message?",
+    "why_it_matters": "A good brief lands ONE single-minded message backed by proof points — not a shopping list (BetterBriefs).",
+    "priority": "important"
+   }
+  ],
+  "review": {
+   "passed": true,
+   "flags": []
+  }
+ },
+ "betterbriefs_scorecard": {
+  "dimensions": [
+   {
+    "dimension": "objectives_quality",
+    "verdict": "vague",
+    "evidence": "no benchmark or time stamp detected",
+    "fix": "Objectives need benchmarks and a time stamp."
+   },
+   {
+    "dimension": "audience_vividness",
+    "verdict": "pass",
+    "evidence": "The audience is sort of \"the hesitant switcher\", 35-55, family, suburban, has a driveway (can charge), considering EV bu",
+    "fix": ""
+   },
+   {
+    "dimension": "single_minded_message",
+    "verdict": "missing",
+    "evidence": "no key message captured",
+    "fix": "A good brief lands ONE message with proof points."
+   },
+   {
+    "dimension": "evaluation_criteria",
+    "verdict": "missing",
+    "evidence": "no criteria captured",
+    "fix": ""
+   },
+   {
+    "dimension": "budget_interlock",
+    "verdict": "pass",
+    "evidence": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it.",
+    "fix": ""
+   },
+   {
+    "dimension": "strategic_clarity",
+    "verdict": "vague",
+    "evidence": "no strategic angle captured",
+    "fix": "Don't leave strategy for the creative process to discover."
+   },
+   {
+    "dimension": "language",
+    "verdict": "pass",
+    "evidence": "not assessed in heuristic mode",
+    "fix": ""
+   }
+  ],
+  "single_mindedness": {
+   "verdict": "single",
+   "split_into": []
+  },
+  "summary": "Heuristic scorecard — run with an LLM key for the real judge.",
+  "mode": "heuristic"
+ }
+}
