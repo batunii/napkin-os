@@ -149,6 +149,23 @@ export default function App() {
       listen<string>('clan-open-document', e => { if (e.payload) openPath(e.payload) }),
       listen('clan-open-file-request', () => { handleOpenFile() }),
       listen('clan-request-save', () => { saveCurrent() }),
+      listen<{ kind: string; filename: string; tmpHtml: string }>('clan-export-request', async e => {
+        const p = e.payload
+        if (!p) return
+        const ext = p.kind === 'pdf' ? 'pdf' : 'html'
+        const dest = await saveDialog({
+          defaultPath: `${p.filename}.${ext}`,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        })
+        if (!dest) return
+        try {
+          await invoke('finish_export', { kind: p.kind, tmpHtml: p.tmpHtml, dest })
+          setToast({ title: 'Exported', body: `Saved ${ext.toUpperCase()} to ${dest}` })
+        } catch (err) {
+          setToast({ title: 'Export failed', body: String(err) })
+        }
+        setTimeout(() => setToast(null), 5000)
+      }),
       listen<string>('clan-title-changed', e => {
         if (e.payload) setRunning(r => (r ? { ...r, open: { ...r.open, manifest: { ...r.open.manifest, title: e.payload } } } : r))
       }),

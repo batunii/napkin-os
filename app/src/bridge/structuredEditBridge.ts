@@ -101,6 +101,13 @@ export const STRUCTURED_EDIT_BRIDGE = `
       .then(function(r) { return r.json(); });
   }
 
+  // Export a standalone document. kind is 'html' | 'pdf'; the host stashes the
+  // HTML and the shell runs a native save dialog to pick the destination.
+  function exportDoc(kind, filename, html) {
+    return fetch(clanScheme + '/export', { method: 'POST', body: JSON.stringify({ kind: kind, filename: filename, html: html }) })
+      .then(function(r) { return r.json(); });
+  }
+
   // Public API authored apps can call.
   window.clan = {
     data: function() { return window.__CLAN__.data; },
@@ -111,6 +118,7 @@ export const STRUCTURED_EDIT_BRIDGE = `
     setTitle: setTitle,
     requestSave: requestSave,
     setContext: setContext,
+    exportDoc: exportDoc,
     isEditing: function() { return window.__clan_edit_mode; }
   };
 

@@ -27,7 +27,7 @@ import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("NAPKIN_MOCK_PORT", "8787"))
-MODEL = os.environ.get("NAPKIN_MOCK_MODEL", "haiku")  # haiku | sonnet | opus | fable
+MODEL = os.environ.get("NAPKIN_MOCK_MODEL", "opus")  # haiku | sonnet | opus | fable
 # Neutral cwd so Claude Code doesn't load this repo's CLAUDE.md / hooks.
 WORKDIR = tempfile.mkdtemp(prefix="napkin-mock-")
 
@@ -140,6 +140,14 @@ def build_prompt(payload: dict, clan: dict) -> str:
         att_lines = "\n".join(_al) or "  (none)"
         locked = data.get("locked_fields") or []
         lock_line = ", ".join(locked) if locked else "(none)"
+        immersive = data.get("brief_style") == "immersive"
+        theme_line = (
+            '  - "theme": { "bg": "#RRGGBB", "accent": "#RRGGBB", "text": "#RRGGBB" } '
+            "— a brand palette expressing tone_and_world/mood. bg and text MUST be "
+            "strongly contrasting (one dark, one light) for legibility; accent is a "
+            "vivid on-brand hue. Optionally add \"font\": \"serif\"|\"sans\"|\"mono\".\n"
+            if immersive else ""
+        )
         suffix = (
             f"PURPOSE / CONTEXT:\n{context}\n\n"
             f"CURRENT DATA (keep good values):\n{current}\n\n"
@@ -153,6 +161,7 @@ def build_prompt(payload: dict, clan: dict) -> str:
             '  - "rationale": <= 2 sentences on the key choices.\n'
             '  - "context": a SHORT markdown brief for the next agent (client, requirement, '
             'audience, key decisions) — <= 120 words.\n'
+            + theme_line +
             'Keep values tight. Use "" or [] only when genuinely unknowable.'
         )
     return prefix + suffix
@@ -160,6 +169,7 @@ def build_prompt(payload: dict, clan: dict) -> str:
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # quieter default logging
+        print(a)
         pass
 
     def do_GET(self):

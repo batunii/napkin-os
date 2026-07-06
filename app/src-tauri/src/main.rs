@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
 use clan_sdk::{
@@ -1472,6 +1473,89 @@ fn save_clan_to(path: String, state: State<AppState>) -> Result<(), String> {
     std::fs::write(&path, loaded.clan.raw_bytes()).map_err(|e| e.to_string())
 }
 
+// ── Export (HTML / PDF) ──────────────────────────────────────────────────────
+//
+// The app builds a standalone, print-styled HTML document and hands it to the
+// host. HTML export is a copy; PDF is rendered from that HTML by a headless
+// browser (no HTML→PDF Rust dep). The chosen destination comes from the shell's
+// native save dialog, mirroring the save_clan_to flow.
+
+fn has_binary(name: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
+        .unwrap_or(false)
+}
+
+/// First available headless-capable browser for HTML→PDF, or None.
+fn find_pdf_renderer() -> Option<String> {
+    [
+        "chromium",
+        "chromium-browser",
+        "google-chrome-stable",
+        "google-chrome",
+        "chrome",
+        "brave",
+        "microsoft-edge",
+    ]
+    .into_iter()
+    .find(|b| has_binary(b))
+    .map(|s| s.to_string())
+}
+
+/// Write the export HTML to a persistent temp file (removed by finish_export).
+fn write_temp_html(html: &str) -> Result<String, String> {
+    use std::io::Write;
+    let tf = tempfile::Builder::new()
+        .prefix("napkin-export-")
+        .suffix(".html")
+        .tempfile()
+        .map_err(|e| e.to_string())?;
+    let (mut file, path) = tf.keep().map_err(|e| e.to_string())?;
+    file.write_all(html.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+fn render_pdf(tmp_html: &str, dest: &str) -> Result<(), String> {
+    let bin = find_pdf_renderer().ok_or(
+        "No PDF renderer found. Install 'chromium' (or Chrome), or export to HTML and print to PDF from your browser.",
+    )?;
+    let status = Command::new(&bin)
+        .args([
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--no-pdf-header-footer",
+            "--run-all-compositor-stages-before-draw",
+            "--virtual-time-budget=2500",
+        ])
+        .arg(format!("--print-to-pdf={dest}"))
+        .arg(format!("file://{tmp_html}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| format!("failed to run {bin}: {e}"))?;
+    if !status.success() {
+        return Err(format!("{bin} failed to render the PDF"));
+    }
+    if !std::path::Path::new(dest).exists() {
+        return Err("the renderer produced no PDF file".into());
+    }
+    Ok(())
+}
+
+/// Finish an export the shell has a destination for. `html` → copy the temp
+/// file; `pdf` → render it. The temp source is always cleaned up.
+#[tauri::command]
+fn finish_export(kind: String, tmp_html: String, dest: String) -> Result<String, String> {
+    let result = match kind.as_str() {
+        "html" => std::fs::copy(&tmp_html, &dest).map(|_| ()).map_err(|e| e.to_string()),
+        "pdf" => render_pdf(&tmp_html, &dest),
+        other => Err(format!("unknown export kind '{other}'")),
+    };
+    let _ = std::fs::remove_file(&tmp_html);
+    result.map(|_| dest)
+}
+
 // ── Home-screen agent prompt ─────────────────────────────────────────────────
 //
 // The home page sends the user's prompt to ONE uniform agent endpoint. The base
@@ -1704,6 +1788,33 @@ fn main() {
                     let _ = app.emit("clan-request-save", ());
                     json_resp(200, &serde_json::json!({ "ok": true }))
                 }
+                "/export" => {
+                    // The app hands over a standalone HTML document to export as
+                    // HTML or PDF. Stash it in a temp file and let the shell run
+                    // the native save dialog + finish_export (mirrors save flow).
+                    let v: Value = serde_json::from_str(
+                        &String::from_utf8(request.body().clone()).unwrap_or_default(),
+                    )
+                    .unwrap_or(Value::Null);
+                    let kind = v.get("kind").and_then(|x| x.as_str()).unwrap_or("html");
+                    let kind = if kind == "pdf" { "pdf" } else { "html" };
+                    let filename = v.get("filename").and_then(|x| x.as_str()).unwrap_or("brief");
+                    let html = v.get("html").and_then(|x| x.as_str()).unwrap_or("");
+                    if html.trim().is_empty() {
+                        err_resp(400, "missing html")
+                    } else {
+                        match write_temp_html(html) {
+                            Ok(tmp) => {
+                                let _ = app.emit(
+                                    "clan-export-request",
+                                    serde_json::json!({ "kind": kind, "filename": filename, "tmpHtml": tmp }),
+                                );
+                                json_resp(200, &serde_json::json!({ "ok": true }))
+                            }
+                            Err(e) => err_resp(500, &e),
+                        }
+                    }
+                }
                 "/set-context" => {
                     let v: Value = serde_json::from_str(
                         &String::from_utf8(request.body().clone()).unwrap_or_default(),
@@ -1814,7 +1925,7 @@ fn main() {
             open_clan, get_human_html, get_data, get_chain, get_agent_state, get_context,
             save_patch, set_edit_mode, update_preview_html, take_launch_file,
             list_apps, install_app, new_document_from_app, agent_prompt, agent_endpoint,
-            open_home, save_clan_to
+            open_home, save_clan_to, finish_export
         ])
         .run(tauri::generate_context!())
         .expect("error while running Napkin Studio OS");

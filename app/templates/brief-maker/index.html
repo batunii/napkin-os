@@ -40,7 +40,10 @@
   .seg .tpl{flex:1;background:none;border:none;color:var(--muted);font:inherit;font-size:13px;font-weight:550;padding:9px 10px;border-radius:9px;cursor:pointer;text-align:left;transition:.15s}
   .seg .tpl .sm{display:block;font-size:11px;font-weight:450;opacity:.8;margin-top:2px}
   .seg .tpl:hover{color:var(--text)}
-  .seg .tpl.sel{background:color-mix(in srgb,var(--accent) 16%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent)}
+  /* Selection chrome uses the fixed UI indigo, NOT the themeable --accent: an
+     immersive brand palette can set a low-contrast accent that would otherwise
+     wash the "which template is selected" highlight out against --surface. */
+  .seg .tpl.sel{background:color-mix(in srgb,var(--indigo) 24%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 2px var(--indigo)}
   .composer{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:0 20px 50px -30px rgba(0,0,0,.8)}
   .composer textarea{width:100%;min-height:108px;max-height:300px;resize:vertical;border:none;outline:none;background:transparent;color:var(--text);font:inherit;font-size:16px;line-height:1.55}
   .composer textarea::placeholder{color:var(--muted)}
@@ -85,7 +88,7 @@
   .modes{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:4px}
   .modes button{background:none;border:none;color:var(--muted);font:inherit;font-size:12px;font-weight:550;padding:6px 11px;border-radius:8px;cursor:pointer;transition:.15s}
   .modes button:hover{color:var(--text)}
-  .modes button.on{background:color-mix(in srgb,var(--accent) 18%,var(--surface));color:var(--text)}
+  .modes button.on{background:color-mix(in srgb,var(--indigo) 24%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 2px var(--indigo)}
   .ghost{font:inherit;font-size:12.5px;background:none;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 13px;cursor:pointer}
   .ghost:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
 
@@ -224,6 +227,8 @@
     <div class="footer">
       <button class="lock" id="lockBtn">🔒 Lock brief</button>
       <button class="save-as" id="saveBtn">💾 Save as…</button>
+      <button class="save-as" id="exHtml" title="Export a clean standalone HTML report">⬇ HTML</button>
+      <button class="save-as" id="exPdf" title="Export a print-ready PDF">⬇ PDF</button>
       <span class="muted" id="lockedBadge" style="display:none;color:var(--ok)">✓ Locked for handoff</span>
       <span class="muted" id="status"></span>
     </div>
@@ -278,10 +283,30 @@
   function mix(a,b,t){var A=h2r(a),B=h2r(b);return r2h([0,1,2].map(function(i){return A[i]+(B[i]-A[i])*t;}));}
   function lum(h){var a=h2r(h).map(function(v){v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);});return .2126*a[0]+.7152*a[1]+.0722*a[2];}
   function readable(on){return lum(on)>.5?'#0b0b10':'#ffffff';}
+  // HSL round-trip so the duotone partner is an on-hue rotation of the accent
+  // (not a mix with a fixed teal, which muddies arbitrary accents to grey).
+  function rgbToHsl(r,g,b){r/=255;g/=255;b/=255;var mx=Math.max(r,g,b),mn=Math.min(r,g,b),h,s,l=(mx+mn)/2;
+    if(mx===mn){h=s=0;}else{var d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);
+      switch(mx){case r:h=(g-b)/d+(g<b?6:0);break;case g:h=(b-r)/d+2;break;default:h=(r-g)/d+4;}h/=6;}
+    return [h*360,s,l];}
+  function hslToRgb(h,s,l){h=(h%360)/360;function f(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;}
+    var r,g,b;if(s===0){r=g=b=l;}else{var q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;r=f(p,q,h+1/3);g=f(p,q,h);b=f(p,q,h-1/3);}return [r*255,g*255,b*255];}
+  function hueRotate(hex,deg){var c=h2r(hex),hsl=rgbToHsl(c[0],c[1],c[2]);return r2h(hslToRgb(hsl[0]+deg,hsl[1],hsl[2]));}
   var DEF={bg:'#0c0e13',text:'#e7eaf3',accent:'#6366f1'};
+  // Accept only well-formed values from the agent's proposed palette.
+  function isHex(s){ return typeof s==='string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s); }
+  function sanitizeTheme(t){
+    if(!t||typeof t!=='object') return {};
+    var o={}; ['bg','bg2','accent','text'].forEach(function(k){ if(isHex(t[k])) o[k]=t[k]; });
+    if(t.grad===true && o.bg2) o.grad=true;
+    if(typeof t.font==='string'){ var f=t.font.toLowerCase();
+      o.font = f.indexOf('serif')>=0?'var(--serif)':f.indexOf('mono')>=0?'var(--mono)':f.indexOf('sans')>=0?'var(--ui)':undefined;
+      if(!o.font) delete o.font; }
+    return o;
+  }
   function derive(t){
     var bg=t.bg||DEF.bg, text=t.text||DEF.text, accent=t.accent||DEF.accent;
-    return { bg:bg, text:text, accent:accent, accent2:mix(accent,'#2dd4cf',.5),
+    return { bg:bg, text:text, accent:accent, accent2:hueRotate(accent,-62),
       surface:mix(bg,text,.07), border:mix(bg,text,.17), muted:mix(text,bg,.42), btnText:readable(accent) };
   }
 
@@ -345,6 +370,9 @@
   document.querySelectorAll('#tpls .tpl').forEach(function(el){
     el.addEventListener('click',function(){
       var s=el.getAttribute('data-style');
+      // Optimistic: show the selection instantly, independent of the async
+      // patch round-trip / re-render (so the click always feels responsive).
+      document.querySelectorAll('#tpls .tpl').forEach(function(x){ x.classList.toggle('sel', x===el); });
       if(s!==style()) patch('brief_style',s,{actor:'human',pinned:false,action:'set style',rationale:'Selected '+s+' template'});
     });
   });
@@ -392,12 +420,13 @@
     function ease(x){return x<0?0:x>1?1:1-Math.pow(1-x,3);}
     var t0=performance.now(), resolved=false, failed=false, resolveAt=0, base=0.9, onDone=null, raf=0, cur=-1;
     var ramp=reduce?1400:6500;
-    function pend(now){ return Math.min(0.9,(now-t0)/ramp); }
+    function pend(now){ return Math.max(0,Math.min(0.9,(now-t0)/ramp)); }
     function gAt(now){ return resolved ? Math.min(1, base+(1-base)*((now-resolveAt)/650)) : pend(now); }
-    function frame(now){
+    function frame(){
       if(failed) return;
-      var g=gAt(now);
-      var si=Math.min(STEPS.length-1,Math.floor(g*STEPS.length));
+      var now=performance.now();          // single clock — rAF param can diverge
+      var g=Math.max(0,Math.min(1,gAt(now)));
+      var si=Math.max(0,Math.min(STEPS.length-1,Math.floor(g*STEPS.length)));
       if(si!==cur){ cur=si; els.forEach(function(e,i){ e.classList.toggle('done',i<si); e.classList.toggle('act',i===si); }); document.getElementById('procH').textContent=STEPS[si]+'…'; }
       document.getElementById('pct').textContent=Math.round(g*100)+'%';
       document.getElementById('fill').style.width=(g*100)+'%';
@@ -434,13 +463,23 @@
         var fields=Object.assign({},res.data);
         var rationale=fields.rationale||'Drafted creative brief from the client intake.';
         var ctx2=fields.context;
+        var aiTheme=fields.theme;   // capture before stripping meta keys
         ['rationale','context','reference_assets','locked','locked_fields','brief_style','theme','field_styles','brief_input'].forEach(function(k){delete fields[k];});
         lockedList().forEach(function(k){ var top=k.split('.')[0]; delete fields[top]; });
         window.clan.patchData(fields,{actor:'analysis-model',pinned:false,action:'draft brief',rationale:rationale});
         if(fields.project_name) window.clan.setTitle(fields.project_name);
         if(ctx2) window.clan.setContext(ctx2,false);
+        // Immersive: apply the agent's proposed brand palette to app + viewer.
+        var appliedTheme=null;
+        if(style()==='immersive'){
+          var clean=sanitizeTheme(aiTheme);
+          if(Object.keys(clean).length){
+            appliedTheme=Object.assign({},get('theme')||{},clean);
+            window.clan.patchData('theme',appliedTheme,{actor:'analysis-model',pinned:false,action:'set theme',rationale:'Derived a brand palette from the brief tone'});
+          }
+        }
         forceIntake=false;
-        ctrl.resolve(function(){ setPhase('doc'); applyModeChrome(); renderStructured(); window.scrollTo(0,0); });
+        ctrl.resolve(function(){ setPhase('doc'); if(appliedTheme){applyThemeLocal(appliedTheme);pushThemeToViewer(appliedTheme);} else {applyModeChrome();} renderStructured(); window.scrollTo(0,0); });
       } else {
         ctrl.fail();
         document.getElementById('intakeStatus').textContent=(res&&res.error)?res.error:'No agent connected — start mock-agent/server.py or fill fields manually.';
@@ -620,6 +659,7 @@
   document.querySelectorAll('#modes button').forEach(function(b){
     b.addEventListener('click',function(){
       var s=b.getAttribute('data-style');
+      document.querySelectorAll('#modes button').forEach(function(x){ x.classList.toggle('on', x===b); }); // optimistic
       if(s!==style()) patch('brief_style',s,{actor:'human',pinned:false,action:'set style',rationale:'Switched to '+s+' template'});
     });
   });
@@ -636,10 +676,11 @@
     if(t.font) document.getElementById('thFont').value=t.font;
   }
   function setTheme(key,val){ var t=Object.assign({},get('theme')||{}); t[key]=val; patch('theme',t); applyThemeLocal(t); pushThemeToViewer(t); }
-  document.getElementById('thBg').addEventListener('input',function(e){ setTheme('bg',e.target.value); });
-  document.getElementById('thBg2').addEventListener('input',function(e){ setTheme('bg2',e.target.value); });
-  document.getElementById('thAccent').addEventListener('input',function(e){ setTheme('accent',e.target.value); });
-  document.getElementById('thText').addEventListener('input',function(e){ setTheme('text',e.target.value); });
+  // Bind BOTH 'input' and 'change': WebKitGTK's native colour chooser (Tauri on
+  // Linux) fires only 'change' on commit, not the live 'input' Chromium fires.
+  function onColor(id,key){ var el=document.getElementById(id);
+    ['input','change'].forEach(function(ev){ el.addEventListener(ev,function(e){ setTheme(key,e.target.value); }); }); }
+  onColor('thBg','bg'); onColor('thBg2','bg2'); onColor('thAccent','accent'); onColor('thText','text');
   document.getElementById('thFont').addEventListener('change',function(e){ setTheme('font',e.target.value); renderStructured(); });
   document.getElementById('thGradOn').addEventListener('change',function(e){ document.getElementById('thBg2Wrap').style.display=e.target.checked?'flex':'none';
     var t=Object.assign({},get('theme')||{}); t.grad=e.target.checked; if(t.grad&&!t.bg2) t.bg2=mix(t.bg||DEF.bg,'#000000',.4);
@@ -657,6 +698,78 @@
       s.addEventListener('click',function(){ patch('theme',Object.assign({},p),{actor:'human',pinned:false,action:'set theme',rationale:'Applied a brand palette'}); applyThemeLocal(p); pushThemeToViewer(p); syncThemeInputs(); });
       pc.appendChild(s); });
   })();
+
+  // ---------- export (HTML / PDF) ----------
+  // Build a clean, print-styled, standalone document from the brief data — a
+  // light "report" look regardless of the app's immersive theme, with the
+  // brand accent picked up from theme.accent. Images are inlined as data URIs
+  // so the file is fully self-contained.
+  function inlineImages(){
+    var imgs=(data().reference_assets||[]).filter(function(a){return a.type==='image';});
+    return Promise.all(imgs.map(function(a){
+      return fetch(assetUrl(a.name)).then(function(r){return r.blob();}).then(function(b){
+        return new Promise(function(res){var fr=new FileReader();fr.onload=function(){res({label:a.label||a.name,src:fr.result});};fr.onerror=function(){res(null);};fr.readAsDataURL(b);});
+      }).catch(function(){return null;});
+    })).then(function(arr){return arr.filter(Boolean);});
+  }
+  function exportField(f){
+    var v=get(f.key); var has=v!=null&&(Array.isArray(v)?v.length:String(v).trim());
+    if(!has) return '';
+    var val=f.type==='list'
+      ? '<ul>'+(Array.isArray(v)?v:[v]).map(function(x){return '<li>'+esc(String(x))+'</li>';}).join('')+'</ul>'
+      : '<p'+(f.hero?' class="spp"':'')+'>'+esc(String(v))+'</p>';
+    return '<div class="f"><div class="fl">'+esc(f.label)+'</div>'+val+'</div>';
+  }
+  function buildExportHTML(){
+    return inlineImages().then(function(images){
+      var accent=get('theme.accent')||'#4f46e5';
+      var proj=esc(get('project_name')||'Untitled brief');
+      var client=esc(get('client')||'');
+      var secs={},order=[];
+      FIELDS.forEach(function(f){ if(f.key==='project_name'||f.key==='client') return; var h=exportField(f); if(!h) return;
+        if(!secs[f.sec]){secs[f.sec]=[];order.push(f.sec);} secs[f.sec].push(h); });
+      var body=order.map(function(s){return '<section><h2>'+esc(s)+'</h2>'+secs[s].join('')+'</section>';}).join('');
+      var boards=images.length?'<section class="boards"><h2>Mood board</h2><div class="grid">'+
+        images.map(function(im){return '<figure><img src="'+im.src+'"/><figcaption>'+esc(im.label)+'</figcaption></figure>';}).join('')+'</div></section>':'';
+      var date=new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});
+      var css="*{box-sizing:border-box;margin:0;padding:0}"
+        +"@page{margin:20mm}"
+        +"body{font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;background:#fff;line-height:1.6;font-size:12pt;max-width:720px;margin:0 auto;padding:40px 30px}"
+        +".ey{font-family:ui-sans-serif,system-ui,sans-serif;font-size:9pt;letter-spacing:.18em;text-transform:uppercase;color:"+accent+"}"
+        +"h1{font-family:ui-sans-serif,system-ui,sans-serif;font-size:26pt;line-height:1.1;letter-spacing:-.02em;margin:6px 0 2px;color:#111}"
+        +".cli{color:#666;font-size:12pt}"
+        +"header{border-bottom:3px solid "+accent+";padding-bottom:14px;margin-bottom:24px}"
+        +"section{margin:0 0 22px;page-break-inside:avoid;break-inside:avoid}"
+        +"h2{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10pt;letter-spacing:.12em;text-transform:uppercase;color:"+accent+";border-bottom:1px solid #e2e2e2;padding-bottom:5px;margin-bottom:12px}"
+        +".f{margin:0 0 13px;page-break-inside:avoid;break-inside:avoid}"
+        +".fl{font-family:ui-sans-serif,system-ui,sans-serif;font-size:8.5pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;margin-bottom:3px}"
+        +".f p.spp{font-size:16pt;line-height:1.35;color:#111}"
+        +".f ul{margin:2px 0 0 20px}.f li{margin:4px 0}"
+        +".boards .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}"
+        +"figure{page-break-inside:avoid;break-inside:avoid}figure img{width:100%;border-radius:6px;display:block}"
+        +"figcaption{font-family:ui-sans-serif,sans-serif;font-size:8pt;color:#9a9a9a;margin-top:4px}"
+        +"footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e2e2;font-family:ui-sans-serif,sans-serif;font-size:8.5pt;color:#aaa;text-align:center}";
+      // NB: keep closing tags escaped (<\/head>, <\/body>) so the host's
+      // bridge/style injectors can never mistake these literals for the
+      // document's real closing tags.
+      return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>'+proj+'</title><style>'+css+'</style><\/head><body>'
+        +'<header><div class="ey">Creative brief</div><h1>'+proj+'</h1>'+(client?'<div class="cli">'+client+'</div>':'')+'</header>'
+        +body+boards
+        +'<footer>Generated with Napkin Studio OS · powered by CLAN · '+esc(date)+'</footer>'
+        +'<\/body><\/html>';
+    });
+  }
+  function doExport(kind){
+    if(!(window.clan&&window.clan.exportDoc)){ toast('Export needs the Napkin Studio OS host.'); return; }
+    toast('Preparing '+kind.toUpperCase()+'…');
+    buildExportHTML().then(function(html){
+      var base=(get('project_name')||'brief').replace(/[^\w.-]+/g,'-');
+      return window.clan.exportDoc(kind,base,html);
+    }).then(function(res){ if(res&&res.ok===false) toast('Could not start export.'); })
+      .catch(function(e){ toast('Export failed: '+e); });
+  }
+  document.getElementById('exHtml').addEventListener('click',function(){ doExport('html'); });
+  document.getElementById('exPdf').addEventListener('click',function(){ doExport('pdf'); });
 
   // ---------- footer actions ----------
   document.getElementById('newDraft').addEventListener('click',function(){ forceIntake=true; render(); });

@@ -54,8 +54,13 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
     let fullHtml: string
 
     if (isFullDoc) {
-      fullHtml = /<\/body>/i.test(htmlContent)
-        ? htmlContent.replace(/<\/body>/i, `${bridge}</body>`)
+      // Inject at the LAST </body>: an app's inline script may legitimately
+      // contain '</body>' inside a string literal (e.g. an HTML-export
+      // builder), and splicing the bridge there is a syntax error that kills
+      // the app's whole script.
+      const closeIdx = htmlContent.toLowerCase().lastIndexOf('</body>')
+      fullHtml = closeIdx >= 0
+        ? htmlContent.slice(0, closeIdx) + bridge + htmlContent.slice(closeIdx)
         : htmlContent + bridge
     } else {
       fullHtml = `<!DOCTYPE html>
