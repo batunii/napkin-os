@@ -16,6 +16,7 @@ pub mod container;
 pub mod create;
 pub mod decision;
 pub mod error;
+pub mod export;
 pub mod hash;
 pub mod inject;
 pub mod instantiate;
@@ -33,6 +34,7 @@ pub use container::{ClanBuilder, ClanFile, MANIFEST_PATH};
 pub use create::{create, export_static, CreateOptions};
 pub use decision::{Decision, DecisionChain, TraceRef};
 pub use error::{Error, Result};
+pub use export::{export_html, ExportOptions};
 pub use inject::{assemble, AgentContext, InjectOptions};
 pub use instantiate::{
     instantiate, make_template, InstantiateOptions, MakeTemplateOptions,

@@ -16,10 +16,11 @@ interface Props {
   onHome: () => void
   onOpenFile: () => void
   onSave: () => void
+  onExport: (kind: 'html' | 'pdf') => void
 }
 
 /** Chrome for one running app: toolbar + (collapsible) sidebar + render surface + panels. */
-export default function AppHost({ running, onHome, onOpenFile, onSave }: Props) {
+export default function AppHost({ running, onHome, onOpenFile, onSave, onExport }: Props) {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false) // collapsed by default
@@ -41,6 +42,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave }: Props) 
         sidebarOpen={sidebarOpen}
         onWorkspace={() => setWorkspaceOpen(true)}
         onSave={onSave}
+        onExport={onExport}
         loading={false}
         validation={open.validation}
       />

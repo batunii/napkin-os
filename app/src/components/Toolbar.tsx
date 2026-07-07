@@ -14,6 +14,7 @@ interface Props {
   onToggleSidebar: () => void
   onWorkspace: () => void
   onSave: () => void
+  onExport: (kind: 'html' | 'pdf') => void
   agentPanelOpen: boolean
   sidebarOpen: boolean
   loading: boolean
@@ -50,7 +51,7 @@ const s: Record<string, React.CSSProperties> = {
 }
 
 export default function Toolbar({
-  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave,
+  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onExport,
   agentPanelOpen, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
@@ -86,6 +87,7 @@ export default function Toolbar({
       )}
       <button style={s.btn} onClick={onOpenFile}>📂 Open</button>
       <button style={s.btn} onClick={onSave} title="Save a copy of this .clan to share">💾 Save As</button>
+      <button style={s.btn} onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">⬇ Export</button>
       <button style={s.btn} onClick={onWorkspace} title="Lineage & provenance">🧬 Lineage</button>
       <button
         style={{ ...s.btn, ...(agentPanelOpen ? s.btnActive : {}) }}

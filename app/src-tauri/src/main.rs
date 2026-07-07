@@ -9,9 +9,10 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
 use clan_sdk::{
-    apply_patch_and_repack, create, fork, instantiate, make_template, patch_asset_with,
-    patch_context, patch_data_with, validate, AppInfo, ClanBuilder, ClanFile, CreateOptions,
-    DecisionEntry, InstantiateOptions, MakeTemplateOptions, PatchDataOptions,
+    apply_patch_and_repack, create, export_html, fork, instantiate, make_template,
+    patch_asset_with, patch_context, patch_data_with, validate, AppInfo, ClanBuilder, ClanFile,
+    CreateOptions, DecisionEntry, ExportOptions, InstantiateOptions, MakeTemplateOptions,
+    PatchDataOptions,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1543,6 +1544,50 @@ fn render_pdf(tmp_html: &str, dest: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// OS-owned export: compose a standalone document from the currently-open
+/// `.clan` via the SDK (bindings resolved, assets inlined, scripts stripped,
+/// brand chrome + optional provenance), then hand it to the same shell
+/// save-dialog + finish_export flow the legacy path uses. This is the uniform
+/// export every studio inherits — the app no longer needs to build the HTML.
+#[tauri::command]
+fn export_current(
+    app: tauri::AppHandle,
+    kind: String,
+    provenance: bool,
+    no_brand: bool,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let kind = if kind == "pdf" { "pdf" } else { "html" };
+    let (html, filename) = {
+        let guard = state.current.lock().unwrap();
+        let loaded = guard.as_ref().ok_or("no file open")?;
+        let title = loaded.clan.manifest().title.trim().to_string();
+        let base: String = (if title.is_empty() { "document" } else { &title })
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' { c } else { '-' })
+            .collect();
+        let html = export_html(
+            &loaded.clan,
+            &ExportOptions {
+                brand: !no_brand,
+                provenance,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        (html, base)
+    };
+
+    // Stash + hand to the shell's save-dialog → finish_export flow, exactly as
+    // the legacy app-pushed path does (the frontend already listens for this).
+    let tmp = write_temp_html(&html)?;
+    app.emit(
+        "clan-export-request",
+        serde_json::json!({ "kind": kind, "filename": filename, "tmpHtml": tmp }),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Finish an export the shell has a destination for. `html` → copy the temp
 /// file; `pdf` → render it. The temp source is always cleaned up.
 #[tauri::command]
@@ -1789,8 +1834,15 @@ fn main() {
                     json_resp(200, &serde_json::json!({ "ok": true }))
                 }
                 "/export" => {
-                    // The app hands over a standalone HTML document to export as
-                    // HTML or PDF. Stash it in a temp file and let the shell run
+                    // LEGACY / imperative-fallback path. The app builds its own
+                    // standalone HTML in JS and pushes it here. Prefer the
+                    // OS-owned `export_current` command (composes via the SDK
+                    // from the file's data — bindings, assets, brand chrome,
+                    // provenance) so export is uniform and works headless. This
+                    // path remains for apps whose print layout is genuinely code
+                    // (e.g. brief-maker's report builder).
+                    //
+                    // Stash the pushed HTML in a temp file and let the shell run
                     // the native save dialog + finish_export (mirrors save flow).
                     let v: Value = serde_json::from_str(
                         &String::from_utf8(request.body().clone()).unwrap_or_default(),
@@ -1925,7 +1977,7 @@ fn main() {
             open_clan, get_human_html, get_data, get_chain, get_agent_state, get_context,
             save_patch, set_edit_mode, update_preview_html, take_launch_file,
             list_apps, install_app, new_document_from_app, agent_prompt, agent_endpoint,
-            open_home, save_clan_to, finish_export
+            open_home, save_clan_to, finish_export, export_current
         ])
         .run(tauri::generate_context!())
         .expect("error while running Napkin Studio OS");

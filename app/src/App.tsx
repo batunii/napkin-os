@@ -139,6 +139,17 @@ export default function App() {
     if (path) await invoke('save_clan_to', { path }).catch(console.error)
   }, [])
 
+  // OS-owned export: the host composes a standalone document from the open
+  // file's data via the SDK, then the clan-export-request listener runs the
+  // save dialog + finish_export. Works for every app, no in-view builder needed.
+  const exportCurrent = useCallback(async (kind: 'html' | 'pdf' = 'pdf') => {
+    if (!runningRef.current) return
+    await invoke('export_current', { kind, provenance: false, noBrand: false }).catch(err => {
+      setToast({ title: 'Export failed', body: String(err) })
+      setTimeout(() => setToast(null), 5000)
+    })
+  }, [])
+
   useEffect(() => {
     openHome()
     invoke<string | null>('take_launch_file').then(p => { if (p) openPath(p) }).catch(() => {})
@@ -210,7 +221,7 @@ export default function App() {
       )}
 
       {screen === 'app' && running ? (
-        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} />
+        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} onExport={exportCurrent} />
       ) : home ? (
         // The home page is a CLAN file, rendered full-bleed with no doc chrome.
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>

@@ -22,11 +22,12 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clan_sdk::{
-    assemble, create, export_static, fork_with_contexts, generate_keypair, instantiate,
-    make_template, merge, pack, pack_html, patch_context, patch_data_namespaced, patch_decision,
-    patch_requirements, patch_state, render, sign_app, validate, AgentOutput, AppInfo, ClanFile,
-    CreateOptions, DecisionEntry, InjectOptions, InstantiateOptions, MakeTemplateOptions,
-    MergeOptions, MergePolicies, PackOptions, MERGE_REPORT_PATH,
+    assemble, create, export_html, export_static, fork_with_contexts, generate_keypair,
+    instantiate, make_template, merge, pack, pack_html, patch_context, patch_data_namespaced,
+    patch_decision, patch_requirements, patch_state, render, sign_app, validate, AgentOutput,
+    AppInfo, ClanFile, CreateOptions, DecisionEntry, ExportOptions, InjectOptions,
+    InstantiateOptions, MakeTemplateOptions, MergeOptions, MergePolicies, PackOptions,
+    MERGE_REPORT_PATH,
 };
 use clap::{Parser, Subcommand};
 
@@ -150,6 +151,27 @@ enum Commands {
     Render {
         /// The .clan file to render in-place.
         file: PathBuf,
+    },
+    /// Compose a standalone, shareable document from a .clan file — the
+    /// headless counterpart to the desktop viewer's Export. Resolves bindings,
+    /// inlines assets, and adds brand chrome; no running app required.
+    Export {
+        /// The .clan file to export.
+        file: PathBuf,
+        /// Output format: `html` (default) or `pdf`. PDF needs a headless
+        /// Chrome/Chromium on PATH (or export HTML and print from a browser).
+        #[arg(long, default_value = "html")]
+        format: String,
+        /// Output path. Defaults to the input filename with the format's
+        /// extension (e.g. `doc.clan` → `doc.pdf`).
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Append an attributed provenance appendix from the decision chain.
+        #[arg(long)]
+        provenance: bool,
+        /// Omit the Napkin brand header/footer.
+        #[arg(long = "no-brand")]
+        no_brand: bool,
     },
     /// Validate a .clan file and print a report.
     Validate {
@@ -578,6 +600,13 @@ fn main() -> Result<()> {
             delta,
         } => cmd_merge(branches, output, policies, prune_namespaces, delta, &hints),
         Commands::Render { file } => cmd_render(file, &hints),
+        Commands::Export {
+            file,
+            format,
+            output,
+            provenance,
+            no_brand,
+        } => cmd_export(file, format, output, provenance, no_brand, &hints),
         Commands::Validate { file, strict } => cmd_validate(file, strict, &hints),
         Commands::Read { section } => cmd_read(section),
         Commands::Info { file } => cmd_info(file),
@@ -1200,6 +1229,108 @@ fn cmd_render(file: PathBuf, hints: &Hints) -> Result<()> {
         file.display()
     )]);
     Ok(())
+}
+
+fn cmd_export(
+    file: PathBuf,
+    format: String,
+    output: Option<PathBuf>,
+    provenance: bool,
+    no_brand: bool,
+    hints: &Hints,
+) -> Result<()> {
+    let format = format.to_ascii_lowercase();
+    if format != "html" && format != "pdf" {
+        anyhow::bail!("unknown --format {format:?}; expected 'html' or 'pdf'");
+    }
+    let clan = open(&file)?;
+    let html = export_html(
+        &clan,
+        &ExportOptions {
+            brand: !no_brand,
+            provenance,
+        },
+    )
+    .context("export failed")?;
+
+    let dest = output.unwrap_or_else(|| file.with_extension(&format));
+
+    if format == "html" {
+        std::fs::write(&dest, html.as_bytes())?;
+    } else {
+        render_pdf_from_html(&html, &dest)?;
+    }
+    eprintln!("exported {} to {}", format.to_uppercase(), dest.display());
+    hints.emit(&[if format == "html" {
+        format!("open {} in a browser, or `clan export {} --format pdf`", dest.display(), file.display())
+    } else {
+        format!("share {} — it is self-contained (bindings resolved, assets inlined)", dest.display())
+    }]);
+    Ok(())
+}
+
+/// HTML→PDF via a headless browser. The SDK stops at standalone HTML by design
+/// (no HTML→PDF Rust dep); the conversion is an environment concern the binary
+/// layers own. This mirrors the desktop host's renderer discovery + flags.
+fn render_pdf_from_html(html: &str, dest: &std::path::Path) -> Result<()> {
+    use std::io::Write;
+    let bin = find_pdf_renderer().context(
+        "no PDF renderer found — install Chromium or Chrome, or export --format html \
+         and print to PDF from your browser",
+    )?;
+    let tmp = tempfile::Builder::new()
+        .prefix("clan-export-")
+        .suffix(".html")
+        .tempfile()?;
+    tmp.as_file().write_all(html.as_bytes())?;
+    let tmp_path = tmp.path().display().to_string();
+
+    let status = std::process::Command::new(&bin)
+        .args([
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--no-pdf-header-footer",
+            "--run-all-compositor-stages-before-draw",
+            "--virtual-time-budget=2500",
+        ])
+        .arg(format!("--print-to-pdf={}", dest.display()))
+        .arg(format!("file://{tmp_path}"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .with_context(|| format!("failed to run {bin}"))?;
+    if !status.success() {
+        anyhow::bail!("{bin} failed to render the PDF");
+    }
+    if !dest.exists() {
+        anyhow::bail!("the renderer produced no PDF file");
+    }
+    Ok(())
+}
+
+/// First headless-capable browser on PATH, or None (mirrors the desktop host).
+fn find_pdf_renderer() -> Option<String> {
+    let names = [
+        "chromium",
+        "chromium-browser",
+        "google-chrome-stable",
+        "google-chrome",
+        "chrome",
+        "chrome.exe",
+        "brave",
+        "microsoft-edge",
+        "msedge.exe",
+    ];
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        for n in names {
+            if dir.join(n).is_file() {
+                return Some(n.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn cmd_validate(file: PathBuf, strict: bool, hints: &Hints) -> Result<()> {
