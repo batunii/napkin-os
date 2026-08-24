@@ -35,6 +35,28 @@ MODEL = os.environ.get("NAPKIN_MOCK_MODEL", "opus")  # haiku | sonnet | opus | f
 # Neutral cwd so Claude Code doesn't load this repo's CLAUDE.md / hooks.
 WORKDIR = tempfile.mkdtemp(prefix="napkin-mock-")
 
+# Knowledge digests: paraphrased pattern notes per pack (engine/packs_dist/,
+# written offline by engine/scripts/distil_pack.py and committed — the only
+# knowledge artifact that ships). Loaded once and placed in the STABLE prompt
+# prefix so they are byte-identical every call and ride the prompt cache:
+# paid for once, then ~free on every draft and regenerate after.
+from pathlib import Path
+_DIGEST_DIR = Path(os.environ.get(
+    "NAPKIN_DIGESTS", Path(__file__).resolve().parent.parent / "engine" / "packs_dist"))
+
+
+def _load_digests() -> str:
+    parts = []
+    if _DIGEST_DIR.is_dir():
+        for d in sorted(_DIGEST_DIR.glob("*/digest.md")):
+            text = d.read_text(errors="replace").strip()
+            if text:
+                parts.append(f"### {d.parent.name}\n{text}")
+    return "\n\n".join(parts)
+
+
+DIGESTS = _load_digests()
+
 # Running token/cost tally across the session (see GET /stats).
 TOTALS = {"calls": 0, "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0, "cost_usd": 0.0}
 
@@ -117,7 +139,14 @@ def build_prompt(payload: dict, clan: dict) -> str:
         "Rules: `objectives` and `desired_response` are nested objects; "
         "`reasons_to_believe`, `tone_and_world`, `mandatories`, `open_questions` are arrays "
         "of strings. Output a single JSON object — no markdown fences, no commentary.\n"
-        "=====\n"
+        + ((
+            "=====\n"
+            "KNOWLEDGE DIGESTS — paraphrased patterns from award-effectiveness corpora "
+            "(IPA, Cannes, D&AD) and planning playbooks. Let these shape the insight, "
+            "proposition and reasons-to-believe: prefer a named mechanism over a generic "
+            "claim, obey the craft rules, avoid the traps. Never copy their wording.\n"
+            + DIGESTS + "\n") if DIGESTS else "")
+        + "=====\n"
     )
 
     # --- VOLATILE SUFFIX ---
@@ -196,6 +225,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # Context cost breakdown — where the input tokens go, so we can trim.
         sect = {
+            "digests": len(DIGESTS),
             "schema": len(json.dumps(clan.get("schema", {}))),
             "data": len(json.dumps(clan.get("data", {}))),
             "chain": len(json.dumps(clan.get("decision_chain", {}))),
