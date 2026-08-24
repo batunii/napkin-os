@@ -19,6 +19,7 @@ The retrieval set (loops3_7 sources/citations) is captured verbatim so the
 "identical retrieval sets" no-op check is a diff of two JSON files.
 """
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -55,8 +56,15 @@ def collect(brief_dir: Path) -> dict:
     # 4. cost / latency
     stats = (bo.get("meta") or {}).get("llm_stats") or {}
 
-    # retrieval set, verbatim — the no-op refactor check diffs this block
-    loops = bo.get("loops3_7") or {}
+    # retrieval set — the no-op refactor check diffs this block. Snippets are
+    # REDACTED to content hashes: identity comparison stays exact, but no
+    # corpus text (licensed material) ever lands in a tracked eval record.
+    loops = json.loads(json.dumps(bo.get("loops3_7") or {}))
+    for loop in (loops.get("loops") or {}).values():
+        for e in loop.get("evidence") or []:
+            if e.get("snippet"):
+                e["snippet"] = "sha256:" + hashlib.sha256(
+                    e["snippet"].encode()).hexdigest()[:16]
 
     return {
         "dir": str(brief_dir),

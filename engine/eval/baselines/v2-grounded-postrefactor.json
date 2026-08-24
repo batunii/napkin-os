@@ -31,12 +31,12 @@
     },
     "llm_stats": {
       "logical_calls": 22,
-      "calls": 107,
-      "http_attempts": 108,
-      "prompt_tokens": 16463,
-      "completion_tokens": 4997,
+      "calls": 109,
+      "http_attempts": 112,
+      "prompt_tokens": 17092,
+      "completion_tokens": 4900,
       "rate_limited": 1,
-      "wall_seconds": 639.4
+      "wall_seconds": 1045.0
     },
     "retrieval": {
       "enabled": true,
@@ -59,31 +59,31 @@
               "framework": "Category Entry Points (CEPs)",
               "category": "Brand Strategy",
               "score": 0.4653,
-              "snippet": "relate to mental availability? 5. What is the primary source for learning about CEPs? 1. **Define the Category and Buying Audience.** * **Instruction:** Clearly define the boundaries of the category from a consumer's perspective. This is not about industry definitions but about h"
+              "snippet": "sha256:72ada18bc66d6300"
             },
             {
               "citation": "68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
               "framework": "Ehrenberg-Bass Laws of Marketing",
               "category": "Media Effectiveness",
               "score": 0.486,
-              "snippet": "Jeopardy law). The only way to defy this is to grow your penetration. * **Inputs Needed:** Panel data (e.g., Nielsen, Kantar) showing penetration and purchase frequency for all brands in the category. * **Expected Output:** A quarterly report tracking Double Jeopardy metrics and "
+              "snippet": "sha256:cf7bd73e29a90a71"
             },
             {
               "citation": "85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
               "framework": "Behavioural Segmentation",
               "category": "Audience Segmentation",
               "score": 0.4665,
-              "snippet": "means investing in broad-reach media to build memory structures with all category buyers and ensuring the product is easy to find and buy (distribution, channel strategy). The goal is to make the brand the most obvious and available choice for everyone. **For Step 1 (Define & Gat"
+              "snippet": "sha256:29b74028f83f5311"
             },
             {
               "citation": "59-cultural-capital-theory-bourdieu.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
               "framework": "Cultural Capital Theory (Bourdieu)",
               "category": "Behavioural Science",
               "score": 0.4795,
-              "snippet": "EV market. * **Cultural Ubiquity:** The brand has become a powerful cultural symbol, shorthand for the future of driving and sustainable technology. * **Shift in Category Norms:** The entire automotive industry is now scrambling to catch up, adopting Tesla's focus on software, mi"
+              "snippet": "sha256:934e24e14dfdb055"
             }
           ],
-          "synthesis": "To reset how the UK feels about Northwind electric, we must first define the category boundaries from the hesitant switcher's perspective (35-55, family, suburban, driveway with charging capability), focusing on their need for reliable, joyful driving rather than industry definitions (source \u203a 38-category-entry-points-ceps.md \u203a SECTION 2: STEP-BY-STEP APPLICATION PROCESS). This requires panel data tracking penetration and purchase frequency to measure Double Jeopardy metrics (source \u203a 68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP), while ensuring broad-reach media builds memory structures and distribution makes Northwind the most obvious, available choice for all category buyers (source \u203a 85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP). Cultural ubiquity as a symbol of future driving and sustainable technology must be leveraged to shift category norms (source \u203a 85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP)."
+          "synthesis": "To reset how the UK feels about Northwind electric, we must first define the category boundaries from the hesitant switcher's perspective (35-55, suburban family with a driveway), as instructed in (38-category-entry-points-ceps.md \u203a SECTION 2: STEP-BY-STEP APPLICATION PROCESS), focusing on mental availability through cultural ubiquity where the brand becomes a shorthand for the future of driving (85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP), while leveraging panel data to track Double Jeopardy metrics (68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP) to measure penetration and purchase frequency."
         },
         "loop4_insight": {
           "title": "Loop 4 \u00b7 Human insight & cultural tension",
@@ -94,73 +94,73 @@
               "framework": "Find the Tension Heuristic",
               "category": "Thinking Models",
               "score": 0.4719,
-              "snippet": "the brand as the solution that helps the consumer navigate the tension. - **Inputs Needed:** The validated tension and the brand's role hypothesis. - **Expected Output:** A core strategic thought connecting the tension to the brand. **For Step 1: Define Your Hunting Ground** - Wh"
+              "snippet": "sha256:520f874e7dea56ae"
             },
             {
               "citation": "45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
               "framework": "Cultural Tensions Model",
               "category": "Cultural Strategy",
               "score": 0.464,
-              "snippet": "experience: product, communications, partnerships, and internal culture. Brainstorm how the myth will come to life. * **Inputs:** The brand's point of view. * **Output:** A list of concrete brand actions. e.g., Communications that celebrate amateur athletes and everyday struggles"
+              "snippet": "sha256:9a27e4ec3581bdfe"
             },
             {
               "citation": "16-the-tension-model.md \u203a 6. COMMON MISTAKES & HOW TO AVOID THEM",
               "framework": "The Tension Model",
               "category": "Comms Planning",
               "score": 0.4544,
-              "snippet": "the cultural tension. It didn't just issue a statement; it took a commercial action that dramatized its point of view. The move alienated some traditionalists but brought a massive new audience and cultural relevance to the brand, resulting in the collection selling out instantly"
+              "snippet": "sha256:ccff1af86d9d8c33"
             },
             {
-              "citation": "47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 5: WORKED EXAMPLE B",
+              "citation": "47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 4: WORKED EXAMPLE A",
               "framework": "Residual Dominant Emergent Cultural Codes",
               "category": "Cultural Strategy",
-              "score": 0.4892,
-              "snippet": "capabilities that only an EV can offer (e.g., the 'frunk' for storage, the ability to power a house), Ford is not just adopting the Emergent code but is actively reshaping it to fit its own identity. It argues that an electric truck is not a compromise; it's a *better* truck. **B"
-            },
-            {
-              "citation": "cannes_0059.md \u203a Describe the creative insight and idea",
-              "framework": "FIRST EVER LIVE COMMERCIAL CROSSOVER (2025)",
-              "category": "cannes_case",
-              "score": 0.3658,
-              "snippet": "brand engagement, redefining the way marketers view Super Bowl advertising in the future. To reignite the American Dream, Rocket needed to make homeownership more accessible \u2013 making meaningful change to an industry in crisis. Before Rocket could help them on their homeownership "
-            },
-            {
-              "citation": "cannes_0050.md \u203a Brand Context",
-              "framework": "NUTTER BUTTER, YOU GOOD? (2025)",
-              "category": "cannes_case",
-              "score": 0.3595,
-              "snippet": "their interactions, replies and theories about the undefinable content. Nutter Butter was a 55-year-old classic American cookie with a major relevancy problem. The once-beloved peanut butter childhood snack of today\u2019s parents and grandparents hadn\u2019t advertised in decades. Of the "
-            },
-            {
-              "citation": "dandad_0906.md \u203a Google Pixel: Switch Like Sol (2025)",
-              "framework": "Google Pixel: Switch Like Sol (2025)",
-              "category": "dandad_case",
-              "score": 0.4104,
-              "snippet": "**Award:** Shortlist \u00b7 D&AD \u00b7 **Discipline:** Media \u00b7 **Year:** 2025 **Client:** not recorded \u00b7 **Agency:** Google \u00b7 **Country:** not recorded"
-            },
-            {
-              "citation": "dandad_0948.md \u203a How to Make Retirement Less Scary (2025)",
-              "framework": "How to Make Retirement Less Scary (2025)",
-              "category": "dandad_case",
-              "score": 0.3852,
-              "snippet": "**Award:** WOOD Pencil \u00b7 D&AD \u00b7 **Discipline:** Magazine & Newspaper Design \u00b7 **Year:** 2025 **Client:** not recorded \u00b7 **Agency:** The New York Times \u00b7 **Country:** not recorded"
+              "score": 0.514,
+              "snippet": "sha256:95eae020fb42c220"
             },
             {
               "citation": "ipa_0142.md \u203a Beware of Your Battery Changer (2024)",
               "framework": "Beware of Your Battery Changer (2024)",
               "category": "ipa_effectiveness_case",
               "score": 0.4171,
-              "snippet": "**Award:** Silver \u00b7 IPA Effectiveness Awards \u00b7 **Year:** 2024 **Client:** Duracell \u00b7 **Agency:** VML \u00b7 **Market:** UK"
+              "snippet": "sha256:555c16476b4c1901"
             },
             {
               "citation": "ipa_0509.md \u203a The Idea",
               "framework": "Chicken Tonight's Sizzle & Stir (2000)",
               "category": "ipa_effectiveness_case",
               "score": 0.4084,
-              "snippet": "to quickly build awareness and drive trial. not recorded"
+              "snippet": "sha256:044df2422aabb5bf"
+            },
+            {
+              "citation": "cannes_0059.md \u203a Describe the creative insight and idea",
+              "framework": "FIRST EVER LIVE COMMERCIAL CROSSOVER (2025)",
+              "category": "cannes_case",
+              "score": 0.3658,
+              "snippet": "sha256:8c253e9accbc4fce"
+            },
+            {
+              "citation": "cannes_0050.md \u203a Brand Context",
+              "framework": "NUTTER BUTTER, YOU GOOD? (2025)",
+              "category": "cannes_case",
+              "score": 0.3595,
+              "snippet": "sha256:b7f46832b53b21fb"
+            },
+            {
+              "citation": "dandad_0906.md \u203a Google Pixel: Switch Like Sol (2025)",
+              "framework": "Google Pixel: Switch Like Sol (2025)",
+              "category": "dandad_case",
+              "score": 0.4104,
+              "snippet": "sha256:0fe7e3e5bbee622d"
+            },
+            {
+              "citation": "dandad_0948.md \u203a How to Make Retirement Less Scary (2025)",
+              "framework": "How to Make Retirement Less Scary (2025)",
+              "category": "dandad_case",
+              "score": 0.3852,
+              "snippet": "sha256:d32cef2642e2994f"
             }
           ],
-          "synthesis": "The core tension lies in the hesitant switcher's fear of EV limitations conflicting with their desire for joyful, reliable family transportation (source \u203a 117-find-the-tension-heuristic.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP), where Northwind must position itself as the solution that navigates this cultural tension by offering a 'better' electric experience rather than a compromise (source \u203a 47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 5: WORKED EXAMPLE B). This requires communications that celebrate everyday family moments with joyful, accessible electric driving, avoiding technical jargon to reframe the narrative around capability and emotional reward (source \u203a 45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP)."
+          "synthesis": "The core tension lies in the hesitant switcher's fear of the unknown versus the cultural ubiquity of Northwind as a symbol of sustainable innovation (45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP), where the brand must navigate the cultural domain of the American automobile as a symbol of progress (47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 4: WORKED EXAMPLE A) by taking commercial actions that dramatize its point of view, such as celebrating everyday joy in driving rather than focusing on technical specifications."
         },
         "loop5_proposition": {
           "title": "Loop 5 \u00b7 Single-minded proposition",
@@ -171,38 +171,38 @@
               "framework": "Benadryl: how the soft sell sold harder - allergy medication (2002)",
               "category": "ipa_effectiveness_case",
               "score": 0.4301,
-              "snippet": "than the Persuasion model (\u00a31 spent: \u00a33.50 sales). The shift in strategy from a rational 'persuasion' message to a more emotional and humorous 'involvement/saliency' approach was key. This allowed the brand to stand out in a cluttered market and become more memorable to consumers"
+              "snippet": "sha256:e09585a35d107731"
             },
             {
               "citation": "ipa_0032.md \u203a What Made It Work",
               "framework": "How we got customers Lovin' It and kept them Lovin' It (2022)",
               "category": "ipa_effectiveness_case",
               "score": 0.4329,
-              "snippet": "and market share over a 15-year period. The key factors that made the campaign effective were its focus on long-term emotional brand-building, its ability to connect with the universal experiences of the British public, and its consistent 'confidently humble' brand personality."
+              "snippet": "sha256:080a249bfcb7d6dd"
             },
             {
               "citation": "ipa_0434.md \u203a What Made It Work",
               "framework": "The Co-operative Food: good with food (2010)",
               "category": "ipa_effectiveness_case",
               "score": 0.4267,
-              "snippet": "\u00a31 spent. The campaign's success was driven by its counter-intuitive strategy of not focusing on price in a price-sensitive market. Instead, it used an emotional connection to essential products to change price perceptions and build brand affinity."
+              "snippet": "sha256:3efa8d438f650018"
             },
             {
               "citation": "ipa_0465.md \u203a The Idea",
               "framework": "ING Direct - taking the savings market by storm (2006)",
               "category": "ipa_effectiveness_case",
               "score": 0.4413,
-              "snippet": "continually maximised \"the bang for every buck\". An iconic, integrated campaign with an appealing look and feel. A campaign that integrated the simple \"for everyone\" nature of the product, while building the perception of reliability. It had an appealing look and feel that captur"
+              "snippet": "sha256:178c5258fbab7cb7"
             },
             {
               "citation": "ipa_0184.md \u203a The Idea",
               "framework": "The pride of Yorkshire: how Plusnet's adverts transformed its fortunes (2016)",
               "category": "ipa_effectiveness_case",
               "score": 0.4276,
-              "snippet": "new ECRM program, customer rewards, and innovative YouTube ads. The campaign's creative idea was to use a relatable 'northern charmer' to embody Plusnet's straightforward and local values, contrasting poor service with Plusnet's reliable, local alternative. The campaign featured "
+              "snippet": "sha256:1b98587bc43aa7f1"
             }
           ],
-          "synthesis": "Northwind electric embodies 'Joy' as the single-minded proposition by transforming the EV experience from a necessary compromise into a source of spontaneous family delight, directly countering price-focused messaging in a price-sensitive market through emotional connection and reliability (source \u203a ipa_0494.md \u203a What Made It Work). The campaign must leverage the 'northern charmer' archetype to embody straightforward, local values that build trust while making the joyful aspects of electric driving feel accessible and inherent to family life (source \u203a ipa_0184.md \u203a The Idea)."
+          "synthesis": "Northwind embodies 'Joy' through a confidently humble emotional connection that redefines the hesitant switcher's perception of EV ownership as an accessible, everyday experience rather than a technical gamble, aligning with the counter-intuitive strategy of prioritizing emotional resonance over price in a price-sensitive market (ipa_0494.md \u203a What Made It Work)."
         },
         "loop6_substantiation": {
           "title": "Loop 6 \u00b7 Substantiation & effectiveness evidence",
@@ -213,80 +213,80 @@
               "framework": "Helping Peter Pan come of age: Three Mobile (2024)",
               "category": "ipa_effectiveness_case",
               "score": 0.4959,
-              "snippet": "The campaign led to an incremental revenue uplift of \u00a3189m and achieved record levels of brand consideration. The campaign resulted in record-high brand consideration for Three. The effectiveness was proven through econometric modeling that isolated the incremental revenue uplift"
+              "snippet": "sha256:d0c3ada57dc8f871"
             },
             {
               "citation": "ipa_0378.md \u203a Results",
               "framework": "Van Damme good results: how Jean Claude transformed Coors Light (2016)",
               "category": "ipa_effectiveness_case",
               "score": 0.4872,
-              "snippet": "UK beer brand within that time. The campaign reversed the brand's decline, establishing momentum that turned Coors Light into a top 10 UK beer brand within three years. Coors Light has grown over 40% in the off-trade this year, outperforming the overall lager market which has see"
+              "snippet": "sha256:c63429f5bbf2fb70"
             },
             {
               "citation": "ipa_0423.md \u203a Results",
               "framework": "Take One Small Step: How communications helped Barclays (2010)",
               "category": "ipa_effectiveness_case",
               "score": 0.5112,
-              "snippet": "Brand perceptions dramatically improved, the negative trend in savings and current accounts was reversed, and the campaign drove incremental sales. Brand perceptions dramatically improved. The trend of falling savings balances and booming current account balances was reversed. Th"
+              "snippet": "sha256:dc3d5bbd8b52c099"
             },
             {
               "citation": "ipa_0509.md \u203a Results",
               "framework": "Chicken Tonight's Sizzle & Stir (2000)",
               "category": "ipa_effectiveness_case",
               "score": 0.4929,
-              "snippet": "The campaign was highly successful, recovering the number one market position within two months and achieving sales of nearly 5000 tonnes in 12 months, well above the 3000 tonnes target. It also increased sales taken from competitors. The brand was revitalised and achieved high a"
+              "snippet": "sha256:53acdd40e6baf985"
             },
             {
               "citation": "ipa_0351.md \u203a Results",
               "framework": "Helping the nation switch off with eve Sleep (2022)",
               "category": "ipa_effectiveness_case",
               "score": 0.5061,
-              "snippet": "ads was completed in one month. The case study states that the strategy exceeded its targets, which included reversing a share price decline, achieving 15% GSAD from non-mattress products, and growing total GSAD towards sustainable profitability. The campaign aimed to drive brand"
-            },
-            {
-              "citation": "cannes_0006.md \u203a Describe the Impact",
-              "framework": "TABLEAU (2026)",
-              "category": "cannes_case",
-              "score": 0.4271,
-              "snippet": "rates, camera speeds and track length all evolved through previs and real-world testing. The campaign delivered strong engagement and emotional resonance, achieving high levels of recall and positive sentiment across audiences. Independent testing confirmed the film\u2019s strength as"
-            },
-            {
-              "citation": "cannes_0018.md \u203a Describe the Impact",
-              "framework": "TABLEAU (2026)",
-              "category": "cannes_case",
-              "score": 0.4266,
-              "snippet": "rates, camera speeds and track length all evolved through previs and real-world testing. The campaign delivered strong engagement and emotional resonance, achieving high levels of recall and positive sentiment across audiences. Independent testing confirmed the film\u2019s strength as"
-            },
-            {
-              "citation": "dandad_0012.md \u203a Overview",
-              "framework": "9V Flavour (2026)",
-              "category": "dandad_case",
-              "score": 0.4117,
-              "snippet": "not recorded REWIND launched in the hyper-competitive Dutch snacking market with zero awareness and a tiny budget. Instead of a traditional campaign telling a brand story, we crafted a unique 9V Battery Flavoured Snack \u2013 a limited-edition product with baked-in talkability. By tap"
-            },
-            {
-              "citation": "dandad_0701.md \u203a Achieving Net Zero (2025)",
-              "framework": "Achieving Net Zero (2025)",
-              "category": "dandad_case",
-              "score": 0.3812,
-              "snippet": "**Award:** Shortlist \u00b7 D&AD \u00b7 **Discipline:** Future Impact \u00b7 **Year:** 2025 **Client:** not recorded \u00b7 **Agency:** Iain Morrison, James Njuguna \u00b7 **Country:** not recorded"
+              "snippet": "sha256:e4caeb1c819ff20f"
             },
             {
               "citation": "ipa_0394.md \u203a Results",
               "framework": "FEEL BETTER ABOUT ENERGY - EDF (2014)",
               "category": "ipa_effectiveness_case",
               "score": 0.4862,
-              "snippet": "place in the first half of 2012. The campaign exceeded all sales targets, acquiring new 'Blue' accounts at a rate far ahead of target. EDF Energy began winning a significant share of all market switchers and achieved the largest net gains in product accounts of all major supplier"
+              "snippet": "sha256:178cbf29f8b777be"
             },
             {
               "citation": "ipa_0309.md \u203a Results",
               "framework": "How advertising helped No More Nails (2000)",
               "category": "ipa_effectiveness_case",
               "score": 0.4743,
-              "snippet": "roll-out in 1998/1999. The campaign achieved a 191% ROI in the UK multiples sector by the end of 1999. The brand became the clear market leader with a 62% share and expanded to 16 additional countries. It accounted for 10% of Henkel's DIY sales in the UK. The brand achieved high "
+              "snippet": "sha256:c4682e8ca4ba7632"
+            },
+            {
+              "citation": "cannes_0006.md \u203a Describe the Impact",
+              "framework": "TABLEAU (2026)",
+              "category": "cannes_case",
+              "score": 0.4271,
+              "snippet": "sha256:6bc9927653b4f658"
+            },
+            {
+              "citation": "cannes_0018.md \u203a Describe the Impact",
+              "framework": "TABLEAU (2026)",
+              "category": "cannes_case",
+              "score": 0.4266,
+              "snippet": "sha256:6bc9927653b4f658"
+            },
+            {
+              "citation": "dandad_0012.md \u203a Overview",
+              "framework": "9V Flavour (2026)",
+              "category": "dandad_case",
+              "score": 0.4117,
+              "snippet": "sha256:049626a5c0533022"
+            },
+            {
+              "citation": "dandad_0701.md \u203a Achieving Net Zero (2025)",
+              "framework": "Achieving Net Zero (2025)",
+              "category": "dandad_case",
+              "score": 0.3812,
+              "snippet": "sha256:38a99927c8e21467"
             }
           ],
-          "synthesis": "The strategy must drive measurable increases in brand consideration through proven effectiveness, as demonstrated by econometric modeling showing incremental revenue uplift and record brand consideration (source \u203a ipa_0329.md \u203a Results), with success hinging on counter-intuitive emotional engagement rather than price arguments to change perceptions and build affinity (source \u203a ipa_0434.md \u203a What Made It Work). Historical evidence shows campaigns reversing negative trends through consistent emotional brand-building and reliability cues, proving that joyful, integrated storytelling can revitalize perception and drive consideration (source \u203a ipa_0465.md \u203a The Idea)."
+          "synthesis": "The campaign's success is proven by record-breaking brand consideration and incremental revenue uplift, demonstrating that emotional engagement drives measurable business outcomes as seen in cases where \u00a31 spent yielded \u00a33.50 in sales through long-term emotional brand-building (ipa_0329.md \u203a Results, ipa_0494.md \u203a What Made It Work)."
         },
         "loop7_qa": {
           "title": "Loop 7 \u00b7 Strategic QA & decision rules",
@@ -297,38 +297,38 @@
               "framework": "They Went Short We Went Long - Direct Line insurance (2018)",
               "category": "ipa_effectiveness_case",
               "score": 0.4312,
-              "snippet": "**Market:** UK Insurance is about trust. Consumers are anxious about poor claims handling, refusal to pay out or financial insecurity. Many will automatically exclude any unknown brand. DLG's research indicated that a small nudge from brand preference can have a disproportionatel"
+              "snippet": "sha256:0ab02f9ae04ded7d"
             },
             {
               "citation": "99-concept-testing.md \u203a Section 8: Decision Rules",
               "framework": "Concept Testing",
               "category": "Research Methodology",
               "score": 0.4425,
-              "snippet": "Next Steps:** **6. Appendix** ### USE WHEN... * You need to de-risk a significant investment. * You have multiple, viable strategic or creative paths. * The idea is a major departure for the brand. ### DO NOT USE WHEN... * The idea is not yet a concept. **Alternative:** **Depth I"
+              "snippet": "sha256:abfcb2484b0bec5c"
             },
             {
               "citation": "25-keller-cbbe-pyramid-customer-based-brand-equity.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
               "framework": "Keller CBBE Pyramid (Customer-Based Brand Equity)",
               "category": "Brand Strategy",
               "score": 0.4488,
-              "snippet": "Awareness:** Apple is one of the most recognized brands globally. It is top-of-mind for smartphones, laptops, and personal technology. The bitten apple logo is universally salient, even without the brand name. The brand is associated with the need for creativity, productivity, an"
+              "snippet": "sha256:fb0af9b9f2ce3c00"
             },
             {
               "citation": "02-rossiter-percy-grid.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
               "framework": "Rossiter-Percy Grid",
               "category": "Comms Planning",
               "score": 0.4297,
-              "snippet": "unique taste, iconic visual identity, and a 130+ year history of being present during happy, social moments. 1. **Confusing Involvement with Price.** Focus on the *perceived risk* for the specific target audience, not the absolute price. 2. **Defaulting to Transformational for \"E"
+              "snippet": "sha256:339370ae42b1b55b"
             },
             {
               "citation": "45-cultural-tensions-model.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
               "framework": "Cultural Tensions Model",
               "category": "Cultural Strategy",
               "score": 0.4439,
-              "snippet": "packaging focuses on care and nourishment, not \"fixing flaws.\" - **Initiatives:** The Dove Self-Esteem Project, providing self-esteem education to young people. Partnerships with organizations that promote body positivity. | 1. **Mistake: Confusing a Consumer Problem with a Cultu"
+              "snippet": "sha256:ad5c0ce278a6c1f7"
             }
           ],
-          "synthesis": "This campaign must avoid confusing involvement with price by focusing on perceived risk for the hesitant switcher family (source \u203a 02-rossiter-percy-grid.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM), while ensuring the 'Joy' proposition is distinct from transformational messaging and grounded in the brand's cultural role as a symbol of future driving (source \u203a 45-cultural-tensions-model.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM). Market research confirms UK consumers prioritize trust in energy-related decisions, requiring Northwind to position itself as the reliable, joyful solution that alleviates anxiety about EV ownership (source \u203a 0045.md \u203a Insight)."
+          "synthesis": "This strategic approach avoids the mistake of confusing involvement with price by focusing on perceived risk for the hesitant switcher (02-rossiter-percy-grid.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM), while leveraging market trust in the UK insurance context where brand preference can de-risk investment through a small nudge (ipa_0045.md \u203a Insight), ensuring the campaign is not yet a concept but a validated strategic direction ready for execution."
         }
       },
       "sources_used": [
@@ -339,7 +339,7 @@
         "38-category-entry-points-ceps.md \u203a SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
         "45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
         "45-cultural-tensions-model.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
-        "47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 5: WORKED EXAMPLE B",
+        "47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 4: WORKED EXAMPLE A",
         "59-cultural-capital-theory-bourdieu.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
         "68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
         "85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
