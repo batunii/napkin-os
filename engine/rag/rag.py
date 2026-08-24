@@ -275,8 +275,11 @@ def search(index_dir: Path, q: str, k: int = 5, where: dict | None = None
         return store_qdrant.search(_norm(qv[0]), k=k, where=where)
     rows = load_index(index_dir)
     if where:
+        # EXACT match, mirroring Qdrant's keyword filter — a pack must behave
+        # identically whichever store it lives in (substring matching here once
+        # made local and remote return different sets for the same filter).
         rows = [r for r in rows if all(
-            str(where_v).lower() in str(r["metadata"].get(where_k, "")).lower()
+            str(r["metadata"].get(where_k, "")).lower() == str(where_v).lower()
             for where_k, where_v in where.items())]
         if not rows:
             return []

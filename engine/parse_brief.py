@@ -1944,6 +1944,15 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
     gist = _brief_gist(loop2, fields)
     intent = _classify_intent(gist, fields)
 
+    # Case packs, discovered from the corpus dirs (or packs.lock at runtime) —
+    # never a hardcoded list, so adding/removing a pack needs no code change
+    # and a pack with no corpus simply cannot exist (the old `effie` bug).
+    try:
+        from packs import discover_packs
+        case_packs = [p for p in discover_packs() if p.kind == "case"]
+    except Exception:
+        case_packs = []
+
     def _one_loop(spec):
         """Retrieval + rerank + precedent pull for ONE loop — fully independent given
         the gist, so the five loops run concurrently (network-bound: Qdrant + NIM
@@ -1965,17 +1974,18 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                 "score": h["score"],
                 "snippet": re.sub(r"\s+", " ", h["text"])[:280],
             })
-        # For insight and substantiation loops, also pull award-winning PRECEDENT
-        # cases across every ingested award corpus (ipa · cannes · effie · dandad),
-        # not just playbooks. Each is filtered by `source`; corpora with no data are
-        # simply no-ops, so this activates per-corpus as each ingest lands.
-        if key in ("loop4_insight", "loop6_substantiation"):
+        # Pull award-winning PRECEDENT cases from every case pack whose `loops`
+        # gate includes this loop (default: insight + substantiation). Which packs
+        # exist, their tag, and their per-pack k all come from the pack itself.
+        eligible = [p for p in case_packs if p.eligible(key)]
+        if eligible:
             case_q = (f"award-winning precedent insight {gist['audience']} {gist['problem']}"
                       if key == "loop4_insight"
-                      else f"award-winning effectiveness results proof {gist['objective']}")
-            for src in ("ipa", "cannes", "effie", "dandad"):
-                for h in retriever.retrieve(case_q, k=2, index_dir=index_dir,
-                                            where={"source": src}):
+                      else f"award-winning effectiveness results proof {gist['objective']}"
+                      if key == "loop6_substantiation" else q)
+            for pack in eligible:
+                for h in retriever.retrieve(case_q, k=pack.k, index_dir=index_dir,
+                                            where={"source": pack.tag}):
                     if h["source"] not in seen:
                         seen.add(h["source"])
                         evidence.append({

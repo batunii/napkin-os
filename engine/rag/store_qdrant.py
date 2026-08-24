@@ -151,3 +151,28 @@ def count() -> int:
         return int(r.get("result", {}).get("points_count") or 0)
     except RuntimeError:
         return 0
+
+
+def count_by(where: dict) -> int:
+    """Exact server-side count of points matching a metadata filter."""
+    r = _req("POST", f"/collections/{collection_name()}/points/count",
+             {"filter": _filter(where), "exact": True})
+    return int(r.get("result", {}).get("count") or 0)
+
+
+def delete_by(where: dict) -> int:
+    """Delete every point matching a metadata filter (e.g. a removed pack's
+    {'source': tag}). Returns how many matched beforehand."""
+    n = count_by(where)
+    if n:
+        _req("POST", f"/collections/{collection_name()}/points/delete?wait=true",
+             {"filter": _filter(where)})
+    return n
+
+
+def delete_ids(ids: list[str]) -> int:
+    """Delete specific points by id (stale chunks within a still-present pack)."""
+    if ids:
+        _req("POST", f"/collections/{collection_name()}/points/delete?wait=true",
+             {"points": ids})
+    return len(ids)
