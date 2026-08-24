@@ -1928,6 +1928,44 @@ def _synthesize_loops37(gist, intent, loops) -> str:
     return "evidence-only"
 
 
+def _loops37_from_digests(loop2, fields) -> dict | None:
+    """Digest mode: no vector store, but pack digests (packs_dist/<id>/digest.md,
+    written offline by scripts/distil_pack.py) exist. Ground Loops 3–7 on those —
+    static per pack rather than query-matched, but the synthesis, citations and
+    strategy fill all run. This is the app's default grounding path."""
+    digest_dir = HERE / "packs_dist"
+    digests = sorted(digest_dir.glob("*/digest.md")) if digest_dir.is_dir() else []
+    entries = []
+    for d in digests:
+        text = d.read_text(errors="replace").strip()
+        if text:
+            entries.append({
+                "citation": f"{d.parent.name} digest",
+                "framework": f"{d.parent.name} digest",
+                "category": None,
+                "score": 0.0,
+                "snippet": re.sub(r"\s+", " ", text)[:600],
+            })
+    if not entries:
+        return None
+    gist = _brief_gist(loop2, fields)
+    intent = _classify_intent(gist, fields)
+    loops = {key: {"title": title, "query": "(digest mode — no retrieval)",
+                   "evidence": list(entries)}
+             for key, title, _q in LOOP37_SPECS}
+    synthesis_mode = _synthesize_loops37(gist, intent, loops)
+    return {
+        "enabled": True,
+        "index": "digests:packs_dist",
+        "intent": intent,
+        "k": 0,
+        "gist": gist,
+        "loops": loops,
+        "sources_used": sorted({e["citation"] for e in entries}),
+        "synthesis_mode": synthesis_mode,
+    }
+
+
 def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
     """Loops 3–7: classify intent → build queries from the Loop-2 brief → retrieve
     top-k playbooks + effectiveness evidence → ground a short strategy with
@@ -1938,8 +1976,12 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
         return {"enabled": False,
                 "reason": f"retriever import failed: {e.__class__.__name__}: {e}"}
     if not retriever.index_available(index_dir):
+        digest_loops = _loops37_from_digests(loop2, fields)
+        if digest_loops:
+            return digest_loops
         return {"enabled": False,
-                "reason": "rag/index not built — run `cd rag && ./build_rag.sh` to enable Loops 3–7."}
+                "reason": "no retrieval store (rag/index absent, no Qdrant) and no pack "
+                          "digests (packs_dist/) — Loops 3–7 skipped."}
 
     gist = _brief_gist(loop2, fields)
     intent = _classify_intent(gist, fields)

@@ -51,15 +51,32 @@ def _gist(text: str) -> dict | None:
     return obj if isinstance(obj, dict) else None
 
 
+def _digest_track() -> list[dict]:
+    """No vector store? Ground the context panel on pack digests instead —
+    paraphrased pattern notes distilled offline (scripts/distil_pack.py) and
+    shipped as plain files. Static per pack, but honest grounding beats none."""
+    findings = []
+    for root in (ENGINE_ROOT / "packs_dist",):
+        if not root.is_dir():
+            continue
+        for digest in sorted(root.glob("*/digest.md")):
+            pack = digest.parent.name
+            text = digest.read_text(errors="replace").strip()
+            if text:
+                findings.append({"citation": f"{pack} digest",
+                                 "text": text[:_SNIPPET_CHARS * 3], "score": 0.0})
+    return findings[:_MAX_CORPUS_FINDINGS]
+
+
 def _corpus_track(gist: dict) -> list[dict]:
     try:
         sys.path.insert(0, str(ENGINE_ROOT / "rag"))
         from retrieve import index_available, retrieve  # noqa: PLC0415
     except Exception:
         traceback.print_exc()
-        return []
+        return _digest_track()
     if not index_available():
-        return []
+        return _digest_track()
     queries = [q for q in (
         f"{gist.get('problem', '')} — campaigns that solved this",
         f"reaching {gist.get('audience', '')} in {gist.get('market', '')}",
