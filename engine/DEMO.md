@@ -1,28 +1,23 @@
-# Demoing the Brief Maker with knowledge — who needs which credentials
+# Demoing the Brief Maker with knowledge
 
-## Tester quickstart (the whole app + knowledge in one clone)
-
-The knowledge ships in the repo (`engine/packs_dist/` digests), so a tester needs
-one clone and one of two backends:
+## The whole thing, three commands
 
 ```bash
 git clone -b ragAdded https://github.com/batunii/napkin-os.git && cd napkin-os
-
-# Backend A — Claude Code, ZERO API keys (uses your Claude login):
-#   requires the `claude` CLI installed and logged in
-python3 mock-agent/server.py                       # :8787, digest-grounded
-
-# Backend B — the full engine pipeline, ONE chat key:
-cd engine && pip install -e ".[yaml,dotenv]"
-export GROQ_API_KEY=...                            # or NVIDIA_API_KEY / CEREBRAS_API_KEY
-BRIEF_LOOPS37=1 BRIEF_GOLDEN=1 python3 agent-server/server.py   # :8787
-
-# The app (either backend; needs Node + Rust):
-cd app && npm install && npx tauri dev
+python3 serve.py                          # picks the backend FOR you (see below)
+cd app && npm install && npx tauri dev    # the app (needs Node + Rust)
 ```
 
-Draft a brief in the UI and check the context panel cites the pack digests.
-No Qdrant, no embedding key, no corpus access — those are maintainer-side only.
+`serve.py` decides — you never choose: a chat key in your env → the full engine
+pipeline; no key but Claude Code installed → briefs via your Claude login
+(mock-agent); neither → it tells you how to get one of the two.
+
+**The knowledge needs no setup.** Paraphrased pack digests are committed at
+`engine/packs_dist/` and both backends load them automatically — draft a brief
+and the context panel cites them. No Qdrant, no embedding key, no corpus access:
+those are maintainer-side upgrades, not user requirements.
+
+(Engine backend additionally needs a one-time `cd engine && pip install -e ".[yaml,dotenv]"`.)
 
 The knowledge ships in tiers. Pick the row that matches what you have:
 
