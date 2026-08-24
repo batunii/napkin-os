@@ -1,5 +1,29 @@
 # Demoing the Brief Maker with knowledge — who needs which credentials
 
+## Tester quickstart (the whole app + knowledge in one clone)
+
+The knowledge ships in the repo (`engine/packs_dist/` digests), so a tester needs
+one clone and one of two backends:
+
+```bash
+git clone -b ragAdded https://github.com/batunii/napkin-os.git && cd napkin-os
+
+# Backend A — Claude Code, ZERO API keys (uses your Claude login):
+#   requires the `claude` CLI installed and logged in
+python3 mock-agent/server.py                       # :8787, digest-grounded
+
+# Backend B — the full engine pipeline, ONE chat key:
+cd engine && pip install -e ".[yaml,dotenv]"
+export GROQ_API_KEY=...                            # or NVIDIA_API_KEY / CEREBRAS_API_KEY
+BRIEF_LOOPS37=1 BRIEF_GOLDEN=1 python3 agent-server/server.py   # :8787
+
+# The app (either backend; needs Node + Rust):
+cd app && npm install && npx tauri dev
+```
+
+Draft a brief in the UI and check the context panel cites the pack digests.
+No Qdrant, no embedding key, no corpus access — those are maintainer-side only.
+
 The knowledge ships in tiers. Pick the row that matches what you have:
 
 | You have | What runs | Grounding |
