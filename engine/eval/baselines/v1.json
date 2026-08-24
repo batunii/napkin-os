@@ -1,0 +1,47 @@
+[
+  {
+    "dir": "outputs/baseline-v1",
+    "health": 26,
+    "checks": {
+      "pass": 6,
+      "fail": 3,
+      "review": 18
+    },
+    "dod_fails": [
+      "all_required_filled",
+      "objectives_linked",
+      "rtb_supports_smp",
+      "open_questions_clear",
+      "within_limits"
+    ],
+    "open_questions_high": 3,
+    "invariants": {
+      "hard": [],
+      "advisory": [
+        "objectives have no measure/number and no open question flags it"
+      ]
+    },
+    "betterbriefs": {
+      "objectives_quality": "vague",
+      "audience_vividness": "pass",
+      "single_minded_message": "pass",
+      "evaluation_criteria": "pass",
+      "budget_interlock": "pass",
+      "strategic_clarity": "pass",
+      "language": "pass"
+    },
+    "llm_stats": {
+      "logical_calls": 3,
+      "calls": 15,
+      "http_attempts": 15,
+      "prompt_tokens": 5314,
+      "completion_tokens": 2875,
+      "rate_limited": 0,
+      "wall_seconds": 220.2
+    },
+    "retrieval": {
+      "enabled": false,
+      "reason": "rag/index not built \u2014 run `cd rag && ./build_rag.sh` to enable Loops 3\u20137."
+    }
+  }
+]
