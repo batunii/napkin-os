@@ -82,7 +82,14 @@ def corpus_root() -> Path | None:
 
 
 def lock_path() -> Path:
-    return Path(os.environ.get("BRIEF_PACKS_LOCK", ENGINE / "rag" / "packs.lock"))
+    """The lock lives NEXT TO THE INDEX it describes (RAG_INDEX-aware), so a
+    test index gets a test lock and never pollutes the real one."""
+    env = os.environ.get("BRIEF_PACKS_LOCK")
+    if env:
+        return Path(env)
+    index = os.environ.get("RAG_INDEX")
+    base = Path(index) if index else ENGINE / "rag" / "index"
+    return base / "packs.lock" if base.name != "packs.lock" else base
 
 
 def _pack_from_dir(d: Path) -> Pack:
@@ -116,15 +123,18 @@ def discover_packs(root: Path | None = None) -> list[Pack]:
                 packs.append(p)
         return packs
 
-    lp = lock_path()
-    if lp.is_file():
-        data = json.loads(lp.read_text())
-        return [
-            Pack(id=e["id"], tag=e["tag"], kind=e.get("kind", "case"),
-                 k=int(e.get("k", 2)), loops=tuple(e.get("loops", [])),
-                 chunks=e.get("chunks"))
-            for e in data.get("packs", [])
-        ]
+    # Runtime fallback: the lock beside the configured index, else the shipped
+    # copy at rag/packs.lock (placed there by packaging, since index dirs are
+    # never committed).
+    for lp in (lock_path(), ENGINE / "rag" / "packs.lock"):
+        if lp.is_file():
+            data = json.loads(lp.read_text())
+            return [
+                Pack(id=e["id"], tag=e["tag"], kind=e.get("kind", "case"),
+                     k=int(e.get("k", 2)), loops=tuple(e.get("loops", [])),
+                     chunks=e.get("chunks"))
+                for e in data.get("packs", [])
+            ]
     return []
 
 

@@ -212,6 +212,12 @@ def status() -> int:
                 counts[p.tag] = store_qdrant.count_by({"source": p.tag})
             except Exception:
                 counts[p.tag] = None
+    else:
+        # local store: count from the lock written by the last sync
+        lp = packs_mod.lock_path()
+        if lp.is_file():
+            for e in json.loads(lp.read_text()).get("packs", []):
+                counts[e["tag"]] = e.get("chunks")
     print(f"{'pack':22s} {'tag':12s} {'kind':10s} k  loops{'':22s} "
           + ("store-chunks" if use_qdrant else "lock-chunks"))
     for p in packs:
