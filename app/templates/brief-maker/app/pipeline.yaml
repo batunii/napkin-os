@@ -26,8 +26,14 @@ tasks:
     returns: '{ "<literal dotted key>": <string|array per schema>, "rationale": "..." }'
 
 grounding:
-  corpora: [ipa, cannes, effie, dandad, playbook, template]
-  store: qdrant (remote); collection default napkin_rag_v2
+  # Knowledge packs are discovered, never listed here: the corpus directories
+  # (dev) or rag/packs.lock (runtime, written by `napkin-packs sync`) are the
+  # only authorities. A pack named anywhere else can drift from reality.
+  packs: see rag/packs.lock (generated; do not hand-edit)
+  modes:
+    vector: remote store (RAG_STORE=qdrant) or local index; per-pack k
+    digest: no store needed — paraphrased pack digests in the prompt prefix
+  store: qdrant (remote) or local index; collection default napkin_rag_v2
   citation_format: "source › section"
   invariant: retrieval never touches Loop-1 capture; research output is labelled
     supporting context and never alters the client's own words.

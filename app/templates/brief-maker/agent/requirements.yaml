@@ -8,8 +8,10 @@ requires:
     - name: llm_inference
       why: "extract and synthesise brief fields (Loops 1-7 of the briefing pipeline)"
     - name: retrieval
-      why: "ground insight/SMP/RTBs in award-corpora precedent (ipa · cannes · effie · dandad + planner playbooks; remote Qdrant collection)"
+      optional: true
+      why: "ground insight/SMP/RTBs in award-corpora precedent via knowledge packs; without a vector store the pipeline grounds on pack digests instead (see app/pipeline.yaml grounding)"
     - name: web_search
+      optional: true
       why: "research agent: live client/market/competitor context feeding the draft dossier"
   model_hints:
     min_context_tokens: 32000
