@@ -189,8 +189,9 @@ def sync(dry_run: bool = False) -> int:
             print(f"qdrant: deleted {len(stale_pids)} stale points")
 
     # --- the lockfile: what the runtime discovers when no corpus exists ----
-    lock = write_lock(packs, embed_model=mode if mode != "cache" else "unchanged",
-                      dim=dim, counts=per_pack)
+    real_mode = mode if mode != "cache" else json.loads(
+        manifest_path.read_text()).get("embed_mode", "cache")
+    lock = write_lock(packs, embed_model=real_mode, dim=dim, counts=per_pack)
     print(f"packs.lock -> {lock}")
     embedded = len(to_embed)
     print(f"sync done: {embedded} embedded, {len(desired) - embedded} cached, "
