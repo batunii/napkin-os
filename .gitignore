@@ -24,3 +24,4 @@ app/src-tauri/binaries/
 conformance.json
 .napkin-dev-signing-key
 app/src-tauri/.napkin-dev-signing-key
+__pycache__/

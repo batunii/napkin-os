@@ -1,0 +1,57 @@
+{
+  "generated_by": "napkin-packs sync",
+  "note": "build artifact \u2014 regenerate with sync, never edit by hand",
+  "embed_model": "nim:nvidia/nv-embedqa-e5-v5",
+  "dim": 1024,
+  "packs": [
+    {
+      "id": "briefing-template",
+      "tag": "template",
+      "kind": "template",
+      "k": 2,
+      "loops": [],
+      "chunks": 55
+    },
+    {
+      "id": "cannes",
+      "tag": "cannes",
+      "kind": "case",
+      "k": 2,
+      "loops": [
+        "loop4_insight",
+        "loop6_substantiation"
+      ],
+      "chunks": 499
+    },
+    {
+      "id": "dandad",
+      "tag": "dandad",
+      "kind": "case",
+      "k": 2,
+      "loops": [
+        "loop4_insight",
+        "loop6_substantiation"
+      ],
+      "chunks": 3836
+    },
+    {
+      "id": "ipa",
+      "tag": "ipa",
+      "kind": "case",
+      "k": 2,
+      "loops": [
+        "loop4_insight",
+        "loop6_substantiation"
+      ],
+      "chunks": 3822
+    },
+    {
+      "id": "playbooks",
+      "tag": "playbook",
+      "kind": "playbook",
+      "k": 2,
+      "loops": [],
+      "chunks": 1224
+    }
+  ]
+}

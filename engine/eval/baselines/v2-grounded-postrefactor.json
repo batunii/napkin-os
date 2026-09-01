@@ -1,0 +1,374 @@
+[
+  {
+    "dir": "outputs/baseline-v2",
+    "health": 43,
+    "checks": {
+      "pass": 9,
+      "fail": 3,
+      "review": 15
+    },
+    "dod_fails": [
+      "all_required_filled",
+      "objectives_linked",
+      "open_questions_clear",
+      "within_limits"
+    ],
+    "open_questions_high": 1,
+    "invariants": {
+      "hard": [],
+      "advisory": [
+        "objectives have no measure/number and no open question flags it"
+      ]
+    },
+    "betterbriefs": {
+      "objectives_quality": "vague",
+      "audience_vividness": "pass",
+      "single_minded_message": "pass",
+      "evaluation_criteria": "pass",
+      "budget_interlock": "pass",
+      "strategic_clarity": "pass",
+      "language": "pass"
+    },
+    "llm_stats": {
+      "logical_calls": 22,
+      "calls": 109,
+      "http_attempts": 112,
+      "prompt_tokens": 17092,
+      "completion_tokens": 4900,
+      "rate_limited": 1,
+      "wall_seconds": 1045.0
+    },
+    "retrieval": {
+      "enabled": true,
+      "index": "/Users/saieeshwar/Projects/Work/work/napkin/napkin-os-pr/engine/rag/index",
+      "intent": "creative-campaign",
+      "k": 5,
+      "gist": {
+        "problem": "EV numbers have stalled, share is down vs where we projected, and the perception job is the real problem",
+        "objective": "Reset how the UK feels about Northwind electric; Increase brand consideration",
+        "audience": "The hesitant switcher, 35-55, family, suburban, has a driveway (can charge), considering EV but scared",
+        "key_message": "Joy"
+      },
+      "loops": {
+        "loop3_research": {
+          "title": "Loop 3 \u00b7 Research & category intelligence",
+          "query": "how to research the category, competitors and audience for The hesitant switcher, 35-55, family, suburban, has a driveway (can charge), considering EV but scared; EV numbers have stalled, share is down vs where we projected, and the perception job is the real problem",
+          "evidence": [
+            {
+              "citation": "38-category-entry-points-ceps.md \u203a SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
+              "framework": "Category Entry Points (CEPs)",
+              "category": "Brand Strategy",
+              "score": 0.4653,
+              "snippet": "sha256:72ada18bc66d6300"
+            },
+            {
+              "citation": "68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+              "framework": "Ehrenberg-Bass Laws of Marketing",
+              "category": "Media Effectiveness",
+              "score": 0.486,
+              "snippet": "sha256:cf7bd73e29a90a71"
+            },
+            {
+              "citation": "85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+              "framework": "Behavioural Segmentation",
+              "category": "Audience Segmentation",
+              "score": 0.4665,
+              "snippet": "sha256:29b74028f83f5311"
+            },
+            {
+              "citation": "59-cultural-capital-theory-bourdieu.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+              "framework": "Cultural Capital Theory (Bourdieu)",
+              "category": "Behavioural Science",
+              "score": 0.4795,
+              "snippet": "sha256:934e24e14dfdb055"
+            }
+          ],
+          "synthesis": "To reset how the UK feels about Northwind electric, we must first define the category boundaries from the hesitant switcher's perspective (35-55, suburban family with a driveway), as instructed in (38-category-entry-points-ceps.md \u203a SECTION 2: STEP-BY-STEP APPLICATION PROCESS), focusing on mental availability through cultural ubiquity where the brand becomes a shorthand for the future of driving (85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP), while leveraging panel data to track Double Jeopardy metrics (68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP) to measure penetration and purchase frequency."
+        },
+        "loop4_insight": {
+          "title": "Loop 4 \u00b7 Human insight & cultural tension",
+          "query": "find the human insight and cultural tension for The hesitant switcher, 35-55, family, suburban, has a driveway (can charge), considering EV but scared given EV numbers have stalled, share is down vs where we projected, and the perception job is the real problem",
+          "evidence": [
+            {
+              "citation": "117-find-the-tension-heuristic.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+              "framework": "Find the Tension Heuristic",
+              "category": "Thinking Models",
+              "score": 0.4719,
+              "snippet": "sha256:520f874e7dea56ae"
+            },
+            {
+              "citation": "45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+              "framework": "Cultural Tensions Model",
+              "category": "Cultural Strategy",
+              "score": 0.464,
+              "snippet": "sha256:9a27e4ec3581bdfe"
+            },
+            {
+              "citation": "16-the-tension-model.md \u203a 6. COMMON MISTAKES & HOW TO AVOID THEM",
+              "framework": "The Tension Model",
+              "category": "Comms Planning",
+              "score": 0.4544,
+              "snippet": "sha256:ccff1af86d9d8c33"
+            },
+            {
+              "citation": "47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 4: WORKED EXAMPLE A",
+              "framework": "Residual Dominant Emergent Cultural Codes",
+              "category": "Cultural Strategy",
+              "score": 0.514,
+              "snippet": "sha256:95eae020fb42c220"
+            },
+            {
+              "citation": "ipa_0142.md \u203a Beware of Your Battery Changer (2024)",
+              "framework": "Beware of Your Battery Changer (2024)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4171,
+              "snippet": "sha256:555c16476b4c1901"
+            },
+            {
+              "citation": "ipa_0509.md \u203a The Idea",
+              "framework": "Chicken Tonight's Sizzle & Stir (2000)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4084,
+              "snippet": "sha256:044df2422aabb5bf"
+            },
+            {
+              "citation": "cannes_0059.md \u203a Describe the creative insight and idea",
+              "framework": "FIRST EVER LIVE COMMERCIAL CROSSOVER (2025)",
+              "category": "cannes_case",
+              "score": 0.3658,
+              "snippet": "sha256:8c253e9accbc4fce"
+            },
+            {
+              "citation": "cannes_0050.md \u203a Brand Context",
+              "framework": "NUTTER BUTTER, YOU GOOD? (2025)",
+              "category": "cannes_case",
+              "score": 0.3595,
+              "snippet": "sha256:b7f46832b53b21fb"
+            },
+            {
+              "citation": "dandad_0906.md \u203a Google Pixel: Switch Like Sol (2025)",
+              "framework": "Google Pixel: Switch Like Sol (2025)",
+              "category": "dandad_case",
+              "score": 0.4104,
+              "snippet": "sha256:0fe7e3e5bbee622d"
+            },
+            {
+              "citation": "dandad_0948.md \u203a How to Make Retirement Less Scary (2025)",
+              "framework": "How to Make Retirement Less Scary (2025)",
+              "category": "dandad_case",
+              "score": 0.3852,
+              "snippet": "sha256:d32cef2642e2994f"
+            }
+          ],
+          "synthesis": "The core tension lies in the hesitant switcher's fear of the unknown versus the cultural ubiquity of Northwind as a symbol of sustainable innovation (45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP), where the brand must navigate the cultural domain of the American automobile as a symbol of progress (47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 4: WORKED EXAMPLE A) by taking commercial actions that dramatize its point of view, such as celebrating everyday joy in driving rather than focusing on technical specifications."
+        },
+        "loop5_proposition": {
+          "title": "Loop 5 \u00b7 Single-minded proposition",
+          "query": "single-minded proposition and key message to achieve Reset how the UK feels about Northwind electric; Increase brand consideration; Joy",
+          "evidence": [
+            {
+              "citation": "ipa_0494.md \u203a What Made It Work",
+              "framework": "Benadryl: how the soft sell sold harder - allergy medication (2002)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4301,
+              "snippet": "sha256:e09585a35d107731"
+            },
+            {
+              "citation": "ipa_0032.md \u203a What Made It Work",
+              "framework": "How we got customers Lovin' It and kept them Lovin' It (2022)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4329,
+              "snippet": "sha256:080a249bfcb7d6dd"
+            },
+            {
+              "citation": "ipa_0434.md \u203a What Made It Work",
+              "framework": "The Co-operative Food: good with food (2010)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4267,
+              "snippet": "sha256:3efa8d438f650018"
+            },
+            {
+              "citation": "ipa_0465.md \u203a The Idea",
+              "framework": "ING Direct - taking the savings market by storm (2006)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4413,
+              "snippet": "sha256:178c5258fbab7cb7"
+            },
+            {
+              "citation": "ipa_0184.md \u203a The Idea",
+              "framework": "The pride of Yorkshire: how Plusnet's adverts transformed its fortunes (2016)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4276,
+              "snippet": "sha256:1b98587bc43aa7f1"
+            }
+          ],
+          "synthesis": "Northwind embodies 'Joy' through a confidently humble emotional connection that redefines the hesitant switcher's perception of EV ownership as an accessible, everyday experience rather than a technical gamble, aligning with the counter-intuitive strategy of prioritizing emotional resonance over price in a price-sensitive market (ipa_0494.md \u203a What Made It Work)."
+        },
+        "loop6_substantiation": {
+          "title": "Loop 6 \u00b7 Substantiation & effectiveness evidence",
+          "query": "effectiveness evidence and proof a strategy delivers Reset how the UK feels about Northwind electric; Increase brand consideration; how brands grow",
+          "evidence": [
+            {
+              "citation": "ipa_0329.md \u203a Results",
+              "framework": "Helping Peter Pan come of age: Three Mobile (2024)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4959,
+              "snippet": "sha256:d0c3ada57dc8f871"
+            },
+            {
+              "citation": "ipa_0378.md \u203a Results",
+              "framework": "Van Damme good results: how Jean Claude transformed Coors Light (2016)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4872,
+              "snippet": "sha256:c63429f5bbf2fb70"
+            },
+            {
+              "citation": "ipa_0423.md \u203a Results",
+              "framework": "Take One Small Step: How communications helped Barclays (2010)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.5112,
+              "snippet": "sha256:dc3d5bbd8b52c099"
+            },
+            {
+              "citation": "ipa_0509.md \u203a Results",
+              "framework": "Chicken Tonight's Sizzle & Stir (2000)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4929,
+              "snippet": "sha256:53acdd40e6baf985"
+            },
+            {
+              "citation": "ipa_0351.md \u203a Results",
+              "framework": "Helping the nation switch off with eve Sleep (2022)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.5061,
+              "snippet": "sha256:e4caeb1c819ff20f"
+            },
+            {
+              "citation": "ipa_0394.md \u203a Results",
+              "framework": "FEEL BETTER ABOUT ENERGY - EDF (2014)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4862,
+              "snippet": "sha256:178cbf29f8b777be"
+            },
+            {
+              "citation": "ipa_0309.md \u203a Results",
+              "framework": "How advertising helped No More Nails (2000)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4743,
+              "snippet": "sha256:c4682e8ca4ba7632"
+            },
+            {
+              "citation": "cannes_0006.md \u203a Describe the Impact",
+              "framework": "TABLEAU (2026)",
+              "category": "cannes_case",
+              "score": 0.4271,
+              "snippet": "sha256:6bc9927653b4f658"
+            },
+            {
+              "citation": "cannes_0018.md \u203a Describe the Impact",
+              "framework": "TABLEAU (2026)",
+              "category": "cannes_case",
+              "score": 0.4266,
+              "snippet": "sha256:6bc9927653b4f658"
+            },
+            {
+              "citation": "dandad_0012.md \u203a Overview",
+              "framework": "9V Flavour (2026)",
+              "category": "dandad_case",
+              "score": 0.4117,
+              "snippet": "sha256:049626a5c0533022"
+            },
+            {
+              "citation": "dandad_0701.md \u203a Achieving Net Zero (2025)",
+              "framework": "Achieving Net Zero (2025)",
+              "category": "dandad_case",
+              "score": 0.3812,
+              "snippet": "sha256:38a99927c8e21467"
+            }
+          ],
+          "synthesis": "The campaign's success is proven by record-breaking brand consideration and incremental revenue uplift, demonstrating that emotional engagement drives measurable business outcomes as seen in cases where \u00a31 spent yielded \u00a33.50 in sales through long-term emotional brand-building (ipa_0329.md \u203a Results, ipa_0494.md \u203a What Made It Work)."
+        },
+        "loop7_qa": {
+          "title": "Loop 7 \u00b7 Strategic QA & decision rules",
+          "query": "common mistakes and decision rules to pressure-test Joy for Reset how the UK feels about Northwind electric; Increase brand consideration",
+          "evidence": [
+            {
+              "citation": "ipa_0045.md \u203a Insight",
+              "framework": "They Went Short We Went Long - Direct Line insurance (2018)",
+              "category": "ipa_effectiveness_case",
+              "score": 0.4312,
+              "snippet": "sha256:0ab02f9ae04ded7d"
+            },
+            {
+              "citation": "99-concept-testing.md \u203a Section 8: Decision Rules",
+              "framework": "Concept Testing",
+              "category": "Research Methodology",
+              "score": 0.4425,
+              "snippet": "sha256:abfcb2484b0bec5c"
+            },
+            {
+              "citation": "25-keller-cbbe-pyramid-customer-based-brand-equity.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+              "framework": "Keller CBBE Pyramid (Customer-Based Brand Equity)",
+              "category": "Brand Strategy",
+              "score": 0.4488,
+              "snippet": "sha256:fb0af9b9f2ce3c00"
+            },
+            {
+              "citation": "02-rossiter-percy-grid.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+              "framework": "Rossiter-Percy Grid",
+              "category": "Comms Planning",
+              "score": 0.4297,
+              "snippet": "sha256:339370ae42b1b55b"
+            },
+            {
+              "citation": "45-cultural-tensions-model.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+              "framework": "Cultural Tensions Model",
+              "category": "Cultural Strategy",
+              "score": 0.4439,
+              "snippet": "sha256:ad5c0ce278a6c1f7"
+            }
+          ],
+          "synthesis": "This strategic approach avoids the mistake of confusing involvement with price by focusing on perceived risk for the hesitant switcher (02-rossiter-percy-grid.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM), while leveraging market trust in the UK insurance context where brand preference can de-risk investment through a small nudge (ipa_0045.md \u203a Insight), ensuring the campaign is not yet a concept but a validated strategic direction ready for execution."
+        }
+      },
+      "sources_used": [
+        "02-rossiter-percy-grid.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+        "117-find-the-tension-heuristic.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+        "16-the-tension-model.md \u203a 6. COMMON MISTAKES & HOW TO AVOID THEM",
+        "25-keller-cbbe-pyramid-customer-based-brand-equity.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+        "38-category-entry-points-ceps.md \u203a SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
+        "45-cultural-tensions-model.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+        "45-cultural-tensions-model.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+        "47-residual-dominant-emergent-cultural-codes.md \u203a SECTION 4: WORKED EXAMPLE A",
+        "59-cultural-capital-theory-bourdieu.md \u203a SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+        "68-ehrenberg-bass-laws-of-marketing.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+        "85-behavioural-segmentation.md \u203a SECTION 3: GUIDING QUESTIONS PER STEP",
+        "99-concept-testing.md \u203a Section 8: Decision Rules",
+        "cannes_0006.md \u203a Describe the Impact",
+        "cannes_0018.md \u203a Describe the Impact",
+        "cannes_0050.md \u203a Brand Context",
+        "cannes_0059.md \u203a Describe the creative insight and idea",
+        "dandad_0012.md \u203a Overview",
+        "dandad_0701.md \u203a Achieving Net Zero (2025)",
+        "dandad_0906.md \u203a Google Pixel: Switch Like Sol (2025)",
+        "dandad_0948.md \u203a How to Make Retirement Less Scary (2025)",
+        "ipa_0032.md \u203a What Made It Work",
+        "ipa_0045.md \u203a Insight",
+        "ipa_0142.md \u203a Beware of Your Battery Changer (2024)",
+        "ipa_0184.md \u203a The Idea",
+        "ipa_0309.md \u203a Results",
+        "ipa_0329.md \u203a Results",
+        "ipa_0351.md \u203a Results",
+        "ipa_0378.md \u203a Results",
+        "ipa_0394.md \u203a Results",
+        "ipa_0423.md \u203a Results",
+        "ipa_0434.md \u203a What Made It Work",
+        "ipa_0465.md \u203a The Idea",
+        "ipa_0494.md \u203a What Made It Work",
+        "ipa_0509.md \u203a Results",
+        "ipa_0509.md \u203a The Idea"
+      ],
+      "synthesis_mode": "llm:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    }
+  }
+]

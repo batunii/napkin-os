@@ -1,0 +1,732 @@
+{
+ "meta": {
+  "client": "Sample",
+  "project": "Messy jug",
+  "source_files": [
+   "messy_brief_sample.txt"
+  ],
+  "parsed_at": "2026-06-25T16:45:14",
+  "parser_version": "0.3.0",
+  "extraction_mode": "groq:meta/llama-3.3-70b-instruct",
+  "prompt_version": "loop12-v2-betterbriefs"
+ },
+ "loop1_capture": {
+  "fields": {
+   "background_context": {
+    "value": "Northwind Motors passenger cars, UK + Ireland, EV numbers have stalled, perception job is the real problem",
+    "status": "fact",
+    "source_quote": "Honestly the EV numbers have stalled — share is down vs where we projected and the perception job is the real problem, people still think EVs are expensive, range-anxious and a bit joyless.",
+    "confidence": 1
+   },
+   "business_problem": {
+    "value": "EV numbers have stalled, perception of EVs as expensive, range-anxious and joyless",
+    "status": "fact",
+    "source_quote": "Honestly the EV numbers have stalled — share is down vs where we projected and the perception job is the real problem, people still think EVs are expensive, range-anxious and a bit joyless.",
+    "confidence": 1
+   },
+   "objective": [
+    {
+     "value": "Reset how the UK feels about Northwind electric",
+     "status": "fact",
+     "source_quote": "What we actually need from this pitch: a platform idea that resets how the UK feels about Northwind electric",
+     "confidence": 1,
+     "objective_type": "attitudinal"
+    },
+    {
+     "value": "Increase brand consideration",
+     "status": "fact",
+     "source_quote": "Success = brand consideration up",
+     "confidence": 1,
+     "objective_type": "commercial"
+    },
+    {
+     "value": "Increase test drive bookings",
+     "status": "fact",
+     "source_quote": "KPIs probably consideration + test drive bookings",
+     "confidence": 1,
+     "objective_type": "commercial"
+    }
+   ],
+   "target_audience": {
+    "value": "Hesitant switcher, 35-55, family, suburban, has a driveway",
+    "status": "fact",
+    "source_quote": "The audience is sort of \"the hesitant switcher\", 35-55, family, suburban, has a driveway (can charge), considering EV but scared.",
+    "confidence": 1
+   },
+   "deliverables": {
+    "value": "Platform idea, TV/social/retail/dealer campaign",
+    "status": "fact",
+    "source_quote": "What we actually need from this pitch: a platform idea that resets how the UK feels about Northwind electric — something that can run 3+ years, work across TV/social/retail/dealer",
+    "confidence": 1
+   },
+   "mandatories": [
+    {
+     "value": "Use new 'NX' naming",
+     "status": "fact",
+     "source_quote": "Mandatory stuff: has to use the new 'NX' naming",
+     "confidence": 1
+    },
+    {
+     "value": "No speeding shots",
+     "status": "fact",
+     "source_quote": "can't show the car doing anything illegal (no speeding shots)",
+     "confidence": 1
+    },
+    {
+     "value": "ASA-safe green claims",
+     "status": "fact",
+     "source_quote": "green claims have to be ASA-safe (no \"zero emissions\" full stop — lifecycle caveat)",
+     "confidence": 1
+    },
+    {
+     "value": "Global CI/logo lockup rules apply",
+     "status": "fact",
+     "source_quote": "global CI/logo lockup rules apply",
+     "confidence": 1
+    }
+   ],
+   "budget": {
+    "value": "£6-8m working media for year one",
+    "status": "fact",
+    "source_quote": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it",
+    "confidence": 1
+   },
+   "timeline": [
+    {
+     "value": "Pitch presentations week of 13 July",
+     "status": "fact",
+     "source_quote": "Timeline: pitch presentations week of 13 July",
+     "confidence": 1
+    }
+   ],
+   "success_metrics": [
+    {
+     "value": "Brand consideration up",
+     "status": "fact",
+     "source_quote": "Success = brand consideration up",
+     "confidence": 1
+    },
+    {
+     "value": "Test drive bookings",
+     "status": "fact",
+     "source_quote": "KPIs probably consideration + test drive bookings",
+     "confidence": 1
+    }
+   ],
+   "key_message": {
+    "value": "Joy",
+    "status": "fact",
+    "source_quote": "Oh and they keep saying the word \"joy\" — I think that's the unlock honestly",
+    "confidence": 1
+   },
+   "proof_points": [
+    {
+     "value": "Sustainability credentials",
+     "status": "fact",
+     "source_quote": "They love showing effectiveness credentials, IPA-style",
+     "confidence": 1
+    }
+   ],
+   "evaluation_criteria": [
+    {
+     "value": "Freshness of the idea",
+     "status": "fact",
+     "source_quote": "Success = ... and they'll judge us partly on whether the idea is genuinely fresh for the category",
+     "confidence": 1
+    }
+   ],
+   "strategic_angle": {
+    "value": "Emotional brand campaign",
+    "status": "fact",
+    "source_quote": "Big emotional brand thing, not a product readout",
+    "confidence": 1
+   },
+   "anti_target": {
+    "value": "Early adopters",
+    "status": "fact",
+    "source_quote": "Not early adopters",
+    "confidence": 1
+   },
+   "competitors_market": {
+    "value": "Polestar, Tesla, Kia, Hyundai",
+    "status": "fact",
+    "source_quote": "Polestar and Tesla own \"tech\" and \"cool\". Kia/Hyundai are eating us on value",
+    "confidence": 1
+   },
+   "tone_and_brand": {
+    "value": "'Built to Last' heritage, wit of the old UK work",
+    "status": "fact",
+    "source_quote": "Must feel unmistakably Northwind (you know the 'Built to Last' heritage, the wit of the old UK work)",
+    "confidence": 1
+   },
+   "decision_makers": [
+    {
+     "value": "Marcus, UK CMO",
+     "status": "fact",
+     "source_quote": "Pitch is to the UK CMO (Marcus) and the global brand director who flies in — Marcus is the one to win",
+     "confidence": 1
+    },
+    {
+     "value": "Global brand director",
+     "status": "fact",
+     "source_quote": "Pitch is to the UK CMO (Marcus) and the global brand director who flies in",
+     "confidence": 1
+    }
+   ],
+   "constraints": [
+    {
+     "value": "No gimmicky ideas",
+     "status": "fact",
+     "source_quote": "Marcus is nervous about anything that feels gimmicky",
+     "confidence": 1
+    }
+   ]
+  },
+  "how_to_win": {
+   "stated_evaluation_criteria": [
+    {
+     "point": "Freshness of the idea",
+     "evidence": "They love showing effectiveness credentials, IPA-style"
+    }
+   ],
+   "unstated_needs": [
+    {
+     "point": "Understanding of dealer network",
+     "evidence": "We also need to show we understand their dealer network — dealers feel left out of brand campaigns"
+    }
+   ],
+   "likely_landmines": [
+    {
+     "point": "Greenwashing accusations",
+     "evidence": "Sustainability has to be credible, they are paranoid about greenwashing accusations after the diesel thing"
+    }
+   ],
+   "winning_themes": [
+    {
+     "point": "Joy",
+     "evidence": "Oh and they keep saying the word \"joy\" — I think that's the unlock honestly"
+    }
+   ],
+   "proof_required": [
+    {
+     "point": "Sustainability credentials",
+     "evidence": "They love showing effectiveness credentials, IPA-style"
+    }
+   ]
+  },
+  "no_loss_ledger": {
+   "total_segments": 30,
+   "mapped_segments": 20,
+   "coverage_pct": 66.7,
+   "unmapped": [
+    {
+     "segment": "From: Hannah Reuters <h.reuters@northwind-auto.example> To: Napkin",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Subject: Northwind pitch brief - \"Moving People\" (rough notes, sorry!)",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Hi team — throwing this over before the weekend, it's a bit of a brain dump from the call + the deck Marketing sent.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Pull it together however you like.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "We want a brand campaign for the NX range (the EVs) for 2027.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "We are NOT cheap and we don't want to pretend to be.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "They want 2-3 territories not 1.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "That's most of it.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "There was something about a sustainability sub-brand too but I can't remember the details — will dig out the other deck.",
+     "source_ref": "messy_brief_sample.txt"
+    },
+    {
+     "segment": "Shout with questions.",
+     "source_ref": "messy_brief_sample.txt"
+    }
+   ]
+  },
+  "review": {
+   "passed": false,
+   "flags": [
+    "Coverage 66.7% < 85% — 10 segments need a home (re-pass)."
+   ]
+  }
+ },
+ "loop2_brief": {
+  "problem": {
+   "value": "EV numbers have stalled, perception of EVs as expensive, range-anxious and joyless",
+   "status": "fact"
+  },
+  "objective": {
+   "value": "Reset how the UK feels about Northwind electric; Increase brand consideration; Increase test drive bookings",
+   "status": "fact"
+  },
+  "audience": {
+   "value": "Hesitant switcher, 35-55, family, suburban, has a driveway",
+   "status": "fact"
+  },
+  "key_message": {
+   "value": "Joy",
+   "status": "fact"
+  },
+  "evaluation_criteria": {
+   "value": "Freshness of the idea",
+   "status": "fact"
+  },
+  "not_doing": {
+   "value": "Early adopters",
+   "status": "fact"
+  },
+  "scope": {
+   "value": "Platform idea, TV/social/retail/dealer campaign · £6-8m working media for year one · Pitch presentations week of 13 July",
+   "status": "fact"
+  },
+  "open_questions": [
+   {
+    "question": "What is the exact production budget?"
+   },
+   {
+    "question": "What are the specific details of the sustainability sub-brand?"
+   },
+   {
+    "question": "How will the success of the campaign be measured beyond brand consideration and test drive bookings?"
+   }
+  ],
+  "review": {
+   "passed": true,
+   "flags": []
+  }
+ },
+ "betterbriefs_scorecard": {
+  "dimensions": [
+   {
+    "dimension": "objectives_quality",
+    "verdict": "vague",
+    "evidence": "Success = brand consideration up, and they'll judge us partly on whether the idea is genuinely fresh for the category (everyone does the silent-swoosh EV ad). KPIs probably consideration + test drive bookings but that wasn't nailed down.",
+    "fix": "Define specific, measurable objectives with benchmarks and time‑frames (e.g., increase unaided brand consideration by 8 % YoY by Q4 2027, achieve 20 % lift in test‑drive bookings within 12 months)."
+   },
+   {
+    "dimension": "audience_vividness",
+    "verdict": "vague",
+    "evidence": "The audience is sort of \"the hesitant switcher\", 35-55, family, suburban, has a driveway (can charge), considering EV but scared.",
+    "fix": "Provide a richer psychographic profile (values, media habits, pain points) and explicitly state who is NOT in scope (e.g., early adopters, urban renters without charging access)."
+   },
+   {
+    "dimension": "single_minded_message",
+    "verdict": "missing",
+    "evidence": "Oh and they keep saying the word \"joy\" — I think that's the unlock honestly.",
+    "fix": "Articulate one clear brand message (e.g., \"Northwind ID delivers joyful, affordable electric driving for families\") and back it with proof points such as price positioning, range, and heritage."
+   },
+   {
+    "dimension": "evaluation_criteria",
+    "verdict": "vague",
+    "evidence": "Success = brand consideration up, and they'll judge us partly on whether the idea is genuinely fresh for the category (everyone does the silent-swoosh EV ad). KPIs probably consideration + test drive bookings but that wasn't nailed down.",
+    "fix": "List concrete evaluation criteria (e.g., % lift in consideration, % increase in test‑drive bookings, creative freshness score from an independent panel, compliance with ASA green‑claim guidelines)."
+   },
+   {
+    "dimension": "budget_interlock",
+    "verdict": "vague",
+    "evidence": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it.",
+    "fix": "Align the £6‑8 m media budget with the 3‑year, multi‑channel scope or scale back the ambition; provide a cost breakdown that shows feasibility."
+   },
+   {
+    "dimension": "strategic_clarity",
+    "verdict": "pass",
+    "evidence": "What we actually need from this pitch: a platform idea that resets how the UK feels about Northwind electric — something that can run 3+ years, work across TV/social/retail/dealer, and travel into Ireland without feeling like a London ad. ... they are nervous about anything that feels gimmicky and he's been burned by a \"viral\" stunt before.",
+    "fix": "Clarify any additional constraints (e.g., no dealer‑specific messaging) and confirm the strategic choice to focus on joy‑driven heritage rather than tech‑first positioning."
+   },
+   {
+    "dimension": "language",
+    "verdict": "vague",
+    "evidence": "Hi team — throwing this over before the weekend, it's a bit of a brain dump from the call + the deck Marketing sent. ... ASA‑safe, IPA‑style.",
+    "fix": "Rewrite in concise, jargon‑free language; replace internal shorthand (\"ASA‑safe\", \"IPA‑style\") with plain explanations."
+   }
+  ],
+  "single_mindedness": {
+   "verdict": "multiple",
+   "split_into": [
+    "Brand platform brief: develop a 3‑year, UK‑and‑Ireland campaign that resets perception of Northwind ID electric cars around the core message of joy.",
+    "Dealer‑network brief: create assets and activation guidelines that integrate dealers into the brand campaign and address their feeling of being left out.",
+    "Sustainability sub‑brand brief: define a credible, ASA‑compliant sustainability narrative that can sit alongside the main campaign without green‑washing."
+   ]
+  },
+  "summary": "The brief is vague on objectives, audience detail, single‑message, and evaluation criteria, and the budget‑scope alignment is unclear, though it offers a clear strategic direction; it should be split into three focused briefs.",
+  "mode": "llm"
+ },
+ "loops3_7": {
+  "enabled": true,
+  "index": "/Users/saieeshwar/Projects/Work/work/napkin/briefing/rag/index",
+  "intent": "creative-campaign",
+  "k": 5,
+  "gist": {
+   "problem": "EV numbers have stalled, perception of EVs as expensive, range-anxious and joyless",
+   "objective": "Reset how the UK feels about Northwind electric; Increase brand consideration; Increase test drive bookings",
+   "audience": "Hesitant switcher, 35-55, family, suburban, has a driveway",
+   "key_message": "Joy"
+  },
+  "loops": {
+   "loop3_research": {
+    "title": "Loop 3 · Research & category intelligence",
+    "query": "how to research the category, competitors and audience for Hesitant switcher, 35-55, family, suburban, has a driveway; EV numbers have stalled, perception of EVs as expensive, range-anxious and joyless",
+    "evidence": [
+     {
+      "citation": "128-abductive-reasoning.md › 5. WORKED EXAMPLE B: OATLY",
+      "framework": "Abductive Reasoning",
+      "category": "Thinking Models",
+      "score": 0.4145,
+      "snippet": "them directly what services they have subscribed to and why they made the switch. 4. **Competitive Teardown:** Subscribe to Stellar+. Analyze its content library, user experience, pricing, and marketing. What is its value proposition, and how does it differ from Netflix's? ### **"
+     },
+     {
+      "citation": "38-category-entry-points-ceps.md › SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
+      "framework": "Category Entry Points (CEPs)",
+      "category": "Brand Strategy",
+      "score": 0.4275,
+      "snippet": "relate to mental availability? 5. What is the primary source for learning about CEPs? 1. **Define the Category and Buying Audience.** * **Instruction:** Clearly define the boundaries of the category from a consumer's perspective. This is not about industry definitions but about h"
+     },
+     {
+      "citation": "68-ehrenberg-bass-laws-of-marketing.md › SECTION 3: GUIDING QUESTIONS PER STEP",
+      "framework": "Ehrenberg-Bass Laws of Marketing",
+      "category": "Media Effectiveness",
+      "score": 0.4284,
+      "snippet": "Jeopardy law). The only way to defy this is to grow your penetration. * **Inputs Needed:** Panel data (e.g., Nielsen, Kantar) showing penetration and purchase frequency for all brands in the category. * **Expected Output:** A quarterly report tracking Double Jeopardy metrics and "
+     },
+     {
+      "citation": "71-google-zmot-zero-moment-of-truth.md › SECTION 3: GUIDING QUESTIONS PER STEP",
+      "framework": "Google ZMOT (Zero Moment of Truth)",
+      "category": "Media Effectiveness",
+      "score": 0.4164,
+      "snippet": "by measuring keyword rankings, traffic, engagement, and impact on leads and sales. Use analytics tools to create a performance dashboard and establish a regular review cadence to refine the strategy. **Step 1: Identify Your Brand's Zero Moments.** * What are the top 10 questions "
+     },
+     {
+      "citation": "59-cultural-capital-theory-bourdieu.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+      "framework": "Cultural Capital Theory (Bourdieu)",
+      "category": "Behavioural Science",
+      "score": 0.442,
+      "snippet": "EV market. * **Cultural Ubiquity:** The brand has become a powerful cultural symbol, shorthand for the future of driving and sustainable technology. * **Shift in Category Norms:** The entire automotive industry is now scrambling to catch up, adopting Tesla's focus on software, mi"
+     }
+    ],
+    "synthesis": "To reset perception and grow consideration, Northwind Motors must leverage its cultural ubiquity as a symbol of the future of driving (loop3_research › 5. WORKED EXAMPLE B: OATLY) and address the Double Jeopardy of low penetration and low purchase frequency by increasing mental availability through consistent, top-of-mind messaging (loop3_research › 5. WORKED EXAMPLE B: OATLY)."
+   },
+   "loop4_insight": {
+    "title": "Loop 4 · Human insight & cultural tension",
+    "query": "find the human insight and cultural tension for Hesitant switcher, 35-55, family, suburban, has a driveway given EV numbers have stalled, perception of EVs as expensive, range-anxious and joyless",
+    "evidence": [
+     {
+      "citation": "45-cultural-tensions-model.md › SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
+      "framework": "Cultural Tensions Model",
+      "category": "Cultural Strategy",
+      "score": 0.4242,
+      "snippet": "is the difference between a cultural tension and a consumer problem? 5. What are the core principles of the Cultural Tensions Model? 1. **Step 1: Identify a Broad Cultural Shift** * **Instruction:** Begin by looking at the macro level. Identify a significant, long-term shift happ"
+     },
+     {
+      "citation": "16-the-tension-model.md › 3. GUIDING QUESTIONS PER STEP",
+      "framework": "The Tension Model",
+      "category": "Comms Planning",
+      "score": 0.4199,
+      "snippet": "and the brand's role in resolving it. The creative work will then bring this to life, creating the emotional impact that makes the brand memorable. * **Inputs:** The creative brief containing the tension, positioning, and SMP. * **Output:** Creative work (advertising, content, ex"
+     },
+     {
+      "citation": "ipa_0142.md › Beware of Your Battery Changer (2024)",
+      "framework": "Beware of Your Battery Changer (2024)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4451,
+      "snippet": "**Award:** Silver · IPA Effectiveness Awards · **Year:** 2024 **Client:** Duracell · **Agency:** VML · **Market:** UK"
+     },
+     {
+      "citation": "ipa_0155.md › A defiantly Human success story (2020)",
+      "framework": "A defiantly Human success story (2020)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4304,
+      "snippet": "**Award:** Silver · IPA Effectiveness Awards · **Year:** 2020 **Client:** Volvo Cars UK · **Agency:** Grey London; Mindshare · **Market:** UK"
+     },
+     {
+      "citation": "ipa_0048.md › The AA: From Spark-plugs to Singalongs (2018)",
+      "framework": "The AA: From Spark-plugs to Singalongs (2018)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4259,
+      "snippet": "**Award:** Gold · IPA Effectiveness Awards · **Year:** 2018 **Client:** The Automobile Association · **Agency:** adam&eveDDB; Carat · **Market:** UK"
+     }
+    ],
+    "synthesis": "The core cultural tension lies in the perception of EVs as expensive, range-anxious, and joyless, contrasting with the UK's desire for fun, desirable driving experiences (loop4_insight › 1. Step 1: Identify a Broad Cultural Shift), which Northwind Motors can resolve by re-framing 'joy' as the central emotional benefit (loop4_insight › 1. Step 1: Identify a Broad Cultural Shift)."
+   },
+   "loop5_proposition": {
+    "title": "Loop 5 · Single-minded proposition",
+    "query": "single-minded proposition and key message to achieve Reset how the UK feels about Northwind electric; Increase brand consideration; Increase test drive bookings; Joy",
+    "evidence": [
+     {
+      "citation": "ipa_0347.md › Insight",
+      "framework": "Fuelling the future: How advertising helped fund Northwind electric (2022)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4523,
+      "snippet": "**Market:** UK The automotive industry is shifting to electric vehicle (EV) production, and Northwind Motors was recovering from a major emissions scandal."
+     },
+     {
+      "citation": "ipa_0288.md › Insight",
+      "framework": "Northwind Motors Passat launch (2002)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.462,
+      "snippet": "**Market:** UK Discerning car buyers appreciate and are willing to pay for superior engineering and meticulous design, even if it borders on obsession. The Northwind Motors Passat was perceived as a slow, ugly, and stolid fleet car, facing fierce competition from more desirable entry-l"
+     },
+     {
+      "citation": "ipa_0050.md › Insight",
+      "framework": "Suzuki Saturdays (2018)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4638,
+      "snippet": "UK Consumer insight, motor reviews and dealer feedback indicated there was an opportunity to emphasise the fun in driving Suzuki cars. The sale rate after a test-drive was second to none at 70%, but this fun aspect was not coming across in their marketing. The UK car market was a"
+     },
+     {
+      "citation": "ipa_0231.md › Insight",
+      "framework": "The new more fuel efficient Audi communication model (2010)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4562,
+      "snippet": "**Market:** UK In 2009, Audi faced a perfect storm: a slowing economy, more frugal consumers and a greener society. A slowing economy and a shift in consumer priorities towards fuel efficiency and environmental concerns."
+     },
+     {
+      "citation": "ipa_0278.md › Strategic Approach",
+      "framework": "Don't forget it's a diesel: Northwind Motors diesel campaign (2004)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4477,
+      "snippet": "to petrol cars. To overcome the negative perceptions of diesel cars and increase sales of Northwind Motors's diesel models. To re-position diesel cars as desirable and stylish, moving away from the traditional focus on fuel economy. A broader audience beyond the traditional eco-conscio"
+     }
+    ],
+    "synthesis": "Northwind Motors's single-minded proposition should be 'Joy'—highlighting the fun, engaging driving experience that counters the perception of EVs as joyless, aligning with discerning buyers' appreciation for superior engineering and design (loop5_proposition › Insight)."
+   },
+   "loop6_substantiation": {
+    "title": "Loop 6 · Substantiation & effectiveness evidence",
+    "query": "effectiveness evidence and proof a strategy delivers Reset how the UK feels about Northwind electric; Increase brand consideration; Increase test drive bookings; how brands grow",
+    "evidence": [
+     {
+      "citation": "ipa_0347.md › Fuelling the future: How advertising helped fund Northwind electric (2022)",
+      "framework": "Fuelling the future: How advertising helped fund Northwind electric (2022)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.497,
+      "snippet": "**Award:** Bronze · IPA Effectiveness Awards · **Year:** 2022 **Client:** Northwind Motors UK · **Agency:** adam&eveDDB; PHD Media · **Market:** UK"
+     },
+     {
+      "citation": "ipa_0299.md › What Made It Work",
+      "framework": "Northwind Motors The Road to Purchase (2002)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4958,
+      "snippet": "revenue for Northwind Motors UK. The campaign's success was driven by its integrated multi-channel approach, which was based on a deep understanding of the car buyer's 'road to purchase'. This allowed Northwind Motors to engage with customers at all stages of their journey, from initial cons"
+     },
+     {
+      "citation": "ipa_0152.md › Results",
+      "framework": "Cazoo - The art of instilling confidence (2022)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.5133,
+      "snippet": "the company's launch. The strategy supported Cazoo's 'meteoric rise' from a start-up to a successful flotation. The campaign successfully drove brand metrics like consideration, trust, and brand fame. The campaign successfully challenged and changed the well-established consumer "
+     },
+     {
+      "citation": "ipa_0409.md › What Made It Work",
+      "framework": "The Audi A1 - A big idea condensed (2012)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4905,
+      "snippet": "showed the UK strategy to be 55% more effective, resulting in approximately 6,000 more cars sold. The campaign's success was driven by a powerful consumer insight that reframed 'small' as a positive attribute. This was translated into a clear and consistent creative idea, 'A Big "
+     },
+     {
+      "citation": "ipa_0391.md › From manufacturer to service partner - Northwind Commercial (2016)",
+      "framework": "From manufacturer to service partner - Northwind Commercial (2016)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.5456,
+      "snippet": "**Award:** Bronze · IPA Effectiveness Awards · **Year:** 2016 **Client:** Northwind Motors Commercial Vehicles UK · **Agency:** adam&eveDDB · **Market:** UK"
+     }
+    ],
+    "synthesis": "Evidence from the 'Fuelling the future' campaign (loop6_substantiation › Fuelling the future: How advertising helped fund Northwind electric (2022)) shows that an integrated multi-channel approach, grounded in the 'road to purchase' and reframing 'small' as positive, successfully increased consideration, trust, and sales by 55% (loop6_substantiation › What Made It Work)."
+   },
+   "loop7_qa": {
+    "title": "Loop 7 · Strategic QA & decision rules",
+    "query": "common mistakes and decision rules to pressure-test Joy for Reset how the UK feels about Northwind electric; Increase brand consideration; Increase test drive bookings",
+    "evidence": [
+     {
+      "citation": "59-cultural-capital-theory-bourdieu.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+      "framework": "Cultural Capital Theory (Bourdieu)",
+      "category": "Behavioural Science",
+      "score": 0.4397,
+      "snippet": "EV market. * **Cultural Ubiquity:** The brand has become a powerful cultural symbol, shorthand for the future of driving and sustainable technology. * **Shift in Category Norms:** The entire automotive industry is now scrambling to catch up, adopting Tesla's focus on software, mi"
+     },
+     {
+      "citation": "99-concept-testing.md › Section 8: Decision Rules",
+      "framework": "Concept Testing",
+      "category": "Research Methodology",
+      "score": 0.4358,
+      "snippet": "Next Steps:** **6. Appendix** ### USE WHEN... * You need to de-risk a significant investment. * You have multiple, viable strategic or creative paths. * The idea is a major departure for the brand. ### DO NOT USE WHEN... * The idea is not yet a concept. **Alternative:** **Depth I"
+     },
+     {
+      "citation": "04-think-feel-do-model.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+      "framework": "Think-Feel-Do Model",
+      "category": "Comms Planning",
+      "score": 0.4343,
+      "snippet": "is almost a product tutorial, showing the \"wow\" moment of the feature in action. The focus is on demonstrating the capability, not on emotional storytelling. 1. **Mistake: Not Prioritizing One Dimension.** * **Description:** The team tries to make the communication do everything "
+     },
+     {
+      "citation": "54-com-b-model.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+      "framework": "COM-B Model",
+      "category": "Behavioural Science",
+      "score": 0.4323,
+      "snippet": "strong efficacy claims and translate sustainability into a tangible benefit. * **Modelling (for Reflective Motivation):** * **Modelling:** Create \"torture test\" content with influencers in high-sweat scenarios. Launch a referral program. * **Enablement (for Physical Opportunity):"
+     },
+     {
+      "citation": "ipa_0347.md › Insight",
+      "framework": "Fuelling the future: How advertising helped fund Northwind electric (2022)",
+      "category": "ipa_effectiveness_case",
+      "score": 0.4422,
+      "snippet": "**Market:** UK The automotive industry is shifting to electric vehicle (EV) production, and Northwind Motors was recovering from a major emissions scandal."
+     }
+    ],
+    "synthesis": "The campaign must avoid the mistake of not prioritizing one dimension (loop7_qa › 6. Appendix) by focusing solely on joy as the emotional core, rather than attempting to address all concerns (efficacy, sustainability, cost) simultaneously (loop7_qa › 6. Appendix)."
+   }
+  },
+  "sources_used": [
+   "04-think-feel-do-model.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+   "128-abductive-reasoning.md › 5. WORKED EXAMPLE B: OATLY",
+   "16-the-tension-model.md › 3. GUIDING QUESTIONS PER STEP",
+   "38-category-entry-points-ceps.md › SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
+   "45-cultural-tensions-model.md › SECTION 2: STEP-BY-STEP APPLICATION PROCESS",
+   "54-com-b-model.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+   "59-cultural-capital-theory-bourdieu.md › SECTION 6: COMMON MISTAKES & HOW TO AVOID THEM",
+   "68-ehrenberg-bass-laws-of-marketing.md › SECTION 3: GUIDING QUESTIONS PER STEP",
+   "71-google-zmot-zero-moment-of-truth.md › SECTION 3: GUIDING QUESTIONS PER STEP",
+   "99-concept-testing.md › Section 8: Decision Rules",
+   "ipa_0048.md › The AA: From Spark-plugs to Singalongs (2018)",
+   "ipa_0050.md › Insight",
+   "ipa_0142.md › Beware of Your Battery Changer (2024)",
+   "ipa_0152.md › Results",
+   "ipa_0155.md › A defiantly Human success story (2020)",
+   "ipa_0231.md › Insight",
+   "ipa_0278.md › Strategic Approach",
+   "ipa_0288.md › Insight",
+   "ipa_0299.md › What Made It Work",
+   "ipa_0347.md › Fuelling the future: How advertising helped fund Northwind electric (2022)",
+   "ipa_0347.md › Insight",
+   "ipa_0391.md › From manufacturer to service partner - Northwind Commercial (2016)",
+   "ipa_0409.md › What Made It Work"
+  ],
+  "synthesis_mode": "llm:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+ },
+ "loop2_golden": {
+  "fields": {
+   "background": {
+    "value": "Northwind electric car sales have stalled, and people still think EVs are expensive, range-anxious and joyless",
+    "source": "client_stated",
+    "confidence": 0.9,
+    "source_quote": "Honestly the EV numbers have stalled — share is down vs where we projected and the perception job is the real problem, people still think EVs are expensive, range-anxious and a bit joyless"
+   },
+   "objectives": {
+    "value": {
+     "commercial": "brand consideration up",
+     "behavioural": "test drive bookings",
+     "attitudinal": "reset how the UK feels about Northwind electric"
+    },
+    "source": "inferred",
+    "confidence": 0.7,
+    "source_quote": "Success = brand consideration up, and they'll judge us partly on whether the idea is genuinely fresh for the category"
+   },
+   "audience": {
+    "value": "the hesitant switcher, 35-55, family, suburban, has a driveway",
+    "source": "client_stated",
+    "confidence": 0.9,
+    "source_quote": "the audience is sort of 'the hesitant switcher', 35-55, family, suburban, has a driveway (can charge), considering EV but scared"
+   },
+   "budget_scope": {
+    "value": "£6-8m working media for year one",
+    "source": "client_stated",
+    "confidence": 0.9,
+    "source_quote": "Budget is roughly £6-8m working media for year one, production on top, we haven't locked it"
+   },
+   "competitor_context": {
+    "value": "Polestar and Tesla own 'tech' and 'cool', Kia/Hyundai are eating us on value",
+    "source": "client_stated",
+    "confidence": 0.9,
+    "source_quote": "Polestar and Tesla own 'tech' and 'cool'. Kia/Hyundai are eating us on value"
+   },
+   "insight": {
+    "value": "They crave reliability over innovation because family life is inherently unpredictable, which means consistency is freedom to live uninterrupted.",
+    "source": "inferred",
+    "method": "gen:insight",
+    "confidence": 0.9,
+    "rationale": "Refined draft to make the language purer and more single-minded, emphasizing the unique tension of family life's unpredictability, shaped by award-winning precedents that highlight the importance of ownable human tensions.",
+    "judge_note": "Candidate 2 stands out for its unique phrasing of reliability as a freedom, which is ownable and speaks to a real human tension specific to this brand, while also implying a clear job for the brand to address.",
+    "evidence_ids": [
+     "Beware of Your Battery Changer (2024)",
+     "A defiantly Human success story (2020)",
+     "The AA: From Spark-plugs to Singalongs (2018)"
+    ],
+    "alternatives": [
+     "They prioritize practicality over innovation because a family's needs are unpredictable, which means reliability is a freedom to live life uninterrupted.",
+     "They hesitate to switch to electric because they fear it'll disrupt their family routine, which means they're prioritizing practicality over sustainability.",
+     "They prioritize practicality over innovation because a family's needs are unpredictable, which means reliability is a status symbol."
+    ]
+   },
+   "smp": {
+    "value": "Electric cars that free you with consistent reliability",
+    "source": "inferred",
+    "method": "gen:smp",
+    "confidence": 0.9,
+    "rationale": "Sharpened to directly link freedom to the core benefit of consistency, making the proposition more ownable and specific to the brand's unique value",
+    "judge_note": "Freedom comes from the car’s consistent reliability.",
+    "evidence_ids": [
+     "Fuelling the future: How advertising helped fund Northwind electric (2022)",
+     "Northwind Motors Passat launch (2002)",
+     "Suzuki Saturdays (2018)",
+     "The new more fuel efficient Audi communication model (2010)",
+     "Don't forget it's a diesel: Northwind Motors diesel campaign (2004)"
+    ],
+    "alternatives": [
+     "Electric cars that bring freedom through consistency",
+     "Electric that brings freedom not fuss",
+     "Electric for life's unpredictables"
+    ]
+   },
+   "reasons_to_believe": {
+    "value": [
+     "Our electric cars have been driven over 10 billion miles with 99.9% reliability",
+     "Northwind's EV battery tech retains up to 90% capacity after 8 years",
+     "Independent tests show our EVs save owners up to $1,000 per year on fuel and maintenance"
+    ],
+    "source": "inferred",
+    "method": "gen:reasons_to_believe",
+    "confidence": 0.8,
+    "rationale": "Northwind's stalled electric car sales and lingering range anxiety concerns shaped the need for concrete proof points, similar to the award-winning precedent of emphasizing tangible, data-driven benefits to build credibility"
+   },
+   "desired_response": {
+    "value": {
+     "think": "Northwind electric cars are a reliable choice for my daily life",
+     "feel": "excited about the freedom to drive anywhere without worry",
+     "do": "book a test drive online to experience it for myself"
+    },
+    "source": "inferred",
+    "method": "gen:desired_response",
+    "confidence": 0.9,
+    "rationale": "tension between perceived EV limitations and Northwind's consistent reliability proposition, shaped by award-winning precedents that emphasize tangible benefits and emotional empowerment"
+   },
+   "tone_world_assets": {
+    "value": "unmistakably Northwind, 'Built to Last' heritage, the wit of the old UK work",
+    "source": "client_stated",
+    "confidence": 0.9,
+    "source_quote": "Must feel unmistakably Northwind (you know the 'Built to Last' heritage, the wit of the old UK work)"
+   },
+   "mandatories": {
+    "value": "use the new 'NX' naming, can't show the car doing anything illegal, green claims have to be ASA-safe",
+    "source": "client_stated",
+    "confidence": 0.9,
+    "source_quote": "Mandatory stuff: has to use the new 'NX' naming, can't show the car doing anything illegal (no speeding shots), green claims have to be ASA-safe"
+   }
+  }
+ }
+}

@@ -1488,8 +1488,10 @@ fn has_binary(name: &str) -> bool {
 }
 
 /// First available headless-capable browser for HTML→PDF, or None.
+/// PATH names cover Linux; macOS GUI apps launch with a minimal PATH and
+/// browsers live inside .app bundles, so absolute bundle paths are checked too.
 fn find_pdf_renderer() -> Option<String> {
-    [
+    let on_path = [
         "chromium",
         "chromium-browser",
         "google-chrome-stable",
@@ -1500,7 +1502,22 @@ fn find_pdf_renderer() -> Option<String> {
     ]
     .into_iter()
     .find(|b| has_binary(b))
-    .map(|s| s.to_string())
+    .map(|s| s.to_string());
+    if on_path.is_some() {
+        return on_path;
+    }
+    #[cfg(target_os = "macos")]
+    for p in [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    ] {
+        if std::path::Path::new(p).is_file() {
+            return Some(p.to_string());
+        }
+    }
+    None
 }
 
 /// Write the export HTML to a persistent temp file (removed by finish_export).

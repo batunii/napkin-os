@@ -1,0 +1,217 @@
+/*
+ * golden_brief.schema.js — THE SOURCE OF TRUTH
+ * Authored here. golden_brief.schema.json is a generated export of this object.
+ * The HTML form, the Word doc and the critic loop all read this schema.
+ * Built on the IPA / BetterBriefs best-practice guide (with Mark Ritson) and the
+ * brief structures of BBH, TBWA, Wieden+Kennedy, Mother and AMV BBDO.
+ *
+ * rubric check methods:
+ *   "auto"  — the lib evaluates it deterministically (word counts, presence, structure)
+ *   "llm"   — needs a model/critic agent to judge (returns "review" until scored)
+ *   "human" — needs a person to confirm (returns "review")
+ */
+(function (root, factory) {
+  var schema = factory();
+  if (typeof module !== "undefined" && module.exports) module.exports = schema;
+  else root.GOLDEN_BRIEF_SCHEMA = schema;
+})(typeof self !== "undefined" ? self : this, function () {
+  return {
+    version: "1.0",
+    confidence_floor: 0.6,
+
+    enums: {
+      brief_type: ["launch", "turnaround", "brand_building", "activation", "behaviour_change", "repositioning", "tactical"],
+      provenance: ["client_stated", "inferred", "missing"],
+      objective_level: ["commercial", "behavioural", "attitudinal"],
+      status: ["draft", "in_review", "ready", "signed_off"],
+      severity: ["low", "medium", "high"]
+    },
+
+    meta: [
+      { id: "brand", label: "Brand", type: "string", required: true },
+      { id: "project", label: "Project name", type: "string", required: true },
+      { id: "author_client_lead", label: "Written by (client lead)", type: "string", required: true },
+      { id: "agency_lead", label: "Agency / agency lead", type: "string", required: true },
+      { id: "date", label: "Date", type: "date", required: true },
+      { id: "status", label: "Status", type: "enum", enum: "status", default: "draft" },
+      { id: "brief_type", label: "Brief type", type: "enum", enum: "brief_type", required: true }
+    ],
+
+    fields: [
+      {
+        id: "background", label: "Background — why are we here?", zone: 1, type: "text",
+        required: true, max_words: 70, provenance_required: true, depends_on: [],
+        prompt: "Why are we here? The business problem or opportunity that makes this work necessary, in 2–3 sentences. What's going on, and why now? Plain words, no jargon. If there's no marketing strategy behind it, there's no brief yet.",
+        good_example: "Sales have plateaued and under-35s see us as 'their dad's beer.' A low-carb variant launches in Q3 — our one shot to feel relevant to a younger drinker.",
+        bad_example: "We want a big, disruptive campaign that goes viral and builds brand love.",
+        bad_reason: "States a wish for advertising, not the business problem; no 'why now'.",
+        rubric: [
+          { id: "within_limit", test: "Within the word limit (brief is brief).", method: "auto" },
+          { id: "states_problem", test: "Describes a business problem/opportunity, not an ad request.", method: "llm" },
+          { id: "why_now", test: "Makes the timing clear.", method: "llm" }
+        ]
+      },
+      {
+        id: "objectives", label: "Objectives (commercial · behavioural · attitudinal)", zone: 1, type: "objectives",
+        required: true, provenance_required: true, depends_on: ["budget_scope", "audience"], max_objectives: 3,
+        shape: ["commercial", "behavioural", "attitudinal"],
+        prompt: "A handful, linked and logical, each measurable and time-stamped. Commercial = the business result; behavioural = what people must DO; attitudinal = what they must think/feel first.",
+        good_example: "Commercial: +8% volume share in 18–34s within 12 months. Behavioural: 100k under-35s trial the variant. Attitudinal: from 'beer for older men' to 'beer for people like me.'",
+        bad_example: "Increase awareness, sales, loyalty and consideration.",
+        bad_reason: "Multiple unranked objectives, none measurable or time-bound; awareness is not a commercial outcome.",
+        rubric: [
+          { id: "three_levels", test: "All three levels present (commercial, behavioural, attitudinal).", method: "auto" },
+          { id: "measurable", test: "Commercial objective is measurable and time-bound.", method: "llm" },
+          { id: "linked", test: "The three levels form a logical chain.", method: "llm" }
+        ]
+      },
+      {
+        id: "audience", label: "Audience — one human", zone: 2, type: "text",
+        required: true, max_words: 80, provenance_required: true, depends_on: ["budget_scope"],
+        prompt: "Describe one real human, not a demographic cell. What they want, fear and do; how they decide. Avoid clichés like 'millennials.'",
+        good_example: "Conor, 29, Dublin. Drinks craft cans because they signal taste, not tradition. Wouldn't be seen holding a pint of the 'big' lager — that's his uncle's drink.",
+        bad_example: "ABC1 males 18–34, urban, social, brand-aware.",
+        bad_reason: "A data cell, not a human; tells us nothing about motivation.",
+        rubric: [
+          { id: "within_limit", test: "Within the word limit.", method: "auto" },
+          { id: "is_human", test: "Reads as one real person, not a demographic segment.", method: "llm" }
+        ]
+      },
+      {
+        id: "budget_scope", label: "Budget & scope", zone: 2, type: "text",
+        required: true, max_words: 50, provenance_required: true, depends_on: [],
+        prompt: "The money, and the honest ambition it buys. Budget ↔ objectives ↔ audience are linked — move one and the others must move.",
+        good_example: "€1.2m working media. National reach unrealistic — prioritise four cities + always-on social.",
+        bad_example: "TBC / as needed.",
+        bad_reason: "No constraint = the backbone can't be balanced.",
+        rubric: [{ id: "has_constraint", test: "States a real budget/scope constraint.", method: "auto" }]
+      },
+      {
+        id: "competitor_context", label: "Competitor context", zone: 1, type: "text",
+        required: true, max_words: 70, provenance_required: true, depends_on: [],
+        prompt: "Who are we up against, and what does everyone in the category say/do? Needed to judge whether the SMP is ownable.",
+        good_example: "Rivals all claim heritage, mateship and 'the perfect pint.' White space: nobody owns 'the drink that signals your taste.'",
+        bad_example: "Everyone.",
+        bad_reason: "No real category read; can't locate white space.",
+        rubric: [{ id: "names_rivals", test: "Names rivals and the shared category claim.", method: "auto" }]
+      },
+      {
+        id: "insight", label: "The insight", zone: 3, hero: true, type: "text",
+        required: true, max_words: 50, provenance_required: true, depends_on: ["audience", "background"],
+        prompt: "A human tension, not a fact. Reveal WHY, not just WHAT. Shape: 'They [do/believe X] because [deeper motivation], which means [implication].' Survive the 'so what?' test ×3.",
+        good_example: "Young drinkers don't reject us on taste — choosing a drink is choosing a tribe, and ours signals the wrong one. So the job isn't taste, it's belonging.",
+        bad_example: "Younger consumers are drinking less mainstream lager.",
+        bad_reason: "An observation with no motivation and no implication; a 'what', not a 'why'.",
+        rubric: [
+          { id: "within_limit", test: "Within the word limit.", method: "auto" },
+          { id: "reveals_why", test: "States a motivation (look for 'because'), not only a behaviour.", method: "auto" },
+          { id: "is_tension", test: "Contains an opposing force / tension.", method: "llm" },
+          { id: "so_what_x3", test: "Survives three 'so what?' probes.", method: "llm" },
+          { id: "has_implication", test: "Says what the job actually is.", method: "llm" }
+        ]
+      },
+      {
+        id: "smp", label: "Single-minded proposition", zone: 3, hero: true, type: "text",
+        required: true, max_words: 20, min_words: 3, provenance_required: true,
+        depends_on: ["insight", "background", "reasons_to_believe", "competitor_context"],
+        prompt: "ONE sentence — the single most compelling, true and ownable thing. Not a tagline, not 'creative', not a list. If you have two, choose. (Problem + Benefit + Insight → SMP.)",
+        good_example: "The lager that earns its place in your round.",
+        bad_example: "Great taste, fewer carbs, brewed with passion for modern drinkers.",
+        bad_reason: "Three messages; features not benefit; not ownable; reads like finished copy.",
+        rubric: [
+          { id: "single_sentence", test: "Exactly one sentence.", method: "auto" },
+          { id: "within_limit", test: "Within the word limit.", method: "auto" },
+          { id: "single_minded", test: "One idea, not a list.", method: "auto" },
+          { id: "ownable", test: "A competitor could not say the same thing (needs competitor_context).", method: "llm" },
+          { id: "not_a_tagline", test: "Strategy that points to the idea, not finished ad copy.", method: "llm" },
+          { id: "derives_from", test: "Traceable to insight + problem + benefit.", method: "llm" }
+        ]
+      },
+      {
+        id: "reasons_to_believe", label: "Reasons to believe", zone: 3, type: "list",
+        required: true, max_items: 5, provenance_required: true, depends_on: ["smp"],
+        prompt: "The few proof points that make the proposition credible — strongest first. Not a shopping list; number flexes by channel.",
+        good_example: "Small-batch brewed · 3g carbs · chosen #1 in a blind taste test of under-30s.",
+        bad_example: "Award-winning · trusted · premium · loved by thousands · refreshing · bold.",
+        bad_reason: "Generic, unprovable claims; a shopping list, not proof for the SMP.",
+        rubric: [
+          { id: "max_items", test: "No more than five items.", method: "auto" },
+          { id: "supports_smp", test: "Every item supports the SMP.", method: "llm" }
+        ]
+      },
+      {
+        id: "desired_response", label: "Desired response (think · feel · do)", zone: 3, type: "tfd",
+        required: true, provenance_required: true, depends_on: ["objectives", "smp"], shape: ["think", "feel", "do"],
+        prompt: "The bridge from proposition to behaviour. One line each.",
+        good_example: "Think: 'this one's actually for me.' Feel: quietly proud to order it. Do: ask for it by name at the bar.",
+        bad_example: "Do: engage with the brand.",
+        bad_reason: "Vague; 'engage' is not an observable behaviour and doesn't ladder to the objective.",
+        rubric: [
+          { id: "all_three", test: "Think, feel and do all present.", method: "auto" },
+          { id: "ladders", test: "'Do' ladders up to the behavioural objective.", method: "llm" }
+        ]
+      },
+      {
+        id: "tone_world_assets", label: "Tone, world & distinctive assets", zone: 4, type: "text",
+        required_unless_brief_type: ["tactical"], max_words: 60, provenance_required: true, depends_on: [],
+        prompt: "Personality in ~3 words + the distinctive assets that must carry through every execution (logo, colour, character, sonic, line). Set the world; don't prescribe the idea.",
+        good_example: "Dry, confident, never try-hard. Always: the red flash, the 'O,' the two-note sound sting.",
+        bad_example: "Make it a cinematic hero film with a celebrity.",
+        bad_reason: "Prescribes the execution; that's the agency's job, not the brief's.",
+        rubric: [{ id: "not_prescriptive", test: "Sets a world without prescribing the creative idea.", method: "llm" }]
+      },
+      {
+        id: "mandatories", label: "Mandatories & practicalities", zone: 4, type: "text",
+        required: true, max_words: 80, provenance_required: true, depends_on: [],
+        prompt: "What's genuinely fixed — deliverables & channels, key dates, budget constraints, legal must-haves, and anything to AVOID. Keep tight; detail → appendix.",
+        good_example: "3×30s + 6s cutdowns + OOH + social. Responsibility message required. Live 1 Sept. Don't reference competitors.",
+        bad_example: "Make it amazing and on-brand.",
+        bad_reason: "No fixed deliverables, dates or constraints to plan against.",
+        rubric: [{ id: "has_deliverables", test: "Lists concrete deliverables or constraints.", method: "auto" }]
+      }
+    ],
+
+    open_questions: {
+      id: "open_questions",
+      prompt: "What we don't know, what we assumed, and what to ask the client. Auto-populated whenever a field is 'missing' or confidence < floor.",
+      item_shape: { question: "string", blocks_field: "field_id", severity: "severity" }
+    },
+
+    gate: {
+      criteria: {
+        id: "evaluation_criteria", required: true,
+        prompt: "How will we judge the work? Agree the shared criteria BEFORE creative starts. (Only ~30% of brands do — cheapest way to avoid endless rounds.)"
+      },
+      signoff: ["approved_by_client", "approved_date", "accepted_by_agency", "accepted_date"],
+      note: "A brief becomes a contract only once the agency accepts it.",
+      definition_of_done: [
+        { id: "one_strategy", rule: "Exactly one strategy. Two messages → two briefs.", method: "llm" },
+        { id: "all_required_filled", rule: "All required fields present for this brief_type.", method: "auto" },
+        { id: "objectives_linked", rule: "Commercial/behavioural/attitudinal form a logical chain.", method: "auto" },
+        { id: "smp_single", rule: "SMP is one ownable sentence within word limit.", method: "auto" },
+        { id: "rtb_supports_smp", rule: "All RTBs support the SMP.", method: "auto" },
+        { id: "evaluation_present", rule: "Evaluation criteria agreed before creative starts.", method: "auto" },
+        { id: "open_questions_clear", rule: "No unresolved high-severity open questions.", method: "auto" },
+        { id: "within_limits", rule: "No field exceeds its word limit.", method: "auto" },
+        { id: "no_solution_prescribed", rule: "Brief sets the problem; it does not prescribe the idea.", method: "llm" }
+      ]
+    },
+
+    dependencies: [
+      { id: "backbone_balance", fields: ["budget_scope", "objectives", "audience"], rule: "Budget ↔ objectives ↔ audience must be mutually realistic.", method: "llm" },
+      { id: "smp_derivation", fields: ["smp", "insight", "background"], rule: "SMP must trace to insight + problem + a benefit.", method: "llm" },
+      { id: "rtb_supports_smp", fields: ["reasons_to_believe", "smp"], rule: "Every RTB supports the SMP.", method: "auto" },
+      { id: "response_ladders", fields: ["desired_response", "objectives"], rule: "Desired response ladders to objectives.", method: "auto" },
+      { id: "ownable_needs_competitors", fields: ["smp", "competitor_context"], rule: "Judging 'ownable' requires competitor_context.", method: "auto" }
+    ],
+
+    modules: {
+      versioning_matrix: { attaches_for: ["launch", "brand_building", "activation"], label: "Versioning / deliverables matrix", columns: ["asset", "ratio", "duration", "channel", "owner"] },
+      convention_to_break: { attaches_for: ["turnaround", "repositioning"], label: "Convention to break", fields: ["category_norm", "orthodoxy_we_overturn"] },
+      cultural_moment: { attaches_for: ["brand_building"], label: "Cultural moment & tension", fields: ["moment", "tension_force_a_vs_b"] },
+      effectiveness_split: { attaches_for: ["brand_building", "activation"], label: "Media & effectiveness split", fields: ["brand_build_pct", "activation_pct", "kpis", "distinctive_assets"], default: { brand_build_pct: 60, activation_pct: 40 } },
+      behaviour_change: { attaches_for: ["behaviour_change"], label: "Behaviour change (COM-B / EAST)", fields: ["com_b_barriers", "east_interventions"] },
+      positioning_statement: { attaches_for: ["repositioning", "launch"], label: "Brand positioning statement", template: "FOR [audience] WHO [need], [BRAND] IS THE [frame] THAT [benefit] BECAUSE [RTB]; UNLIKE [competitor], [BRAND] [differentiator]." }
+    }
+  };
+});

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Napkin Brief — Golden Brief template</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.47.0/iconfont/tabler-icons.min.css">
+<style>
+  :root { --ink:#15151f; --muted:#6b6b78; --bd:rgba(0,0,0,.12); --accent:#d62828; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif; color:var(--ink); margin:0; background:#f4f4f2; }
+  .page { max-width:760px; margin:24px auto; padding:0 16px 48px; }
+  .topbar { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2.4px solid var(--ink); padding-bottom:8px; margin-bottom:14px; }
+  .brandmark { font-size:24px; font-weight:800; letter-spacing:-.5px; }
+  .brandmark .dot { color:var(--accent); }
+  .sub { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+  .card { background:#fff; border:0.5px solid var(--bd); border-radius:14px; padding:16px 18px; }
+  .meta { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+  .meta label { font-size:11px; color:var(--muted); display:block; margin-bottom:2px; }
+  .meta input, .meta select { width:100%; font-size:13px; padding:6px 8px; border:0.5px solid var(--bd); border-radius:8px; font-family:inherit; }
+  select, textarea, input { font-family:inherit; }
+  .toolbar { display:flex; gap:8px; margin:14px 0; }
+  .toolbar button { font-size:13px; padding:7px 12px; border:0.5px solid var(--bd); background:#fff; border-radius:8px; cursor:pointer; }
+  .toolbar button:hover { background:#f0f0ee; }
+  textarea:focus, input:focus, select:focus { outline:2px solid #bcd; outline-offset:0; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <div class="brandmark">Napkin Brief<span class="dot">.</span></div>
+        <div class="sub">Golden Brief template · agent-fillable · scored live</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="meta" id="meta"></div>
+      <div class="toolbar">
+        <button id="reseed"><i class="ti ti-wand"></i> Load example</button>
+        <button id="clear"><i class="ti ti-eraser"></i> Clear</button>
+        <button id="export"><i class="ti ti-download"></i> Export brief.json</button>
+      </div>
+      <div id="form"></div>
+    </div>
+  </div>
+
+<script src="golden_brief.schema.js"></script>
+<script src="golden-brief.js"></script>
+<script>
+(function () {
+  var schema = window.GOLDEN_BRIEF_SCHEMA;
+
+  var SEED = {
+    meta: { brand:"Lager Co", project:"Earn Your Round", author_client_lead:"", agency_lead:"", date:"", status:"in_review", brief_type:"launch" },
+    gate: { evaluation_criteria:"Does it make a 29-year-old proud to order it at the bar?" },
+    fields: {
+      background:{ value:"Sales have plateaued and under-35s see us as 'their dad's beer.' A low-carb variant launches in Q3 — our one shot to feel relevant to a younger drinker.", source:"client_stated", confidence:0.92 },
+      objectives:{ value:{ commercial:"+8% volume share in 18–34s within 12 months", behavioural:"100k under-35s trial the variant", attitudinal:"from 'not for me' to 'for people like me'" }, source:"inferred", confidence:0.74 },
+      audience:{ value:"Conor, 29, Dublin. Drinks craft cans because they signal taste, not tradition. Wouldn't be seen with a pint of the 'big' lager — that's his uncle's drink.", source:"inferred", confidence:0.70 },
+      budget_scope:{ value:"€1.2m working media (assumed). National reach unrealistic — prioritise four cities + always-on social.", source:"missing", confidence:0.55 },
+      competitor_context:{ value:"Rivals all claim heritage, mateship and 'the perfect pint.' White space: nobody owns 'the drink that signals your taste.'", source:"inferred", confidence:0.68 },
+      insight:{ value:"They don't reject us on taste because choosing a drink is choosing a tribe, and ours signals the wrong one — so the job isn't taste, it's belonging.", source:"inferred", confidence:0.78 },
+      smp:{ value:"The lager that earns its place in your round.", source:"inferred", confidence:0.81 },
+      reasons_to_believe:{ value:["Small-batch brewed","3g carbs","Chosen #1 in a blind taste test of under-30s"], source:"inferred", confidence:0.72 },
+      desired_response:{ value:{ think:"this one's actually for me", feel:"quietly proud to order it", do:"ask for it by name at the bar" }, source:"inferred", confidence:0.70 },
+      tone_world_assets:{ value:"Dry, confident, never try-hard. Always: the red flash, the 'O,' the two-note sound sting.", source:"client_stated", confidence:0.85 },
+      mandatories:{ value:"3×30s + 6s cutdowns + OOH + social. Responsibility message required. Live 1 Sept. Don't reference competitors.", source:"client_stated", confidence:0.90 }
+    }
+  };
+
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+  var brief = clone(SEED);
+
+  function renderMeta() {
+    var m = document.getElementById("meta"); m.innerHTML = "";
+    schema.meta.forEach(function (f) {
+      var wrap = document.createElement("div");
+      var lab = document.createElement("label"); lab.textContent = f.label; wrap.appendChild(lab);
+      var inp;
+      if (f.type === "enum") { inp = document.createElement("select"); (schema.enums[f.enum]||[]).forEach(function(v){ var o=document.createElement("option"); o.value=v; o.text=v.replace(/_/g," "); if((brief.meta[f.id]||f.default)===v) o.selected=true; inp.appendChild(o); }); inp.onchange=function(){ brief.meta[f.id]=inp.value; api&&api.recompute(); }; }
+      else { inp = document.createElement("input"); inp.type = f.type==="date"?"date":"text"; inp.value = brief.meta[f.id]||""; inp.oninput=function(){ brief.meta[f.id]=inp.value; }; }
+      wrap.appendChild(inp); m.appendChild(wrap);
+    });
+  }
+
+  var api;
+  function mountAll() {
+    renderMeta();
+    api = GoldenBrief.renderForm(schema, document.getElementById("form"), brief, {});
+  }
+  mountAll();
+
+  document.getElementById("reseed").onclick = function(){ brief = clone(SEED); mountAll(); };
+  document.getElementById("clear").onclick = function(){ brief = { meta:{ status:"draft", brief_type:"launch" }, gate:{}, fields:{} }; mountAll(); };
+  document.getElementById("export").onclick = function(){
+    var data = { meta: brief.meta, gate: brief.gate, fields: brief.fields, validation: api.validate() };
+    var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "brief.json"; a.click();
+  };
+})();
+</script>
+</body>
+</html>
