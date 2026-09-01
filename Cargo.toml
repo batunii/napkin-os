@@ -6,7 +6,7 @@ members = ["crates/clan-sdk", "crates/clan-cli", "app/src-tauri"]
 # Single source of truth for CLI + Tauri bundle versions. CI overwrites this
 # from the pushed git tag (see .github/workflows/release.yml); this committed
 # value is the fallback for local / non-tag builds.
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 license = "MPL-2.0"
 repository = "https://github.com/batunii/napkin-os"

@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "clan-app"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "clan-sdk",
  "pdf-extract",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "clan-cli"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clan-sdk",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "clan-sdk"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",

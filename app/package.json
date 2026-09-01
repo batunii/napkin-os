@@ -1,7 +1,7 @@
 {
   "name": "napkin-studio-os",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "tauri": "tauri",
     "lint": "eslint .",
     "preview": "vite preview"
   },
