@@ -28,8 +28,8 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
 
-      # Core library + CLI only. The Tauri app's Rust (app/src-tauri) needs
-      # GTK/WebKit system deps and is compiled in the desktop/release build.
+      # Core library + CLI only — the Tauri app's Rust needs GTK/WebKit system
+      # deps, so it is built in the `desktop` job below rather than here.
       - name: Format
         run: cargo fmt -p clan-sdk -p clan-cli -- --check
 
@@ -68,6 +68,74 @@ jobs:
       # TypeScript type-check gate as well as the production build.
       - name: Type-check & build
         run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Packaging gate. Nothing else in CI compiles app/src-tauri or goes anywhere
+  # near tauri-action, so before this job every packaging break reached us only
+  # at release time, after a tag was already public. v1.2.0 shipped with no
+  # desktop bundles at all because app/package.json had no `tauri` script and
+  # tauri-action runs `npm run tauri build` — a one-line fault the release
+  # surfaced and CI could not.
+  #
+  # Runs the Linux release path minus the slow parts: the real `npm run tauri
+  # build` entry point, beforeBuildCommand, the clan-app compile, and a .deb
+  # bundle. AppImage is skipped (~80 MB and a linuxdeploy download); macOS and
+  # Windows bundling stay release-only, since they need their own runners.
+  # ---------------------------------------------------------------------------
+  desktop:
+    name: Desktop — tauri build (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same set the release workflow installs; WebKitGTK is what app/src-tauri
+      # needs to compile at all.
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            file \
+            libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: tauri-app
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # tauri.linux.conf.json maps binaries/clan -> /usr/bin/clan via deb.files,
+      # so bundling fails with `"binaries/clan" does not exist` unless the CLI is
+      # staged first — exactly as the release workflow does it.
+      - name: Stage CLI into Linux packages
+        run: |
+          cargo build -p clan-cli --release
+          mkdir -p app/src-tauri/binaries
+          cp target/release/clan app/src-tauri/binaries/clan
+
+      # Invoked the way tauri-action invokes it, so a missing or renamed script
+      # fails here rather than in a release.
+      - name: Build app + bundle .deb
+        working-directory: app
+        run: npm run tauri -- build --bundles deb
 
   conformance:
     name: CLI conformance harness
