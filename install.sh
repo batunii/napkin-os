@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="saieeshward/clan"
+# Which repo's releases to install from. Overridable like CLAN_VERSION /
+# CLAN_BIN_DIR below, so a fork can be installed without editing this file:
+#   curl -fsSL .../install.sh | CLAN_REPO=owner/repo bash
+REPO="${CLAN_REPO:-saieeshward/clan}"
 BIN_NAME="clan"
 BIN_DIR="${CLAN_BIN_DIR:-/usr/local/bin}"
 
