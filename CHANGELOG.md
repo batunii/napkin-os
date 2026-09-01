@@ -83,7 +83,12 @@ First public release of CLAN — Context and Live Agent Notation.
 - **`clan-cli`** — the `clan` command-line tool to create, validate, read, pack, and export `.clan` files.
 - **CLAN Viewer** — Tauri desktop app for rendering the human view of a `.clan` file.
 
-[Unreleased]: https://github.com/saieeshward/clan/compare/v1.1.5...HEAD
+<!-- Development moved to github.com/batunii/napkin-os. Releases up to v1.1.8 were
+     published in the previous repo and their tags exist only there, so the links
+     below deliberately still point at it — repointing them would only 404.
+     New releases link to batunii/napkin-os. -->
+
+[Unreleased]: https://github.com/batunii/napkin-os/compare/v1.1.8...HEAD
 [1.1.5]: https://github.com/saieeshward/clan/releases/tag/v1.1.5
 [1.1.2]: https://github.com/saieeshward/clan/releases/tag/v1.1.2
 [1.1.1]: https://github.com/saieeshward/clan/releases/tag/v1.1.1

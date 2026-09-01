@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Napkin Studio OS — one-command install (macOS / Linux).
 #
-#   curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install-napkin.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/main/install-napkin.sh | bash
 #
 # Installs all three pieces, which is the point: the app alone is a viewer with
 # no agent, and the agent alone is ungrounded.
@@ -16,13 +16,13 @@
 # "Napkin Studio OS", so a hardcoded filename 404s on one side of that rename.
 #
 # Env:
-#   CLAN_REPO=owner/repo   install from a fork          (default saieeshward/clan)
+#   CLAN_REPO=owner/repo   install from a fork          (default batunii/napkin-os)
 #   CLAN_VERSION=1.2.3     pin a version               (default: latest release)
 #   NAPKIN_HOME=~/.napkin  where the agent lives
 #   NAPKIN_NO_APP=1        skip the desktop app
 set -euo pipefail
 
-REPO="${CLAN_REPO:-saieeshward/clan}"
+REPO="${CLAN_REPO:-batunii/napkin-os}"
 NAPKIN_HOME="${NAPKIN_HOME:-$HOME/.napkin}"
 BIN_DIR="${CLAN_BIN_DIR:-/usr/local/bin}"
 

@@ -8,7 +8,7 @@
 
 # CLAN - Context and Live Agent Notation
 
-[![CI](https://github.com/saieeshward/clan/actions/workflows/ci.yml/badge.svg)](https://github.com/saieeshward/clan/actions/workflows/ci.yml)
+[![CI](https://github.com/batunii/napkin-os/actions/workflows/ci.yml/badge.svg)](https://github.com/batunii/napkin-os/actions/workflows/ci.yml)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
 ![Rust 1.74+](https://img.shields.io/badge/rust-1.74%2B-orange.svg)
 
@@ -72,7 +72,7 @@ Installs **Napkin Studio OS**, the `clan` CLI, the briefing agent and the
 knowledge it grounds on — then gives you a `napkin` command to run it all:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install-napkin.sh | bash
+curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/main/install-napkin.sh | bash
 ```
 
 ```bash
@@ -101,17 +101,18 @@ regenerating a single field is about $0.13 and ~10 seconds.
 
 **CLI only** — the `clan` CLI without the app or the agent:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/main/install.sh | bash
 ```
 It then offers to download Napkin Studio OS, but leaves installing it to you.
 Both installers take `CLAN_REPO=owner/repo` to install from a fork and
 `CLAN_VERSION=1.2.3` to pin a version.
 
-**Windows:** download the `.msi` from the [Releases page](https://github.com/saieeshward/clan/releases) — one installer carries both Napkin Studio OS and the `clan` CLI, and puts `clan` on your PATH. Start the agent with `python3 mock-agent/server.py` from a checkout; the `napkin` launcher is macOS/Linux only.
+**Windows:** download the `.msi` from the [Releases page](https://github.com/batunii/napkin-os/releases) — one installer carries both Napkin Studio OS and the `clan` CLI, and puts `clan` on your PATH. Start the agent with `python3 mock-agent/server.py` from a checkout; the `napkin` launcher is macOS/Linux only.
 
-> Releases before v1.1.9 published the app as **CLAN Viewer** — same application,
-> renamed. Both installers resolve release assets by pattern, so either name
-> installs correctly.
+> Builds published before the move are named **CLAN Viewer** — the same
+> application, since renamed to Napkin Studio OS. Both installers resolve release
+> assets by pattern rather than by filename, so neither that rename nor a future
+> one can break them.
 
 **Build from source:**
 ```bash
@@ -260,7 +261,7 @@ A Tauri desktop app renders the human view with click-to-edit. Edits land in the
 
 ## Status
 
-**v1.1** - fork/join concurrency, deferred human-view rendering, conflict adjudication, self-teaching CLI. Verified by 186 Rust tests + 26-test black-box conformance in CI, with [binaries for every platform on the Releases page](https://github.com/saieeshward/clan/releases).
+**v1.1** - fork/join concurrency, deferred human-view rendering, conflict adjudication, self-teaching CLI. Verified by 186 Rust tests + 26-test black-box conformance in CI, with [binaries for every platform on the Releases page](https://github.com/batunii/napkin-os/releases).
 
 ## Maintainers
 
@@ -282,4 +283,4 @@ The CLI and SDK use [TOON (Token-Oriented Object Notation)](https://github.com/t
 
 ## Contributing
 
-Open spec - contributions welcome. Implementing the format in another language, improving the CLI, catching spec edge cases, or filing a bug report all help. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started, or [open an issue](https://github.com/saieeshward/clan/issues/new) if you're not sure where to begin.
+Open spec - contributions welcome. Implementing the format in another language, improving the CLI, catching spec edge cases, or filing a bug report all help. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started, or [open an issue](https://github.com/batunii/napkin-os/issues/new) if you're not sure where to begin.

@@ -7,7 +7,7 @@ agents and human-renderable, carrying its own specification and a verifiable
 lineage chain. `clan-sdk` lets you read, write, validate, and pipeline `.clan`
 files from Rust.
 
-For the full format specification, see [`CLAN-SPEC.md`](https://github.com/saieeshward/clan/blob/main/spec/CLAN-SPEC.md).
+For the full format specification, see [`CLAN-SPEC.md`](https://github.com/batunii/napkin-os/blob/main/spec/CLAN-SPEC.md).
 
 ## Installation
 
@@ -49,4 +49,4 @@ println!("{}", ctx.prompt);
 
 ## License
 
-Licensed under the Mozilla Public License, Version 2.0. See [LICENSE](https://github.com/saieeshward/clan/blob/main/LICENSE).
+Licensed under the Mozilla Public License, Version 2.0. See [LICENSE](https://github.com/batunii/napkin-os/blob/main/LICENSE).
