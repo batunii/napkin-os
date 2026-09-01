@@ -36,9 +36,7 @@ pub use decision::{Decision, DecisionChain, TraceRef};
 pub use error::{Error, Result};
 pub use export::{export_html, ExportOptions};
 pub use inject::{assemble, AgentContext, InjectOptions};
-pub use instantiate::{
-    instantiate, make_template, InstantiateOptions, MakeTemplateOptions,
-};
+pub use instantiate::{instantiate, make_template, InstantiateOptions, MakeTemplateOptions};
 pub use manifest::{
     AppInfo, ExternalRef, FileEntry, ForkInfo, Lineage, Manifest, MergePolicies, ParentRef,
     Signature, ViewState, CLAN_VERSION, CLAN_VERSION_MINOR,

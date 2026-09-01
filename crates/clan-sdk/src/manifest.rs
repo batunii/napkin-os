@@ -357,15 +357,13 @@ impl Manifest {
                     }
                     if let Some(schema) = &app.schema {
                         if self.file_by_path(schema).is_none() {
-                            problems.push(format!(
-                                "app.schema {schema:?} is not in the file registry"
-                            ));
+                            problems
+                                .push(format!("app.schema {schema:?} is not in the file registry"));
                         }
                     }
                     if let Some(icon) = &app.icon {
                         if self.file_by_path(icon).is_none() {
-                            problems
-                                .push(format!("app.icon {icon:?} is not in the file registry"));
+                            problems.push(format!("app.icon {icon:?} is not in the file registry"));
                         }
                     }
                 }

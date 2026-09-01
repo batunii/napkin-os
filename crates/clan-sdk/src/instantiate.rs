@@ -97,7 +97,9 @@ pub fn instantiate(template: &ClanFile, opts: InstantiateOptions) -> Result<Vec<
     }
 
     let now = Utc::now().to_rfc3339();
-    let id = opts.instance_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let id = opts
+        .instance_id
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let title = if opts.title.trim().is_empty() {
         app.name.clone()
     } else {
@@ -112,10 +114,7 @@ pub fn instantiate(template: &ClanFile, opts: InstantiateOptions) -> Result<Vec<
     manifest.updated_at = now.clone();
     // An instance is a document, not an app — but it keeps a lightweight app
     // ref so the viewer can show "this is a <app.name> v<app.version> document".
-    manifest.document_type = Some(
-        opts.document_type
-            .unwrap_or_else(|| "document".to_string()),
-    );
+    manifest.document_type = Some(opts.document_type.unwrap_or_else(|| "document".to_string()));
     manifest.app = Some(app.clone());
     manifest.fork = None;
     manifest.lineage = Some(Lineage {
@@ -158,11 +157,7 @@ pub fn instantiate(template: &ClanFile, opts: InstantiateOptions) -> Result<Vec<
 /// Promote an authored `.clan` into a template app: set
 /// `document_type: template`, attach the `app` block, set `view.source = "app"`,
 /// and (optionally) write a standalone `app/manifest.yaml` member.
-pub fn make_template(
-    clan: &ClanFile,
-    app: AppInfo,
-    opts: MakeTemplateOptions,
-) -> Result<Vec<u8>> {
+pub fn make_template(clan: &ClanFile, app: AppInfo, opts: MakeTemplateOptions) -> Result<Vec<u8>> {
     let now = Utc::now().to_rfc3339();
     let mut manifest = clan.manifest().clone();
 
@@ -277,7 +272,10 @@ mod tests {
         assert_eq!(m.document_type.as_deref(), Some("template"));
         assert_eq!(m.app.as_ref().unwrap().app_id, "ie.napkin.brief");
         assert_eq!(m.view.as_ref().unwrap().source.as_deref(), Some("app"));
-        assert!(tpl.has_entry(APP_MANIFEST_PATH), "app/manifest.yaml written");
+        assert!(
+            tpl.has_entry(APP_MANIFEST_PATH),
+            "app/manifest.yaml written"
+        );
         assert!(
             m.structural_problems().is_empty(),
             "{:?}",
@@ -305,7 +303,10 @@ mod tests {
         assert_ne!(m.id, tpl.manifest().id, "instance gets a fresh id");
         let lineage = m.lineage.as_ref().expect("instance has lineage");
         assert_eq!(lineage.parent_id, tpl.manifest().id);
-        assert_eq!(lineage.parent_sha256.as_deref(), Some(tpl.sha256().as_str()));
+        assert_eq!(
+            lineage.parent_sha256.as_deref(),
+            Some(tpl.sha256().as_str())
+        );
         assert_eq!(m.view.as_ref().unwrap().source.as_deref(), Some("app"));
         assert_eq!(inst.read_entry_string(DATA_PATH).unwrap().trim(), "{}");
         // The instance is a normal, valid document.
@@ -361,10 +362,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert!(inst
-            .read_entry_string(DATA_PATH)
-            .unwrap()
-            .contains("Acme"));
+        assert!(inst.read_entry_string(DATA_PATH).unwrap().contains("Acme"));
     }
 
     #[test]

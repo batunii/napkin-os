@@ -107,7 +107,11 @@ fn verifying_key_from_b64(pub_b64: &str) -> Result<VerifyingKey> {
 
 /// Sign an app's code with the publisher's private key (base64 seed) and return
 /// a new archive carrying the signature in its manifest.
-pub fn sign_app(clan: &ClanFile, private_seed_b64: &str, key_id: Option<String>) -> Result<Vec<u8>> {
+pub fn sign_app(
+    clan: &ClanFile,
+    private_seed_b64: &str,
+    key_id: Option<String>,
+) -> Result<Vec<u8>> {
     let signing = signing_key_from_b64(private_seed_b64)?;
     let paths = signed_paths(clan);
     if paths.is_empty() {
@@ -194,8 +198,9 @@ mod tests {
     fn sign_then_verify_roundtrips() {
         let (priv_b64, pub_b64) = generate_keypair();
         let tpl = template();
-        let signed = ClanFile::from_bytes(sign_app(&tpl, &priv_b64, Some("napkin".into())).unwrap())
-            .unwrap();
+        let signed =
+            ClanFile::from_bytes(sign_app(&tpl, &priv_b64, Some("napkin".into())).unwrap())
+                .unwrap();
         assert!(verify_app(&signed, &pub_b64), "valid signature must verify");
         assert!(signed.manifest().signature.is_some());
     }
@@ -204,9 +209,11 @@ mod tests {
     fn wrong_key_fails() {
         let (priv_b64, _) = generate_keypair();
         let (_, other_pub) = generate_keypair();
-        let signed =
-            ClanFile::from_bytes(sign_app(&template(), &priv_b64, None).unwrap()).unwrap();
-        assert!(!verify_app(&signed, &other_pub), "a different key must NOT verify");
+        let signed = ClanFile::from_bytes(sign_app(&template(), &priv_b64, None).unwrap()).unwrap();
+        assert!(
+            !verify_app(&signed, &other_pub),
+            "a different key must NOT verify"
+        );
     }
 
     #[test]
@@ -218,8 +225,7 @@ mod tests {
     #[test]
     fn tampering_with_code_breaks_signature() {
         let (priv_b64, pub_b64) = generate_keypair();
-        let signed =
-            ClanFile::from_bytes(sign_app(&template(), &priv_b64, None).unwrap()).unwrap();
+        let signed = ClanFile::from_bytes(sign_app(&template(), &priv_b64, None).unwrap()).unwrap();
         assert!(verify_app(&signed, &pub_b64));
         // Rewrite the signed presentation entry → signature must fail.
         let mut b = ClanBuilder::new(signed.manifest().clone());
@@ -231,20 +237,20 @@ mod tests {
         }
         b.add_entry("human/index.html", b"<h1>evil</h1>".to_vec());
         let tampered = ClanFile::from_bytes(b.build().unwrap()).unwrap();
-        assert!(!verify_app(&tampered, &pub_b64), "tampered code must NOT verify");
+        assert!(
+            !verify_app(&tampered, &pub_b64),
+            "tampered code must NOT verify"
+        );
     }
 
     #[test]
     fn signature_survives_instantiate_and_data_edits() {
         let (priv_b64, pub_b64) = generate_keypair();
-        let tpl =
-            ClanFile::from_bytes(sign_app(&template(), &priv_b64, None).unwrap()).unwrap();
+        let tpl = ClanFile::from_bytes(sign_app(&template(), &priv_b64, None).unwrap()).unwrap();
 
         // Forking to a working instance must preserve trust (code is copied).
-        let inst = ClanFile::from_bytes(
-            instantiate(&tpl, InstantiateOptions::default()).unwrap(),
-        )
-        .unwrap();
+        let inst = ClanFile::from_bytes(instantiate(&tpl, InstantiateOptions::default()).unwrap())
+            .unwrap();
         assert!(
             verify_app(&inst, &pub_b64),
             "instance of a signed app must stay verified"

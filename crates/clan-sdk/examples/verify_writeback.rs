@@ -19,8 +19,15 @@ use std::fs;
 
 // Keys the frontend strips before patchData (index.html:467).
 const STRIP: &[&str] = &[
-    "rationale", "context", "reference_assets", "locked", "locked_fields",
-    "brief_style", "theme", "field_styles", "brief_input",
+    "rationale",
+    "context",
+    "reference_assets",
+    "locked",
+    "locked_fields",
+    "brief_style",
+    "theme",
+    "field_styles",
+    "brief_input",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,12 +38,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let template = ClanFile::open(&app_clan)?;
     let instance = ClanFile::from_bytes(instantiate(
         &template,
-        InstantiateOptions { title: "Northwind — Moving People".into(), ..Default::default() },
+        InstantiateOptions {
+            title: "Northwind — Moving People".into(),
+            ..Default::default()
+        },
     )?)?;
-    println!("instantiated Brief Maker doc  (doc_type={:?})", instance.manifest().document_type);
+    println!(
+        "instantiated Brief Maker doc  (doc_type={:?})",
+        instance.manifest().document_type
+    );
 
     let draft: Value = serde_json::from_slice(&fs::read(&draft_path)?)?;
-    let rationale = draft.get("rationale").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let rationale = draft
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     // Build the patch: every returned field except the stripped ones.
     let mut patch = serde_json::Map::new();
@@ -56,11 +73,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fields_changed: Some(keys.clone()),
     };
 
-    let out = patch_data_with(&instance, &patch,
-        PatchDataOptions { append_keys: vec![], decision: Some(decision) }, None)?;
+    let out = patch_data_with(
+        &instance,
+        &patch,
+        PatchDataOptions {
+            append_keys: vec![],
+            decision: Some(decision),
+        },
+        None,
+    )?;
     let filled = ClanFile::from_bytes(out)?;
 
-    println!("\npatched {} fields as an attributed decision:\n  {}\n", keys.len(), keys.join(", "));
+    println!(
+        "\npatched {} fields as an attributed decision:\n  {}\n",
+        keys.len(),
+        keys.join(", ")
+    );
     println!("===== shared/data.yaml (the filled brief) =====");
     println!("{}", filled.read_entry_string("shared/data.yaml")?);
     println!("===== agent/decision-chain.yaml (provenance) =====");

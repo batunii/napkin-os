@@ -151,6 +151,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    // openHome is async and sets no state synchronously: everything before its
+    // first await is resetTheme(), which only clears CSS custom properties. The
+    // setState calls all run after `await invoke('open_home')` — this is the
+    // initial load from the host, i.e. the external-system synchronisation the
+    // rule explicitly allows, not derived state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     openHome()
     invoke<string | null>('take_launch_file').then(p => { if (p) openPath(p) }).catch(() => {})
     // The host forwards launch/open requests that originate INSIDE a clan file

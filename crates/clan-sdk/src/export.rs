@@ -157,7 +157,11 @@ fn ensure_document(html: &str, title: &str) -> String {
 /// references as data URIs, and inject brand chrome + provenance into `<body>`.
 fn compose(doc: &str, clan: &ClanFile, opts: &ExportOptions) -> Result<String> {
     let brand_style = brand_style_block();
-    let header = if opts.brand { brand_header(clan) } else { String::new() };
+    let header = if opts.brand {
+        brand_header(clan)
+    } else {
+        String::new()
+    };
 
     let mut tail = String::new();
     if opts.provenance {
@@ -350,7 +354,12 @@ fn escape(s: &str) -> String {
 
 /// Extension → MIME, mirroring the desktop host's asset server.
 fn content_type_for(rel: &str) -> &'static str {
-    match rel.rsplit('.').next().map(|e| e.to_ascii_lowercase()).as_deref() {
+    match rel
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -399,7 +408,10 @@ mod tests {
         let html = export_html(&clan, &ExportOptions::default()).unwrap();
         // The {{vendor}} binding resolves and is HTML-escaped…
         assert!(html.contains("Vendor: Acme &amp; Co"), "{html}");
-        assert!(!html.contains("{{vendor}}"), "binding left unresolved: {html}");
+        assert!(
+            !html.contains("{{vendor}}"),
+            "binding left unresolved: {html}"
+        );
         // …a non-binding `{{ ... }}` survives verbatim…
         assert!(html.contains("{{ not a binding }}"), "{html}");
         // …and the escaped title appears in the brand header.
@@ -409,12 +421,21 @@ mod tests {
     #[test]
     fn binding_resolution_preserves_multibyte_utf8() {
         let clan = doc_with(serde_json::json!({"k": "v"}), false);
-        let injected =
-            crate::pack::pack_html(&clan, "<p>café — déjà vu … {{k}}</p>", None, None, None, None)
-                .unwrap();
+        let injected = crate::pack::pack_html(
+            &clan,
+            "<p>café — déjà vu … {{k}}</p>",
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let clan = ClanFile::from_bytes(injected).unwrap();
         let html = export_html(&clan, &ExportOptions::default()).unwrap();
-        assert!(html.contains("café — déjà vu … v"), "utf-8 corrupted: {html}");
+        assert!(
+            html.contains("café — déjà vu … v"),
+            "utf-8 corrupted: {html}"
+        );
     }
 
     #[test]
@@ -450,10 +471,30 @@ mod tests {
         let clan = doc_with(serde_json::json!({"k": "v"}), false);
         // Check for the appendix SECTION, not the substring — the brand style
         // block always *defines* the .napkin-provenance class.
-        let plain = export_html(&clan, &ExportOptions { brand: true, provenance: false }).unwrap();
-        assert!(!plain.contains("<section class=\"napkin-provenance\">"), "{plain}");
-        let withprov = export_html(&clan, &ExportOptions { brand: true, provenance: true }).unwrap();
-        assert!(withprov.contains("<section class=\"napkin-provenance\">"), "{withprov}");
+        let plain = export_html(
+            &clan,
+            &ExportOptions {
+                brand: true,
+                provenance: false,
+            },
+        )
+        .unwrap();
+        assert!(
+            !plain.contains("<section class=\"napkin-provenance\">"),
+            "{plain}"
+        );
+        let withprov = export_html(
+            &clan,
+            &ExportOptions {
+                brand: true,
+                provenance: true,
+            },
+        )
+        .unwrap();
+        assert!(
+            withprov.contains("<section class=\"napkin-provenance\">"),
+            "{withprov}"
+        );
     }
 
     #[test]

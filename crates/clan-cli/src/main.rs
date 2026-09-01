@@ -457,9 +457,7 @@ enum AppCommands {
         output: Option<PathBuf>,
     },
     /// Print the app metadata of a template (or instance) .clan file.
-    Info {
-        file: PathBuf,
-    },
+    Info { file: PathBuf },
     /// List template apps found in a directory (the app library).
     List {
         /// Directory to scan (defaults to the Napkin app library).
@@ -1055,7 +1053,11 @@ fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
             let clan = ClanFile::from_bytes(bytes.clone())?;
             // Surface any structural problems with the new template up front.
             let problems = clan.manifest().structural_problems();
-            eprintln!("created template {} ({} bytes)", output.display(), bytes.len());
+            eprintln!(
+                "created template {} ({} bytes)",
+                output.display(),
+                bytes.len()
+            );
             if problems.is_empty() {
                 hints.emit(&[
                     format!("clan new {} --output instance.clan", output.display()),
@@ -1262,9 +1264,16 @@ fn cmd_export(
     }
     eprintln!("exported {} to {}", format.to_uppercase(), dest.display());
     hints.emit(&[if format == "html" {
-        format!("open {} in a browser, or `clan export {} --format pdf`", dest.display(), file.display())
+        format!(
+            "open {} in a browser, or `clan export {} --format pdf`",
+            dest.display(),
+            file.display()
+        )
     } else {
-        format!("share {} — it is self-contained (bindings resolved, assets inlined)", dest.display())
+        format!(
+            "share {} — it is self-contained (bindings resolved, assets inlined)",
+            dest.display()
+        )
     }]);
     Ok(())
 }
@@ -1800,7 +1809,9 @@ fn cmd_keygen(key_id: String) -> Result<()> {
     println!("private_seed: {private_seed}");
     eprintln!();
     eprintln!("next: embed public_key in the viewer; keep private_seed secret (e.g. a gitignored file or OS keychain)");
-    eprintln!("      sign apps with:  clan app sign <app.clan> --key <private_seed> --key-id {key_id}");
+    eprintln!(
+        "      sign apps with:  clan app sign <app.clan> --key <private_seed> --key-id {key_id}"
+    );
     Ok(())
 }
 
