@@ -25,3 +25,6 @@ conformance.json
 .napkin-dev-signing-key
 app/src-tauri/.napkin-dev-signing-key
 __pycache__/
+
+# Handoff bundles built by package-handoff.sh — regenerate, never commit.
+/dist/
