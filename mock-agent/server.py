@@ -43,6 +43,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("NAPKIN_MOCK_PORT", "8787"))
@@ -127,6 +128,27 @@ def _stage_corpus():
                 except OSError:
                     pass
     return (dest, staged) if staged else (None, [])
+
+
+# --- Call tracing (NAPKIN_DUMP=<dir>) -------------------------------------
+# Writes the exact request, the exact prompt, the retrieval result and the
+# response for every call, so a session can be inspected after the fact. Off
+# unless the env var is set; every write is best-effort and can never fail a
+# draft. Payloads can contain client material — keep the dir out of the repo.
+DUMP_DIR = os.environ.get("NAPKIN_DUMP", "").strip()
+_CALL_N = [0]
+
+
+def _dump(call_id: str, name: str, obj):
+    if not DUMP_DIR:
+        return
+    try:
+        d = Path(DUMP_DIR)
+        d.mkdir(parents=True, exist_ok=True)
+        text = obj if isinstance(obj, str) else json.dumps(obj, indent=2, default=str)
+        (d / f"{call_id}.{name}").write_text(text, errors="replace")
+    except Exception as e:                      # tracing must never break a call
+        print(f"  … dump failed ({e.__class__.__name__}) — continuing", flush=True)
 
 
 # Findings keyed by the brief text they were fetched for — redrafting the same
@@ -377,8 +399,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        _CALL_N[0] += 1
+        call_id = f"{time.strftime('%H%M%S')}-{_CALL_N[0]:03d}"
+        t0 = time.time()
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length).decode("utf-8", "replace")
+        _dump(call_id, "1-request.json", raw)
         try:
             body = json.loads(raw) if raw else {}
         except Exception as e:
@@ -405,7 +431,9 @@ class Handler(BaseHTTPRequestHandler):
                 TOTALS["retrieval_cost_usd"] += rmeta.get("cost_usd") or 0.0
                 if rmeta.get("denials"):
                     print(f"      ! permission denials: {rmeta['denials']}", flush=True)
+        _dump(call_id, "2-retrieval.json", {"findings": findings, "meta": rmeta})
         prompt = build_prompt(payload, clan, grounding=grounding_block(findings))
+        _dump(call_id, "3-prompt.txt", prompt)
 
         # Context cost breakdown — where the input tokens go, so we can trim.
         sect = {
@@ -435,6 +463,8 @@ class Handler(BaseHTTPRequestHandler):
         )
         try:
             env = call_claude(prompt)
+            _dump(call_id, "4-envelope.json",
+                  {k: v for k, v in env.items() if k != "result"})
             fields = extract_json(env.get("result", "") or "")
             u = usage_of(env)
             for k in ("input", "output", "cache_read", "cache_creation"):
@@ -457,13 +487,29 @@ class Handler(BaseHTTPRequestHandler):
             )
             # Citations travel with the fields so the app can show what grounded
             # the draft. Additive key — the schema allows extra properties.
-            if findings and isinstance(fields, dict):
+            #
+            # DRAFTS ONLY. A regenerate returns one field, and the template picks
+            # it with `Object.keys(res.data).filter(k => k!=='rationale' && k!=='context')[0]`
+            # when the exact key is missing — an extra key here is a candidate for
+            # that fallback, so a regenerate that came back with only a rationale
+            # would patch the field with this citation array.
+            if (findings and isinstance(fields, dict)
+                    and payload.get("task", "draft_brief") == "draft_brief"):
                 fields.setdefault("grounding", [
                     {"citation": f.get("path"), "rule": f.get("rule")} for f in findings
                 ])
+            _dump(call_id, "5-response.json", fields)
+            print(f"  ⤺ {time.time() - t0:.1f}s wall  → 200"
+                  + (f"  (trace {call_id}.* in {DUMP_DIR})" if DUMP_DIR else ""),
+                  flush=True)
             return self._send(200, fields)
         except Exception as e:
-            print(f"  ✗ {e}", flush=True)
+            # Capture the raw model text too — extract_json failures are the
+            # common case here and are unreadable without it.
+            _dump(call_id, "5-error.txt",
+                  f"{e.__class__.__name__}: {e}\n\n--- raw result ---\n"
+                  + str((locals().get('env') or {}).get('result', '(no envelope)')))
+            print(f"  ✗ {e}  ({time.time() - t0:.1f}s)", flush=True)
             return self._send(502, {"error": str(e)})
 
     def _send(self, code, obj):
