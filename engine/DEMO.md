@@ -25,6 +25,7 @@ The knowledge ships in tiers. Pick the row that matches what you have:
 |---|---|---|
 | nothing | keyless heuristic draft | none (honestly labelled) |
 | any ONE chat key (Groq / Cerebras / NVIDIA) — or just Claude Code for the mock-agent | full LLM pipeline | **digest mode** — paraphrased pack digests, committed in `packs_dist/` |
+| Claude Code + `NAPKIN_RETRIEVE=agentic` | mock-agent, two calls | **agentic mode** — digests *plus* per-brief retrieval over owned methodology docs, cited by file and line. No embeddings, no store, no key. |
 | + Qdrant creds + NVIDIA key (ask the maintainer — never in the repo) | full pipeline | **vector mode** — per-query retrieval with citations |
 
 Why the tiers exist: the raw award corpora (IPA / Cannes / D&AD) are licensed and
