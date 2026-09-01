@@ -160,8 +160,14 @@ if [ -n "$AGENT_URL" ]; then
   fetch "$AGENT_URL" "$TMP/agent.zip"
   rm -rf "$TMP/agentx" && mkdir -p "$TMP/agentx"
   unzip -q "$TMP/agent.zip" -d "$TMP/agentx"
-  SRC="$(find "$TMP/agentx" -maxdepth 2 -name server.py -path '*mock-agent*' | head -n1)"
-  SRC="$(cd "$(dirname "$SRC")/.." && pwd)"
+  # No maxdepth: the zip wraps everything in a napkin-agent-<version>/ directory,
+  # so server.py sits at agentx/napkin-agent-X/mock-agent/server.py — depth 3.
+  # Guard the result too: an empty find fed `cd "$(dirname "")/.."` resolves to
+  # the parent of the CWD rather than failing, which turns a wrong layout into a
+  # confusing error somewhere else.
+  found="$(find "$TMP/agentx" -name server.py -path '*mock-agent*' | head -n1)"
+  [ -n "$found" ] || die "$(basename "$AGENT_URL") has no mock-agent/server.py"
+  SRC="$(cd "$(dirname "$found")/.." && pwd)"
   say "from release asset $(basename "$AGENT_URL")"
 else
   # No packaged agent in this release. Fall back to source: the tag first, then
