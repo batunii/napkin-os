@@ -1,7 +1,7 @@
 {
   "name": "napkin-studio-os",
   "private": true,
-  "version": "1.1.8",
+  "version": "1.2.0",
   "type": "module",
   "engines": {
     "node": ">=20"
