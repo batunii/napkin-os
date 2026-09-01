@@ -105,6 +105,39 @@ jobs:
           fail_on_unmatched_files: true
 
   # ---------------------------------------------------------------------------
+  # The agent bundle: server + the knowledge it grounds on, as one small zip.
+  # The desktop bundles carry neither (bundle.externalBin is empty and
+  # bundle.resources holds only LICENSE/NOTICE), so without this asset an
+  # installed app has no agent, and install-napkin.sh has to fall back to
+  # fetching source at a ref — which fails outright on a tag cut before the
+  # agent existed. Publishing it here is what makes the one-liner self-contained.
+  # ---------------------------------------------------------------------------
+  agent-bundle:
+    name: Agent bundle
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        shell: bash
+        run: bash .github/scripts/set-version.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Build bundle
+        shell: bash
+        run: |
+          bash package-handoff.sh
+          asset="$(ls dist/napkin-agent-*.zip | head -n1)"
+          [ -n "$asset" ] || { echo "packager produced no zip"; exit 1; }
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+          fail_on_unmatched_files: true
+
+  # ---------------------------------------------------------------------------
   # Desktop bundles (DMG / MSI / AppImage / .deb) via tauri-action.
   # tauri-action creates/updates the release matching the pushed tag.
   # ---------------------------------------------------------------------------

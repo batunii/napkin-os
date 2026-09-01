@@ -66,14 +66,47 @@ Plain text inside a standard ZIP. A typical `.clan` file is 30–80 KB on disk -
 
 ## Quickstart
 
-**macOS / Linux:**
+### Everything, in one command (macOS / Linux)
+
+Installs the `clan` CLI, the desktop app, the briefing agent and the knowledge it
+grounds on — then gives you a `napkin` command to run it all:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install-napkin.sh | bash
+```
+
+```bash
+napkin            # starts the agent and opens the app
+napkin status     # running? what knowledge? what has it cost?
+napkin stop
+napkin autostart on    # macOS: run the agent at login, so `napkin` is never needed
+napkin help
+```
+
+**Two things it cannot install for you.** The agent drafts by calling
+[Claude Code](https://claude.ai/code) with *your* login — there is no API key in
+the bundle, and nothing works until you have run `claude` once and signed in. And
+on macOS `/usr/bin/python3` is a Command Line Tools stub until you run
+`xcode-select --install`. The installer checks both and tells you which is
+missing; `napkin start` refuses with the same message rather than failing
+mysteriously.
+
+**Gatekeeper.** The bundles are not signed or notarized, so a downloaded app
+would normally be blocked as coming from an "unidentified developer". The
+installer clears the quarantine flag on what it installs, which is the reason to
+prefer it over dragging the DMG by hand.
+
+Drafts run on your own Claude account — roughly $0.30–0.40 and ~90 seconds each;
+regenerating a single field is about $0.13 and ~10 seconds.
+
+**CLI only:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install.sh | bash
 ```
+Installs `clan` and offers to download the desktop app. Set `CLAN_REPO=owner/repo`
+to install from a fork, `CLAN_VERSION=1.2.3` to pin a version.
 
-Prompts whether you want the desktop viewer too. No Gatekeeper warnings, no manual steps.
-
-**Windows:** download the `.msi` from the [Releases page](https://github.com/saieeshward/clan/releases).
+**Windows:** download the `.msi` from the [Releases page](https://github.com/saieeshward/clan/releases) — one installer carries both the viewer and the CLI (and puts `clan` on your PATH). Start the agent with `python3 mock-agent/server.py` from a checkout; the `napkin` launcher is macOS/Linux only.
 
 **Build from source:**
 ```bash
