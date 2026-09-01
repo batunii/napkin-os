@@ -26,7 +26,7 @@ Which component(s) would this affect?
 - [ ] Spec (`CLAN-SPEC.md`)
 - [ ] SDK (`clan-sdk`)
 - [ ] CLI (`clan-cli`)
-- [ ] Viewer (`clan-viewer`)
+- [ ] Napkin Studio OS (`clan-app`)
 
 ## Additional context
 

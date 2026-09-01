@@ -66,17 +66,17 @@ Plain text inside a standard ZIP. A typical `.clan` file is 30–80 KB on disk -
 
 ## Quickstart
 
-### Everything, in one command (macOS / Linux)
+### Install Napkin Studio OS — one command (macOS / Linux)
 
-Installs the `clan` CLI, the desktop app, the briefing agent and the knowledge it
-grounds on — then gives you a `napkin` command to run it all:
+Installs **Napkin Studio OS**, the `clan` CLI, the briefing agent and the
+knowledge it grounds on — then gives you a `napkin` command to run it all:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install-napkin.sh | bash
 ```
 
 ```bash
-napkin            # starts the agent and opens the app
+napkin            # starts the agent and opens Napkin Studio OS
 napkin status     # running? what knowledge? what has it cost?
 napkin stop
 napkin autostart on    # macOS: run the agent at login, so `napkin` is never needed
@@ -99,14 +99,19 @@ prefer it over dragging the DMG by hand.
 Drafts run on your own Claude account — roughly $0.30–0.40 and ~90 seconds each;
 regenerating a single field is about $0.13 and ~10 seconds.
 
-**CLI only:**
+**CLI only** — the `clan` CLI without the app or the agent:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/saieeshward/clan/main/install.sh | bash
 ```
-Installs `clan` and offers to download the desktop app. Set `CLAN_REPO=owner/repo`
-to install from a fork, `CLAN_VERSION=1.2.3` to pin a version.
+It then offers to download Napkin Studio OS, but leaves installing it to you.
+Both installers take `CLAN_REPO=owner/repo` to install from a fork and
+`CLAN_VERSION=1.2.3` to pin a version.
 
-**Windows:** download the `.msi` from the [Releases page](https://github.com/saieeshward/clan/releases) — one installer carries both the viewer and the CLI (and puts `clan` on your PATH). Start the agent with `python3 mock-agent/server.py` from a checkout; the `napkin` launcher is macOS/Linux only.
+**Windows:** download the `.msi` from the [Releases page](https://github.com/saieeshward/clan/releases) — one installer carries both Napkin Studio OS and the `clan` CLI, and puts `clan` on your PATH. Start the agent with `python3 mock-agent/server.py` from a checkout; the `napkin` launcher is macOS/Linux only.
+
+> Releases before v1.1.9 published the app as **CLAN Viewer** — same application,
+> renamed. Both installers resolve release assets by pattern, so either name
+> installs correctly.
 
 **Build from source:**
 ```bash
@@ -265,7 +270,7 @@ Maintained by [Sai Eeshwar](https://github.com/saieeshward) and [Shreyansh Soni]
 
 The CLI and SDK are written in [Rust](https://www.rust-lang.org/). Key libraries: [serde](https://github.com/serde-rs/serde), [clap](https://github.com/clap-rs/clap), [jsonschema-rs](https://github.com/Stranger6667/jsonschema-rs), [lol_html](https://github.com/cloudflare/lol-html) (BSD-2-Clause, © Cloudflare, Inc.), [chrono](https://github.com/chronotope/chrono), [zip](https://github.com/zip-rs/zip2), [tokio](https://github.com/tokio-rs/tokio).
 
-The Desktop Viewer is built with [Tauri](https://tauri.app/) (© The Tauri Programme within The Commons Conservancy, MIT/Apache-2.0) and [React](https://react.dev/) (© Meta Platforms, Inc., MIT). Full third-party credits: [NOTICE](NOTICE).
+Napkin Studio OS is built with [Tauri](https://tauri.app/) (© The Tauri Programme within The Commons Conservancy, MIT/Apache-2.0) and [React](https://react.dev/) (© Meta Platforms, Inc., MIT). Full third-party credits: [NOTICE](NOTICE).
 
 The CLI and SDK use [TOON (Token-Oriented Object Notation)](https://github.com/toon-format/spec) for token-efficient agent context injection (spec §14). TOON is an open specification by [Johann Schopplich](https://github.com/johannschopplich) (MIT License © 2025-present Johann Schopplich).
 

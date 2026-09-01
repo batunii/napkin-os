@@ -45,10 +45,20 @@ if [ -z "$VERSION" ]; then
   fi
 fi
 
+# Every download URL in that release. The app bundle's filename comes from
+# tauri's productName, which changed from "CLAN Viewer" to "Napkin Studio OS" —
+# so a constructed filename 404s on whichever side of the rename it was not
+# written for. Match by pattern instead and both names work.
+ASSETS="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/tags/v${VERSION}" 2>/dev/null \
+  | grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' \
+  | sed -E 's/.*"(https[^"]+)"/\1/')"
+asset() { printf '%s\n' "$ASSETS" | grep -E "$1" | head -n1; }
+
 # ── CLI install ────────────────────────────────────────────────────────────────
 
 TARBALL="clan-v${VERSION}-${TARGET}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/v${VERSION}/${TARBALL}"
+URL="$(asset "clan-v?${VERSION}-${TARGET}\.tar\.gz$")"
+URL="${URL:-https://github.com/${REPO}/releases/download/v${VERSION}/${TARBALL}}"
 
 echo "Installing clan v${VERSION} (${TARGET})..."
 
@@ -96,8 +106,13 @@ if [[ "$INSTALL_VIEWER" =~ ^[Yy]$ ]]; then
 
   case "$OS" in
     Darwin)
-      VIEWER_FILE="Napkin.Studio.OS_${VERSION}_universal.dmg"
-      VIEWER_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${VIEWER_FILE}"
+      VIEWER_URL="$(asset "\.dmg$")"
+      if [ -z "$VIEWER_URL" ]; then
+        echo "No macOS app bundle in release v${VERSION} — skipping."
+        echo "  See https://github.com/$REPO/releases"
+        exit 0
+      fi
+      VIEWER_FILE="$(basename "$VIEWER_URL")"
       VIEWER_DEST="$DOWNLOADS/$VIEWER_FILE"
 
       echo "Downloading Napkin Studio OS..."
@@ -126,8 +141,13 @@ if [[ "$INSTALL_VIEWER" =~ ^[Yy]$ ]]; then
       ;;
 
     Linux)
-      VIEWER_FILE="Napkin.Studio.OS_${VERSION}_amd64.AppImage"
-      VIEWER_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${VIEWER_FILE}"
+      VIEWER_URL="$(asset "\.AppImage$")"
+      if [ -z "$VIEWER_URL" ]; then
+        echo "No Linux AppImage in release v${VERSION} — skipping."
+        echo "  See https://github.com/$REPO/releases"
+        exit 0
+      fi
+      VIEWER_FILE="$(basename "$VIEWER_URL")"
       VIEWER_DEST="$DOWNLOADS/$VIEWER_FILE"
 
       echo "Downloading Napkin Studio OS..."
@@ -141,7 +161,9 @@ if [[ "$INSTALL_VIEWER" =~ ^[Yy]$ ]]; then
       echo "  $VIEWER_DEST"
       echo ""
       echo "To make it easier to run, create an alias:"
-      echo "  echo \"alias napkin='$VIEWER_DEST'\" >> ~/.bashrc && source ~/.bashrc"
+      echo "  echo \"alias napkin-app='$VIEWER_DEST'\" >> ~/.bashrc && source ~/.bashrc"
+      echo "  (not 'napkin' — install-napkin.sh installs a 'napkin' command that"
+      echo "   starts the agent and opens the app; an alias would shadow it.)"
       echo ""
       echo "To open any .clan file:"
       echo "  $VIEWER_DEST your-file.clan"
