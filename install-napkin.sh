@@ -24,7 +24,21 @@ set -euo pipefail
 
 REPO="${CLAN_REPO:-batunii/napkin-os}"
 NAPKIN_HOME="${NAPKIN_HOME:-$HOME/.napkin}"
-BIN_DIR="${CLAN_BIN_DIR:-/usr/local/bin}"
+# Where `clan` goes. /usr/local/bin is the nicest default *when it is writable*,
+# but on a stock macOS it is root-owned — and this script's headline invocation is
+# `curl ... | bash`, where the script itself occupies stdin. sudo then has no
+# channel to prompt on and fails outright ("no tty present"), which under
+# `set -e` killed the install at step 1 before anything landed. So: honour an
+# explicit CLAN_BIN_DIR, else take the first directory we can actually write.
+pick_bin_dir() {
+  if [ -n "${CLAN_BIN_DIR:-}" ]; then printf '%s\n' "$CLAN_BIN_DIR"; return; fi
+  for d in /usr/local/bin "$HOME/.local/bin" "$HOME/bin"; do
+    [ -d "$d" ] && [ -w "$d" ] && { printf '%s\n' "$d"; return; }
+  done
+  # Nothing writable exists yet — create the conventional user bindir.
+  printf '%s\n' "$HOME/.local/bin"
+}
+BIN_DIR="$(pick_bin_dir)"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -81,10 +95,24 @@ fetch() { # url dest
 }
 
 install_to_bindir() { # src name
+  mkdir -p "$BIN_DIR" 2>/dev/null || true
   if [ -w "$BIN_DIR" ]; then install -m 755 "$1" "$BIN_DIR/$2"
   else
+    # Only reachable when CLAN_BIN_DIR names a directory we cannot write.
+    # Read the password from the terminal explicitly: stdin is the piped script.
     say "sudo needed to write $BIN_DIR"
-    sudo install -m 755 "$1" "$BIN_DIR/$2"
+    if [ -r /dev/tty ]; then
+      sudo -p "password for %u (to write $BIN_DIR): " \
+        install -m 755 "$1" "$BIN_DIR/$2" < /dev/tty \
+        || die "could not write $BIN_DIR.
+  Re-run pointing at a directory you own:
+    CLAN_BIN_DIR=\"\$HOME/.local/bin\" ... | bash"
+    else
+      die "$BIN_DIR needs root, and there is no terminal to ask for a password on
+  (stdin is the piped script). Either:
+    - install somewhere you own:  CLAN_BIN_DIR=\"\$HOME/.local/bin\" ... | bash
+    - or download first, then run:  curl -fsSL -O <url> && bash install-napkin.sh"
+    fi
   fi
   [ "$OS" = "Darwin" ] && xattr -d com.apple.quarantine "$BIN_DIR/$2" 2>/dev/null || true
 }
@@ -100,6 +128,16 @@ CLI_BIN="$(find "$TMP" -type f -name clan -perm -u+x | head -n1)"
 [ -n "$CLI_BIN" ] || die "no clan binary inside $(basename "$CLI_URL")"
 install_to_bindir "$CLI_BIN" clan
 say "installed $BIN_DIR/clan ($("$BIN_DIR/clan" --version 2>/dev/null || echo '?'))"
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) warn "$BIN_DIR is not on your PATH. Add it:"
+     warn "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc && exec zsh" ;;
+esac
+# An older clan earlier in PATH silently wins over the one we just installed.
+SHADOW="$(command -v clan 2>/dev/null || true)"
+if [ -n "$SHADOW" ] && [ "$SHADOW" != "$BIN_DIR/clan" ]; then
+  warn "another clan is ahead of it on PATH: $SHADOW ($("$SHADOW" --version 2>/dev/null || echo '?'))"
+fi
 
 # ── 2. the desktop app ───────────────────────────────────────────────────────
 APP_PATH=""
@@ -218,7 +256,7 @@ say "installed $AGENT_DIR  ($copied knowledge digest(s))"
 [ "$copied" -gt 0 ] || warn "no digests found — drafts would be ungrounded"
 
 printf 'repo=%s\nversion=%s\napp=%s\nagent=%s\n' \
-  "$REPO" "$VERSION" "${APP_PATH:-}" "$AGENT_DIR" > "$NAPKIN_HOME/config"
+  "$REPO" "$VERSION" "\"${APP_PATH:-}\"" "\"$AGENT_DIR\"" > "$NAPKIN_HOME/config"
 
 # ── 4. the launcher ──────────────────────────────────────────────────────────
 bold "4/4  napkin launcher"
@@ -261,8 +299,14 @@ cmd_start() {
   preflight
   if listening; then echo "napkin: already running on :$PORT"; return 0; fi
   mkdir -p "$NAPKIN_HOME"
-  ( cd "$AGENT_DIR" && NAPKIN_RETRIEVE="$MODE" NAPKIN_MOCK_PORT="$PORT" \
-      nohup python3 -u mock-agent/server.py >"$LOG" 2>&1 & echo $! > "$PIDF" )
+  # `exec` inside a single backgrounded subshell, so the recorded PID *is* the
+  # interpreter. Written as `cd && nohup py &` the `&` bound the whole AND-list:
+  # bash forked a subshell, ran python as its child, and $! captured the
+  # subshell — one lower than the real process. `napkin stop` then killed the
+  # wrapper, reported "stopped", removed the pidfile, and left the agent serving.
+  ( cd "$AGENT_DIR" && exec env NAPKIN_RETRIEVE="$MODE" NAPKIN_MOCK_PORT="$PORT" \
+      python3 -u mock-agent/server.py >"$LOG" 2>&1 ) &
+  echo $! > "$PIDF"
   for _ in $(seq 1 40); do
     listening && { echo "napkin: agent up on :$PORT (mode=$MODE)  log: $LOG"; return 0; }
     sleep 0.25
@@ -272,12 +316,22 @@ cmd_start() {
 }
 
 cmd_stop() {
-  if [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null; then
-    rm -f "$PIDF"; echo "napkin: stopped"
-  else
-    pkill -f 'mock-agent/server.py' 2>/dev/null && echo "napkin: stopped" \
-      || echo "napkin: not running"
+  killed=""
+  if [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null; then killed=1; fi
+  rm -f "$PIDF"
+  # Never trust the kill alone: a stale or wrong pidfile made `stop` claim
+  # success while the agent kept listening. The port is the ground truth.
+  for _ in 1 2 3 4 5 6 7 8; do listening || break; sleep 0.25; done
+  if listening; then
+    pkill -f 'mock-agent/server.py' 2>/dev/null && killed=1
+    for _ in 1 2 3 4 5 6 7 8; do listening || break; sleep 0.25; done
   fi
+  if listening; then
+    echo "napkin: something is STILL listening on :$PORT — inspect it:" >&2
+    echo "  lsof -nP -iTCP:$PORT -sTCP:LISTEN" >&2
+    return 1
+  fi
+  [ -n "$killed" ] && echo "napkin: stopped" || echo "napkin: not running"
 }
 
 cmd_status() {
