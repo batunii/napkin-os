@@ -72,7 +72,7 @@ Installs **Napkin Studio OS**, the `clan` CLI, the briefing agent and the
 knowledge it grounds on — then gives you a `napkin` command to run it all:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/main/install-napkin.sh | bash
+curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/feature/claude-agentic-rag/install-napkin.sh | bash
 ```
 
 ```bash
@@ -101,7 +101,7 @@ regenerating a single field is about $0.13 and ~10 seconds.
 
 **CLI only** — the `clan` CLI without the app or the agent:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/feature/claude-agentic-rag/install.sh | bash
 ```
 It then offers to download Napkin Studio OS, but leaves installing it to you.
 Both installers take `CLAN_REPO=owner/repo` to install from a fork and

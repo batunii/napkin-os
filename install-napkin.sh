@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Napkin Studio OS — one-command install (macOS / Linux).
 #
-#   curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/main/install-napkin.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/batunii/napkin-os/feature/claude-agentic-rag/install-napkin.sh | bash
 #
 # Installs all three pieces, which is the point: the app alone is a viewer with
 # no agent, and the agent alone is ungrounded.
