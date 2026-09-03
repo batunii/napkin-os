@@ -283,12 +283,18 @@ install_brief_maker() {
   # Then the copy committed in the repo. This is what keeps the documented
   # one-liner self-contained between releases: no tag has to be cut and the
   # user needs no Rust toolchain.
-  if curl -fsSL "https://raw.githubusercontent.com/${REPO}/${CLAN_REF:-main}/app/templates/brief-maker.app.clan" \
-       -o "$TMP/bm-repo.clan" 2>/dev/null && [ -s "$TMP/bm-repo.clan" ]; then
-    mkdir -p "$BM_DIR"; cp "$TMP/bm-repo.clan" "$BM_DIR/app.clan"
-    say "installed Brief Maker from the repo (${CLAN_REF:-main})"
-    return 0
-  fi
+  # Try CLAN_REF when set, then the refs that actually carry the template. Most
+  # people run the documented one-liner without setting CLAN_REF, and `main`
+  # carries neither the template nor the app, so trying only `main` would fail
+  # for exactly the users this path exists to serve.
+  for bmref in ${CLAN_REF:+"$CLAN_REF"} main feature/claude-agentic-rag; do
+    if curl -fsSL "https://raw.githubusercontent.com/${REPO}/${bmref}/app/templates/brief-maker.app.clan" \
+         -o "$TMP/bm-repo.clan" 2>/dev/null && [ -s "$TMP/bm-repo.clan" ]; then
+      mkdir -p "$BM_DIR"; cp "$TMP/bm-repo.clan" "$BM_DIR/app.clan"
+      say "installed Brief Maker from the repo ($bmref)"
+      return 0
+    fi
+  done
   # Otherwise build it from source, which needs cargo.
   if command -v cargo >/dev/null 2>&1; then
     say "no template asset in the release — building from source (takes a minute)"

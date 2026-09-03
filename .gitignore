@@ -2,6 +2,13 @@
 .agents/
 .claude/
 *.clan.bak
+
+# Personal documents: instantiated .clan files (`clan new`, app drafts, scratch
+# briefs) are per-user data and never belong in the repo. Only the packaged
+# template apps are tracked, so those two are re-included by name.
+*.clan
+!app/templates/*.app.clan
+!napkin-studio-os.clan
 *.tmp
 .env
 target/
