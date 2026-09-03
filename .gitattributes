@@ -1,3 +1,6 @@
 # Shell scripts must stay LF so they run on the Linux/macOS CI runners
 # (a CRLF script breaks `bash` with a bad-interpreter / syntax error).
 *.sh text eol=lf
+
+# Packaged template apps are ZIPs — never touch their bytes.
+*.clan binary

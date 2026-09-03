@@ -118,7 +118,7 @@ install_to_bindir() { # src name
 }
 
 # ── 1. the CLI ───────────────────────────────────────────────────────────────
-bold "1/4  clan CLI"
+bold "1/5  clan CLI"
 CLI_URL="$(asset "clan-v?${VERSION}-${TARGET}\.tar\.gz$")"
 [ -n "$CLI_URL" ] || CLI_URL="$(asset "clan-.*${TARGET}\.tar\.gz$")"
 [ -n "$CLI_URL" ] || die "no CLI asset for $TARGET in release v$VERSION"
@@ -142,9 +142,9 @@ fi
 # ── 2. the desktop app ───────────────────────────────────────────────────────
 APP_PATH=""
 if [ "${NAPKIN_NO_APP:-}" = "1" ]; then
-  bold "2/4  desktop app — skipped (NAPKIN_NO_APP=1)"
+  bold "2/5  desktop app — skipped (NAPKIN_NO_APP=1)"
 elif [ "$OS" = "Darwin" ]; then
-  bold "2/4  desktop app"
+  bold "2/5  desktop app"
   # Prefer the .app tarball over the DMG: no hdiutil mount/detach dance, and
   # nothing left attached if the script is interrupted.
   APP_URL="$(asset "\.app\.tar\.gz$")"
@@ -177,7 +177,7 @@ elif [ "$OS" = "Darwin" ]; then
     || sudo xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
   say "installed $APP_PATH"
 else
-  bold "2/4  desktop app"
+  bold "2/5  desktop app"
   APP_URL="$(asset "\.AppImage$")" || true
   if [ -n "$APP_URL" ]; then
     mkdir -p "$HOME/Applications"
@@ -190,7 +190,7 @@ else
 fi
 
 # ── 3. the agent + its knowledge ─────────────────────────────────────────────
-bold "3/4  agent + knowledge"
+bold "3/5  agent + knowledge"
 AGENT_DIR="$NAPKIN_HOME/agent"
 mkdir -p "$AGENT_DIR"
 AGENT_URL="$(asset "napkin-agent.*\.zip$")" || true
@@ -258,8 +258,77 @@ say "installed $AGENT_DIR  ($copied knowledge digest(s))"
 printf 'repo=%s\nversion=%s\napp=%s\nagent=%s\n' \
   "$REPO" "$VERSION" "\"${APP_PATH:-}\"" "\"$AGENT_DIR\"" > "$NAPKIN_HOME/config"
 
+# ── 4. the app library ───────────────────────────────────────────────────────
+# Napkin Studio lists whatever it finds in <app-data>/apps/<app_id>/app.clan.
+# Nothing ever installed Brief Maker there, so a fresh machine opened to an
+# empty library and the flagship app simply did not exist. It looked fine on any
+# machine that had built the template by hand at some point, because that
+# directory outlives installing and uninstalling the app.
+bold "4/5  app library"
+case "$OS" in
+  Darwin) APPS_DIR="${NAPKIN_APPS_DIR:-$HOME/Library/Application Support/ie.napkin.studio/apps}" ;;
+  *)      APPS_DIR="${NAPKIN_APPS_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ie.napkin.studio/apps}" ;;
+esac
+BM_DIR="$APPS_DIR/ie.napkin.brief-maker"
+
+install_brief_maker() {
+  # A packaged template in the release is the cheap path — no toolchain needed.
+  BM_URL="$(asset "brief-maker.*\.clan$")" || true
+  if [ -n "$BM_URL" ]; then
+    mkdir -p "$BM_DIR"
+    fetch "$BM_URL" "$BM_DIR/app.clan"
+    say "installed Brief Maker from $(basename "$BM_URL")"
+    return 0
+  fi
+  # Then the copy committed in the repo. This is what keeps the documented
+  # one-liner self-contained between releases: no tag has to be cut and the
+  # user needs no Rust toolchain.
+  # Try CLAN_REF when set, then the refs that actually carry the template. Most
+  # people run the documented one-liner without setting CLAN_REF, and `main`
+  # carries neither the template nor the app, so trying only `main` would fail
+  # for exactly the users this path exists to serve.
+  for bmref in ${CLAN_REF:+"$CLAN_REF"} main feature/claude-agentic-rag; do
+    if curl -fsSL "https://raw.githubusercontent.com/${REPO}/${bmref}/app/templates/brief-maker.app.clan" \
+         -o "$TMP/bm-repo.clan" 2>/dev/null && [ -s "$TMP/bm-repo.clan" ]; then
+      mkdir -p "$BM_DIR"; cp "$TMP/bm-repo.clan" "$BM_DIR/app.clan"
+      say "installed Brief Maker from the repo ($bmref)"
+      return 0
+    fi
+  done
+  # Otherwise build it from source, which needs cargo.
+  if command -v cargo >/dev/null 2>&1; then
+    say "no template asset in the release — building from source (takes a minute)"
+    BM_SRC=""
+    for ref in "refs/tags/v${VERSION}" "refs/heads/${CLAN_REF:-main}"; do
+      rm -rf "$TMP/bmsrc"; mkdir -p "$TMP/bmsrc"
+      curl -fsSL "https://codeload.github.com/${REPO}/tar.gz/${ref}" -o "$TMP/bm.tar.gz" 2>/dev/null || continue
+      tar -xzf "$TMP/bm.tar.gz" -C "$TMP/bmsrc" 2>/dev/null || continue
+      cand="$(find "$TMP/bmsrc" -maxdepth 1 -mindepth 1 -type d | head -n1)"
+      [ -n "$cand" ] && [ -d "$cand/app/templates/brief-maker" ] && { BM_SRC="$cand"; break; }
+    done
+    if [ -n "$BM_SRC" ] && ( cd "$BM_SRC" && cargo run -q -p clan-sdk --example make_brief_maker -- "$TMP/bm.app.clan" >/dev/null 2>&1 ); then
+      mkdir -p "$BM_DIR"; cp "$TMP/bm.app.clan" "$BM_DIR/app.clan"
+      say "built and installed Brief Maker"
+      return 0
+    fi
+    warn "could not build the template from source"
+  fi
+  return 1
+}
+
+if [ -f "$BM_DIR/app.clan" ] && [ "${NAPKIN_FORCE_APPS:-}" != "1" ]; then
+  say "Brief Maker already in the library — left alone (NAPKIN_FORCE_APPS=1 to replace)"
+elif install_brief_maker; then
+  say "library $APPS_DIR"
+else
+  warn "Brief Maker is NOT installed — the app will open with an empty library."
+  warn "From a checkout of this repo:"
+  warn "  cargo run -p clan-sdk --example make_brief_maker -- bm.clan"
+  warn "  mkdir -p '$BM_DIR' && cp bm.clan '$BM_DIR/app.clan'"
+fi
+
 # ── 4. the launcher ──────────────────────────────────────────────────────────
-bold "4/4  napkin launcher"
+bold "5/5  napkin launcher"
 cat > "$TMP/napkin" <<'LAUNCHER'
 #!/usr/bin/env bash
 # Start, stop and inspect the Napkin agent. Installed by install-napkin.sh.
