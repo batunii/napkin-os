@@ -280,6 +280,15 @@ install_brief_maker() {
     say "installed Brief Maker from $(basename "$BM_URL")"
     return 0
   fi
+  # Then the copy committed in the repo. This is what keeps the documented
+  # one-liner self-contained between releases: no tag has to be cut and the
+  # user needs no Rust toolchain.
+  if curl -fsSL "https://raw.githubusercontent.com/${REPO}/${CLAN_REF:-main}/app/templates/brief-maker.app.clan" \
+       -o "$TMP/bm-repo.clan" 2>/dev/null && [ -s "$TMP/bm-repo.clan" ]; then
+    mkdir -p "$BM_DIR"; cp "$TMP/bm-repo.clan" "$BM_DIR/app.clan"
+    say "installed Brief Maker from the repo (${CLAN_REF:-main})"
+    return 0
+  fi
   # Otherwise build it from source, which needs cargo.
   if command -v cargo >/dev/null 2>&1; then
     say "no template asset in the release — building from source (takes a minute)"
