@@ -138,6 +138,40 @@ jobs:
           fail_on_unmatched_files: true
 
   # ---------------------------------------------------------------------------
+  # The Brief Maker template, packaged as a template app.clan.
+  # Napkin Studio lists whatever sits in <app-data>/apps/<app_id>/app.clan, and
+  # nothing shipped it there: bundle.resources holds only LICENSE/NOTICE and the
+  # app seeds nothing on first run, so a fresh install opened to an empty
+  # library with no Brief Maker at all. Publishing it here lets
+  # install-napkin.sh place it without asking users for a Rust toolchain.
+  # ---------------------------------------------------------------------------
+  template-apps:
+    name: Template apps
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        shell: bash
+        run: bash .github/scripts/set-version.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Package Brief Maker
+        shell: bash
+        run: |
+          cargo run -q -p clan-sdk --example make_brief_maker -- \
+            "brief-maker-${GITHUB_REF_NAME#v}.app.clan"
+          asset="$(ls brief-maker-*.app.clan | head -n1)"
+          [ -n "$asset" ] || { echo "packager produced no template"; exit 1; }
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+          fail_on_unmatched_files: true
+
+  # ---------------------------------------------------------------------------
   # Desktop bundles (DMG / MSI / AppImage / .deb) via tauri-action.
   # tauri-action creates/updates the release matching the pushed tag.
   # ---------------------------------------------------------------------------
