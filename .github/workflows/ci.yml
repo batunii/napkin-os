@@ -199,3 +199,4 @@ jobs:
         run: |
           cargo build -p clan-sdk --target wasm32-unknown-unknown
           cargo build -p napkin-host --no-default-features --target wasm32-unknown-unknown
+          cargo build -p napkin-wasm --target wasm32-unknown-unknown

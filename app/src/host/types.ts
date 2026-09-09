@@ -118,6 +118,22 @@ export interface Host {
    * base to the frame's own URL so app HTML runs unmodified.
    */
   prepareAppHtml(html: string): string
+  /**
+   * How the app frame gets its document. `'url'` means the host serves it and
+   * the frame loads it by address; `'srcdoc'` means there is no server to
+   * serve it from, so it is inlined.
+   */
+  readonly frameLoad: 'url' | 'srcdoc'
+  /**
+   * Answer a `clan://` request the app frame made, when the shim routes those
+   * through the shell instead of the network. Only the serverless host needs
+   * this; the others let the frame talk to the host directly.
+   */
+  handleFromFrame(
+    path: string,
+    query: string,
+    body: Uint8Array,
+  ): Promise<{ status: number; headers: [string, string][]; body: Uint8Array }>
 
   // ── The app library ───────────────────────────────────────────────────────
   listApps(): Promise<InstalledApp[]>

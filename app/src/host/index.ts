@@ -8,12 +8,17 @@
 // its bridge on `window` by the time this module is evaluated, and its absence
 // means we are a page served by `napkin-web`.
 
-import { httpHost } from './http'
+import { backendHost } from '@backend'
 import { tauriHost } from './tauri'
 import type { Host } from './types'
 
 export const isDesktop = '__TAURI_INTERNALS__' in window
 
-export const host: Host = isDesktop ? tauriHost : httpHost
+/**
+ * The serverless build is chosen at compile time (`VITE_NAPKIN_HOST=wasm`),
+ * not sniffed: it decides what gets bundled. A 5 MB WebAssembly host has no
+ * business in a build that is going to talk to a server anyway.
+ */
+export const host: Host = isDesktop ? tauriHost : backendHost
 
 export type * from './types'

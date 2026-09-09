@@ -43,6 +43,9 @@ export const tauriHost: Host = {
   clanOrigin: clanScheme,
   // `clan://` is a real scheme here; nothing to rewrite.
   prepareAppHtml: html => html,
+  frameLoad: 'url',
+  handleFromFrame: () =>
+    Promise.reject(new Error('the frame reaches the host directly in this build')),
 
   listApps: () => invoke<InstalledApp[]>('list_apps'),
   installApp: srcPath => invoke<InstalledApp>('install_app', { srcPath }),

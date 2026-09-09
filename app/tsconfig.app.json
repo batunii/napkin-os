@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    // The build swaps this for ./src/host/wasm.ts — see vite.config.ts.
+    "paths": { "@backend": ["./src/host/http.ts"] },
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
     "lib": ["ES2023", "DOM"],

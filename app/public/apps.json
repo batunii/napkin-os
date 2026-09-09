@@ -1,0 +1,11 @@
+{
+  "$comment": "Apps published beside the site. The launcher fetches this, then fetches each .clan. Shipping a new version of an app is republishing one file — there is no install step and no stale copy, which is the one thing the desktop gets wrong.",
+  "apps": [
+    {
+      "app_id": "ie.napkin.brief-maker",
+      "name": "Brief Maker",
+      "version": "0.2.0",
+      "url": "apps/brief-maker.app.clan"
+    }
+  ]
+}

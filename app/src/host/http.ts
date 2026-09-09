@@ -114,6 +114,25 @@ function events(): Promise<EventSource> {
   return streamOnce
 }
 
+/** Put a shim ahead of every script the app has, not after them.
+ *
+ * Apps fetch on parse, not on DOMContentLoaded — the launcher asks for its app
+ * list from an inline script in the body. A shim spliced at `</body>` installs
+ * itself after that has already run, and quietly does nothing. */
+function injectFirst(html: string, script: string): string {
+  const head = /<head\b[^>]*>/i.exec(html)
+  if (head) {
+    const at = head.index + head[0].length
+    return html.slice(0, at) + script + html.slice(at)
+  }
+  const tag = /<html\b[^>]*>/i.exec(html)
+  if (tag) {
+    const at = tag.index + tag[0].length
+    return html.slice(0, at) + script + html.slice(at)
+  }
+  return script + html
+}
+
 export const httpHost: Host = {
   openClan: async path => adopt(await json<OpenView>(`/d/${encodeURIComponent(path)}`)),
   openHome: async () => adopt(await json<OpenView>('/home')),
@@ -153,6 +172,9 @@ export const httpHost: Host = {
   // Apps compute their API base once, at parse time, from a scheme the browser
   // does not have. Rewriting the two forms it can take — and patching `fetch`
   // for anything built later — is what lets an unmodified .clan run here.
+  frameLoad: 'url',
+  handleFromFrame: () =>
+    Promise.reject(new Error('the frame reaches the host directly in this build')),
   prepareAppHtml: html => {
     const origin = httpHost.clanOrigin()
     const rewritten = html
@@ -191,8 +213,7 @@ export const httpHost: Host = {
   var c=window.__CLAN__;
   if(c&&c.assets){for(var k in c.assets){if(c.assets[k].charAt(0)==='/')c.assets[k]=BASE+c.assets[k];}}
 })();</script>`
-    const close = rewritten.toLowerCase().lastIndexOf('</body>')
-    return close >= 0 ? rewritten.slice(0, close) + shim + rewritten.slice(close) : rewritten + shim
+    return injectFirst(rewritten, shim)
   },
 
   listApps: () => json<InstalledApp[]>('/apps'),
@@ -271,3 +292,6 @@ export const httpHost: Host = {
     return () => source.removeEventListener(event, listener as EventListener)
   },
 }
+
+/// The backend this build talks to — see the alias in vite.config.ts.
+export { httpHost as backendHost }

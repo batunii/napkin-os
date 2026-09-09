@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { host } from '../host'
 import type { ManifestInfo } from '../host'
 import { runInference } from '../agent/inference'
@@ -59,21 +59,57 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
   // The app asks for inference; the shell performs it. Only this side ever
   // touches the key, and only requests from our own frame are answered.
   useEffect(() => {
-    if (host.inference !== 'page') return
+    if (host.inference !== 'page' && host.frameLoad !== 'srcdoc') return
     const onMessage = async (e: MessageEvent) => {
       const frame = iframeRef.current?.contentWindow
       if (!frame || e.source !== frame) return
-      const msg = e.data as { type?: string; id?: number; op?: string; body?: string }
-      if (msg?.type !== 'clan:rpc' || msg.op !== 'api-proxy') return
-
-      let body: string
-      try {
-        const request = JSON.parse(msg.body || '{}') as { payload?: unknown }
-        body = JSON.stringify(await runInference(request.payload ?? request))
-      } catch (err) {
-        body = JSON.stringify({ ok: false, status: 500, data: null, error: String(err) })
+      const msg = e.data as {
+        type?: string; id?: number; op?: string; path?: string; query?: string
+        body?: string | Uint8Array
       }
-      frame.postMessage({ type: 'clan:rpc-reply', id: msg.id, body }, '*')
+      if (msg?.type !== 'clan:rpc') return
+
+      // Inference is the shell's to perform — it holds the key, the app must
+      // not. Everything else is a host call, which only the serverless build
+      // routes through here.
+      const path = msg.path ?? (msg.op === 'api-proxy' ? '/api-proxy' : '')
+      if (path === '/api-proxy') {
+        let body: string
+        try {
+          const raw = typeof msg.body === 'string' ? msg.body : '{}'
+          const request = JSON.parse(raw || '{}') as { payload?: unknown }
+          body = JSON.stringify(await runInference(request.payload ?? request))
+        } catch (err) {
+          body = JSON.stringify({ ok: false, status: 500, data: null, error: String(err) })
+        }
+        // The two shims differ: one wants a plain JSON string back, the other
+        // a full response. Sending both fields satisfies each.
+        frame.postMessage(
+          {
+            type: 'clan:rpc-reply', id: msg.id, body,
+            status: 200, headers: { 'content-type': 'application/json' },
+          },
+          '*',
+        )
+        return
+      }
+
+      try {
+        const raw = typeof msg.body === 'string' ? new TextEncoder().encode(msg.body)
+                                                 : (msg.body ?? new Uint8Array())
+        const r = await host.handleFromFrame(path, msg.query ?? '', raw)
+        frame.postMessage(
+          { type: 'clan:rpc-reply', id: msg.id, status: r.status,
+            headers: Object.fromEntries(r.headers), body: r.body },
+          '*',
+        )
+      } catch (err) {
+        frame.postMessage(
+          { type: 'clan:rpc-reply', id: msg.id, status: 500, headers: {},
+            body: new TextEncoder().encode(String(err)) },
+          '*',
+        )
+      }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -81,8 +117,10 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 
   const [iframeSrc, setIframeSrc] = useState<string>('')
 
-  useEffect(() => {
-    if (!hasHumanView) return
+  // Composing the page is a pure derivation of the view, the render model and
+  // the theme — not an effect. The effect below only has to publish it.
+  const prepared = useMemo(() => {
+    if (!hasHumanView) return ''
 
     const isFullDoc = /^\s*<!doctype\s+html/i.test(htmlContent) || /^\s*<html/i.test(htmlContent)
     const bridgeScript = renderModel === 'authored' ? STRUCTURED_EDIT_BRIDGE : LEGACY_EDIT_BRIDGE
@@ -137,10 +175,17 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
         /data-color-scheme=/i.test(attrs) ? m : `<html${attrs} data-color-scheme="${getTheme()}">`,
     )
 
-    host.updatePreviewHtml(host.prepareAppHtml(themed)).then(() => {
+    return host.prepareAppHtml(themed)
+  }, [htmlContent, hasHumanView, renderModel])
+
+  // With a host behind a URL, hand it the page and point the frame at it.
+  // With no server there is nothing to hand it to: the page is inlined below.
+  useEffect(() => {
+    if (!prepared || host.frameLoad === 'srcdoc') return
+    host.updatePreviewHtml(prepared).then(() => {
       setIframeSrc(host.clanOrigin() + '/document?t=' + Date.now())
     }).catch(console.error)
-  }, [htmlContent, hasHumanView, renderModel])
+  }, [prepared])
 
   if (!hasHumanView) {
     return (
@@ -154,7 +199,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
   return (
     <iframe
       ref={iframeRef}
-      src={iframeSrc}
+      {...(host.frameLoad === 'srcdoc' ? { srcDoc: prepared } : { src: iframeSrc })}
       style={{ width: '100%', flex: 1, border: 'none', background: 'var(--bg)' }}
       sandbox="allow-scripts allow-popups"
       title={manifest.title}

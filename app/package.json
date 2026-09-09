@@ -11,7 +11,10 @@
     "build": "tsc -b && vite build",
     "tauri": "tauri",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "wasm": "cargo build -q -p napkin-wasm --target wasm32-unknown-unknown --release && wasm-bindgen --target web --typescript --out-dir src/wasm ../target/wasm32-unknown-unknown/release/napkin_wasm.wasm",
+    "build:static": "npm run apps && npm run wasm && tsc -b && VITE_NAPKIN_HOST=wasm vite build",
+    "apps": "cargo run -q -p clan-sdk --example make_brief_maker && mkdir -p public/apps && mv brief-maker.app.clan public/apps/"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

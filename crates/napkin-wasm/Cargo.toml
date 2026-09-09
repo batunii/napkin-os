@@ -1,0 +1,24 @@
+[package]
+name = "napkin-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version = "1.80"
+description = "Napkin Studio OS in the browser — the same host, compiled to WebAssembly, with no server behind it."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# `native` off: no filesystem, no subprocess, no outbound HTTP. What is left is
+# the routing table, the session, the app library and the prompt — all of which
+# are pure computation over bytes, which is exactly what a browser can run.
+napkin-host = { path = "../napkin-host", default-features = false }
+clan-sdk = { path = "../clan-sdk" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = "=0.2.128"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"

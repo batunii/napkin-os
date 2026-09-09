@@ -1,0 +1,92 @@
+# The serverless build, published to GitHub Pages.
+#
+# There is no backend to deploy: napkin-host is compiled to WebAssembly and
+# runs in the page, documents live in the tab, and inference is the visitor's
+# own — they paste an Anthropic key and their browser calls Claude. So the
+# whole product is a directory of static files.
+#
+# Enable it once under Settings → Pages → Source: GitHub Actions.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one half-done.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the serverless bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: pages
+          # wasm-bindgen-cli lives in ~/.cargo/bin; without this it is rebuilt
+          # from source on every run, which costs minutes.
+          cache-all-crates: true
+
+      # The CLI and the crate must be the exact same version or the generated
+      # bindings are rejected at load with a schema mismatch.
+      - name: Install wasm-bindgen CLI
+        run: |
+          version=$(grep -oP 'wasm-bindgen = "=\K[0-9.]+' crates/napkin-wasm/Cargo.toml)
+          if [ "$(wasm-bindgen --version 2>/dev/null | awk '{print $2}')" != "$version" ]; then
+            cargo install wasm-bindgen-cli --version "$version" --locked
+          fi
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # Packages the app templates, builds the wasm host, type-checks, bundles.
+      - name: Build
+        working-directory: app
+        run: npm run build:static
+        env:
+          # A project page is served from /<repo>/, not from the domain root.
+          VITE_BASE: /${{ github.event.repository.name }}/
+
+      # Pages has no rewrite rules, so a deep link 404s unless the 404 page is
+      # the app itself.
+      - name: SPA fallback
+        run: cp app/dist/index.html app/dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
