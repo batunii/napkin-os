@@ -145,7 +145,7 @@ pub const HOME_APP_HTML: &str = include_str!("../assets/home_app.html");
 
 /// Bumped whenever `HOME_APP_HTML` changes, so a new build rebuilds the home
 /// app rather than reusing the stale one already in the library.
-pub const HOME_VERSION: &str = "v6";
+pub const HOME_VERSION: &str = "v7";
 
 /// Build the home CLAN template (idempotent) and return its id.
 pub fn ensure_home(store: &dyn DocStore) -> HostResult<DocId> {

@@ -1,3 +1,5 @@
+/* Dark is the default palette; `data-theme` on <html> swaps it. Anything a
+   component colours must come from here, or it will only be right in one. */
 :root {
   --bg: #0f1117;
   --surface: #141922;
@@ -8,8 +10,33 @@
   --success: #4ade80;
   --warn: #f59e0b;
   --danger: #f87171;
+  /* Chips and badges — dark-only literals used to live in the components. */
+  --ok-bg: #1e3a2f;
+  --ok-fg: #4ade80;
+  --ok-border: #166534;
+  --warn-bg: #3a2a1e;
+  --warn-border: #92400e;
+  --chip-bg: #1e2d45;
   --sidebar-w: 280px;
   --toolbar-h: 48px;
+}
+
+:root[data-theme='light'] {
+  --bg: #f7f8fb;
+  --surface: #ffffff;
+  --border: #dfe3ec;
+  --text: #171c2b;
+  --muted: #5c6478;
+  --accent: #4f46e5;
+  --success: #15803d;
+  --warn: #b45309;
+  --danger: #b91c1c;
+  --ok-bg: #e7f6ed;
+  --ok-fg: #15803d;
+  --ok-border: #a7d8ba;
+  --warn-bg: #fdf3e3;
+  --warn-border: #e0b473;
+  --chip-bg: #eceffa;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

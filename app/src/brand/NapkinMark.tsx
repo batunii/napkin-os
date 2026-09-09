@@ -49,7 +49,7 @@ export function NapkinMark({
         fill={`url(#${GRAD_ID})`}
       />
       {/* The turned-up fold. */}
-      <path d="M86 62L62 86V70c0-4.4 3.6-8 8-8h16z" fill="#0f1117" fillOpacity="0.55" />
+      <path d="M86 62L62 86V70c0-4.4 3.6-8 8-8h16z" fill="var(--bg, #0f1117)" fillOpacity="0.55" />
       <path d="M86 62L62 86V70c0-4.4 3.6-8 8-8h16z" fill="none" stroke="#2dd4cf" strokeWidth="2.4" strokeLinejoin="round" />
     </svg>
   );
@@ -58,7 +58,7 @@ export function NapkinMark({
 /** Mark + "Napkin Studio OS" wordmark. Wordmark uses Space Grotesk. */
 export function NapkinLogo({
   size = 20,
-  color = "#eceefb",
+  color = "var(--text)",
   style,
   compact = false,
 }: {
@@ -83,7 +83,7 @@ export function NapkinLogo({
       >
         Napkin{compact ? "" : " "}
         {!compact && (
-          <span style={{ fontWeight: 500, color: "#9aa3c7" }}>Studio </span>
+          <span style={{ fontWeight: 500, color: "var(--muted)" }}>Studio </span>
         )}
         {!compact && <span style={{ color: "#2dd4cf" }}>OS</span>}
       </span>

@@ -5,6 +5,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { host } from './host'
 import type { InstalledApp, OpenResult } from './host'
+import ThemeToggle from './components/ThemeToggle'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
 import AppRuntime from './shell/AppRuntime'
@@ -191,6 +192,7 @@ export default function App() {
       ) : home ? (
         // The home page is a CLAN file, rendered full-bleed with no doc chrome.
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+          <ThemeToggle variant="floating" />
           <AppRuntime
             htmlContent={home.html}
             hasHumanView={home.open.has_human_view}

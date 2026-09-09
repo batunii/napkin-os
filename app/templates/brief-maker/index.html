@@ -13,6 +13,13 @@
     --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
     --fieldFont:var(--serif);
   }
+  /* The shell pushes its colour scheme in (clan:colorscheme). Immersive briefs
+     still override these from the AI-chosen brand theme, as before. */
+  html[data-color-scheme="light"]{
+    --bg:#f7f8fb; --bg2:#eef1f8; --surface:#ffffff; --border:#dfe3ec; --text:#171c2b; --muted:#5c6478;
+    --indigo:#4f46e5; --teal:#0d9488; --accent:#4f46e5; --accent2:#0d9488; --btnText:#fff;
+    --amber:#b45309; --ok:#15803d;
+  }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--text);font-family:var(--ui);-webkit-font-smoothing:antialiased;line-height:1.5;min-height:100%;transition:background .45s ease,color .3s ease}

@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
 """
-Napkin Studio — local mock agent server.
+Napkin Studio — the one-pass synthesis agent.
 
-A dependency-free stand-in for the real inference backend — kept as the
-keyless demo. The production backend is `engine/agent-server/server.py` (the
-napkin briefing pipeline); both listen on :8787, so run one at a time.
+Receives the enriched payload Napkin Studio sends (the client's input plus the
+artifact's provenance: schema, current data, decision chain, context, lineage),
+asks Claude for the structured brief fields, and returns them as JSON the app
+places straight into the boxes. The other backend is
+`engine/agent-server/server.py` (the full napkin briefing pipeline, Loops 1-7);
+both listen on :8787, so run one at a time.
 
-It receives the
-enriched payload Napkin Studio sends (the client's input + the artifact's
-provenance: schema, current data, decision chain, context, lineage), calls
-**Claude Code** headless to produce the structured brief fields, and returns
-them as JSON the app places straight into the boxes.
+Two ways it can reach Claude, chosen automatically:
+
+  * **The Anthropic Messages API** — whenever there are credentials
+    (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or an `ant auth login` profile;
+    engine/.env is read) and the `anthropic` package is installed. Preferred:
+    it is the only path that can put the digest prefix behind a cache
+    breakpoint, which is most of what a draft costs.
+  * **The Claude Code CLI** — headless `claude -p`, billed to your Claude
+    subscription, no key and no packages needed. Also the only path that can
+    run agentic retrieval, which needs Read/Grep/Glob.
 
 Run:
     python3 mock-agent/server.py            # listens on :8787 (the default agent URL)
     NAPKIN_MOCK_MODEL=sonnet python3 mock-agent/server.py
+    ANTHROPIC_MODEL=claude-opus-4-8 python3 mock-agent/server.py
 
-Requires: the `claude` CLI on PATH and an existing Claude Code login (or
-ANTHROPIC_API_KEY). No Python packages needed.
+Install the API path with:  pip install -r mock-agent/requirements.txt
 
 It prints how much context each call carries, so we can see how much an agent
 actually needs.
@@ -38,13 +46,41 @@ Grounding modes (NAPKIN_RETRIEVE):
              NAPKIN_RETRIEVE_TIMEOUT (240), NAPKIN_CORPUS (os.pathsep dirs).
 """
 
+import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path as _Path
+
+
+def _load_env():
+    """Load engine/.env so a key put there is visible without exporting it."""
+    env_path = _Path(__file__).resolve().parent.parent / "engine" / ".env"
+    if not env_path.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path, override=False)
+        return
+    except ImportError:
+        pass
+    # Minimal fallback: KEY=VALUE lines, no interpolation, comments stripped.
+    for line in env_path.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k, v = k.strip(), v.split("#", 1)[0].strip()
+        if k and v and k not in os.environ:
+            os.environ[k] = v
+
+
+_load_env()
 
 PORT = int(os.environ.get("NAPKIN_MOCK_PORT", "8787"))
 MODEL = os.environ.get("NAPKIN_MOCK_MODEL", "opus")  # haiku | sonnet | opus | fable
@@ -181,6 +217,164 @@ def approx_tokens(chars: int) -> int:
     return chars // 4  # rough chars→tokens for attributing context sections
 
 
+# ── Backend A: the Anthropic Messages API ────────────────────────────────────
+#
+# This is the path to want. The prompt has always been split into a STABLE
+# prefix (system + schema + digests, byte-identical every call) and a VOLATILE
+# suffix, and the API is where that split finally pays: the prefix goes in
+# `system` behind a cache_control breakpoint, so it is billed once at 1.25x and
+# read back at 0.1x on every draft and regenerate after. Concatenating the two
+# into one user message — as the CLI path must — throws that away.
+#
+# Backend B (the Claude Code CLI, below) stays for two reasons: it needs no key
+# and no packages, and agentic retrieval needs Read/Grep/Glob, which one
+# Messages call cannot do without a tool loop.
+
+# Friendly name -> model id. Ids are complete as written; never date-suffixed.
+MODEL_IDS = {
+    "opus": "claude-opus-5",
+    "sonnet": "claude-sonnet-5",
+    "haiku": "claude-haiku-4-5",
+    "fable": "claude-fable-5-1",
+}
+
+# $ per million tokens: (input, output, cache write, cache read).
+PRICES = {
+    "claude-opus-5":    (5.00, 25.00, 6.25, 0.50),
+    "claude-sonnet-5":  (2.00, 10.00, 2.50, 0.20),
+    "claude-haiku-4-5": (1.00, 5.00, 1.25, 0.10),
+    "claude-fable-5-1": (10.00, 50.00, 12.50, 0.25),
+}
+
+
+def api_model() -> str:
+    """The model id for the API path. ANTHROPIC_MODEL overrides; BRIEF_MODEL is
+    deliberately NOT read — that one names the engine's NVIDIA/Groq model."""
+    return os.environ.get("ANTHROPIC_MODEL") or MODEL_IDS.get(MODEL, MODEL)
+
+
+def _sdk_installed() -> bool:
+    return importlib.util.find_spec("anthropic") is not None
+
+
+def _credentials() -> bool:
+    """An unset ANTHROPIC_API_KEY does not mean there are no credentials: the
+    SDK also reads ANTHROPIC_AUTH_TOKEN and an `ant auth login` profile."""
+    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return True
+    if not shutil.which("ant"):
+        return False
+    try:
+        return subprocess.run(["ant", "auth", "status"], capture_output=True,
+                              timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+HAS_CREDENTIALS = _credentials()
+USE_API = HAS_CREDENTIALS and _sdk_installed()
+BACKEND_LABEL = f"api {api_model()}" if USE_API else f"cli {MODEL}"
+
+_CLIENT = [None]
+# Cleared for the process the first time the account turns out not to have the
+# server-side fallback beta, so it is asked for exactly once.
+_FALLBACKS = [True]
+
+
+def _client():
+    if _CLIENT[0] is None:
+        import anthropic
+        _CLIENT[0] = anthropic.Anthropic()  # resolves key / token / ant profile
+    return _CLIENT[0]
+
+
+def _cost(model: str, u) -> float:
+    inp, out, write, read = PRICES.get(model, PRICES["claude-opus-5"])
+    return (u.input_tokens * inp
+            + u.output_tokens * out
+            + (getattr(u, "cache_creation_input_tokens", 0) or 0) * write
+            + (getattr(u, "cache_read_input_tokens", 0) or 0) * read) / 1_000_000.0
+
+
+def _stream(req: dict, fallbacks: bool):
+    """One request, streamed. Streaming is not for show: with adaptive thinking
+    and a 16k cap a draft can outrun the SDK's non-streaming HTTP timeout."""
+    if fallbacks:
+        # A refusal on a creative brief would be surprising, but it costs one
+        # parameter to have the API retry on another model instead of failing.
+        with _client().beta.messages.stream(
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default", **req
+        ) as stream:
+            return stream.get_final_message()
+    with _client().messages.stream(**req) as stream:
+        return stream.get_final_message()
+
+
+def call_claude_api(prefix: str, suffix: str, task: str = "draft_brief") -> dict:
+    """Draft via the Messages API. Returns the same envelope shape the CLI path
+    returns, so everything downstream — usage, cost, /stats — is unchanged."""
+    import anthropic
+
+    model = api_model()
+    req = dict(
+        model=model,
+        max_tokens=16000,
+        # The cache breakpoint. Everything before it is byte-identical call to
+        # call; everything volatile is in the user message after it.
+        system=[{"type": "text", "text": prefix,
+                 "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": suffix}],
+        thinking={"type": "adaptive"},
+        # A regenerate rewrites one field and is the app's fastest interaction;
+        # a draft synthesises the whole brief and earns the deeper pass.
+        output_config={"effort": "medium" if task == "regenerate_field" else "high"},
+    )
+
+    try:
+        msg = _stream(req, fallbacks=_FALLBACKS[0])
+    except anthropic.BadRequestError as e:
+        if _FALLBACKS[0] and "fallback" in str(e).lower():
+            print("  … server-side fallbacks not enabled for this account "
+                  "— continuing without them", flush=True)
+            _FALLBACKS[0] = False
+            msg = _stream(req, fallbacks=False)
+        else:
+            raise
+
+    if msg.stop_reason == "refusal":
+        why = getattr(msg.stop_details, "category", None) if msg.stop_details else None
+        raise RuntimeError(f"the model declined this request ({why or 'unspecified'})")
+
+    # With thinking on, content[0] is a thinking block — select by type.
+    text = "".join(b.text for b in msg.content if b.type == "text")
+    u = msg.usage
+    return {
+        "result": text,
+        "usage": {
+            "input_tokens": u.input_tokens,
+            "output_tokens": u.output_tokens,
+            "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
+            "cache_creation_input_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0,
+        },
+        "total_cost_usd": _cost(model, u),
+    }
+
+
+def synthesize(prefix: str, suffix: str, task: str = "draft_brief") -> dict:
+    """The drafting call: API when there are credentials, else the CLI."""
+    if USE_API:
+        try:
+            return call_claude_api(prefix, suffix, task)
+        except Exception as e:
+            if not shutil.which("claude"):
+                raise
+            print(f"  … API call failed ({e.__class__.__name__}: {e}) "
+                  "— falling back to the Claude Code CLI", flush=True)
+    return call_claude(prefix + suffix)
+
+
+# ── Backend B: the Claude Code CLI ───────────────────────────────────────────
+
 def call_claude(prompt: str, attempts: int = 2, model=None, tools="",
                 max_turns=1, cwd=None, timeout=180):
     """Run Claude Code headless; return the parsed JSON envelope. Retries once on
@@ -304,10 +498,14 @@ def grounding_block(findings) -> str:
             "evidence):\n" + "\n".join(lines) + "\n\n")
 
 
-def build_prompt(payload: dict, clan: dict, grounding: str = "") -> str:
-    """Prompt = STABLE prefix (system + full schema + rules; byte-identical every
-    call → cacheable) + VOLATILE suffix (data, task). Full schema always; lean,
-    output-capped regenerate; locked fields are flagged so a draft preserves them.
+def build_prompt(payload: dict, clan: dict, grounding: str = ""):
+    """Return (STABLE prefix, VOLATILE suffix).
+
+    The prefix — system framing, full schema, rules, digests — is byte-identical
+    on every call, which is what makes it cacheable; the suffix carries the data
+    and the task. The API backend puts the prefix behind a cache breakpoint; the
+    CLI backend concatenates them. Full schema always; lean, output-capped
+    regenerate; locked fields are flagged so a draft preserves them.
     """
     task = payload.get("task", "draft_brief")
     field = payload.get("field")
@@ -384,7 +582,7 @@ def build_prompt(payload: dict, clan: dict, grounding: str = "") -> str:
             + theme_line +
             'Keep values tight. Use "" or [] only when genuinely unknowable.'
         )
-    return prefix + suffix
+    return prefix, suffix
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -432,8 +630,8 @@ class Handler(BaseHTTPRequestHandler):
                 if rmeta.get("denials"):
                     print(f"      ! permission denials: {rmeta['denials']}", flush=True)
         _dump(call_id, "2-retrieval.json", {"findings": findings, "meta": rmeta})
-        prompt = build_prompt(payload, clan, grounding=grounding_block(findings))
-        _dump(call_id, "3-prompt.txt", prompt)
+        prefix, suffix = build_prompt(payload, clan, grounding=grounding_block(findings))
+        _dump(call_id, "3-prompt.txt", prefix + suffix)
 
         # Context cost breakdown — where the input tokens go, so we can trim.
         sect = {
@@ -452,7 +650,9 @@ class Handler(BaseHTTPRequestHandler):
         task = payload.get("task", "draft_brief")
         print(
             f"→ {task}{(' field='+payload.get('field')) if payload.get('field') else ''}"
-            f"  | prompt {len(prompt):,} chars  model={MODEL}",
+            f"  | prompt {len(prefix) + len(suffix):,} chars"
+            f" (cacheable prefix {len(prefix):,})"
+            f"  {BACKEND_LABEL}",
             flush=True,
         )
         print(
@@ -462,7 +662,7 @@ class Handler(BaseHTTPRequestHandler):
             flush=True,
         )
         try:
-            env = call_claude(prompt)
+            env = synthesize(prefix, suffix, task)
             _dump(call_id, "4-envelope.json",
                   {k: v for k, v in env.items() if k != "result"})
             fields = extract_json(env.get("result", "") or "")
@@ -522,7 +722,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"Napkin mock agent on http://localhost:{PORT}  (model={MODEL}, cwd={WORKDIR})")
+    print(f"Napkin agent on http://localhost:{PORT}  ({BACKEND_LABEL})")
+    if HAS_CREDENTIALS and not _sdk_installed():
+        print("  ! credentials found but the anthropic package is not installed —"
+              " falling back to the CLI.")
+        print("    pip install anthropic   (or: pip install -r mock-agent/requirements.txt)")
+    elif not USE_API:
+        print("  no Anthropic credentials — set ANTHROPIC_API_KEY (engine/.env is read)"
+              " or run `ant auth login` to use the API.")
+    if RETRIEVE == "agentic" and not shutil.which("claude"):
+        print("  ! retrieval: agentic needs the `claude` CLI for Read/Grep/Glob"
+              " — digests only.")
     if RETRIEVE == "agentic":
         CORPUS_DIR, _staged = _stage_corpus()
         if CORPUS_DIR:

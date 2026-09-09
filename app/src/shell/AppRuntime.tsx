@@ -5,6 +5,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { host } from '../host'
 import type { ManifestInfo } from '../host'
+import { getTheme, onThemeChange } from '../theme'
 import { LEGACY_EDIT_BRIDGE } from '../bridge/legacyEditBridge'
 import { STRUCTURED_EDIT_BRIDGE } from '../bridge/structuredEditBridge'
 
@@ -42,6 +43,18 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
     return () => { unlisten.then(f => f()) }
   }, [])
 
+  // The app runs in its own document, so the colour scheme has to be sent to
+  // it. Apps opt in by styling `html[data-color-scheme="light"]`, or by
+  // listening for the `clan:colorscheme` event the bridge dispatches; one that
+  // does neither simply keeps its own palette.
+  const postScheme = useCallback((scheme: string) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'clan:colorscheme', scheme }, '*',
+    )
+  }, [])
+
+  useEffect(() => onThemeChange(postScheme), [postScheme])
+
   const [iframeSrc, setIframeSrc] = useState<string>('')
 
   useEffect(() => {
@@ -70,6 +83,8 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
+    :root { color-scheme: dark; }
+    html[data-color-scheme="light"] { color-scheme: light; }
     body {
       background: #0f1117;
       color: #e2e8f0;
@@ -78,6 +93,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
       line-height: 1.65;
       -webkit-font-smoothing: antialiased;
     }
+    html[data-color-scheme="light"] body { background: #f7f8fb; color: #171c2b; }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 3px; }
   </style>
@@ -89,7 +105,15 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 </html>`
     }
 
-    host.updatePreviewHtml(host.prepareAppHtml(fullHtml)).then(() => {
+    // Stamp the scheme into the markup as well as posting it: the message
+    // arrives after load, and a light user should not see a dark flash first.
+    const themed = fullHtml.replace(
+      /<html\b([^>]*)>/i,
+      (m, attrs: string) =>
+        /data-color-scheme=/i.test(attrs) ? m : `<html${attrs} data-color-scheme="${getTheme()}">`,
+    )
+
+    host.updatePreviewHtml(host.prepareAppHtml(themed)).then(() => {
       setIframeSrc(host.clanOrigin() + '/document?t=' + Date.now())
     }).catch(console.error)
   }, [htmlContent, hasHumanView, renderModel])
@@ -107,9 +131,10 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
     <iframe
       ref={iframeRef}
       src={iframeSrc}
-      style={{ width: '100%', flex: 1, border: 'none', background: '#0f1117' }}
+      style={{ width: '100%', flex: 1, border: 'none', background: 'var(--bg)' }}
       sandbox="allow-scripts allow-popups"
       title={manifest.title}
+      onLoad={() => postScheme(getTheme())}
     />
   )
 }

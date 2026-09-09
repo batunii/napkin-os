@@ -1,0 +1,3 @@
+# Only needed for the Anthropic Messages API backend. Without it the server
+# still runs, on the Claude Code CLI.
+anthropic>=1.0

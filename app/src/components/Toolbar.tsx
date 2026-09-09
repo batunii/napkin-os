@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { NapkinLogo } from '../brand/NapkinMark'
+import ThemeToggle from './ThemeToggle'
 
 interface Props {
   title?: string
@@ -32,20 +33,20 @@ const s: Record<string, React.CSSProperties> = {
     background: 'none', border: 'none', padding: '4px 6px', borderRadius: 6,
   },
   title: { flex: 1, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  badge: { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#1e3a2f', color: '#4ade80', border: '1px solid #166534', letterSpacing: '0.05em' },
-  badgeWarn: { background: '#3a2a1e', color: 'var(--warn)', border: '1px solid #92400e' },
-  templateBadge: { fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#1e2d45', color: 'var(--accent)', border: '1px solid var(--accent)', letterSpacing: '0.05em' },
+  badge: { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--ok-bg)', color: 'var(--ok-fg)', border: '1px solid var(--ok-border)', letterSpacing: '0.05em' },
+  badgeWarn: { background: 'var(--warn-bg)', color: 'var(--warn)', border: '1px solid var(--warn-border)' },
+  templateBadge: { fontSize: 10, padding: '2px 8px', borderRadius: 999, background: 'var(--chip-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', letterSpacing: '0.05em' },
   btn: {
     height: 30, padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)',
     background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer', fontSize: 12,
     display: 'flex', alignItems: 'center', gap: 6,
   },
   btnActive: { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' },
-  btnEdit: { background: '#1e3a2f', borderColor: '#166534', color: '#4ade80' },
+  btnEdit: { background: 'var(--ok-bg)', borderColor: 'var(--ok-border)', color: 'var(--ok-fg)' },
   editBadge: {
     fontSize: 10, padding: '2px 8px', borderRadius: 999,
-    background: 'rgba(74,222,128,0.15)', color: '#4ade80',
-    border: '1px solid rgba(74,222,128,0.4)', letterSpacing: '0.05em',
+    background: 'var(--ok-bg)', color: 'var(--ok-fg)',
+    border: '1px solid var(--ok-border)', letterSpacing: '0.05em',
     animation: 'pulse 2s infinite',
   },
 }
@@ -71,7 +72,7 @@ export default function Toolbar({
       {isTemplate && <span style={s.templateBadge}>TEMPLATE</span>}
       {trusted && (
         <span
-          style={{ ...s.templateBadge, background: '#10241b', color: '#4ade80', borderColor: '#166534' }}
+          style={{ ...s.templateBadge, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)' }}
           title="Signed by Napkin — scoped host capabilities enabled"
         >
           🛡 trusted
@@ -95,6 +96,7 @@ export default function Toolbar({
       >
         🤖 Agent
       </button>
+      <ThemeToggle />
     </div>
   )
 }

@@ -145,6 +145,24 @@ export const STRUCTURED_EDIT_BRIDGE = `
     window.dispatchEvent(new CustomEvent('napkin:ready', { detail: c }));
   }).catch(function(){});
 
+  // ── Colour scheme, pushed by the shell ────────────────────────────────────
+  // Cosmetic only, and one-way: the shell tells the app what it is wearing.
+  // An app styles html[data-color-scheme="light"] or listens for
+  // 'clan:colorscheme'; one that does neither keeps its own palette.
+  function applyColorScheme(scheme) {
+    if (scheme !== 'light' && scheme !== 'dark') return;
+    document.documentElement.setAttribute('data-color-scheme', scheme);
+    document.documentElement.style.colorScheme = scheme;
+    window.__CLAN__ = window.__CLAN__ || {};
+    window.__CLAN__.colorScheme = scheme;
+    window.dispatchEvent(new CustomEvent('clan:colorscheme', { detail: { scheme: scheme } }));
+  }
+  window.addEventListener('message', function(e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (m && m.type === 'clan:colorscheme') applyColorScheme(m.scheme);
+  });
+
   // --- Declarative data-clan-field editing ---
   function fieldValue(el) {
     var raw = (el.textContent || '').trim();
