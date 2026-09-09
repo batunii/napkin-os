@@ -9,9 +9,8 @@ primary_region = "lhr"
 [env]
   # Fly terminates TLS in front of us, so the session cookie should say Secure.
   NAPKIN_WEB_SECURE_COOKIE = "1"
-  NAPKIN_AGENT_CAP = "40"
 
-# The key never goes in this file:  fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+# No secrets to set: inference runs in the visitor's browser with their own key.
 
 [http_service]
   internal_port = 8080

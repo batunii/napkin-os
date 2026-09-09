@@ -66,6 +66,12 @@ export const tauriHost: Host = {
   agentEndpoint: () => invoke<string>('agent_endpoint'),
   agentPrompt: text => invoke<unknown>('agent_prompt', { text }),
 
+  // The desktop host holds the credentials and proxies `clan://api-proxy`
+  // itself, so the page never assembles a prompt or sees a key.
+  inference: 'host',
+  buildAgentPrompt: () =>
+    Promise.reject(new Error('the desktop host performs inference itself')),
+
   on: <K extends keyof HostEvents>(
     event: K,
     handler: (payload: HostEvents[K]) => void,

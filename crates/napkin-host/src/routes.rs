@@ -232,6 +232,22 @@ pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> Host
             None => HostResponse::error(400, "missing path"),
         },
 
+        // The page holds the credentials; the host holds the provenance. So the
+        // host assembles the prompt — schema, digests, data, decision history,
+        // attachment text, split for caching — and the caller makes the call.
+        // That is what lets a browser talk to Claude with the user's own key
+        // without a backend, and it is the same prompt every other shell sends.
+        "/agent-prompt" => {
+            let body = req.body_json();
+            let mut payload = body.get("payload").cloned().unwrap_or(body);
+            session.attach_extracted_text(&mut payload);
+            let clan = session.clan_context_for_agent();
+            HostResponse::json(
+                200,
+                &serde_json::json!(crate::prompt::build(&payload, &clan, "")),
+            )
+        }
+
         "/agent-endpoint" => {
             HostResponse::json(200, &serde_json::json!({ "endpoint": agent_base_url(cfg) }))
         }

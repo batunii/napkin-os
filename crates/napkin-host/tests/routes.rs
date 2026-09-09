@@ -217,3 +217,47 @@ fn only_the_network_route_is_async() {
         assert!(!napkin_host::is_async(path), "{path}");
     }
 }
+
+// The host builds the prompt so that whoever holds the credentials — a desktop
+// proxy, a server, or a browser with the user's own key — sends the same one.
+#[test]
+fn the_host_hands_out_a_cache_split_prompt() {
+    let f = fixture();
+    post(
+        &f,
+        "/patch-data",
+        r#"{"patch":{"project_name":"Cider"},"agent":"human"}"#,
+    );
+
+    let resp = post(
+        &f,
+        "/agent-prompt",
+        r#"{"payload":{"task":"draft_brief","input":"relaunch"}}"#,
+    );
+    assert_eq!(resp.status, 200);
+    let v = json(&resp);
+    let system = v["system"].as_str().unwrap();
+    let user = v["user"].as_str().unwrap();
+
+    assert!(
+        system.contains("KNOWLEDGE DIGESTS"),
+        "the expensive half carries the digests"
+    );
+    assert!(
+        user.contains("relaunch"),
+        "the volatile half carries the request"
+    );
+    assert!(user.contains("Cider"), "and the document's own data");
+    assert!(
+        !system.contains("relaunch"),
+        "nothing per-call may enter the cached prefix"
+    );
+
+    // Same document, different request: the cacheable half must be byte-identical.
+    let again = post(
+        &f,
+        "/agent-prompt",
+        r#"{"payload":{"task":"draft_brief","input":"different"}}"#,
+    );
+    assert_eq!(json(&again)["system"].as_str().unwrap(), system);
+}

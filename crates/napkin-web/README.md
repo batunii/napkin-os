@@ -62,22 +62,24 @@ ANY  /s/{token}/…                              the clan:// surface
 
 ## Deploying it
 
-One container: the axum host, the shell, and the synthesis agent on the
-Messages API. No Claude Code CLI — a CLI login is one person's subscription,
-which is not what a shared host should be spending, so the image sets
-`NAPKIN_BACKEND=api` and the agent refuses to start without a key.
+One container, one process, no API key: the axum host and the shell.
+
+Inference belongs to the visitor. They paste an Anthropic key, it is kept in
+their browser, and their browser calls Claude directly. The host assembles the
+prompt — schema, digests, the document's data and decision history, split for
+caching — and hands it over. So whoever runs this holds nobody's credentials
+and pays for nobody's drafts.
 
 ```bash
 docker build -t napkin .
-docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-ant-... -v napkin:/data napkin
-# or: ANTHROPIC_API_KEY=sk-ant-... docker compose up --build
+docker run -p 8080:8080 -v napkin:/data napkin
+# or: docker compose up --build
 ```
 
 Fly is the shortest path to a link, and `fly.toml` is already here:
 
 ```bash
 fly volumes create napkin_data --size 1
-fly secrets set ANTHROPIC_API_KEY=sk-ant-...
 fly deploy
 ```
 
@@ -89,7 +91,7 @@ What a platform needs to know:
 | Health | `GET /api/healthz` — unauthenticated, no session needed |
 | State | everything durable is under `/data`; mount a volume or lose documents on redeploy |
 | TLS | set `NAPKIN_WEB_SECURE_COOKIE=1` when something terminates TLS in front |
-| Secrets | `ANTHROPIC_API_KEY` at run time only — `.dockerignore` keeps `engine/.env` out of the image |
+| Secrets | none — there is nothing to leak, because there is nothing to hold |
 | Size | `--build-arg WITH_PDF=0` drops Chromium (~400 MB); HTML export still works and PDF export says why it can't |
 
 One machine at a time: a volume attaches to one machine, and sessions, sandbox

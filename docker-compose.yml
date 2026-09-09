@@ -1,7 +1,8 @@
 # Local run of the same image a host would run.
 #
-#   ANTHROPIC_API_KEY=sk-ant-... docker compose up --build
+#   docker compose up --build
 #
+# No API key: visitors bring their own and their browser makes the call.
 # Documents live in the named volume, so they survive a rebuild.
 services:
   napkin:
@@ -12,9 +13,6 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in the environment or a .env file}
-      # Agent calls per browser session. The keys are yours, so is the bill.
-      NAPKIN_AGENT_CAP: ${NAPKIN_AGENT_CAP:-40}
       # Set when you put TLS in front of this.
       # NAPKIN_WEB_SECURE_COOKIE: "1"
     volumes:

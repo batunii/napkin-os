@@ -135,6 +135,20 @@ export interface Host {
   // ── The agent ─────────────────────────────────────────────────────────────
   agentEndpoint(): Promise<string>
   agentPrompt(text: string): Promise<unknown>
+  /**
+   * Where inference happens. `'host'` means something behind the shell holds
+   * the credentials and makes the call; `'page'` means this browser does, with
+   * a key the visitor supplied — which is what lets the whole thing be a
+   * static file with no backend.
+   */
+  readonly inference: 'host' | 'page'
+  /**
+   * The briefing prompt for the open document, assembled by the host: schema,
+   * knowledge digests, the data and decision history, attachment text — split
+   * into a cacheable half and a volatile one. Only meaningful when
+   * `inference === 'page'`; whoever holds the key sends this verbatim.
+   */
+  buildAgentPrompt(payload: unknown): Promise<{ system: string; user: string }>
 
   // ── Host → shell ──────────────────────────────────────────────────────────
   on<K extends keyof HostEvents>(

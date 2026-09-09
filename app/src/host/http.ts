@@ -163,9 +163,28 @@ export const httpHost: Host = {
     const shim = `<script>(function(){
   var BASE=${JSON.stringify(origin)};
   var f=window.fetch;
+
+  // Inference is the one call that does not go to the host. The shell holds
+  // the key and makes it; this app is third-party HTML and never sees one.
+  var seq=0, pending={};
+  window.addEventListener('message',function(e){
+    if(e.source!==window.parent) return;
+    var m=e.data;
+    if(m&&m.type==='clan:rpc-reply'&&pending[m.id]){pending[m.id](m.body);delete pending[m.id];}
+  });
+  function rpc(op,body){
+    return new Promise(function(resolve){
+      var id=++seq; pending[id]=resolve;
+      window.parent.postMessage({type:'clan:rpc',id:id,op:op,body:body},'*');
+    }).then(function(text){
+      return new Response(text,{status:200,headers:{'content-type':'application/json'}});
+    });
+  }
+
   window.fetch=function(input,init){
     if(typeof input==='string'){
       input=input.replace(/^clan:\\/\\/localhost/,BASE).replace(/^http:\\/\\/clan\\.localhost/,BASE);
+      if(input===BASE+'/api-proxy') return rpc('api-proxy',(init&&init.body)||'{}');
     }
     return f.call(this,input,init);
   };
@@ -224,6 +243,17 @@ export const httpHost: Host = {
 
   agentEndpoint: async () => (await json<{ endpoint: string }>('/agent/endpoint')).endpoint,
   agentPrompt: text_ => json<unknown>('/agent/prompt', postJson({ text: text_ })),
+
+  // No server-side key: the visitor brings one and this page makes the call.
+  inference: 'page',
+  buildAgentPrompt: async payload => {
+    const resp = await fetch(`${httpHost.clanOrigin()}/agent-prompt`, {
+      method: 'POST',
+      body: JSON.stringify({ payload }),
+    })
+    if (!resp.ok) throw new Error(`agent-prompt: ${resp.status}`)
+    return resp.json() as Promise<{ system: string; user: string }>
+  },
 
   on: async <K extends keyof HostEvents>(
     event: K,

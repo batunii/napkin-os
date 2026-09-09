@@ -31,3 +31,6 @@ __pycache__/
 
 # napkin-web's default data root when run from a checkout.
 /napkin-web-data/
+
+# Local Python venv for the Anthropic SDK (the agent backend).
+.venv/

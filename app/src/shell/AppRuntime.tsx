@@ -5,6 +5,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { host } from '../host'
 import type { ManifestInfo } from '../host'
+import { runInference } from '../agent/inference'
 import { getTheme, onThemeChange } from '../theme'
 import { LEGACY_EDIT_BRIDGE } from '../bridge/legacyEditBridge'
 import { STRUCTURED_EDIT_BRIDGE } from '../bridge/structuredEditBridge'
@@ -54,6 +55,29 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
   }, [])
 
   useEffect(() => onThemeChange(postScheme), [postScheme])
+
+  // The app asks for inference; the shell performs it. Only this side ever
+  // touches the key, and only requests from our own frame are answered.
+  useEffect(() => {
+    if (host.inference !== 'page') return
+    const onMessage = async (e: MessageEvent) => {
+      const frame = iframeRef.current?.contentWindow
+      if (!frame || e.source !== frame) return
+      const msg = e.data as { type?: string; id?: number; op?: string; body?: string }
+      if (msg?.type !== 'clan:rpc' || msg.op !== 'api-proxy') return
+
+      let body: string
+      try {
+        const request = JSON.parse(msg.body || '{}') as { payload?: unknown }
+        body = JSON.stringify(await runInference(request.payload ?? request))
+      } catch (err) {
+        body = JSON.stringify({ ok: false, status: 500, data: null, error: String(err) })
+      }
+      frame.postMessage({ type: 'clan:rpc-reply', id: msg.id, body }, '*')
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
   const [iframeSrc, setIframeSrc] = useState<string>('')
 

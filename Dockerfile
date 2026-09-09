@@ -1,13 +1,16 @@
 # syntax=docker/dockerfile:1
 #
-# Napkin Studio OS as one container: the axum host, the shell, and the
-# synthesis agent on the Anthropic Messages API. No Claude Code CLI — a CLI
-# login is one person's subscription, which is not what a shared host should be
-# spending. NAPKIN_BACKEND=api makes that explicit and refuses to start without
-# a key.
+# Napkin Studio OS as one container: the axum host and the shell. One process,
+# no Python, and no API key.
+#
+# Inference is the visitor's own: they paste an Anthropic key, it stays in their
+# browser, and their browser calls Claude directly. The host assembles the
+# prompt — schema, digests, provenance, split for caching — and hands it over.
+# So this image costs whoever runs it nothing per draft, and holds nobody's
+# credentials.
 #
 #   docker build -t napkin .
-#   docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-ant-... -v napkin:/data napkin
+#   docker run -p 8080:8080 -v napkin:/data napkin
 #
 # Build with --build-arg WITH_PDF=0 to drop Chromium (~400 MB); HTML export
 # still works and PDF export tells the user why it can't.
@@ -43,37 +46,25 @@ RUN cargo run --release -p clan-sdk --example make_brief_maker \
 FROM debian:bookworm-slim AS runtime
 ARG WITH_PDF=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv ca-certificates tini \
+      ca-certificates tini \
  && if [ "$WITH_PDF" = "1" ]; then \
       apt-get install -y --no-install-recommends chromium; \
     fi \
  && rm -rf /var/lib/apt/lists/*
 
-# Debian marks the system Python externally managed (PEP 668), so the SDK goes
-# in a venv rather than being forced past that with --break-system-packages.
-ENV VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH
-COPY mock-agent/requirements.txt /tmp/requirements.txt
-RUN python3 -m venv "$VIRTUAL_ENV" \
- && pip install --no-cache-dir -r /tmp/requirements.txt \
- && rm /tmp/requirements.txt
-
+# The knowledge digests are compiled into the binary, so there is nothing to
+# copy but the binary, the shell, and one seed template.
 WORKDIR /srv/napkin
-COPY mock-agent/ ./mock-agent/
-COPY engine/packs_dist/ ./engine/packs_dist/
 COPY --from=host /src/target/release/napkin-web /usr/local/bin/napkin-web
 COPY --from=host /seed/ /srv/napkin/seed/
 COPY --from=shell /src/app/dist/ /srv/napkin/dist/
-COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
 
-ENV NAPKIN_BACKEND=api \
-    NAPKIN_WEB_DATA=/data \
+ENV NAPKIN_WEB_DATA=/data \
     NAPKIN_WEB_STATIC=/srv/napkin/dist \
     NAPKIN_WEB_SEED=/srv/napkin/seed \
-    NAPKIN_AGENT_URL=http://127.0.0.1:8787 \
     PORT=8080
 VOLUME ["/data"]
 EXPOSE 8080
 
-# tini reaps the agent when it exits and forwards signals to both processes.
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+# tini for signal handling; one process, nothing to supervise.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/napkin-web"]

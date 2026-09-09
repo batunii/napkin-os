@@ -22,6 +22,7 @@ pub mod export;
 pub mod html;
 pub mod library;
 pub mod log;
+pub mod prompt;
 #[cfg(feature = "native")]
 pub mod proxy;
 pub mod routes;
@@ -36,6 +37,7 @@ pub use event::HostEvent;
 pub use library::{
     create_instance, ensure_home, install_app, scan_apps, scan_recent, InstalledApp, RecentDoc,
 };
+pub use prompt::{build as build_prompt, AgentPrompt};
 pub use routes::{handle, handle_async, is_async, HostRequest, HostResponse};
 pub use session::{AppMeta, LineageInfo, ManifestInfo, OpenResult, Session};
 #[cfg(feature = "native")]

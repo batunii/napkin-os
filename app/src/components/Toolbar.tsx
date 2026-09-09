@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { NapkinLogo } from '../brand/NapkinMark'
+import ApiKeyButton from './ApiKeyButton'
 import ThemeToggle from './ThemeToggle'
 
 interface Props {
@@ -96,6 +97,7 @@ export default function Toolbar({
       >
         🤖 Agent
       </button>
+      <ApiKeyButton />
       <ThemeToggle />
     </div>
   )
