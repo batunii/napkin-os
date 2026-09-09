@@ -2014,7 +2014,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                 "framework": h.get("framework") or h["source"],
                 "category": h.get("category"),
                 "score": h["score"],
-                "snippet": re.sub(r"\s+", " ", h["text"])[:280],
+                "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
             })
         # Pull award-winning PRECEDENT cases from every case pack whose `loops`
         # gate includes this loop (default: insight + substantiation). Which packs
@@ -2027,7 +2027,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                       if key == "loop6_substantiation" else q)
             for pack in eligible:
                 for h in retriever.retrieve(case_q, k=pack.k, index_dir=index_dir,
-                                            where={"source": pack.tag}):
+                                            where={"source": pack.tag, "level": "parent"}):
                     if h["source"] not in seen:
                         seen.add(h["source"])
                         evidence.append({
@@ -2035,7 +2035,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                             "framework": h.get("framework") or h["source"],
                             "category": h.get("category"),
                             "score": h["score"],
-                            "snippet": re.sub(r"\s+", " ", h["text"])[:280],
+                            "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
                         })
         return key, {"title": title, "query": q, "evidence": evidence}
 

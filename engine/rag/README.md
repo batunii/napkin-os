@@ -24,7 +24,13 @@ python3 rag.py query --index ./index "focus the message" --where type=propositio
 
 ## How it works (matches `00-rag-ingestion-guide.md`)
 
-- **Chunk** — one chunk per H2 (`## `) section, ~10% word overlap between chunks.
+- **Chunk** — per-source strategies in `chunking.py`: IPA/Effie cases = one whole-case
+  *parent* + one *child* per section; Cannes = whole case; playbooks = one chunk per section
+  (split at paragraphs above 400 words); templates = ~300-word windows with 15% overlap;
+  D&AD = skipped (title-only entries). Every chunk is embedded behind a **context header**
+  (`title (year) · tier · sector · effectiveness type`) and carries `metadata.level`,
+  `doc_id`, `parent_id`, `strategy`. Retrieval Queries attach to every chunk of a file.
+  Loops 4/6 retrieve `level=parent` so k=2 means two cases.
 - **Metadata** — YAML frontmatter parsed *generically* (any keys) and attached to
   every chunk, so it fits your real frontmatter without hard-coding fields.
   `RETRIEVAL_QUERIES` (frontmatter key or section) is folded in for recall.

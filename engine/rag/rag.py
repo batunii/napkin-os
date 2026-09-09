@@ -8,8 +8,9 @@ from it at runtime. Kept SEPARATE from parse_brief.py on purpose — Loop 1
 capture stays RAG-free. This module only ever serves Loops 3–7.
 
 Ingestion matches the playbooks' own ingestion guide:
-  * one chunk per H2 (`## `) section
-  * ~10% word overlap between consecutive chunks
+  * per-source chunking (chunking.py): whole-case parents + section children for
+    IPA/Effie, whole case for Cannes, sections for playbooks, windows for templates
+  * every chunk embedded with a context header (title · year · tier · sector …)
   * YAML frontmatter attached to every chunk as metadata (parsed generically —
     any keys, so it fits the real frontmatter without hard-coding fields)
   * `RETRIEVAL_QUERIES` (a section or frontmatter key) indexed as extra recall text
@@ -69,96 +70,9 @@ BATCH = 32
 # Frontmatter + markdown chunking  (matches 00-rag-ingestion-guide.md)
 # ---------------------------------------------------------------------------
 
-def parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Split leading --- ... --- block. Uses PyYAML if available, else a small
-    generic parser (key: value, key: [a, b]). Returns (meta, body)."""
-    text = text.lstrip("﻿")                      # strip UTF-8 BOM if present
-    # tolerate leading blank lines/whitespace before the opening --- (real corpus
-    # playbooks start with a leading \n before the frontmatter fence)
-    m = re.match(r"^\s*---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.DOTALL)
-    if not m:
-        return {}, text
-    raw, body = m.group(1), m.group(2)
-    try:
-        import yaml
-        meta = yaml.safe_load(raw) or {}
-        if isinstance(meta, dict):
-            return meta, body
-    except Exception:
-        pass
-    meta: dict = {}
-    for line in raw.splitlines():
-        if ":" not in line or line.strip().startswith("#"):
-            continue
-        k, v = line.split(":", 1)
-        k, v = k.strip(), v.strip()
-        if v.startswith("[") and v.endswith("]"):
-            meta[k] = [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
-        else:
-            meta[k] = v.strip("'\"")
-    return meta, body
-
-
-def split_h2(body: str) -> list[tuple[str, str]]:
-    """Return [(heading, section_text), ...], splitting at section headers.
-
-    The real corpus is inconsistent: some playbooks mark their 9 sections with
-    `## ` (H2), others with `# ` (H1). Within a file the level is consistent, so
-    we split at H1 *or* H2 and leave H3+ (### RETRIEVAL_QUERIES, sub-blueprints)
-    inside the section, matching the ingestion guide's intent (~9 chunks/file)."""
-    sections, heading, buf = [], "(intro)", []
-    for line in body.splitlines():
-        if re.match(r"^#{1,2}\s+(?!#)", line):       # H1 or H2, not H3+
-            if buf:
-                sections.append((heading, "\n".join(buf).strip()))
-            heading = line.lstrip("# ").strip()
-            buf = []
-        else:
-            buf.append(line)
-    if buf:
-        sections.append((heading, "\n".join(buf).strip()))
-    return [(h, t) for h, t in sections if t]
-
-
-def _overlap_prefix(prev_text: str, pct: float = 0.10) -> str:
-    words = prev_text.split()
-    n = max(0, int(len(words) * pct))
-    return " ".join(words[-n:]) if n else ""
-
-
-def chunk_file(path: Path) -> list[dict]:
-    meta, body = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
-    # pull RETRIEVAL_QUERIES (frontmatter key or a body section) for extra recall
-    retrieval_q = meta.get("RETRIEVAL_QUERIES") or meta.get("retrieval_queries") or ""
-    sections = split_h2(body)
-    chunks, prev = [], ""
-    for i, (heading, text) in enumerate(sections):
-        if re.search(r"retrieval[_ ]queries", heading, re.I):
-            retrieval_q = (retrieval_q + "\n" + text) if retrieval_q else text
-            continue
-        overlap = _overlap_prefix(prev) if i else ""
-        body_text = (overlap + "\n" + text).strip() if overlap else text
-        cid = hashlib.sha1(f"{path.name}:{i}:{heading}".encode()).hexdigest()[:12]
-        chunks.append({
-            "id": cid,
-            "source": path.name,
-            "section": heading,
-            "chunk_index": i,
-            "metadata": meta,                       # generic — whatever frontmatter has
-            "text": body_text,
-            "retrieval_queries": retrieval_q if isinstance(retrieval_q, str)
-                                 else " ".join(retrieval_q or []),
-        })
-        prev = text
-    return chunks
-
-
-def embed_text_of(chunk: dict) -> str:
-    """What we actually embed: heading + body + any retrieval queries."""
-    parts = [chunk["section"], chunk["text"]]
-    if chunk.get("retrieval_queries"):
-        parts.append(chunk["retrieval_queries"])
-    return "\n".join(p for p in parts if p)[:8000]
+# Chunking lives in chunking.py (per-source strategies, context headers, parent/child).
+from chunking import (parse_frontmatter, split_sections as split_h2, chunk_file,  # noqa: E402,F401
+                      embed_text_of, STRATEGY_BY_SOURCE)
 
 
 # ---------------------------------------------------------------------------
@@ -255,8 +169,13 @@ def build(corpus: Path, index_dir: Path):
     local = LocalStore(index_dir)
     local.ensure(dim)
     local.replace_all(rows)
+    by_src: dict[str, int] = {}
+    for c in chunks:
+        k = f"{c['metadata'].get('source')}/{c['metadata'].get('level')}"
+        by_src[k] = by_src.get(k, 0) + 1
     local.write_manifest({"files": len(files), "embed_mode": mode, "embed_model": EMBED_MODEL,
-                          "corpus": str(corpus), "built_at": _now()})
+                          "corpus": str(corpus), "built_at": _now(),
+                          "chunking": {"version": 2, "strategies": STRATEGY_BY_SOURCE, "by_source_level": by_src}})
     print(f"  embed mode: {mode}  ·  dim {dim}")
     print(f"  index → {index_dir}")
 

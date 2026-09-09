@@ -105,7 +105,8 @@ def ensure_collection(dim: int, recreate: bool = False):
 
 # Qdrant needs a payload index on any field used in a filter. These are the metadata
 # keys the pipeline filters on (where={"source": ...} etc.). Idempotent.
-_INDEX_FIELDS = ("metadata.source", "metadata.category", "metadata.award_tier", "metadata.year")
+_INDEX_FIELDS = ("metadata.source", "metadata.category", "metadata.award_tier", "metadata.year",
+                 "metadata.level", "metadata.parent_id", "metadata.doc_id", "metadata.sector")
 
 
 def ensure_payload_indexes():

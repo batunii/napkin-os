@@ -50,10 +50,14 @@ def index_label(index_dir: Path | str | None = None) -> str:
 
 
 def retrieve(query: str, k: int = 5, where: dict | None = None,
-             index_dir: Path | str | None = None) -> list[dict]:
+             index_dir: Path | str | None = None, level: str | None = None) -> list[dict]:
     """Top-k chunks for a query, each carrying a `source › section` citation.
-    Returns [] if the index is absent or nothing matches the metadata filter."""
+    `level` narrows to 'parent' (whole cases — what Loops 4/6 want as precedents),
+    'child' (case sections) or 'chunk' (playbooks/templates). Returns [] if the
+    index is absent or nothing matches the metadata filter."""
     d = Path(index_dir) if index_dir else DEFAULT_INDEX
+    if level:
+        where = {**(where or {}), "level": level}
     if not rag.store_available(d):
         return []
     out: list[dict] = []
@@ -67,6 +71,9 @@ def retrieve(query: str, k: int = 5, where: dict | None = None,
             "framework": md.get("framework_name"),
             "category": md.get("category"),
             "text": r["text"],
+            "header": r.get("header") or "",
+            "doc_id": md.get("doc_id"),
+            "level": md.get("level"),
             "metadata": md,
         })
     return out
