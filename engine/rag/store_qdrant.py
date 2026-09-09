@@ -16,6 +16,9 @@ Config (env, typically from briefing/.env):
 
 Activate by setting RAG_STORE=qdrant (see rag.py). Points are keyed by a deterministic
 UUID from source+chunk so re-pushing is idempotent (upsert, not duplicate).
+
+The module-level functions are the REST primitives; `QdrantStore` at the bottom is
+the VectorStore adapter that rag.py actually uses (see store_base.py).
 """
 from __future__ import annotations
 
@@ -24,6 +27,9 @@ import os
 import urllib.error
 import urllib.request
 import uuid
+from typing import Iterator
+
+from store_base import StoreConfigError, VectorStore
 
 _NS = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")  # stable namespace for point ids
 
@@ -51,6 +57,8 @@ def _req(method: str, path: str, body: dict | None = None, timeout: int = 60):
             return json.load(r)
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Qdrant {method} {path} -> HTTP {e.code}: {e.read().decode()[:300]}")
+    except (urllib.error.URLError, OSError, TimeoutError) as e:      # DNS, reset, TLS, timeout
+        raise RuntimeError(f"Qdrant {method} {path} -> unreachable: {e}") from e
 
 
 def point_id(chunk: dict) -> str:
@@ -153,26 +161,48 @@ def count() -> int:
         return 0
 
 
-def count_by(where: dict) -> int:
-    """Exact server-side count of points matching a metadata filter."""
-    r = _req("POST", f"/collections/{collection_name()}/points/count",
-             {"filter": _filter(where), "exact": True})
-    return int(r.get("result", {}).get("count") or 0)
+def scroll(batch: int = 512) -> Iterator[dict]:
+    """Yield every payload with its vector (for migrate / store-check)."""
+    name = collection_name()
+    offset = None
+    while True:
+        body = {"limit": batch, "with_payload": True, "with_vector": True}
+        if offset is not None:
+            body["offset"] = offset
+        r = _req("POST", f"/collections/{name}/points/scroll", body, timeout=120)
+        res = r.get("result", {})
+        for p in res.get("points", []):
+            yield {**p.get("payload", {}), "vector": p.get("vector")}
+        offset = res.get("next_page_offset")
+        if offset is None:
+            break
 
 
-def delete_by(where: dict) -> int:
-    """Delete every point matching a metadata filter (e.g. a removed pack's
-    {'source': tag}). Returns how many matched beforehand."""
-    n = count_by(where)
-    if n:
-        _req("POST", f"/collections/{collection_name()}/points/delete?wait=true",
-             {"filter": _filter(where)})
-    return n
+def delete_collection():
+    try:
+        _req("DELETE", f"/collections/{collection_name()}")
+    except RuntimeError:
+        pass
 
 
-def delete_ids(ids: list[str]) -> int:
-    """Delete specific points by id (stale chunks within a still-present pack)."""
-    if ids:
-        _req("POST", f"/collections/{collection_name()}/points/delete?wait=true",
-             {"points": ids})
-    return len(ids)
+class QdrantStore(VectorStore):
+    """VectorStore adapter over the REST primitives above."""
+    name = "qdrant"
+
+    def __init__(self, **_ignored):
+        try:
+            self.url, _, self.collection = _cfg()
+        except RuntimeError as e:
+            raise StoreConfigError(str(e)) from e
+
+    def available(self) -> bool:            return available()
+    def ensure(self, dim: int) -> None:     ensure_collection(dim)
+    def upsert(self, rows: list[dict]) -> int:  return upsert(rows)
+    def search(self, qvec, k=5, where=None):    return search(qvec, k=k, where=where)
+    def scroll(self, batch: int = 512):     return scroll(batch)
+    def count(self) -> int:                 return count()
+    def delete_all(self) -> None:           delete_collection()
+
+    def describe(self) -> dict:
+        return {"store": "qdrant", "label": f"qdrant:{self.collection}",
+                "url": self.url, "collection": self.collection}

@@ -35,11 +35,18 @@ DEFAULT_INDEX = (Path(_ENV_INDEX) if os.path.isabs(_ENV_INDEX or "")
 
 
 def index_available(index_dir: Path | str | None = None) -> bool:
-    # Qdrant mode: availability = the remote collection has points (no local file).
-    if rag._store() == "qdrant":
-        return rag.store_available()
+    """True if the configured store (RAG_STORE: local | qdrant | ...) is reachable and non-empty."""
     d = Path(index_dir) if index_dir else DEFAULT_INDEX
-    return (d / "chunks.jsonl").exists()
+    return rag.store_available(d)
+
+
+def index_label(index_dir: Path | str | None = None) -> str:
+    """Human label of the active store for run metadata, e.g. 'qdrant:napkin_rag' or a path."""
+    d = Path(index_dir) if index_dir else DEFAULT_INDEX
+    try:
+        return rag.open_store(d).describe()["label"]
+    except Exception as e:                        # misconfigured store — still label it
+        return f"{rag.store_name()}:unavailable ({type(e).__name__})"
 
 
 def retrieve(query: str, k: int = 5, where: dict | None = None,
@@ -47,7 +54,7 @@ def retrieve(query: str, k: int = 5, where: dict | None = None,
     """Top-k chunks for a query, each carrying a `source › section` citation.
     Returns [] if the index is absent or nothing matches the metadata filter."""
     d = Path(index_dir) if index_dir else DEFAULT_INDEX
-    if rag._store() != "qdrant" and not (d / "chunks.jsonl").exists():
+    if not rag.store_available(d):
         return []
     out: list[dict] = []
     for score, r in rag.search(d, query, k=k, where=where):

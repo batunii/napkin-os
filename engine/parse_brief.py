@@ -2049,9 +2049,9 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
     synthesis_mode = _synthesize_loops37(gist, intent, loops)
     return {
         "enabled": True,
-        "index": (f"qdrant:{os.environ.get('QDRANT_COLLECTION', 'napkin_rag')}"
-                  if os.environ.get("RAG_STORE", "").lower().strip() == "qdrant"
+        "index": (retriever.index_label(index_dir) if hasattr(retriever, "index_label")
                   else str(index_dir or getattr(retriever, "DEFAULT_INDEX", HERE / "rag" / "index"))),
+        "store": os.environ.get("RAG_STORE", "local").lower().strip() or "local",
         "intent": intent,
         "k": k,
         "gist": gist,

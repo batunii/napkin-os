@@ -40,7 +40,27 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")  # 1024-d
+def _load_dotenv() -> None:
+    """Load briefing/.env (next to this rag/ dir) into os.environ without overriding
+    variables already set. No dependency; so `python3 rag.py …` works without sourcing."""
+    env = Path(__file__).resolve().parent.parent / ".env"
+    if not env.exists():
+        return
+    for line in env.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[7:]
+        k, v = line.split("=", 1)
+        k, v = k.strip(), v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
+
+
+_load_dotenv()
+
+EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")  # 2048-d; nv-embedqa-e5-v5 retired (410) Sep 2026
 EMBED_BASE = os.environ.get("RAG_EMBED_BASE", "https://integrate.api.nvidia.com/v1")
 OFFLINE_DIM = 512
 BATCH = 32
@@ -195,11 +215,12 @@ def embed(texts: list[str], input_type: str = "passage") -> tuple[list[list[floa
 
 
 # ---------------------------------------------------------------------------
-# Local store (swappable). Qdrant adapter is a thin drop-in later.
+# Store layer — pluggable. rag.py never touches a backend directly; it asks
+# store_base.get_store() for whatever RAG_STORE names (local | qdrant | ...).
 # ---------------------------------------------------------------------------
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    return sum(x * y for x, y in zip(a, b))   # vectors are L2-normalised at store time
+from store_base import VectorStore, get_store, list_stores, store_name, StoreConfigError  # noqa: E402
+from store_local import LocalStore  # noqa: E402
 
 
 def _norm(v: list[float]) -> list[float]:
@@ -207,7 +228,18 @@ def _norm(v: list[float]) -> list[float]:
     return [x / n for x in v]
 
 
+def _store() -> str:                       # kept for older callers
+    return store_name()
+
+
+def open_store(index_dir: Path | None = None, name: str | None = None) -> VectorStore:
+    """The store the pipeline should read from. `index_dir` only matters for local."""
+    return get_store(name, index_dir=index_dir)
+
+
 def build(corpus: Path, index_dir: Path):
+    """Chunk + embed the corpus. Always writes the LOCAL index (the canonical,
+    re-pushable artefact); if RAG_STORE names a remote store, mirrors into it too."""
     files = sorted(glob.glob(str(corpus / "**" / "*.md"), recursive=True))
     files = [f for f in files if "DROP-ZIPS-HERE" not in f]
     if not files:
@@ -217,77 +249,96 @@ def build(corpus: Path, index_dir: Path):
         chunks.extend(chunk_file(Path(f)))
     print(f"  {len(files)} files → {len(chunks)} chunks")
     vecs, mode = embed([embed_text_of(c) for c in chunks], "passage")
-    vecs = [_norm(v) for v in vecs]
-    index_dir.mkdir(parents=True, exist_ok=True)
-    with open(index_dir / "chunks.jsonl", "w", encoding="utf-8") as fh:
-        for c, v in zip(chunks, vecs):
-            fh.write(json.dumps({**c, "vector": v}) + "\n")
-    (index_dir / "manifest.json").write_text(json.dumps({
-        "files": len(files), "chunks": len(chunks), "embed_mode": mode,
-        "dim": len(vecs[0]) if vecs else 0}, indent=2))
-    print(f"  embed mode: {mode}  ·  dim {len(vecs[0]) if vecs else 0}")
+    rows = [{**c, "vector": _norm(v)} for c, v in zip(chunks, vecs)]
+    dim = len(rows[0]["vector"]) if rows else 0
+
+    local = LocalStore(index_dir)
+    local.ensure(dim)
+    local.replace_all(rows)
+    local.write_manifest({"files": len(files), "embed_mode": mode, "embed_model": EMBED_MODEL,
+                          "corpus": str(corpus), "built_at": _now()})
+    print(f"  embed mode: {mode}  ·  dim {dim}")
     print(f"  index → {index_dir}")
+
+    if store_name() != "local":
+        remote = open_store()
+        remote.ensure(dim)
+        n = remote.upsert(rows)
+        print(f"  mirrored {n} rows → {remote.describe()['label']}")
+
+
+def _now() -> str:
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def load_index(index_dir: Path) -> list[dict]:
-    rows = []
-    with open(index_dir / "chunks.jsonl", encoding="utf-8") as fh:
-        for line in fh:
-            rows.append(json.loads(line))
-    return rows
-
-
-def _store() -> str:
-    return os.environ.get("RAG_STORE", "local").lower().strip()
+    return list(LocalStore(index_dir).scroll())
 
 
 def store_available(index_dir: Path | None = None) -> bool:
-    """Is the index queryable? Local: chunks.jsonl exists. Qdrant: collection has points."""
-    if _store() == "qdrant":
-        import store_qdrant
-        return store_qdrant.available()
-    return index_dir is not None and (Path(index_dir) / "chunks.jsonl").exists()
+    """Is the configured store queryable (reachable and non-empty)?"""
+    try:
+        return open_store(index_dir).available()
+    except Exception:                       # misconfigured or unreachable → not available
+        return False
+
+
+def migrate(src: str, dst: str, src_index: Path | None = None, dst_index: Path | None = None,
+            replace: bool = False, batch: int = 256, force: bool = False) -> int:
+    """Copy every row (with vectors) from one store to another. No re-embedding.
+    This is how you switch backends: build once, migrate anywhere."""
+    if src == dst and (src != "local" or src_index == dst_index):
+        sys.exit("migrate: source and destination are the same store")
+    try:
+        s = get_store(src, index_dir=src_index)
+        d = get_store(dst, index_dir=dst_index)
+    except StoreConfigError as e:
+        sys.exit(f"migrate: {e}\n  (rag.py reads briefing/.env automatically — check the variable is set there)")
+    if not s.available():
+        sys.exit(f"migrate: source {s.describe()['label']} is empty or unreachable")
+    # Guard: vectors must come from the model queries will use, or retrieval is silently wrong.
+    if isinstance(s, LocalStore):
+        built_with = s.manifest().get("embed_model") or (s.manifest().get("embed_mode", "").split(":", 1)[-1] or None)
+        if built_with and built_with != EMBED_MODEL and not force:
+            sys.exit(f"migrate: source index was embedded with {built_with!r} but the current embed model is "
+                     f"{EMBED_MODEL!r}. Queries would not match these vectors.\n"
+                     f"  Rebuild first:  python3 rag.py build --index {s.index_dir}\n"
+                     f"  or pass --force to push anyway.")
+    if replace:
+        d.delete_all()
+    n, buf, dim = 0, [], None
+    for row in s.scroll():
+        if dim is None:
+            dim = len(row["vector"]); d.ensure(dim)
+        buf.append(row)
+        if len(buf) >= batch:
+            n += d.upsert(buf); buf = []
+            print(f"  {n} rows → {d.describe()['label']}", end="\r", flush=True)
+    if buf:
+        n += d.upsert(buf)
+    if isinstance(d, LocalStore):
+        src_man = s.manifest() if isinstance(s, LocalStore) else {}
+        d.write_manifest({k: src_man.get(k) for k in ("files", "embed_mode", "embed_model", "corpus") if src_man.get(k)}
+                         | {"migrated_from": s.describe()["label"], "built_at": _now()})
+    print(f"  migrated {n} rows  {s.describe()['label']}  →  {d.describe()['label']}")
+    return n
 
 
 def push(index_dir: Path) -> int:
-    """Upsert an EXISTING local index into the remote store (no re-embedding).
-    One-time migration: build locally once, then `push` to Qdrant."""
-    if _store() != "qdrant":
-        sys.exit("push requires RAG_STORE=qdrant (set QDRANT_URL/API_KEY/COLLECTION).")
-    import store_qdrant
-    rows = load_index(index_dir)
-    if not rows:
-        sys.exit(f"No local index at {index_dir} to push. Build it first.")
-    store_qdrant.ensure_collection(dim=len(rows[0]["vector"]))
-    n = store_qdrant.upsert(rows)
-    print(f"  pushed {n} points → Qdrant collection '{store_qdrant.collection_name()}'")
-    return n
+    """Back-compat: local index → the store named by RAG_STORE."""
+    if store_name() == "local":
+        sys.exit("push requires RAG_STORE to name a remote store (e.g. qdrant).")
+    return migrate("local", store_name(), src_index=index_dir)
 
 
 def search(index_dir: Path, q: str, k: int = 5, where: dict | None = None
            ) -> list[tuple[float, dict]]:
     """Embed the query and return the top-k (score, chunk) rows. The single search
-    code path — both the `query` CLI and retrieve.py (Loops 3–7) call this.
-    Routes to the remote store when RAG_STORE=qdrant."""
-    if _store() == "qdrant":
-        import store_qdrant
-        qv, _ = embed([q], "query")
-        return store_qdrant.search(_norm(qv[0]), k=k, where=where)
-    rows = load_index(index_dir)
-    if where:
-        # EXACT match, mirroring Qdrant's keyword filter — a pack must behave
-        # identically whichever store it lives in (substring matching here once
-        # made local and remote return different sets for the same filter).
-        rows = [r for r in rows if all(
-            str(r["metadata"].get(where_k, "")).lower() == str(where_v).lower()
-            for where_k, where_v in where.items())]
-        if not rows:
-            return []
+    code path — both the `query` CLI and retrieve.py (Loops 3–7) call this."""
+    store = open_store(index_dir)
     qv, _ = embed([q], "query")
-    qv = _norm(qv[0])
-    scored = sorted(((_cosine(qv, r["vector"]), r) for r in rows),
-                    key=lambda x: x[0], reverse=True)
-    return scored[:k]
+    return store.search(_norm(qv[0]), k=k, where=where)
 
 
 def query(index_dir: Path, q: str, k: int = 5, where: dict | None = None):
@@ -296,12 +347,48 @@ def query(index_dir: Path, q: str, k: int = 5, where: dict | None = None):
         print("No chunks match the metadata filter."); return []
     offline = not os.environ.get("NVIDIA_API_KEY") or os.environ.get("RAG_EMBED") == "offline"
     mode = "offline" if offline else f"nim:{EMBED_MODEL}"
-    print(f"\nQuery: {q!r}   [embed: {mode}]\n")
+    print(f"\nQuery: {q!r}   [embed: {mode} · store: {open_store(index_dir).describe()['label']}]\n")
     for rank, (score, r) in enumerate(scored, 1):
         snippet = re.sub(r"\s+", " ", r["text"])[:160]
         print(f"{rank}. [{score:.3f}] {r['source']} › {r['section']}")
         print(f"     {snippet}…\n")
     return scored
+
+
+def stores_status(index_dir: Path):
+    """Print every registered backend and whether it is configured / populated."""
+    active = store_name()
+    for n in list_stores():
+        try:
+            st = get_store(n, index_dir=index_dir)
+            ok = st.available()
+            cnt = st.count() if ok else 0
+            print(f"  {'*' if n == active else ' '} {n:10} {st.describe()['label']:50} "
+                  f"{'ready' if ok else 'empty'}  rows={cnt}")
+        except StoreConfigError as e:
+            print(f"  {'*' if n == active else ' '} {n:10} not configured — {e}")
+        except Exception as e:                       # network etc.
+            print(f"  {'*' if n == active else ' '} {n:10} error — {type(e).__name__}: {e}")
+
+
+def store_check(name: str, index_dir: Path) -> bool:
+    """Contract test: ensure → upsert 3 offline rows → search → scroll → count.
+    Uses ids prefixed `__check__` and removes nothing else."""
+    st = get_store(name, index_dir=index_dir)
+    dim = OFFLINE_DIM
+    vecs = _offline_embed(["alpha brand launch", "beta turnaround case", "gamma proposition"], dim)
+    rows = [{"id": f"__check__{i}", "source": "__check__.md", "section": f"s{i}", "chunk_index": i,
+             "metadata": {"source": "__check__", "year": "2000"}, "text": t, "retrieval_queries": "",
+             "vector": _norm(v)} for i, (t, v) in enumerate(zip(["alpha", "beta", "gamma"], vecs))]
+    st.ensure(dim)
+    assert st.upsert(rows) == 3, "upsert count"
+    hits = st.search(rows[1]["vector"], k=1, where={"source": "__check__"})
+    assert hits and hits[0][1]["id"] == "__check__1", f"search returned {hits[:1]}"
+    seen = {r["id"] for r in st.scroll() if str(r.get("id", "")).startswith("__check__")}
+    assert seen == {r["id"] for r in rows}, f"scroll missing rows: {seen}"
+    assert st.count() >= 3, "count"
+    print(f"  {name}: contract OK ({st.describe()['label']})")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -316,16 +403,33 @@ def main():
     qp = sub.add_parser("query"); qp.add_argument("query")
     qp.add_argument("--index", default="./index"); qp.add_argument("-k", type=int, default=5)
     qp.add_argument("--where", help="metadata filter key=value")
-    pp = sub.add_parser("push", help="upsert an existing local index into the remote store (RAG_STORE=qdrant)")
+    pp = sub.add_parser("push", help="local index → store named by RAG_STORE (alias of migrate)")
     pp.add_argument("--index", default="./index")
+    mg = sub.add_parser("migrate", help="copy rows+vectors between any two stores (no re-embed)")
+    mg.add_argument("--from", dest="src", required=True, help="local | qdrant | ...")
+    mg.add_argument("--to", dest="dst", required=True)
+    mg.add_argument("--index", default="./index", help="local source index dir")
+    mg.add_argument("--to-index", default=None, help="local destination index dir")
+    mg.add_argument("--replace", action="store_true", help="wipe destination first")
+    mg.add_argument("--force", action="store_true", help="push even if the source embed model differs from the current one")
+    ss = sub.add_parser("stores", help="list backends and their status"); ss.add_argument("--index", default="./index")
+    sc = sub.add_parser("store-check", help="run the VectorStore contract against a backend")
+    sc.add_argument("name", nargs="?", default=None); sc.add_argument("--index", default="./_index_check")
     a = ap.parse_args()
     here = Path(__file__).resolve().parent
-    idx = Path(a.index) if Path(a.index).is_absolute() else here / a.index
+    def _abs(x): return Path(x) if Path(x).is_absolute() else here / x
+    idx = _abs(a.index)
     if a.cmd == "build":
-        corp = Path(a.corpus) if Path(a.corpus).is_absolute() else here / a.corpus
-        build(corp.resolve(), idx)
+        build(_abs(a.corpus).resolve(), idx)
     elif a.cmd == "push":
         push(idx)
+    elif a.cmd == "migrate":
+        migrate(a.src.lower(), a.dst.lower(), src_index=idx,
+                dst_index=_abs(a.to_index) if a.to_index else None, replace=a.replace, force=a.force)
+    elif a.cmd == "stores":
+        stores_status(idx)
+    elif a.cmd == "store-check":
+        store_check(store_name(a.name), idx)
     else:
         where = None
         if a.where and "=" in a.where:

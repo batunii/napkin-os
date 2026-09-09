@@ -28,7 +28,7 @@ python3 rag.py query --index ./index "focus the message" --where type=propositio
 - **Metadata** — YAML frontmatter parsed *generically* (any keys) and attached to
   every chunk, so it fits your real frontmatter without hard-coding fields.
   `RETRIEVAL_QUERIES` (frontmatter key or section) is folded in for recall.
-- **Embed** — NVIDIA NIM (`nvidia/nv-embedqa-e5-v5`, 1024-d) via the
+- **Embed** — NVIDIA NIM (`nvidia/nemotron-3-embed-1b`, 2048-d; replaced the retired `nv-embedqa-e5-v5`) via the
   OpenAI-compatible `/embeddings` endpoint, your Inception key. Deterministic
   **offline** fallback (`RAG_EMBED=offline`) so it runs/tests with no key or spend.
 - **Store** — local JSON index (`index/chunks.jsonl` + `manifest.json`). Swappable
@@ -46,7 +46,7 @@ for sub-type. All corpora live under `../reference/rag/<source>/` and are built 
 |---|---|---|---|
 | `playbook` | 130 planner/strategy frameworks | (corpus is source-of-truth) | — |
 | `template` | briefing templates | — | — |
-| `ipa` | IPA effectiveness cases | `ingest_ipa.py` | `intelligence_layer.json` (private dataset, not in this export) |
+| `ipa` | IPA effectiveness cases | `ingest_ipa.py` | `archive/ipa-award-winners-dataset/intelligence_layer.json` |
 | `cannes` | Cannes Lions winners | `ingest_cannes.py` | `cannes.json` (scraped from lovethework) |
 | `effie` | Effie effectiveness cases (incl. `effie_cautionary`) | `ingest_effie.py` | `effie.csv` / `effie.json` |
 | `dandad` | D&AD Pencil winners | `ingest_dandad.py` | `dandad.json` (scraped from dandad.org) |
@@ -58,39 +58,49 @@ then `./build_rag.sh` to re-embed the whole index. New `source` frontmatter need
 Loops 4 (insight) & 6 (substantiation) in `parse_brief.py` pull precedent **cases** from each
 award corpus (`ipa·cannes·effie·dandad`) via the `source` filter — corpora with no data are no-ops.
 
-## Remote store (share the code without the data)
+## Store layer — switch backends whenever needed
 
-The index (and the corpus behind it) shouldn't travel with the code. Set `RAG_STORE=qdrant`
-and the same build/query paths talk to a **Qdrant** vector DB instead of the local JSON file —
-so a shared repo carries only the adapter + config, never the vectors or the scraped content.
+The brain is **one logical vector store**; where it lives is a config choice. `rag.py`,
+`retrieve.py` and `parse_brief.py` only talk to the `VectorStore` contract in
+`store_base.py`. Backends are registered by name and selected with `RAG_STORE`:
 
-The store is pluggable; `local` (default) keeps everything as-is. The adapter (`store_qdrant.py`)
-is dependency-free REST, so the **same code hits Qdrant Cloud and a self-hosted Qdrant** — only
-the URL changes.
+| `RAG_STORE` | File | Config | Notes |
+|---|---|---|---|
+| `local` (default) | `store_local.py` | `RAG_INDEX` (dir) | canonical artefact; `build` always writes it |
+| `qdrant` | `store_qdrant.py` | `QDRANT_URL`/`QDRANT_CLUSTER_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | Qdrant Cloud or self-hosted, REST on 443 |
+| *(add yours)* | copy `store_template.py` | — | pgvector on AWS, OpenSearch, Milvus on Nebius… |
 
 ```bash
-# .env  (gitignored — never commit these)
-QDRANT_CLUSTER_ENDPOINT=https://<cluster-id>.<region>.aws.cloud.qdrant.io   # or QDRANT_URL
-QDRANT_API_KEY=<key>                 # omit for local/self-hosted Qdrant
-QDRANT_COLLECTION=napkin_rag         # optional (this is the default)
+python3 rag.py stores                       # every backend: configured? populated? rows
+python3 rag.py store-check qdrant           # contract test against a backend (offline vectors)
 
-# one-time migration: build locally once, then upload (no re-embedding)
-./build_rag.sh                                   # or reuse an existing ./index
-RAG_STORE=qdrant python3 rag.py push --index ./index
+# build once (writes ./index; also mirrors to RAG_STORE if it isn't local)
+./build_rag.sh
 
-# thereafter, query / run briefs entirely off the remote DB — nothing local needed
+# move the brain between stores — copies rows WITH vectors, never re-embeds
+# (refuses if the source was embedded with a different model than RAG_EMBED_MODEL; --force overrides)
+python3 rag.py migrate --from local  --to qdrant
+python3 rag.py migrate --from qdrant --to local --to-index ./index_backup
+python3 rag.py migrate --from qdrant --to pgvector --replace      # once pgvector is registered
+
+# then run everything off the chosen store
 RAG_STORE=qdrant python3 rag.py query "challenger brand" --where source=cannes
 RAG_STORE=qdrant BRIEF_LOOPS37=1 python3 parse_brief.py <brief> --out outputs/run
 ```
 
-Notes:
-- REST is used over **port 443** (Qdrant Cloud serves it there; 6333 is often firewalled). For
-  self-hosted, include the port in the URL (`http://host:6333`).
-- `push` auto-creates the collection (Cosine, 1024-d) and the **payload indexes** Qdrant needs to
-  filter on `metadata.source` / `category` / `award_tier` / `year`. Re-running `push` is idempotent
-  (points keyed by a deterministic UUID).
-- A collaborator runs it by putting the same three env vars in their `.env` — no data files, no
-  rebuild. Embeddings at query time still need `NVIDIA_API_KEY`.
+`rag.py` loads `briefing/.env` itself, so none of this needs `source .env` first.
+
+Rules the contract guarantees:
+- **Never crashes the brief.** A misconfigured or unreachable store makes `index_available()`
+  return `False`; the run records `meta.rag.store` and `meta.rag.index` so a silent fallback is visible.
+- **Idempotent.** Rows are keyed by chunk id (Qdrant: a deterministic UUID), so re-push/migrate upserts.
+- **Same embedding everywhere.** `manifest.json` records `embed_model`/`embed_mode`/`dim`; all stores
+  must hold vectors from the same model — changing the model means rebuild, then migrate.
+- **Filters** are `{metadata_key: value}`; Qdrant needs payload indexes (created by `ensure`) on
+  `metadata.source / category / award_tier / year`.
+
+Adding a backend: copy `store_template.py` → `store_<name>.py`, implement six methods, add one line to
+`REGISTRY` in `store_base.py`, run `rag.py store-check <name>`.
 
 ## Config knobs
 
@@ -98,8 +108,10 @@ Notes:
 |---|---|---|
 | `NVIDIA_API_KEY` | — | NIM embeddings (from `briefing/.env`) |
 | `RAG_EMBED` | (unset) | `offline` = deterministic hash embedder, no network |
-| `RAG_EMBED_MODEL` | `nvidia/nv-embedqa-e5-v5` | embedding model id |
+| `RAG_EMBED_MODEL` | `nvidia/nemotron-3-embed-1b` | embedding model id (2048-d) |
 | `RAG_EMBED_BASE` | `https://integrate.api.nvidia.com/v1` | endpoint base |
+| `RAG_STORE` | `local` | backend name (`local`, `qdrant`, …) |
+| `RAG_INDEX` | `rag/index` | local index dir |
 
 ## Smoke test
 
