@@ -157,6 +157,7 @@ fn ensure_document(html: &str, title: &str) -> String {
 /// references as data URIs, and inject brand chrome + provenance into `<body>`.
 fn compose(doc: &str, clan: &ClanFile, opts: &ExportOptions) -> Result<String> {
     let brand_style = brand_style_block();
+    let print_style = print_style_block();
     let header = if opts.brand {
         brand_header(clan)
     } else {
@@ -197,6 +198,8 @@ fn compose(doc: &str, clan: &ClanFile, opts: &ExportOptions) -> Result<String> {
                     if inject_style {
                         el.append(&brand_style, lol_html::html_content::ContentType::Html);
                     }
+                    // Unconditional: legibility on paper is not branding.
+                    el.append(&print_style, lol_html::html_content::ContentType::Html);
                     Ok(())
                 }),
                 element!("body", move |el| {
@@ -260,6 +263,28 @@ fn asset_name(val: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Print rules every export carries, branded or not.
+///
+/// Browsers do not print background colours by default — "Background graphics"
+/// is an opt-in box in the dialog. These documents are dark, so dropping the
+/// backgrounds takes the colour-carried parts of the design with them: a
+/// headline painted by a gradient clipped to the text, an accent button, a
+/// themed panel all render as nothing. What is left reads as a blank page.
+/// (Headless Chrome prints backgrounds by default, so this only ever bit the
+/// interactive path — which is the one people use.)
+///
+/// `print-color-adjust: exact` asks for the document as designed.
+fn print_style_block() -> String {
+    "<style>\n\
+     @media print {\n\
+     html, body, *, *::before, *::after { \
+     -webkit-print-color-adjust: exact !important; \
+     print-color-adjust: exact !important; }\n\
+     }\n\
+     </style>\n"
+        .to_string()
 }
 
 fn brand_style_block() -> String {

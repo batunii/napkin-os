@@ -145,8 +145,11 @@ function injectFirst(html: string, script: string): string {
 function printHtml(html: string) {
   const frame = document.createElement('iframe')
   frame.setAttribute('aria-hidden', 'true')
+  // Off-screen, but laid out at a real page size. A zero-sized or
+  // `visibility:hidden` frame has nothing to lay out, and some browsers print
+  // it as a blank page.
   frame.style.cssText =
-    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+    'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0'
   frame.onload = () => {
     try {
       frame.contentWindow?.focus()
