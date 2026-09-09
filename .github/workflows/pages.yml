@@ -10,7 +10,12 @@ name: Pages
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      # Previewing the site before any of this is merged. `workflow_dispatch`
+      # is no help for that: its Run-workflow button only appears once the
+      # workflow exists on the default branch. Drop this line once it does.
+      - feature/napkin-host-extraction
   workflow_dispatch:
 
 permissions:
