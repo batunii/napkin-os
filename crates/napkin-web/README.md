@@ -60,6 +60,42 @@ GET  /api/t/{t}/events                         SSE
 ANY  /s/{token}/…                              the clan:// surface
 ```
 
+## Deploying it
+
+One container: the axum host, the shell, and the synthesis agent on the
+Messages API. No Claude Code CLI — a CLI login is one person's subscription,
+which is not what a shared host should be spending, so the image sets
+`NAPKIN_BACKEND=api` and the agent refuses to start without a key.
+
+```bash
+docker build -t napkin .
+docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-ant-... -v napkin:/data napkin
+# or: ANTHROPIC_API_KEY=sk-ant-... docker compose up --build
+```
+
+Fly is the shortest path to a link, and `fly.toml` is already here:
+
+```bash
+fly volumes create napkin_data --size 1
+fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+fly deploy
+```
+
+What a platform needs to know:
+
+| | |
+|---|---|
+| Port | `PORT` is honoured, and setting it binds `0.0.0.0` instead of loopback |
+| Health | `GET /api/healthz` — unauthenticated, no session needed |
+| State | everything durable is under `/data`; mount a volume or lose documents on redeploy |
+| TLS | set `NAPKIN_WEB_SECURE_COOKIE=1` when something terminates TLS in front |
+| Secrets | `ANTHROPIC_API_KEY` at run time only — `.dockerignore` keeps `engine/.env` out of the image |
+| Size | `--build-arg WITH_PDF=0` drops Chromium (~400 MB); HTML export still works and PDF export says why it can't |
+
+One machine at a time: a volume attaches to one machine, and sessions, sandbox
+tokens, export handles and the quota counter are in-process. Scaling out needs
+those moved to shared storage first — see **Not stateless yet**, below.
+
 ## Three things that are different from the desktop, and why
 
 **A document id is opaque.** `FsStore` makes a `DocId` a path, which is right on
@@ -99,3 +135,22 @@ NAPKIN_WEB_SEED=/path/to/templates cargo run -p napkin-web
 
 `NAPKIN_WEB_SEED` installs every template in a directory into each new
 workspace, so a first-time visitor lands on a launcher with something in it.
+
+## Not stateless yet
+
+Six things live in process memory, which is why this wants a container rather
+than a serverless function:
+
+| | |
+|---|---|
+| session cache, workspace map | fine to lose — the packed blob is the source of truth |
+| `Session.preview_html` | written by one request, read by another |
+| `Session.edit_mode` | written by the shell, polled by the app frame |
+| `TokenStore` | losing it invalidates every open app frame |
+| `ExportStore` + its temp file | a composed export would vanish before it is claimed |
+| `EventBus`, `Meter` | one process's broadcast, one process's counter |
+
+The first two go away with the two changes already worth making — composing
+`/document` server-side, and moving edit mode onto the postMessage channel the
+shell now has. The rest are small: sign the sandbox token instead of storing
+it, return export bytes directly, and put the meter in a shared store.

@@ -26,16 +26,30 @@ fn env_string(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
+/// Where to listen.
+///
+/// `NAPKIN_WEB_ADDR` wins when set. Otherwise `PORT` — which every container
+/// platform injects — means "you are in a container", so bind every interface
+/// rather than loopback, where nothing outside the container could reach us.
+fn listen_addr() -> SocketAddr {
+    if let Some(addr) = env_string("NAPKIN_WEB_ADDR") {
+        return addr.parse().expect("NAPKIN_WEB_ADDR must be host:port");
+    }
+    match env_string("PORT") {
+        Some(port) => format!("0.0.0.0:{port}")
+            .parse()
+            .expect("PORT must be a port number"),
+        None => "127.0.0.1:8080".parse().unwrap(),
+    }
+}
+
 impl Settings {
     fn from_env() -> Self {
         let data_root = env_string("NAPKIN_WEB_DATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("napkin-web-data"));
         Self {
-            addr: env_string("NAPKIN_WEB_ADDR")
-                .unwrap_or_else(|| "127.0.0.1:8080".into())
-                .parse()
-                .expect("NAPKIN_WEB_ADDR must be host:port"),
+            addr: listen_addr(),
             config_dir: env_string("NAPKIN_CONFIG_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| data_root.join("config")),

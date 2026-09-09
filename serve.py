@@ -14,7 +14,9 @@ Picks the backend for you — you never choose:
     synthesis agent, billed to your Claude subscription instead.
   * neither -> tells you the two ways to fix that, and exits.
 
-Override with NAPKIN_BACKEND=engine to force the formal pipeline.
+Override with NAPKIN_BACKEND=api to require the Messages API (what a deployment
+sets: no CLI fallback, and a missing key is fatal at boot), or
+NAPKIN_BACKEND=engine to force the formal pipeline.
 
 The knowledge needs no setup in any case: paraphrased pack digests are
 committed at engine/packs_dist/ and load automatically. (Vector retrieval via
@@ -82,9 +84,17 @@ ENGINE = ROOT / "engine" / "agent-server" / "server.py"
 def main() -> int:
     _load_env()
 
-    if os.environ.get("NAPKIN_BACKEND", "").strip().lower() == "engine":
+    backend = os.environ.get("NAPKIN_BACKEND", "").strip().lower()
+
+    if backend == "engine":
         print("[serve] NAPKIN_BACKEND=engine -> formal engine pipeline on :8787")
         return _run(ENGINE, BRIEF_LOOPS37="1", BRIEF_GOLDEN="1")
+
+    if backend == "api":
+        # What a deployment sets. The agent itself refuses to start without a
+        # usable key, so a misconfigured host fails immediately and loudly.
+        print("[serve] NAPKIN_BACKEND=api -> synthesis agent, Messages API only, on :8787")
+        return _run(AGENT)
 
     if _anthropic_credentials():
         if importlib.util.find_spec("anthropic") is None:

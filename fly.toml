@@ -1,0 +1,32 @@
+# One machine, one volume. `fly launch --copy-config` will reconcile app name
+# and region; everything below is the part that matters.
+app = "napkin-studio"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Fly terminates TLS in front of us, so the session cookie should say Secure.
+  NAPKIN_WEB_SECURE_COOKIE = "1"
+  NAPKIN_AGENT_CAP = "40"
+
+# The key never goes in this file:  fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_start_machines = true
+  # A volume attaches to exactly one machine, so do not let this scale out.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/api/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+# fly volumes create napkin_data --size 1
+[mounts]
+  source = "napkin_data"
+  destination = "/data"

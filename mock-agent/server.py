@@ -273,6 +273,11 @@ def _credentials() -> bool:
 
 HAS_CREDENTIALS = _credentials()
 USE_API = HAS_CREDENTIALS and _sdk_installed()
+# Deployments set NAPKIN_BACKEND=api: the Claude Code CLI is a developer's
+# machine talking to their own subscription, and has no place on a shared host.
+# In this mode there is no CLI fallback and a missing key is fatal at boot,
+# which is where you want to find out — not on someone's first draft.
+API_ONLY = os.environ.get("NAPKIN_BACKEND", "").strip().lower() == "api"
 BACKEND_LABEL = f"api {api_model()}" if USE_API else f"cli {MODEL}"
 
 _CLIENT = [None]
@@ -366,10 +371,12 @@ def synthesize(prefix: str, suffix: str, task: str = "draft_brief") -> dict:
         try:
             return call_claude_api(prefix, suffix, task)
         except Exception as e:
-            if not shutil.which("claude"):
+            if API_ONLY or not shutil.which("claude"):
                 raise
             print(f"  … API call failed ({e.__class__.__name__}: {e}) "
                   "— falling back to the Claude Code CLI", flush=True)
+    if API_ONLY:
+        raise RuntimeError("NAPKIN_BACKEND=api but no usable Anthropic credentials")
     return call_claude(prefix + suffix)
 
 
@@ -455,7 +462,9 @@ def retrieve_grounding(gist: str, k: int = 6, task: str = "draft_brief"):
     rules for a brief don't change field-to-field, and re-running the agent loop
     would add ~20s to what should be the app's fastest interaction."""
     global _LAST_FINDINGS
-    if RETRIEVE != "agentic" or not CORPUS_DIR:
+    # Agentic retrieval drives Read/Grep/Glob through the CLI; API-only hosts
+    # run on the digests, which is the default anyway.
+    if RETRIEVE != "agentic" or not CORPUS_DIR or API_ONLY:
         return [], {}
     if task != "draft_brief":
         return (_LAST_FINDINGS, {"cached": True}) if _LAST_FINDINGS else ([], {})
@@ -722,7 +731,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if API_ONLY and not USE_API:
+        missing = ("the `anthropic` package (pip install -r mock-agent/requirements.txt)"
+                   if HAS_CREDENTIALS else
+                   "ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN, or an `ant auth login` profile)")
+        sys.exit(f"NAPKIN_BACKEND=api, but {missing} is missing. Refusing to start.")
     print(f"Napkin agent on http://localhost:{PORT}  ({BACKEND_LABEL})")
+    if API_ONLY:
+        print("  NAPKIN_BACKEND=api — no CLI fallback, digests only.")
     if HAS_CREDENTIALS and not _sdk_installed():
         print("  ! credentials found but the anthropic package is not installed —"
               " falling back to the CLI.")

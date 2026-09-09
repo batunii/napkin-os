@@ -33,6 +33,9 @@ type Ctx = State<Arc<AppCtx>>;
 
 pub fn router() -> Router<Arc<AppCtx>> {
     Router::new()
+        // Unauthenticated on purpose: a platform health check has no session,
+        // and this must answer before the first visitor ever arrives.
+        .route("/healthz", get(|| async { "ok" }))
         .route("/session", get(session))
         .route("/t/{tenant}/apps", get(list_apps))
         .route("/t/{tenant}/apps/from/{doc}", post(install_from_document))

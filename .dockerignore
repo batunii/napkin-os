@@ -1,0 +1,16 @@
+# Build outputs and local state — never what the image should be built from.
+target/
+app/node_modules/
+app/dist/
+dist/
+napkin-web-data/
+**/__pycache__/
+.git/
+.github/
+# Never let a local key reach the image; it is passed at run time.
+engine/.env
+*.clan
+!app/templates/**/*.clan
+test-sandbox/
+docs/
+*.pdf
