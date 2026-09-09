@@ -151,6 +151,13 @@ function printHtml(html: string) {
   frame.style.cssText =
     'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0'
   frame.onload = () => {
+    // Inserting an iframe fires `load` once for its initial about:blank, before
+    // any content exists. Printing on that is a blank page — and a convincing
+    // one, because the srcdoc attribute is already correct by then, so it looks
+    // right to everything except the printer. Assigning srcdoc before insertion
+    // avoids the blank load; this guard makes sure of it.
+    const doc = frame.contentDocument
+    if (!doc?.body || doc.body.childElementCount === 0) return
     try {
       frame.contentWindow?.focus()
       frame.contentWindow?.print()
@@ -159,9 +166,9 @@ function printHtml(html: string) {
       setTimeout(() => frame.remove(), 60_000)
     }
   }
-  document.body.appendChild(frame)
-  // srcdoc, not document.write: it fires `load` reliably, after we are listening.
+  // Before insertion, so the only load event is the document we care about.
   frame.srcdoc = html
+  document.body.appendChild(frame)
 }
 
 function deliverExport(kind: string, filename: string, html: string) {
