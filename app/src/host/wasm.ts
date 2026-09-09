@@ -133,6 +133,39 @@ function injectFirst(html: string, script: string): string {
   return script + html
 }
 
+/**
+ * Hand a composed document to the user.
+ *
+ * There is no headless browser here, so a PDF is the browser's own print
+ * dialog. It prints from a hidden iframe rather than a popup: `window.open`
+ * must be called synchronously inside the click to survive a popup blocker,
+ * and composing the document takes an `await` — the gesture is spent by the
+ * time we would ask. An iframe needs no gesture at all.
+ */
+function printHtml(html: string) {
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.cssText =
+    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+  frame.onload = () => {
+    try {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    } finally {
+      // The dialog is modal and the frame must outlive it; a minute is plenty.
+      setTimeout(() => frame.remove(), 60_000)
+    }
+  }
+  document.body.appendChild(frame)
+  // srcdoc, not document.write: it fires `load` reliably, after we are listening.
+  frame.srcdoc = html
+}
+
+function deliverExport(kind: string, filename: string, html: string) {
+  if (kind === 'pdf') printHtml(html)
+  else download(new TextEncoder().encode(html), `${filename}.html`)
+}
+
 export const wasmHost: Host = {
   openClan: async path => adopt((await boot()).open(path) as OpenResult),
   openHome: async () => adopt((await boot()).openHome() as OpenResult),
@@ -224,6 +257,22 @@ export const wasmHost: Host = {
   handleFromFrame: async (path, query, body) => {
     const resp = (await boot()).handle(path, query, body) as RawResponse
     dispatch(resp)
+    // An app that builds its own print layout pushes it here. On a server the
+    // host stashes it and the shell fetches it back; here the shell is holding
+    // it already, so deliver it and tell the app it is done.
+    if (path === '/export' && resp.status === 200) {
+      const out = JSON.parse(new TextDecoder().decode(asBytes(resp.body))) as {
+        kind: string
+        filename: string
+        html: string
+      }
+      deliverExport(out.kind, out.filename, out.html)
+      return {
+        status: 200,
+        headers: [['content-type', 'application/json']] as [string, string][],
+        body: new TextEncoder().encode('{"ok":true}'),
+      }
+    }
     // serde-wasm-bindgen renders `Vec<u8>` as a plain Array of numbers, and a
     // Response built from one stringifies it — "91,34,110..." — so the app's
     // `.json()` throws and, because apps catch their own fetch errors, nothing
@@ -251,17 +300,7 @@ export const wasmHost: Host = {
       html: string
       filename: string
     }
-    // No headless browser here: HTML downloads, PDF is the browser's own
-    // print dialog on the composed document.
-    if (kind === 'pdf') {
-      const w = window.open('', '_blank')
-      if (!w) throw new Error('Allow pop-ups to export a PDF, or export HTML instead.')
-      w.document.write(html)
-      w.document.close()
-      w.addEventListener('load', () => w.print())
-      return
-    }
-    download(new TextEncoder().encode(html), `${filename}.html`)
+    deliverExport(kind, filename, html)
   },
   finishExport: async (_kind, _handle, dest) => dest,
   pickSaveDestination: async (defaultName, ext) => `${defaultName}.${ext}`,

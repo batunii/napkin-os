@@ -43,7 +43,13 @@ struct JsEvent {
 }
 
 fn to_js<T: serde::Serialize>(value: &T) -> JsValue {
-    serde_wasm_bindgen::to_value(value).unwrap_or(JsValue::NULL)
+    // serde-wasm-bindgen renders every Rust map — including a
+    // `serde_json::Value` object — as a JS `Map` by default. Destructuring one
+    // yields `undefined` rather than throwing, so the mistake travels: an
+    // export whose body is the literal string "undefined" prints exactly that.
+    // Structs are unaffected, which is what makes it easy to miss.
+    let plain = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    value.serialize(&plain).unwrap_or(JsValue::NULL)
 }
 
 fn err(e: impl std::fmt::Display) -> JsValue {
