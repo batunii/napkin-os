@@ -2,12 +2,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// The host this build talks to. One import for the whole shell; swapping in an
-// HTTP implementation for the web build is a change to this file alone.
+// The host this shell is running against, decided at load.
+//
+// One bundle serves both: inside the desktop app Tauri has already installed
+// its bridge on `window` by the time this module is evaluated, and its absence
+// means we are a page served by `napkin-web`.
 
+import { httpHost } from './http'
 import { tauriHost } from './tauri'
 import type { Host } from './types'
 
-export const host: Host = tauriHost
+export const isDesktop = '__TAURI_INTERNALS__' in window
+
+export const host: Host = isDesktop ? tauriHost : httpHost
 
 export type * from './types'

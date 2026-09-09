@@ -16,6 +16,7 @@ struct Settings {
     data_root: PathBuf,
     config_dir: PathBuf,
     static_dir: Option<PathBuf>,
+    seed_dir: Option<PathBuf>,
     sandbox_origin: Option<String>,
     agent_cap: u32,
     secure_cookie: bool,
@@ -44,6 +45,7 @@ impl Settings {
             // Unset means "same origin as the shell". Setting it is what moves
             // app frames onto their own hostname; nothing else changes.
             sandbox_origin: env_string("NAPKIN_SANDBOX_ORIGIN"),
+            seed_dir: env_string("NAPKIN_WEB_SEED").map(PathBuf::from),
             agent_cap: env_string("NAPKIN_AGENT_CAP")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(40),
@@ -65,12 +67,15 @@ async fn main() {
     let settings = Settings::from_env();
     std::fs::create_dir_all(&settings.data_root).expect("cannot create the data directory");
 
-    let ctx = Arc::new(AppCtx::new(
-        settings.data_root.clone(),
-        Arc::new(FsConfig::new(settings.config_dir.clone())),
-        settings.sandbox_origin.clone(),
-        settings.agent_cap,
-    ));
+    let ctx = Arc::new(
+        AppCtx::new(
+            settings.data_root.clone(),
+            Arc::new(FsConfig::new(settings.config_dir.clone())),
+            settings.sandbox_origin.clone(),
+            settings.agent_cap,
+        )
+        .with_seed(settings.seed_dir.clone()),
+    );
 
     let app = napkin_web::router(ctx, settings.static_dir.as_deref(), settings.secure_cookie);
 
@@ -83,6 +88,7 @@ async fn main() {
         data = %settings.data_root.display(),
         shell = %settings.static_dir.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "(none built)".into()),
         agent_cap = settings.agent_cap,
+        seed = %settings.seed_dir.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".into()),
         "Napkin Studio OS — web",
     );
 

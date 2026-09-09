@@ -76,8 +76,26 @@ sends no credentials and reaches exactly the one document its token names, which
 is what lets it move to its own origin without anything else changing: set
 `NAPKIN_SANDBOX_ORIGIN`.
 
-## Not here yet
+## How an app in a .clan reaches the API
 
-The shell still talks to Tauri — `app/src/host/` has the contract and only a
-desktop implementation. An `HttpHost` against this API, and the `clan://` fetch
-shim that lets unmodified app HTML run in a browser frame, are the next steps.
+Apps compute their base once, at parse time:
+
+```js
+var clanScheme = navigator.userAgent.includes('Windows')
+  ? 'http://clan.localhost' : 'clan://localhost';
+```
+
+Neither form exists in a browser. `app/src/host/http.ts` rewrites both to the
+frame's own `/s/{token}` URL as the page is composed, and patches `fetch` for
+anything built later. Unmodified `.clan` apps — including ones already shipped —
+run here as they are.
+
+## Demo
+
+```bash
+cd app && npm run build
+NAPKIN_WEB_SEED=/path/to/templates cargo run -p napkin-web
+```
+
+`NAPKIN_WEB_SEED` installs every template in a directory into each new
+workspace, so a first-time visitor lands on a launcher with something in it.

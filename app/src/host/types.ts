@@ -112,6 +112,12 @@ export interface Host {
    * third-party app's JS can never touch the shell's own.
    */
   clanOrigin(): string
+  /**
+   * Last pass over a composed app page before the frame loads it. Identity on
+   * the desktop, where `clan://` is a real scheme; on the web it rewrites that
+   * base to the frame's own URL so app HTML runs unmodified.
+   */
+  prepareAppHtml(html: string): string
 
   // ── The app library ───────────────────────────────────────────────────────
   listApps(): Promise<InstalledApp[]>

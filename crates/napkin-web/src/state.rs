@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use napkin_host::{DocId, DocStore, HostConfig, HostResult, Session};
@@ -76,6 +76,9 @@ impl Workspace {
 
 pub struct AppCtx {
     root: PathBuf,
+    /// Templates every new workspace starts with. A demo whose launcher is
+    /// empty demonstrates nothing; a deployment can leave this unset.
+    seed: Option<PathBuf>,
     pub config: Arc<dyn HostConfig>,
     pub tokens: TokenStore,
     pub events: EventBus,
@@ -96,6 +99,7 @@ impl AppCtx {
     ) -> Self {
         Self {
             root,
+            seed: None,
             config,
             tokens: TokenStore::default(),
             events: EventBus::default(),
@@ -106,15 +110,47 @@ impl AppCtx {
         }
     }
 
+    /// Templates installed into every new workspace.
+    pub fn with_seed(mut self, seed: Option<PathBuf>) -> Self {
+        self.seed = seed;
+        self
+    }
+
     pub fn workspace(&self, tenant: &TenantId) -> Arc<Workspace> {
-        self.workspaces
-            .lock()
-            .unwrap()
-            .entry(tenant.clone())
-            .or_insert_with(|| {
-                let root = self.root.join(tenant.as_str());
-                Arc::new(Workspace::new(Arc::new(TenantStore::new(root))))
-            })
-            .clone()
+        let mut workspaces = self.workspaces.lock().unwrap();
+        if let Some(existing) = workspaces.get(tenant) {
+            return existing.clone();
+        }
+        let store: Arc<dyn DocStore> = Arc::new(TenantStore::new(self.root.join(tenant.as_str())));
+        if let Some(seed) = &self.seed {
+            seed_library(&*store, seed);
+        }
+        let workspace = Arc::new(Workspace::new(store));
+        workspaces.insert(tenant.clone(), workspace.clone());
+        workspace
+    }
+}
+
+/// Install every template in `dir` into a fresh workspace. Best effort: a file
+/// that is not a template app is skipped, not fatal — this is convenience, and
+/// a broken seed must not stop someone from using the service.
+fn seed_library(store: &dyn DocStore, dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        tracing::warn!(dir = %dir.display(), "seed directory is not readable");
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("clan") {
+            continue;
+        }
+        match std::fs::read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| {
+                napkin_host::library::install_app(store, bytes).map_err(|e| e.to_string())
+            }) {
+            Ok(app) => tracing::info!(app = %app.app_id, "seeded"),
+            Err(e) => tracing::warn!(file = %path.display(), error = %e, "seed skipped"),
+        }
     }
 }

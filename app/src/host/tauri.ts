@@ -41,6 +41,8 @@ export const tauriHost: Host = {
   updatePreviewHtml: html => invoke('update_preview_html', { html }),
   savePatch: (id, content) => invoke('save_patch', { id, content }),
   clanOrigin: clanScheme,
+  // `clan://` is a real scheme here; nothing to rewrite.
+  prepareAppHtml: html => html,
 
   listApps: () => invoke<InstalledApp[]>('list_apps'),
   installApp: srcPath => invoke<InstalledApp>('install_app', { srcPath }),

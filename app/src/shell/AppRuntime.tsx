@@ -89,7 +89,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 </html>`
     }
 
-    host.updatePreviewHtml(fullHtml).then(() => {
+    host.updatePreviewHtml(host.prepareAppHtml(fullHtml)).then(() => {
       setIframeSrc(host.clanOrigin() + '/document?t=' + Date.now())
     }).catch(console.error)
   }, [htmlContent, hasHumanView, renderModel])
