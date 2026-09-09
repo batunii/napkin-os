@@ -13,8 +13,18 @@ clan-sdk = { path = "../clan-sdk" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
-tempfile = { workspace = true }
+
+# Everything below is native-only. A browser build drops all of it: there is no
+# filesystem to write a temp file to, no process to spawn a renderer in, and the
+# inference call belongs to the page (it holds the user's key), not to the host.
+tempfile = { workspace = true, optional = true }
 # AI inference proxy (clan://api-proxy). rustls avoids OpenSSL/AppImage pain.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 # Extract text from attached PDFs so the agent sees document contents, not just names.
-pdf-extract = "0.7"
+pdf-extract = { version = "0.7", optional = true }
+
+[features]
+default = ["native"]
+# A host with an OS underneath it: filesystem storage, subprocess export, and
+# outbound HTTP. Turn it off for wasm32.
+native = ["dep:tempfile", "dep:reqwest", "dep:pdf-extract"]

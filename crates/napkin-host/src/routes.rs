@@ -17,8 +17,10 @@ use serde_json::Value;
 use crate::config::{agent_base_url, HostConfig};
 use crate::error::HostError;
 use crate::event::HostEvent;
+#[cfg(feature = "native")]
 use crate::export::write_temp_html;
 use crate::library::{create_instance, scan_apps, scan_recent};
+#[cfg(feature = "native")]
 use crate::proxy::api_proxy;
 use crate::session::{Session, TRUSTED_CAPABILITIES};
 
@@ -138,8 +140,11 @@ pub fn query_param(query: &str, key: &str) -> Option<String> {
 
 /// True for the routes that must be awaited. The desktop shell spawns these so
 /// the WebView loop never blocks; everything else it answers inline.
+///
+/// Without the `native` feature there are none: the one network route belongs
+/// to the page, which holds the credentials, and never reaches the host.
 pub fn is_async(path: &str) -> bool {
-    path == "/api-proxy"
+    cfg!(feature = "native") && path == "/api-proxy"
 }
 
 /// Dispatch any route, including the async ones.
@@ -148,6 +153,7 @@ pub async fn handle_async(
     cfg: &dyn HostConfig,
     req: HostRequest,
 ) -> HostResponse {
+    #[cfg(feature = "native")]
     if req.path == "/api-proxy" {
         return match api_proxy(session, cfg, &req.body_str()).await {
             Ok(v) => HostResponse::json(200, &v),
@@ -162,7 +168,12 @@ pub async fn handle_async(
 pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> HostResponse {
     let path = req.path.as_str();
     match path {
+        #[cfg(feature = "native")]
         "/api-proxy" => HostResponse::error(500, "/api-proxy must be dispatched asynchronously"),
+        // In a browser build the page owns inference — it has the credentials
+        // and the network — so it answers this before the host ever sees it.
+        #[cfg(not(feature = "native"))]
+        "/api-proxy" => HostResponse::error(501, "inference is handled by the page in this build"),
 
         "/edit-mode" => HostResponse::new(
             200,
@@ -279,13 +290,28 @@ pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> Host
             if html.trim().is_empty() {
                 return HostResponse::error(400, "missing html");
             }
-            match write_temp_html(html) {
-                Ok(tmp) => HostResponse::ok_json().with_event(HostEvent::ExportRequest {
-                    kind: kind.to_string(),
-                    filename: filename.to_string(),
-                    tmp_html: tmp,
-                }),
-                Err(e) => HostResponse::error(500, &e.message),
+            // Native: stash it and let the shell pick a destination.
+            #[cfg(feature = "native")]
+            {
+                match write_temp_html(html) {
+                    Ok(tmp) => HostResponse::ok_json().with_event(HostEvent::ExportRequest {
+                        kind: kind.to_string(),
+                        filename: filename.to_string(),
+                        tmp_html: tmp,
+                    }),
+                    Err(e) => HostResponse::error(500, &e.message),
+                }
+            }
+            // Browser: there is nowhere to stash it, so hand the document back
+            // and let the page turn it into a download.
+            #[cfg(not(feature = "native"))]
+            {
+                HostResponse::json(
+                    200,
+                    &serde_json::json!({
+                        "ok": true, "kind": kind, "filename": filename, "html": html,
+                    }),
+                )
             }
         }
 

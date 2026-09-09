@@ -17,16 +17,20 @@
 pub mod config;
 pub mod error;
 pub mod event;
+#[cfg(feature = "native")]
 pub mod export;
 pub mod html;
 pub mod library;
 pub mod log;
+#[cfg(feature = "native")]
 pub mod proxy;
 pub mod routes;
 pub mod session;
 pub mod store;
 
-pub use config::{agent_base_url, resolve_proxy, FsConfig, HostConfig, NoConfig, WorkspaceConfig};
+#[cfg(feature = "native")]
+pub use config::FsConfig;
+pub use config::{agent_base_url, resolve_proxy, HostConfig, NoConfig, WorkspaceConfig};
 pub use error::{HostError, HostResult};
 pub use event::HostEvent;
 pub use library::{
@@ -34,4 +38,6 @@ pub use library::{
 };
 pub use routes::{handle, handle_async, is_async, HostRequest, HostResponse};
 pub use session::{AppMeta, LineageInfo, ManifestInfo, OpenResult, Session};
-pub use store::{DocId, DocStore, FsStore};
+#[cfg(feature = "native")]
+pub use store::FsStore;
+pub use store::{DocId, DocStore};

@@ -4,8 +4,13 @@
 
 //! File logger (writes to /tmp/clan-debug.log).
 
+#[cfg(not(feature = "native"))]
+pub fn log(_msg: &str) {}
+
+#[cfg(feature = "native")]
 use std::io::Write;
 
+#[cfg(feature = "native")]
 pub fn log(msg: &str) {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

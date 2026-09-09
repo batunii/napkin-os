@@ -171,3 +171,31 @@ jobs:
           name: conformance-report
           path: conformance.json
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # The browser build. napkin-host compiles to wasm32 with `native` off — no
+  # filesystem, no subprocess, no outbound HTTP — which is what lets the shell
+  # run with no server at all. It is easy to break by accident: one `std::fs`
+  # in a shared module and the browser build is gone, while every native build
+  # stays green. So it is checked here.
+  # ---------------------------------------------------------------------------
+  wasm:
+    name: Browser — wasm32 host
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
+
+      - name: Build the SDK and the host for the browser
+        run: |
+          cargo build -p clan-sdk --target wasm32-unknown-unknown
+          cargo build -p napkin-host --no-default-features --target wasm32-unknown-unknown

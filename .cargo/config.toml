@@ -1,0 +1,5 @@
+# getrandom 0.3 gates its browser backend behind a cfg flag as well as a
+# feature — the feature alone is not enough, and the error says so. This only
+# applies when building for the browser; every other target is untouched.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

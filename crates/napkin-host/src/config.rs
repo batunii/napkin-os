@@ -9,6 +9,7 @@
 //! resolves endpoint/model/secret from per-user config and makes the
 //! authenticated call.
 
+#[cfg(feature = "native")]
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -41,16 +42,19 @@ pub trait HostConfig: Send + Sync {
 }
 
 /// Config from `<config_dir>/workspace.yaml` and `<config_dir>/secrets.yaml`.
+#[cfg(feature = "native")]
 pub struct FsConfig {
     config_dir: PathBuf,
 }
 
+#[cfg(feature = "native")]
 impl FsConfig {
     pub fn new(config_dir: PathBuf) -> Self {
         Self { config_dir }
     }
 }
 
+#[cfg(feature = "native")]
 impl HostConfig for FsConfig {
     fn workspace(&self) -> Option<WorkspaceConfig> {
         let bytes = std::fs::read(self.config_dir.join("workspace.yaml")).ok()?;

@@ -752,6 +752,7 @@ fn extract_text(name: &str, bytes: &[u8]) -> Option<String> {
         "txt" | "text" | "md" | "markdown" | "csv" | "tsv" | "json" | "yaml" | "yml" | "log" => {
             String::from_utf8_lossy(bytes).into_owned()
         }
+        #[cfg(feature = "native")]
         "pdf" => {
             let owned = bytes.to_vec();
             std::panic::catch_unwind(move || pdf_extract::extract_text_from_mem(&owned).ok())

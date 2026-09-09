@@ -12,7 +12,9 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::error::{HostError, HostResult};
+#[cfg(feature = "native")]
+use crate::error::HostError;
+use crate::error::HostResult;
 
 /// Opaque identity of one document within a store.
 ///
@@ -81,11 +83,13 @@ pub trait DocStore: Send + Sync {
 }
 
 /// The desktop store: the filesystem, plus the two well-known library dirs.
+#[cfg(feature = "native")]
 pub struct FsStore {
     data_dir: PathBuf,
     apps_dir: PathBuf,
 }
 
+#[cfg(feature = "native")]
 impl FsStore {
     /// `data_dir` is the per-user app-data directory. The app library defaults
     /// to `<data_dir>/apps` unless `NAPKIN_APPS_DIR` overrides it.
@@ -109,10 +113,12 @@ impl FsStore {
     }
 }
 
+#[cfg(feature = "native")]
 fn path_of(id: &DocId) -> PathBuf {
     PathBuf::from(id.as_str())
 }
 
+#[cfg(feature = "native")]
 impl DocStore for FsStore {
     fn read(&self, id: &DocId) -> HostResult<Vec<u8>> {
         std::fs::read(path_of(id)).map_err(|e| HostError::not_found(e.to_string()))

@@ -24,3 +24,13 @@ lol_html.workspace = true
 ed25519-dalek.workspace = true
 rand_core.workspace = true
 base64.workspace = true
+
+# Browser builds. Randomness and the clock come from the host environment
+# rather than the OS, and each crate needs telling. getrandom 0.3 additionally
+# needs a cfg flag, which is why .cargo/config.toml exists; two majors are in
+# the tree (0.2 arrives via ed25519-dalek's rand_core), so both need enabling.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+uuid = { workspace = true, features = ["js"] }
+chrono = { workspace = true, features = ["wasmbind"] }
