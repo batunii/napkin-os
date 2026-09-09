@@ -24,7 +24,10 @@ sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
-jsonschema = "0.26"
+# default features pull resolve-http -> reqwest -> hyper -> tokio, which is a
+# non-starter for wasm32 and dead weight everywhere else: CLAN schemas are
+# embedded in the archive, so no $ref is ever resolved over the network.
+jsonschema = { version = "0.26", default-features = false }
 lol_html = "2.1.0"
 thiserror = "2"
 # App signing (registered-app trust gate): asymmetric ed25519 signatures.
