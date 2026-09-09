@@ -778,6 +778,14 @@
   document.getElementById('exHtml').addEventListener('click',function(){ doExport('html'); });
   document.getElementById('exPdf').addEventListener('click',function(){ doExport('pdf'); });
 
+  // The shell's Export offers us the job before composing one from our markup —
+  // which, since this view renders from data at runtime, would be the empty
+  // intake form. Claim it and produce the real report instead.
+  window.addEventListener('clan:export',function(e){
+    e.preventDefault();
+    doExport((e.detail&&e.detail.kind)==='html'?'html':'pdf');
+  });
+
   // ---------- footer actions ----------
   document.getElementById('newDraft').addEventListener('click',function(){ forceIntake=true; render(); });
   document.getElementById('saveBtn').addEventListener('click',function(){ if(window.clan&&window.clan.requestSave) window.clan.requestSave(); toast('Saving a copy of this .clan…'); });

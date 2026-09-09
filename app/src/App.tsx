@@ -7,6 +7,7 @@ import { host } from './host'
 import type { InstalledApp, OpenResult } from './host'
 import ApiKeyButton from './components/ApiKeyButton'
 import ThemeToggle from './components/ThemeToggle'
+import { askAppToExport } from './shell/appExport'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
 import AppRuntime from './shell/AppRuntime'
@@ -110,6 +111,9 @@ export default function App() {
   // save dialog + finish_export. Works for every app, no in-view builder needed.
   const exportCurrent = useCallback(async (kind: 'html' | 'pdf' = 'pdf') => {
     if (!runningRef.current) return
+    // An app that renders its own view knows how it should look on paper; the
+    // host can only compose from the markup, which for such an app is empty.
+    if (await askAppToExport(kind)) return
     await host.exportCurrent(kind, false, false).catch(err => {
       setToast({ title: 'Export failed', body: String(err) })
       setTimeout(() => setToast(null), 5000)

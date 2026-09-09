@@ -7,6 +7,7 @@ import { host } from '../host'
 import type { ManifestInfo } from '../host'
 import { runInference } from '../agent/inference'
 import { getTheme, onThemeChange } from '../theme'
+import { setExportFrame } from './appExport'
 import { LEGACY_EDIT_BRIDGE } from '../bridge/legacyEditBridge'
 import { STRUCTURED_EDIT_BRIDGE } from '../bridge/structuredEditBridge'
 
@@ -203,7 +204,10 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
       style={{ width: '100%', flex: 1, border: 'none', background: 'var(--bg)' }}
       sandbox="allow-scripts allow-popups"
       title={manifest.title}
-      onLoad={() => postScheme(getTheme())}
+      onLoad={() => {
+        postScheme(getTheme())
+        setExportFrame(iframeRef.current?.contentWindow ?? null)
+      }}
     />
   )
 }

@@ -161,6 +161,18 @@ export const STRUCTURED_EDIT_BRIDGE = `
     if (e.source !== window.parent) return;
     var m = e.data;
     if (m && m.type === 'clan:colorscheme') applyColorScheme(m.scheme);
+    // The shell is about to compose an export from this document's markup,
+    // which for a client-rendered app is the empty shell it started as. Offer
+    // the app the job first: call preventDefault() on clan:export to take it,
+    // then deliver through clan.exportDoc as usual.
+    if (m && m.type === 'clan:export-request') {
+      var ev = new CustomEvent('clan:export', {
+        detail: { kind: m.kind }, cancelable: true,
+      });
+      var claimed = !window.dispatchEvent(ev);
+      window.parent.postMessage(
+        { type: 'clan:export-ack', id: m.id, handled: claimed }, '*');
+    }
   });
 
   // --- Declarative data-clan-field editing ---
