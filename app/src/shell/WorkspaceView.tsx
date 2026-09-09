@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { PoweredByClan } from '../brand/PoweredByClan'
-import type { ManifestInfo } from '../App'
+import type { ManifestInfo } from '../host'
 
 interface Props {
   manifest: ManifestInfo

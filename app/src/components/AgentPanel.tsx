@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { host } from '../host'
 
 interface Props { onClose: () => void }
 
@@ -35,9 +35,9 @@ export default function AgentPanel({ onClose }: Props) {
   async function load(t: Tab) {
     setLoading(true)
     try {
-      const cmd = t === 'chain' ? 'get_chain' : t === 'state' ? 'get_agent_state' : 'get_context'
-      const data = await invoke<string>(cmd)
-      setContent(data)
+      setContent(
+        await (t === 'chain' ? host.getChain() : t === 'state' ? host.getAgentState() : host.getContext()),
+      )
     } catch (e) {
       setContent(`Error: ${e}`)
     } finally {

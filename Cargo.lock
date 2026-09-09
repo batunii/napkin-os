@@ -583,17 +583,13 @@ dependencies = [
 name = "clan-app"
 version = "1.2.1"
 dependencies = [
- "clan-sdk",
- "pdf-extract",
- "reqwest 0.12.28",
+ "napkin-host",
  "serde",
  "serde_json",
- "serde_yaml",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
- "tempfile",
 ]
 
 [[package]]
@@ -2481,6 +2477,19 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "napkin-host"
+version = "1.2.1"
+dependencies = [
+ "clan-sdk",
+ "pdf-extract",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
 ]
 
 [[package]]

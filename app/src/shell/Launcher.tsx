@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useRef, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { host } from '../host'
 import { NapkinMark } from '../brand/NapkinMark'
 import { PoweredByClan } from '../brand/PoweredByClan'
 import type { InstalledApp } from './types'
@@ -90,7 +90,7 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    invoke<string>('agent_endpoint').then(setEndpoint).catch(() => {})
+    host.agentEndpoint().then(setEndpoint).catch(() => {})
   }, [])
 
   function autoGrow() {
@@ -106,7 +106,7 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
     setSending(true)
     setResult(null)
     try {
-      const res = await invoke<{ ok: boolean; status: number; endpoint: string; data: unknown }>('agent_prompt', { text })
+      const res = (await host.agentPrompt(text)) as { ok: boolean; status: number; endpoint: string; data: unknown }
       const body = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2)
       setResult({ text: res.ok ? body : `agent returned ${res.status}\n${body}`, error: !res.ok })
     } catch (e) {

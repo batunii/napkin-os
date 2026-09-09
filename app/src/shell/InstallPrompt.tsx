@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { PoweredByClan } from '../brand/PoweredByClan'
-import type { OpenResult } from '../App'
+import type { OpenResult } from '../host'
 
 interface Props {
   result: OpenResult

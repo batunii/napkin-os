@@ -3,9 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-import type { ManifestInfo } from '../App'
+import { host } from '../host'
+import type { ManifestInfo } from '../host'
 import { LEGACY_EDIT_BRIDGE } from '../bridge/legacyEditBridge'
 import { STRUCTURED_EDIT_BRIDGE } from '../bridge/structuredEditBridge'
 
@@ -31,7 +30,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
   useEffect(() => { editModeRef.current = editMode }, [editMode])
 
   const sendEditMode = useCallback((active: boolean) => {
-    invoke('set_edit_mode', { active }).catch(console.error)
+    host.setEditMode(active).catch(console.error)
   }, [])
 
   useEffect(() => { sendEditMode(editMode) }, [editMode, sendEditMode])
@@ -39,7 +38,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
   // Legacy views save HTML-fragment patches; the backend echoes a
   // clan-patch-saved event. The edit is already in the DOM — don't reload.
   useEffect(() => {
-    const unlisten = listen('clan-patch-saved', () => {})
+    const unlisten = host.on('clan-patch-saved', () => {})
     return () => { unlisten.then(f => f()) }
   }, [])
 
@@ -90,9 +89,8 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 </html>`
     }
 
-    const clanScheme = window.navigator.userAgent.includes('Windows') ? 'http://clan.localhost' : 'clan://localhost'
-    invoke('update_preview_html', { html: fullHtml }).then(() => {
-      setIframeSrc(clanScheme + '/document?t=' + Date.now())
+    host.updatePreviewHtml(fullHtml).then(() => {
+      setIframeSrc(host.clanOrigin() + '/document?t=' + Date.now())
     }).catch(console.error)
   }, [htmlContent, hasHumanView, renderModel])
 

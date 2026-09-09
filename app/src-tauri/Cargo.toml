@@ -13,10 +13,5 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
-clan-sdk = { path = "../../crates/clan-sdk" }
-tempfile = "3"
-# AI inference proxy (clan://api-proxy). rustls avoids OpenSSL/AppImage pain.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-# Extract text from attached PDFs so the agent sees document contents, not just names.
-pdf-extract = "0.7"
+# Every host behaviour lives here; this crate is the Tauri adapter around it.
+napkin-host = { path = "../../crates/napkin-host" }

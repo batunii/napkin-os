@@ -1,0 +1,20 @@
+[package]
+name = "napkin-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Host logic for Napkin Studio OS — the clan:// API surface, app library and document session, independent of any shell."
+
+[dependencies]
+clan-sdk = { path = "../clan-sdk" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tempfile = { workspace = true }
+# AI inference proxy (clan://api-proxy). rustls avoids OpenSSL/AppImage pain.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Extract text from attached PDFs so the agent sees document contents, not just names.
+pdf-extract = "0.7"

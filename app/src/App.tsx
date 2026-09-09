@@ -3,50 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { host } from './host'
+import type { InstalledApp, OpenResult } from './host'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
 import AppRuntime from './shell/AppRuntime'
 import InstallPrompt from './shell/InstallPrompt'
-import type { InstalledApp, RunningApp, Screen } from './shell/types'
+import type { RunningApp, Screen } from './shell/types'
 import './index.css'
-
-export interface AppMeta {
-  name: string
-  app_id: string
-  version: string
-  icon?: string | null
-}
-
-export interface ManifestInfo {
-  title: string
-  id: string
-  version: string
-  created_at: string
-  updated_at: string
-  document_type?: string
-  sha256: string
-  file_count: number
-  lineage?: {
-    parent_id: string
-    parent_uri: string
-    parent_sha256?: string
-    delta: string
-  }
-  app?: AppMeta
-}
-
-export interface OpenResult {
-  path: string
-  manifest: ManifestInfo
-  validation: string
-  has_human_view: boolean
-  render_model: 'authored' | 'legacy'
-  is_template: boolean
-  trusted: boolean
-}
 
 // Theme keys an immersive app may recolor → CSS variables on the shell root.
 const THEME_VARS: Record<string, string> = {
@@ -78,15 +42,15 @@ export default function App() {
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null)
 
   const refreshApps = useCallback(async () => {
-    try { setInstalled(await invoke<InstalledApp[]>('list_apps')) } catch (e) { console.error(e) }
+    try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
   }, [])
 
   // Open the home CLAN app as the current document and render it.
   const openHome = useCallback(async () => {
     resetTheme() // home and other apps use the default Napkin theme
     try {
-      const open = await invoke<OpenResult>('open_home')
-      const html = open.has_human_view ? await invoke<string>('get_human_html') : ''
+      const open = await host.openHome()
+      const html = open.has_human_view ? await host.getHumanHtml() : ''
       setHome({ open, html })
     } catch (e) {
       console.error('open_home failed', e)
@@ -98,7 +62,7 @@ export default function App() {
 
   const runArtifact = useCallback(async (open: OpenResult) => {
     resetTheme() // clear any prior app's theme before this one (re)applies its own
-    const html = open.has_human_view ? await invoke<string>('get_human_html') : ''
+    const html = open.has_human_view ? await host.getHumanHtml() : ''
     setRunning({ artifactPath: open.path, open, htmlContent: html, editMode: false })
     setScreen('app')
   }, [])
@@ -107,21 +71,21 @@ export default function App() {
   const openPath = useCallback(async (path: string) => {
     setLoading(true); setError(null)
     try {
-      const result = await invoke<OpenResult>('open_clan', { path })
+      const result = await host.openClan(path)
       if (result.is_template) setPendingLaunch(result)
       else await runArtifact(result)
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
 
   const handleOpenFile = useCallback(async () => {
-    const selected = await openDialog({ multiple: false, filters: [{ name: 'CLAN Files', extensions: ['clan'] }] })
-    if (selected) await openPath(selected as string)
+    const selected = await host.pickClanToOpen()
+    if (selected) await openPath(selected)
   }, [openPath])
 
   const launchApp = useCallback(async (appId: string) => {
     setLoading(true); setError(null)
     try {
-      const result = await invoke<OpenResult>('new_document_from_app', { appId, title: null })
+      const result = await host.newDocumentFromApp(appId, null)
       await runArtifact(result)
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
@@ -135,8 +99,8 @@ export default function App() {
     const r = runningRef.current
     if (!r) return
     const base = (r.open.manifest.title || 'document').replace(/[^\w.-]+/g, '-')
-    const path = await saveDialog({ defaultPath: `${base}.clan`, filters: [{ name: 'CLAN Files', extensions: ['clan'] }] })
-    if (path) await invoke('save_clan_to', { path }).catch(console.error)
+    const path = await host.pickSaveDestination(base, 'clan')
+    if (path) await host.saveClanTo(path).catch(console.error)
   }, [])
 
   // OS-owned export: the host composes a standalone document from the open
@@ -144,7 +108,7 @@ export default function App() {
   // save dialog + finish_export. Works for every app, no in-view builder needed.
   const exportCurrent = useCallback(async (kind: 'html' | 'pdf' = 'pdf') => {
     if (!runningRef.current) return
-    await invoke('export_current', { kind, provenance: false, noBrand: false }).catch(err => {
+    await host.exportCurrent(kind, false, false).catch(err => {
       setToast({ title: 'Export failed', body: String(err) })
       setTimeout(() => setToast(null), 5000)
     })
@@ -153,43 +117,39 @@ export default function App() {
   useEffect(() => {
     // openHome is async and sets no state synchronously: everything before its
     // first await is resetTheme(), which only clears CSS custom properties. The
-    // setState calls all run after `await invoke('open_home')` — this is the
+    // setState calls all run after `await host.openHome()` — this is the
     // initial load from the host, i.e. the external-system synchronisation the
     // rule explicitly allows, not derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     openHome()
-    invoke<string | null>('take_launch_file').then(p => { if (p) openPath(p) }).catch(() => {})
+    host.takeLaunchFile().then(p => { if (p) openPath(p) }).catch(() => {})
     // The host forwards launch/open requests that originate INSIDE a clan file
     // (e.g. a click in the home CLAN app), plus OS "open with" events.
     const subs = [
-      listen<string>('open-file', e => { if (e.payload) openPath(e.payload) }),
-      listen<string>('clan-open-document', e => { if (e.payload) openPath(e.payload) }),
-      listen('clan-open-file-request', () => { handleOpenFile() }),
-      listen('clan-request-save', () => { saveCurrent() }),
-      listen<{ kind: string; filename: string; tmpHtml: string }>('clan-export-request', async e => {
-        const p = e.payload
+      host.on('open-file', path => { if (path) openPath(path) }),
+      host.on('clan-open-document', path => { if (path) openPath(path) }),
+      host.on('clan-open-file-request', () => { handleOpenFile() }),
+      host.on('clan-request-save', () => { saveCurrent() }),
+      host.on('clan-export-request', async p => {
         if (!p) return
         const ext = p.kind === 'pdf' ? 'pdf' : 'html'
-        const dest = await saveDialog({
-          defaultPath: `${p.filename}.${ext}`,
-          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
-        })
+        const dest = await host.pickSaveDestination(p.filename, ext)
         if (!dest) return
         try {
-          await invoke('finish_export', { kind: p.kind, tmpHtml: p.tmpHtml, dest })
+          await host.finishExport(p.kind, p.tmpHtml, dest)
           setToast({ title: 'Exported', body: `Saved ${ext.toUpperCase()} to ${dest}` })
         } catch (err) {
           setToast({ title: 'Export failed', body: String(err) })
         }
         setTimeout(() => setToast(null), 5000)
       }),
-      listen<string>('clan-title-changed', e => {
-        if (e.payload) setRunning(r => (r ? { ...r, open: { ...r.open, manifest: { ...r.open.manifest, title: e.payload } } } : r))
+      host.on('clan-title-changed', title => {
+        if (title) setRunning(r => (r ? { ...r, open: { ...r.open, manifest: { ...r.open.manifest, title } } } : r))
       }),
-      listen<{ title: string; body: string }>('napkin-notify', e => {
-        if (e.payload) { setToast(e.payload); setTimeout(() => setToast(null), 4000) }
+      host.on('napkin-notify', n => {
+        if (n) { setToast(n); setTimeout(() => setToast(null), 4000) }
       }),
-      listen<Record<string, string>>('clan-theme-changed', e => { applyTheme(e.payload) }),
+      host.on('clan-theme-changed', colors => { applyTheme(colors) }),
     ]
     return () => { subs.forEach(s => s.then(f => f())) }
   }, [openHome, openPath, handleOpenFile, saveCurrent])
@@ -198,14 +158,14 @@ export default function App() {
 
   const onInstall = useCallback(async () => {
     if (!pendingLaunch) return
-    try { await invoke('install_app', { srcPath: pendingLaunch.path }); await refreshApps() } catch (e) { setError(String(e)) }
+    try { await host.installApp(pendingLaunch.path); await refreshApps() } catch (e) { setError(String(e)) }
     setPendingLaunch(null); openHome()
   }, [pendingLaunch, refreshApps, openHome])
 
   const onRunNew = useCallback(async () => {
     if (!pendingLaunch?.manifest.app) return
     const appId = pendingLaunch.manifest.app.app_id
-    try { await invoke('install_app', { srcPath: pendingLaunch.path }) } catch { /* maybe already installed */ }
+    try { await host.installApp(pendingLaunch.path) } catch { /* maybe already installed */ }
     setPendingLaunch(null)
     await launchApp(appId)
   }, [pendingLaunch, launchApp])
