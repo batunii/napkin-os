@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/clan-sdk", "crates/clan-cli", "crates/napkin-host", "app/src-tauri"]
+members = ["crates/clan-sdk", "crates/clan-cli", "crates/napkin-host", "crates/napkin-web", "app/src-tauri"]
 
 [workspace.package]
 # Single source of truth for CLI + Tauri bundle versions. CI overwrites this

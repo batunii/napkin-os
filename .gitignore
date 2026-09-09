@@ -28,3 +28,6 @@ __pycache__/
 
 # Handoff bundles built by package-handoff.sh — regenerate, never commit.
 /dist/
+
+# napkin-web's default data root when run from a checkout.
+/napkin-web-data/

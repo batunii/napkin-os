@@ -1,0 +1,36 @@
+[package]
+name = "napkin-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version = "1.80"
+description = "Napkin Studio OS as a web service — the same host, behind HTTP instead of a custom URI scheme."
+
+[lib]
+name = "napkin_web"
+path = "src/lib.rs"
+
+[[bin]]
+name = "napkin-web"
+path = "src/main.rs"
+
+[dependencies]
+napkin-host = { path = "../napkin-host" }
+clan-sdk = { path = "../clan-sdk" }
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { workspace = true }
+futures-core = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

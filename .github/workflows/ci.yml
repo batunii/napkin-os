@@ -28,21 +28,21 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
 
-      # Core library, CLI and host only — the Tauri app's Rust needs GTK/WebKit
-      # system deps, so it is built in the `desktop` job below rather than here.
-      # napkin-host holds the host logic (and its tests) that used to live in
-      # app/src-tauri, where nothing in CI ever compiled or ran it.
+      # Everything except the Tauri app, whose Rust needs GTK/WebKit system
+      # deps and so is built in the `desktop` job below. napkin-host holds the
+      # host logic (and its tests) that used to live in app/src-tauri, where
+      # nothing in CI ever compiled or ran it; napkin-web is the HTTP shell.
       - name: Format
-        run: cargo fmt -p clan-sdk -p clan-cli -p napkin-host -- --check
+        run: cargo fmt -p clan-sdk -p clan-cli -p napkin-host -p napkin-web -- --check
 
       # Clippy reports lints but does not block the build (no `-D warnings`)
       # while pre-existing lint debt is paid down. Tighten later by adding
       # `-- -D warnings` once the backlog is clear.
       - name: Clippy
-        run: cargo clippy -p clan-sdk -p clan-cli -p napkin-host --all-targets
+        run: cargo clippy -p clan-sdk -p clan-cli -p napkin-host -p napkin-web --all-targets
 
       - name: Test
-        run: cargo test -p clan-sdk -p clan-cli -p napkin-host --all-targets
+        run: cargo test -p clan-sdk -p clan-cli -p napkin-host -p napkin-web --all-targets
 
   frontend:
     name: Frontend — lint · tsc · build
