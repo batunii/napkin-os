@@ -1,0 +1,87 @@
+"""Qdrant sparse-vector wiring, with the HTTP layer stubbed — no live instance needed.
+Run: cd engine/rag && python3 -m pytest test_store_qdrant_sparse.py -q
+"""
+from __future__ import annotations
+import sys
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import lexical  # noqa: E402
+import store_qdrant as q  # noqa: E402
+
+
+class _Fake:
+    """Records requests and replays canned responses."""
+    def __init__(self, sparse=True, dense_ids=("a", "b"), lex_ids=("b", "c")):
+        self.sparse, self.dense_ids, self.lex_ids, self.seen = sparse, dense_ids, lex_ids, []
+
+    def __call__(self, method, path, body=None, timeout=60):
+        self.seen.append((method, path, body))
+        if method == "GET" and path.startswith("/collections/"):
+            cfg = {"sparse_vectors": {q.SPARSE_NAME: {"modifier": "idf"}}} if self.sparse else {}
+            return {"result": {"config": {"params": cfg}}}
+        if path.endswith("/points/search"):
+            v = (body or {}).get("vector")
+            ids = self.lex_ids if isinstance(v, dict) and v.get("name") == q.SPARSE_NAME else self.dense_ids
+            return {"result": [{"score": 1.0 - i / 10, "payload": {"id": x, "text": x}}
+                               for i, x in enumerate(ids)]}
+        return {"result": {}}
+
+
+def _patch(monkeypatch, fake):
+    monkeypatch.setattr(q, "_req", fake)
+    monkeypatch.setattr(q, "collection_name", lambda: "test")
+    q.has_sparse.__wrapped__ if hasattr(q.has_sparse, "__wrapped__") else None
+
+
+def test_collection_is_created_with_the_bm25_sparse_vector(monkeypatch):
+    fake = _Fake(sparse=False)
+    _patch(monkeypatch, fake)
+    monkeypatch.setattr(q, "_req", lambda m, p, b=None, timeout=60: (_ for _ in ()).throw(RuntimeError())
+                        if m == "GET" else fake(m, p, b))
+    q.ensure_collection(2048)
+    created = [b for m, p, b in fake.seen if m == "PUT" and p == "/collections/test"]
+    assert created and q.SPARSE_NAME in created[0]["sparse_vectors"]
+    assert created[0]["sparse_vectors"][q.SPARSE_NAME]["modifier"] == "idf"
+
+
+def test_upsert_attaches_a_sparse_vector_per_point(monkeypatch):
+    fake = _Fake(sparse=True)
+    _patch(monkeypatch, fake)
+    rows = [{"id": "c1", "vector": [0.1, 0.2], "header": "Xero UK", "section": "Insight",
+             "text": "accountants trust", "retrieval_queries": "", "metadata": {"doc_id": "x"}}]
+    assert q.upsert(rows) == 1
+    pts = [b for m, p, b in fake.seen if p.startswith("/collections/test/points?")][0]["points"]
+    vec = pts[0]["vector"]
+    assert set(vec) == {"", q.SPARSE_NAME}
+    assert vec[""] == [0.1, 0.2]
+    assert vec[q.SPARSE_NAME]["indices"] and len(vec[q.SPARSE_NAME]["indices"]) == len(vec[q.SPARSE_NAME]["values"])
+
+
+def test_upsert_stays_dense_on_a_collection_without_sparse(monkeypatch):
+    fake = _Fake(sparse=False)
+    _patch(monkeypatch, fake)
+    q.upsert([{"id": "c1", "vector": [0.1, 0.2], "text": "t", "metadata": {}}])
+    pts = [b for m, p, b in fake.seen if p.startswith("/collections/test/points?")][0]["points"]
+    assert pts[0]["vector"] == [0.1, 0.2]          # old collections keep working
+
+
+def test_hybrid_fuses_both_lists_the_same_way_the_local_store_does(monkeypatch):
+    fake = _Fake(sparse=True, dense_ids=("a", "b"), lex_ids=("b", "c"))
+    _patch(monkeypatch, fake)
+    out = q.search_hybrid([0.1, 0.2], "xero accountants", k=3)
+    got = [p["id"] for _, p in out]
+    expected = [d for _, d in lexical.rrf([["a", "b"], ["b", "c"]], k=10)][:3]
+    assert got == expected
+    assert got[0] == "b"                            # in both lists
+    searches = [b for m, p, b in fake.seen if p.endswith("/points/search")]
+    assert len(searches) == 2                       # one dense, one sparse
+    assert searches[1]["vector"]["name"] == q.SPARSE_NAME
+
+
+def test_hybrid_falls_back_to_dense_when_the_collection_has_no_sparse_vector(monkeypatch):
+    fake = _Fake(sparse=False, dense_ids=("a", "b"))
+    _patch(monkeypatch, fake)
+    out = q.search_hybrid([0.1, 0.2], "xero", k=2)
+    assert [p["id"] for _, p in out] == ["a", "b"]
+    assert len([b for m, p, b in fake.seen if p.endswith("/points/search")]) == 1

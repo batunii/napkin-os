@@ -95,6 +95,49 @@ class BM25:
         return out
 
 
+# ---- sparse-vector form, for stores that index BM25 themselves -------------------
+# A remote store cannot use the BM25 class above: it holds the documents, not us. The
+# standard way to get the same scoring there is to split BM25 in two and let the store
+# do the dot product:
+#
+#     BM25(q,d) = Σ  idf(t) · [ tf·(k1+1) / (tf + k1·(1-b+b·dl/avgdl)) ]
+#                 ‾‾‾‾‾‾‾‾   ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+#                 query side              document side
+#
+# So the document vector carries the bracketed term for each of its tokens, the query
+# vector carries 1.0 for each of its tokens, and the store supplies idf — Qdrant does
+# this with `modifier: "idf"` on the sparse vector, computed across the collection.
+# That keeps a single definition of the scoring while letting either side run it.
+def term_id(token: str) -> int:
+    """Stable 32-bit id for a token. Qdrant sparse indices are u32, and the mapping has
+    to survive process restarts and machines, so it is a hash rather than a counter —
+    no vocabulary file to keep in step with the collection."""
+    import hashlib
+    return int.from_bytes(hashlib.blake2b(token.encode("utf-8"), digest_size=4).digest(), "big")
+
+
+def sparse_document(text: str, avg_len: float, k1: float = 1.5, b: float = 0.3) -> dict[str, list]:
+    """Document-side BM25 weights as a Qdrant sparse vector. Defaults match the tuned
+    BM25 class above; passing different ones here would silently make remote retrieval
+    score differently from local, which is the bug this shared module exists to avoid."""
+    toks = tokenize(text)
+    if not toks:
+        return {"indices": [], "values": []}
+    dl = len(toks)
+    norm = k1 * (1 - b + b * dl / (avg_len or dl))
+    weights: dict[int, float] = {}
+    for tok, tf in Counter(toks).items():
+        weights[term_id(tok)] = tf * (k1 + 1) / (tf + norm)
+    idx = sorted(weights)
+    return {"indices": idx, "values": [weights[i] for i in idx]}
+
+
+def sparse_query(text: str) -> dict[str, list]:
+    """Query-side vector: presence of each term. The store multiplies by its own idf."""
+    toks = sorted({term_id(t) for t in tokenize(text)})
+    return {"indices": toks, "values": [1.0] * len(toks)}
+
+
 def rrf(rankings: Sequence[Sequence[Hashable]], k: int = 10,
         weights: Sequence[float] | None = None) -> list[tuple[float, Hashable]]:
     """Fuse several ranked id lists into one. Each list contributes weight/(k+rank) per id.

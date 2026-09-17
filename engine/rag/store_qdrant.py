@@ -31,6 +31,15 @@ from typing import Iterator
 
 import contract
 import filters
+import lexical
+
+# Document-side BM25 weights need the collection's mean document length. A remote store
+# cannot compute it while it is being filled, so it is a measured constant rather than a
+# guess: 191.2 tokens across the 7,315-chunk corpus (p10 76, p50 136, p90 382). It only
+# sets relative length weighting, and b=0.3 already limits how much that matters, so a
+# corpus that shifts moderately does not need a rebuild. Override if it shifts a lot.
+SPARSE_AVG_LEN = float(os.environ.get("RAG_SPARSE_AVG_LEN", "191.2"))
+SPARSE_NAME = "bm25"
 from store_base import StoreConfigError, VectorStore
 
 _NS = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")  # stable namespace for point ids
@@ -100,9 +109,25 @@ def ensure_collection(dim: int, recreate: bool = False):
     except RuntimeError:
         exists = False
     if not exists:
+        # `modifier: idf` makes Qdrant supply the query-side inverse document frequency
+        # from its own collection statistics, so only the document-side weights are
+        # stored. See lexical.sparse_document for the split.
         _req("PUT", f"/collections/{name}",
-             {"vectors": {"size": dim, "distance": "Cosine"}})
+             {"vectors": {"size": dim, "distance": "Cosine"},
+              "sparse_vectors": {SPARSE_NAME: {"modifier": "idf"}}})
     ensure_payload_indexes()
+
+
+def has_sparse() -> bool:
+    """Whether this collection was created with the BM25 sparse vector. A collection
+    built before sparse support exists and cannot answer keyword queries, so hybrid has
+    to fall back to dense rather than silently return half a result set."""
+    try:
+        r = _req("GET", f"/collections/{collection_name()}")
+        cfg = (r.get("result", {}).get("config", {}).get("params", {}) or {})
+        return SPARSE_NAME in (cfg.get("sparse_vectors") or {})
+    except RuntimeError:
+        return False
 
 
 # Qdrant needs a payload index on any field used in a filter. Which fields those are
@@ -127,16 +152,32 @@ def ensure_payload_indexes():
             pass  # already exists / non-fatal
 
 
+def _lexical_text(c: dict) -> str:
+    """The same text the local store indexes for BM25 — header, section, body, and the
+    retrieval queries. Kept identical so remote and local keyword search agree."""
+    parts = [c.get("header") or "", c.get("section") or "", c.get("text") or "",
+             c.get("retrieval_queries") or ""]
+    return "\n".join(p for p in parts if p)
+
+
 def upsert(rows: list[dict], batch: int = 256) -> int:
     """rows are chunk dicts that include a normalised `vector`. Payload = the chunk
-    minus the vector (so retrieve.py gets source/section/metadata/text unchanged)."""
+    minus the vector (so retrieve.py gets source/section/metadata/text unchanged).
+    Each point also carries its BM25 sparse vector when the collection supports one."""
     name = collection_name()
+    sparse = has_sparse()
     n = 0
     for i in range(0, len(rows), batch):
         pts = []
         for c in rows[i:i + batch]:
             payload = {k: v for k, v in c.items() if k != "vector"}
-            pts.append({"id": point_id(c), "vector": c["vector"], "payload": payload})
+            pt = {"id": point_id(c), "payload": payload}
+            if sparse:
+                pt["vector"] = {"": c["vector"],
+                                SPARSE_NAME: lexical.sparse_document(_lexical_text(c), SPARSE_AVG_LEN)}
+            else:
+                pt["vector"] = c["vector"]
+            pts.append(pt)
         _req("PUT", f"/collections/{name}/points?wait=true", {"points": pts})
         n += len(pts)
     return n
@@ -155,8 +196,44 @@ def search(qvec: list[float], k: int = 5, where: dict | None = None) -> list[tup
     flt = _filter(where)
     if flt:
         body["filter"] = flt
+    if has_sparse():
+        body["vector"] = {"name": "", "vector": qvec}     # named-vector form
     r = _req("POST", f"/collections/{name}/points/search", body)
     return [(float(p["score"]), p.get("payload", {})) for p in r.get("result", [])]
+
+
+def _search_sparse(qtext: str, k: int, where: dict | None) -> list[dict]:
+    """Keyword half of hybrid: BM25 via the sparse vector, Qdrant supplying idf."""
+    q = lexical.sparse_query(qtext)
+    if not q["indices"]:
+        return []
+    body = {"vector": {"name": SPARSE_NAME, "vector": q}, "limit": k, "with_payload": True}
+    flt = _filter(where)
+    if flt:
+        body["filter"] = flt
+    r = _req("POST", f"/collections/{collection_name()}/points/search", body)
+    return [p.get("payload", {}) for p in r.get("result", [])]
+
+
+def search_hybrid(qvec: list[float], qtext: str, k: int = 5, where: dict | None = None,
+                  n: int = 50, rrf_k: int = 10, weights: tuple[float, float] = (1.0, 1.0)
+                  ) -> list[tuple[float, dict]]:
+    """Dense + BM25, fused by reciprocal rank — the same two lists and the same fusion as
+    the local store, so local and remote rank alike. Fusion happens here rather than in
+    Qdrant's own query API deliberately: it reuses one tested implementation, and parity
+    between the store you tune against and the store you serve from is worth one extra
+    round trip. A collection with no sparse vector falls back to dense and says so by
+    returning dense-only results rather than pretending to be hybrid."""
+    if not has_sparse():
+        return search(qvec, k=k, where=where)
+    dense = [p for _, p in search(qvec, k=n, where=where)]
+    lex = _search_sparse(qtext, k=n, where=where)
+    by_id = {}
+    for p in dense + lex:
+        by_id[str(p.get("id") or id(p))] = p
+    ranks = [[str(p.get("id") or id(p)) for p in dense], [str(p.get("id") or id(p)) for p in lex]]
+    fused = lexical.rrf(ranks, k=rrf_k, weights=weights)
+    return [(score, by_id[d]) for score, d in fused[:k] if d in by_id]
 
 
 def count() -> int:
@@ -205,6 +282,9 @@ class QdrantStore(VectorStore):
     def ensure(self, dim: int) -> None:     ensure_collection(dim)
     def upsert(self, rows: list[dict]) -> int:  return upsert(rows)
     def search(self, qvec, k=5, where=None):    return search(qvec, k=k, where=where)
+
+    def search_hybrid(self, qvec, qtext, k=5, where=None, n=50, rrf_k=10, weights=(1.0, 1.0)):
+        return search_hybrid(qvec, qtext, k=k, where=where, n=n, rrf_k=rrf_k, weights=weights)
     def scroll(self, batch: int = 512):     return scroll(batch)
     def count(self) -> int:                 return count()
     def delete_all(self) -> None:           delete_collection()

@@ -83,3 +83,41 @@ def test_tuned_defaults_are_locked_to_the_measured_winners():
     assert inspect.signature(BM25.__init__).parameters["b"].default == 0.3
     assert inspect.signature(BM25.__init__).parameters["k1"].default == 1.5
     assert inspect.signature(rrf).parameters["k"].default == 10
+
+
+# ---- sparse form: same scoring, computed by the store ------------------------
+def test_term_ids_are_stable_and_fit_u32():
+    from lexical import term_id
+    a, b = term_id("mccain"), term_id("mccain")
+    assert a == b and 0 <= a < 2**32
+    assert term_id("mccain") != term_id("xero")
+
+
+def test_sparse_document_and_query_reproduce_bm25_ranking():
+    """The split must rank the same as the in-process BM25, or local and remote
+    retrieval would quietly disagree."""
+    from lexical import sparse_document, sparse_query, term_id
+    docs = DOCS
+    idx = BM25(docs)
+    avg = idx.avg_len
+    # emulate what the store does: dot product of doc weights and query terms, times idf
+    def sparse_score(text, query):
+        d = sparse_document(text, avg)
+        q = sparse_query(query)
+        dv = dict(zip(d["indices"], d["values"]))
+        return sum(dv.get(i, 0.0) * v * idx.idf.get(tok, 0.0)
+                   for tok, (i, v) in ((t, (term_id(t), 1.0)) for t in set(tokenize(query))))
+    for query in ("McCain chips", "FCB grid", "xero accountants", "campaign Vaughn"):
+        dense_rank = [d for _, d in idx.search(query, k=4)]
+        sparse_rank = [doc_id for doc_id, _ in sorted(
+            ((did, sparse_score(text, query)) for did, text in docs),
+            key=lambda x: x[1], reverse=True) if sparse_score(dict(docs)[doc_id], query) > 0]
+        assert sparse_rank[0] == dense_rank[0], query
+
+
+def test_sparse_vectors_are_sorted_and_empty_text_is_safe():
+    from lexical import sparse_document, sparse_query
+    d = sparse_document("McCain frozen chips", 10.0)
+    assert d["indices"] == sorted(d["indices"]) and len(d["indices"]) == len(d["values"])
+    assert sparse_document("", 10.0) == {"indices": [], "values": []}
+    assert sparse_query("!!!") == {"indices": [], "values": []}
