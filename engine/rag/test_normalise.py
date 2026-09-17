@@ -180,7 +180,9 @@ def test_role_and_bucket_values_are_in_contract():
 @pytest.mark.parametrize("client,expected", [
     ("APPLE", "technology"), ("OPEN AI", "technology"), ("CLAUDE", "technology"),
     ("COINBASE", "financial_services"), ("AXA", "financial_services"), ("SHIELD INSURANCE", "financial_services"),
-    ("AMAZON", "retail"), ("IKEA", "retail"), ("THE REALREAL", "retail"), ("INTERMARCHÉ", "retail"),
+    ("AMAZON", "retail"), ("IKEA", "retail"), ("INTERMARCHÉ", "retail"),
+    # the two the creative director changed on 2026-09-17
+    ("THE REALREAL", "luxury"), ("LA UNION NEWSPAPER AND ARTICLE 19", "charity"),
     ("KITKAT", "food_drink"), ("HEINZ KETCHUP & MUSTARD", "food_drink"), ("UBER EATS", "food_drink"),
     ("STELLA ARTOIS", "alcohol"), ("ANDREX", "fmcg"), ("DOVE", "fashion_beauty"),
     ("ELI LILLY", "healthcare"), ("SPECSAVERS", "healthcare"),

@@ -40,10 +40,22 @@ _SNIPPET_CHARS = 420
 
 
 def _gist(text: str) -> dict | None:
+    # `category` is not decoration: it is the filter that decides whether an automotive
+    # brief retrieves automotive precedent or the whole corpus. Constrained to the locked
+    # contract list, and left empty rather than guessed — brief_context widens on its own
+    # when the filter is too narrow, but it cannot un-guess a wrong category.
+    try:
+        sys.path.insert(0, str(ENGINE_ROOT / "rag"))
+        from contract import SCHEMA  # noqa: PLC0415
+        cats = ", ".join(SCHEMA.enum_values("category"))
+    except Exception:
+        cats = ""
     obj = parse_brief._json_call(
         "Summarise this client brief for a researcher. JSON only: "
         '{"client": "...", "market": "...", "problem": "...", "objective": "...", '
-        '"audience": "...", "competitors": "..."}\n\nBRIEF:\n' + text[:6000],
+        '"audience": "...", "competitors": "...", "category": "..."}\n'
+        + (f'`category` MUST be exactly one of: {cats}. Use "" if genuinely unclear.\n' if cats else "")
+        + '\nBRIEF:\n' + text[:6000],
         system="You brief researchers. Terse, factual, JSON only.",
         max_tokens=300,
         accept=lambda o: isinstance(o, dict) and o.get("problem"),
@@ -69,33 +81,42 @@ def _digest_track() -> list[dict]:
 
 
 def _corpus_track(gist: dict) -> list[dict]:
+    """Precedent and craft for the planner's context panel, via the shared brief
+    retrieval API (engine/rag/brief_context.py).
+
+    This used to paste the gist into three sentence templates and take four hits each,
+    unfiltered and unbudgeted. That searched all 7,315 chunks for every brief, so an
+    automotive brief was as likely to surface semiotics and Bourdieu as a car launch.
+    build() applies the contract's filters, keeps the panel inside a token budget, splits
+    the findings into precedent / craft / pitfalls / brief standard, and gives every hit
+    a citation id that check_grounding() can verify — which is also what lets a later
+    human verdict be tied back to the precedent that informed it."""
     try:
         sys.path.insert(0, str(ENGINE_ROOT / "rag"))
-        from retrieve import index_available, retrieve  # noqa: PLC0415
+        from brief_context import build  # noqa: PLC0415
+        from retrieve import index_available  # noqa: PLC0415
     except Exception:
         traceback.print_exc()
         return _digest_track()
     if not index_available():
         return _digest_track()
-    queries = [q for q in (
-        f"{gist.get('problem', '')} — campaigns that solved this",
-        f"reaching {gist.get('audience', '')} in {gist.get('market', '')}",
-        f"category strategy vs {gist.get('competitors', '')}",
-    ) if len(q.strip(" —")) > 20]
-    findings, seen = [], set()
-    for q in queries:
-        try:
-            hits = retrieve(q, k=4)
-        except Exception:
-            traceback.print_exc()
-            continue
-        for h in hits:
-            if h["citation"] in seen:
-                continue
-            seen.add(h["citation"])
-            findings.append(h)
-    findings.sort(key=lambda h: -h["score"])
-    return findings[:_MAX_CORPUS_FINDINGS]
+    try:
+        ctx = build(gist)
+    except Exception:
+        traceback.print_exc()
+        return _digest_track()
+
+    findings = []
+    for bucket in ("exemplars", "craft", "rules", "instructions"):
+        for h in ctx.blocks[bucket].hits:
+            findings.append({"citation": h.cite, "bucket": bucket, "title": h.title,
+                             "text": h.text, "score": h.score, "header": h.header,
+                             "source": h.metadata.get("source"), "metadata": h.metadata})
+    t = ctx.trace()
+    print(f"[i] research corpus: {len(findings)} findings, {t['tokens']} tokens, "
+          f"filters={t['filters'].get('exemplars', '')}, widened={t['widened'] or 'none'}",
+          file=sys.stderr)
+    return findings
 
 
 def _web_track(gist: dict) -> list[dict]:
@@ -140,10 +161,27 @@ def gather(text: str, clan_data: dict | None = None) -> tuple[str | None, str | 
     dossier = [DOSSIER_HEADER]
     summary = []
     if corpus:
-        dossier.append("Precedent from the effectiveness/creative corpora:")
+        # Grouped, not flattened: a planner needs to see at a glance which of these is a
+        # proven case and which is a textbook warning. Falls back to one list for the
+        # digest track, which has no buckets.
+        headings = {"exemplars": "Precedent — comparable work",
+                    "craft": "Craft — how planners approach this",
+                    "rules": "Pitfalls — common mistakes in this kind of work",
+                    "instructions": "Brief standard — what a good brief contains"}
+        grouped: dict[str, list] = {}
         for h in corpus:
-            dossier.append(f"- [{h['citation']}] {h['text'][:_SNIPPET_CHARS].strip()}")
-        summary.append("Precedent: " + "; ".join(h["citation"] for h in corpus[:4]))
+            grouped.setdefault(h.get("bucket") or "_", []).append(h)
+        for bucket, heading in headings.items():
+            if grouped.get(bucket):
+                dossier.append(f"{heading}:")
+                for h in grouped[bucket]:
+                    dossier.append(f"- [{h['citation']}] {h['text'][:_SNIPPET_CHARS].strip()}")
+        if grouped.get("_"):
+            dossier.append("Precedent from the effectiveness/creative corpora:")
+            for h in grouped["_"]:
+                dossier.append(f"- [{h['citation']}] {h['text'][:_SNIPPET_CHARS].strip()}")
+        top = grouped.get("exemplars") or corpus
+        summary.append("Precedent: " + "; ".join(h["citation"] for h in top[:4]))
     if web:
         dossier.append("Live market context (web):")
         for w in web:

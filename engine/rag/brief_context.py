@@ -63,6 +63,12 @@ DEFAULT_BUDGET = {"exemplars": 3800, "craft": 2500, "rules": 900, "instructions"
 # at 260 tokens only 15% of the material was even eligible, which selects brevity rather
 # than relevance. 350 keeps 27% eligible and still fits two or three items in the block.
 MAX_HIT_TOKENS = {"rules": 350}
+
+# The budget is a TARGET, not a wall. A hard maximum exists only so one pathological
+# chunk cannot blow the prompt; it is deliberately loose (1.6x) because overshooting by
+# a few hundred tokens costs fractions of a cent, while silently returning a worse answer
+# costs a planner their trust in the panel.
+HARD_MAX_FACTOR = 1.6
 CANDIDATES = 40           # pulled per bucket before collapsing and budgeting
 
 # Which pair keys mean what. Unknown keys are not discarded — their values join the
@@ -128,6 +134,8 @@ class Block:
     hits: list[Hit] = field(default_factory=list)
     budget: int = 0
     dropped: int = 0
+    over_target: bool = False      # the target was exceeded to keep the best hit
+    truncated: int = 0             # hits cut because they exceeded the hard maximum
 
     @property
     def tokens(self) -> int:
@@ -211,8 +219,9 @@ class BriefContext:
             "widened": self.widened,
             "tokens": self.tokens,
             "blocks": {
-                b.bucket: {"hits": len(b.hits), "tokens": b.tokens, "dropped": b.dropped,
-                           "cites": [h.cite for h in b.hits]}
+                b.bucket: {"hits": len(b.hits), "tokens": b.tokens, "budget": b.budget,
+                           "dropped": b.dropped, "over_target": b.over_target,
+                           "truncated": b.truncated, "cites": [h.cite for h in b.hits]}
                 for b in self.blocks.values()
             },
         }
@@ -368,37 +377,65 @@ def _client_of(h: Hit) -> str:
     return normalise.clean(h.metadata.get("client") or h.metadata.get("framework_name") or h.doc_id)
 
 
+def _truncate(h: Hit, limit: int) -> Hit:
+    """Cut a hit to `limit` tokens, marking the cut. Used only when a single hit exceeds
+    the hard maximum — a truncated best answer still tells the reader what it is and
+    where to look it up, which a dropped one does not."""
+    keep = max(int(limit * 3.5) - 120, 200)          # estimate_tokens uses 3.5 chars/token
+    body = h.text[:keep].rstrip()
+    return Hit(cite=h.cite, doc_id=h.doc_id, source=h.source, bucket=h.bucket, title=h.title,
+               section=h.section, header=h.header, score=h.score, metadata=h.metadata,
+               text=body + f"\n… [truncated — read {h.cite} in full for the rest]")
+
+
 def _fill(hits: list[Hit], budget: int, max_hit: int | None = None,
-          one_per_client: bool = False) -> Block:
-    """Take hits in rank order until the budget is spent.
+          one_per_client: bool = False, hard_max_factor: float = HARD_MAX_FACTOR) -> Block:
+    """Fill a block toward its token target, in rank order.
 
-    A hit that does not fit is skipped rather than truncated — half a case is not
-    evidence — and later, smaller hits still get their chance.
+    The target is not a wall. Three rules, in order of precedence:
 
-    `max_hit` skips any single item above a ceiling, so one long item cannot crowd out
-    several useful short ones.
+    1.  THE TOP-RANKED HIT IS ALWAYS INCLUDED, whatever its size. Returning the fifth-best
+        constraint while silently dropping the best one for being long is a worse answer,
+        not a smaller one — and the reader has no way to tell it happened. This is the
+        rule that matters; the others exist to bound it.
+    2.  After that, a hit is taken while it fits the target, and skipped if it does not.
+        Skipping rather than truncating, because half an award case is not evidence.
+    3.  A hard maximum (1.6x the target) bounds the whole block so one pathological chunk
+        cannot blow the prompt. A hit above it is TRUNCATED with a marker rather than
+        dropped, so the reader still gets the best answer and knows it was cut.
 
-    `one_per_client` keeps precedent varied. Deduplicating by document is not enough:
-    the corpus holds several Marmite cases, and a brief learns more from four brands
-    than from two brands twice. This is a context-quality rule rather than a retrieval
-    one, so it lives here and not in search — the golden set still measures raw
-    retrieval, unaffected."""
+    Overshooting the target is recorded on the block and surfaces in the trace, so it is
+    visible rather than silent. Going a few hundred tokens over costs fractions of a
+    cent; quietly serving a worse answer costs a planner their trust in the panel."""
     block = Block(bucket=hits[0].bucket if hits else "", budget=budget)
+    hard_max = int(budget * hard_max_factor)
     spent = 0
     seen_clients: set[str] = set()
     for h in hits:
         client = _client_of(h) if one_per_client else ""
         if client and client in seen_clients:
             block.dropped += 1
+            continue
+        first = not block.hits
+        if first:
+            # rule 1: the best hit always goes in, bounded only by the hard maximum
+            if h.tokens > hard_max:
+                h = _truncate(h, hard_max)
+                block.truncated += 1
+            block.hits.append(h)
+            spent += h.tokens
         elif max_hit and h.tokens > max_hit:
             block.dropped += 1
+            continue
         elif spent + h.tokens <= budget:
             block.hits.append(h)
             spent += h.tokens
-            if client:
-                seen_clients.add(client)
         else:
             block.dropped += 1
+            continue
+        if client:
+            seen_clients.add(client)
+    block.over_target = spent > budget
     return block
 
 
@@ -426,7 +463,12 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
 
         # widen one step at a time rather than return an empty block
         if not rows and bucket == "exemplars":
-            for drop in ("effectiveness_type", "category"):
+            # Category before problem type, on the creative director's ruling: the best
+            # precedent for a bank brief is often a beer campaign that solved the same
+            # PROBLEM — a low-interest category, a distinctiveness deficit, a behaviour
+            # that needs a nudge. Sector is the weakest predictor of whether a case is
+            # useful, so it is the first thing to give up when the filter is too narrow.
+            for drop in ("category", "effectiveness_type"):
                 if drop in where:
                     where = {k: v for k, v in where.items() if k != drop}
                     widened.append(f"{bucket}: dropped {drop}")

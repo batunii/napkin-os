@@ -25,6 +25,16 @@ SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 # ---- the JSON itself -----------------------------------------------------
+def test_the_contract_is_locked_only_after_creative_director_sign_off():
+    """v1.2.0 is the sign-off. Locked means the closed lists are settled: changing a
+    category value after ingestion means reprocessing, so it takes another argument with
+    a creative director, not a tidy-up. The ruling is in REVIEW-cannes-categories.md."""
+    if SCHEMA.locked:
+        assert SCHEMA.version >= "1.2.", "locked implies the sign-off version"
+        for v in ("gambling_betting", "luxury", "b2b"):
+            assert v in SCHEMA.enum_values("category"), v
+
+
 def test_contract_file_parses_and_names_its_version():
     raw = json.loads(contract.SCHEMA_PATH.read_text())
     assert raw["version"] == SCHEMA.version
@@ -188,7 +198,7 @@ def test_v1_1_fields_present_and_indexed():
         assert SCHEMA.fields[f].type == "enum" and SCHEMA.fields[f].indexed, f
     assert not SCHEMA.fields["award_tier_raw"].indexed
     assert SCHEMA.fields["bucket"].default == "exemplars"
-    assert SCHEMA.version.startswith("1.1.")
+    assert SCHEMA.version >= "1.1."
 
 
 def test_playbook_sections_get_roles_and_buckets(tmp_path):

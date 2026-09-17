@@ -33,7 +33,7 @@ grounding:
   modes:
     vector: remote store (RAG_STORE=qdrant) or local index; per-pack k
     digest: no store needed — paraphrased pack digests in the prompt prefix
-  store: qdrant (remote) or local index; collection default napkin_rag_v2
+  store: qdrant (remote) or local index; collection from QDRANT_COLLECTION (live: Napkin_OS)
   citation_format: "source › section"
   invariant: retrieval never touches Loop-1 capture; research output is labelled
     supporting context and never alters the client's own words.

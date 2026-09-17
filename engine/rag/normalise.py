@@ -118,11 +118,24 @@ SECTOR_TO_CATEGORY: dict[str, str] = {
 # (a newspaper's press-freedom campaign -> media_entertainment), SHIELD INSURANCE (a Thai
 # insurance broker -> financial_services), PARIS 2024 (the Olympic opening ceremony).
 #
-# FLAGGED FOR PHASE 0 — defensible either way, listed so they are argued with rather
-# than rediscovered: delivery marketplaces have no home in this taxonomy, so they are
-# classified by what they deliver (INSTACART groceries -> retail; UBER EATS restaurant
-# meals -> food_drink); THE REALREAL sells pre-owned fashion but the campaign is about
-# authentication, a retail-trust problem -> retail; SPECSAVERS and PEDIGREE as above.
+# SIGNED OFF by a creative director on 2026-09-17 (see REVIEW-cannes-categories.md).
+# Five of the seven flagged calls were upheld, two assignments changed:
+#   THE REALREAL              retail -> luxury. "Authentication is a retail-trust
+#                             problem" described the mechanism, not the market. It sells
+#                             pre-owned designer fashion; a planner briefing a luxury
+#                             client wants it, a supermarket planner never would.
+#   LA UNION + ARTICLE 19     media_entertainment -> charity. Article 19 is a
+#                             press-freedom NGO and the work is advocacy about murdered
+#                             journalists — structurally identical to ASUNIWA. Filing it
+#                             by its newspaper co-client repeats the error of filing
+#                             Indian Railways by who owns it.
+# Upheld, with the reasoning that carried them: INSTACART sells groceries (retail) while
+# UBER EATS sells the takeaway occasion (food_drink) — the same rule gives two answers
+# because they sell two different things, so do not "fix" the apparent inconsistency;
+# SPECSAVERS stays healthcare because this entry is about hearing tests; PEDIGREE stays
+# fmcg because pet food has FMCG economics and food_drink should mean what humans eat;
+# PARIS 2024 stays media_entertainment; INDIAN RAILWAYS stays travel because state
+# ownership is a shareholder fact, not a briefing fact.
 #
 # Keys are clean(client). A client absent from this table returns None (unknown), never
 # a guess. Real client work takes its category from the brand clan, not from here.
@@ -135,7 +148,7 @@ CLIENT_TO_CATEGORY: dict[str, str] = {
     "shield insurance": "financial_services", "axa": "financial_services",
     "axa france": "financial_services", "nordea": "financial_services", "rocket": "financial_services",
     # retail — shops and marketplaces, including those that sell only through an app
-    "the realreal": "retail", "john lewis & partners": "retail", "instacart": "retail",
+    "the realreal": "luxury", "john lewis & partners": "retail", "instacart": "retail",
     "intermarche": "retail", "intermarché": "retail", "amazon": "retail",
     "mercado livre": "retail", "ikea": "retail", "penny": "retail", "lidl": "retail",
     # food & drink — food and drink brands, restaurants, and prepared-food delivery
@@ -154,11 +167,12 @@ CLIENT_TO_CATEGORY: dict[str, str] = {
     "electronic arts skate": "media_entertainment", "electronic arts": "media_entertainment",
     "xbox": "media_entertainment", "clash of clans": "media_entertainment", "hbo": "media_entertainment",
     "rimas music": "media_entertainment", "annahar newspaper": "media_entertainment",
-    "la union newspaper and article 19": "media_entertainment", "paris 2024": "media_entertainment",
+    "paris 2024": "media_entertainment",
     # travel — operators that sell journeys (government transport bodies are public_sector)
     "procolombia": "travel", "indian railways": "travel",
     # charity
     "fuck cancer": "charity", "asuniwa": "charity", "itv x calm": "charity", "calm": "charity",
+    "la union newspaper and article 19": "charity",
     # telecoms
     "o2": "telecoms",
 }

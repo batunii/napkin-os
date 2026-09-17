@@ -1,7 +1,7 @@
 {
-  "$comment": "RAG chunk metadata contract, version 1. Shared by Track A (CLAN OS layer), Track B (dossier export) and Track C (RAG). Every chunk payload in every vector store carries exactly these keys under `metadata`. Adding a field = new minor version + backfill; renaming or removing = new major version. Enum lists are closed: a value not listed here is a validation error, never a new filter value. v1.1.0 adds bucket, section_role, effectiveness_type, strategic_territory, discipline, lions_category (all derivable from existing frontmatter) and turns award_tier into a closed enum with the raw spelling kept in award_tier_raw.",
-  "version": "1.1.0",
-  "locked": false,
+  "$comment": "RAG chunk metadata contract, version 1. Shared by Track A (CLAN OS layer), Track B (dossier export) and Track C (RAG). Every chunk payload in every vector store carries exactly these keys under `metadata`. Adding a field = new minor version + backfill; renaming or removing = new major version. Enum lists are closed: a value not listed here is a validation error, never a new filter value. v1.1.0 adds bucket, section_role, effectiveness_type, strategic_territory, discipline, lions_category (all derivable from existing frontmatter) and turns award_tier into a closed enum with the raw spelling kept in award_tier_raw. v1.2.0 is the creative-director sign-off: adds gambling_betting, luxury and b2b, tightens the fmcg/food_drink and technology descriptions, and sets locked:true. Ruling recorded in engine/schema/REVIEW-cannes-categories.md.",
+  "version": "1.2.0",
+  "locked": true,
   "fields": {
     "schema_version": {
       "type": "string",
@@ -76,18 +76,21 @@
         "alcohol",
         "financial_services",
         "retail",
+        "luxury",
         "automotive",
         "technology",
+        "b2b",
         "telecoms",
         "travel",
         "public_sector",
         "charity",
         "healthcare",
         "media_entertainment",
+        "gambling_betting",
         "fashion_beauty",
         "other"
       ],
-      "description": "Client category. CLOSED LIST — Phase 0 redlines this with a creative director before dossier ingestion. Values mirror what the IPA corpus distinguishes (Food & Drink and Alcohol are separate from FMCG in the awards data, so they stay separate here). Lower snake_case only, so `FMCG`, `fmcg` and `Fast-moving consumer goods` cannot become three filter values. Corpus chunks get it from a sector lookup (normalise.SECTOR_TO_CATEGORY)."
+      "description": "Client category, SIGNED OFF by a creative director 2026-09-17 (locked). Conventions that took an argument and should not be re-litigated without one: fmcg = household, personal care and pet; food_drink = what people eat and drink, including QSR and food delivery; alcohol stays separate because it has its own regulator, media restrictions and creative conventions, and a beer planner never wants toilet-paper precedent. technology means the product IS the technology (device makers, model providers, apps) — not every business that happens to run on software; a shop that sells through an app is retail. gambling_betting is separate for the same reason as alcohol and must never sit inside media_entertainment. luxury behaves as a category of its own (scarcity, restraint, no price) rather than as expensive fashion. b2b is not a sector but agencies brief against it as if it were, and the IPA gives it its own award. `other` should stay near-empty: if it ever holds more than 5% of the corpus, this list is wrong."
     },
     "campaign_type": {
       "type": "enum",

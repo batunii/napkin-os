@@ -91,10 +91,12 @@ def test_fill_stops_at_the_budget_and_counts_what_it_dropped():
     assert block.tokens <= block.budget
 
 
-def test_a_hit_that_does_not_fit_is_skipped_not_truncated():
-    block = bc._fill([_hit("huge", 100_000), _hit("small", 100)], 200)
-    assert [h.cite for h in block.hits] == ["small"]      # later small hit still gets in
-    assert "x" * 100 in block.hits[0].text
+def test_a_later_hit_that_does_not_fit_is_skipped_not_truncated():
+    """Half an award case is not evidence. Applies from the second hit on — the first is
+    governed by the never-drop-the-best rule below."""
+    block = bc._fill([_hit("first", 100), _hit("huge", 100_000), _hit("small", 100)], 400)
+    assert [h.cite for h in block.hits] == ["first", "small"]
+    assert "x" * 100 in block.hits[1].text and block.dropped == 1
 
 
 def test_token_estimate_is_conservative():
@@ -180,10 +182,44 @@ def test_no_constraints_section_when_there_are_no_rejections():
     assert "CONSTRAINTS" not in txt and "PITFALLS" in txt
 
 
-def test_a_single_long_item_cannot_crowd_out_several_short_ones():
+def test_the_best_hit_is_never_dropped_for_being_long():
+    """The rule that matters. Returning the fifth-best constraint while silently dropping
+    the best one for being long is a worse answer, not a smaller one, and the reader has
+    no way to tell it happened."""
     hits = [_hit("essay", 2000, "rules"), _hit("a", 200, "rules"), _hit("b", 200, "rules")]
     block = bc._fill(hits, 1200, max_hit=260)
+    assert block.hits[0].cite == "essay"            # top-ranked, over max_hit, still in
+    assert [h.cite for h in block.hits] == ["essay", "a", "b"]
+
+
+def test_the_per_hit_cap_still_applies_to_everything_after_the_first():
+    hits = [_hit("a", 200, "rules"), _hit("essay", 2000, "rules"), _hit("b", 200, "rules")]
+    block = bc._fill(hits, 1200, max_hit=260)
     assert [h.cite for h in block.hits] == ["a", "b"] and block.dropped == 1
+
+
+def test_going_over_target_is_recorded_not_hidden():
+    block = bc._fill([_hit("huge", 8000)], 1000)
+    assert block.hits and block.over_target is True
+    assert bc._fill([_hit("small", 100)], 1000).over_target is False
+
+
+def test_a_pathological_hit_is_truncated_rather_than_dropped():
+    """A truncated best answer still tells the reader what it is and where to look it up.
+    A dropped one tells them nothing."""
+    block = bc._fill([_hit("monster", 400_000)], 1000)
+    assert block.hits and block.truncated == 1
+    assert block.hits[0].tokens <= int(1000 * bc.HARD_MAX_FACTOR) + 5
+    assert "truncated" in block.hits[0].text and "monster" in block.hits[0].text
+
+
+def test_a_brief_that_genuinely_needs_more_gets_more():
+    """The point of the change: the budget is a target, not a wall. A single overweight
+    top hit is served, over target, rather than the reader getting nothing."""
+    ctx = bc.BriefContext(blocks={"exemplars": bc._fill([_hit("big", 20_000)], 3800)},
+                          query="q", keywords=[], filters={})
+    assert ctx.blocks["exemplars"].hits
+    assert ctx.trace()["blocks"]["exemplars"]["over_target"] is True
 
 
 def test_thin_precedent_is_declared_rather_than_passed_off_as_a_shortlist():
@@ -211,3 +247,13 @@ def test_precedent_heading_does_not_claim_everything_is_award_winning():
     ctx = bc.BriefContext(blocks={"exemplars": bc.Block("exemplars", [_hit("pb_x#worked_example", 50)], 500)},
                           query="q", keywords=[], filters={})
     assert "award-winning" not in ctx.prompt_text()
+
+
+def test_widening_gives_up_sector_before_problem_type():
+    """A launch case from another sector beats an automotive case that is not a launch.
+    Sector is the weakest predictor of useful precedent (creative-director ruling,
+    2026-09-17), so it is the first filter relaxed."""
+    import inspect
+    src = inspect.getsource(bc.build)
+    order = src[src.index('for drop in ('):]
+    assert order.index('"category"') < order.index('"effectiveness_type"')
