@@ -34,7 +34,11 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import date
 from pathlib import Path
+
+import contract
+import normalise
 
 # ---- knobs ---------------------------------------------------------------
 SECTION_MAX_WORDS = 400          # playbooks: split sections above this at paragraphs
@@ -46,12 +50,13 @@ MIN_WORDS = 8                    # drop chunks thinner than this (headings-only 
 STRATEGY_BY_SOURCE = {
     "ipa": "case_parent_child",
     "effie": "case_parent_child",
-    "cannes": "case_whole",
-    "dandad": "skip",
+    "cannes": "case_parent_child",   # v2: each entry-form answer is a self-contained child
+    "dandad": "group",               # v2: too thin alone; grouped by discipline+year in chunk_corpus()
     "playbook": "sections",
-    "template": "windows",
+    "template": "sections",          # v2: sections never split a table; windows did
 }
-DEFAULT_STRATEGY = "windows"
+DEFAULT_STRATEGY = "sections"
+_CASE_SOURCES = {"ipa", "effie", "cannes", "dandad"}   # sources whose `year` is the award year
 
 # directory -> source, for files with no frontmatter (37 in the corpus today)
 DIR_SOURCE = [("ipa", "ipa"), ("cannes", "cannes"), ("dandad", "dandad"), ("effie", "effie"),
@@ -100,7 +105,7 @@ def infer_source(path: Path, meta: dict) -> str | None:
 def strategy_for(source: str | None, meta: dict) -> str:
     cat = str(meta.get("category") or "").lower()
     if source in ("ipa", "effie") and not cat.endswith("_case"):
-        return "windows"                    # IPA pattern-analysis docs, not cases
+        return "sections"                   # IPA pattern-analysis docs, not cases
     return STRATEGY_BY_SOURCE.get(source or "", DEFAULT_STRATEGY)
 
 
@@ -126,6 +131,31 @@ def split_sections(body: str) -> list[tuple[str, str]]:
 
 def _is_rq(heading: str) -> bool:
     return bool(re.search(r"retrieval[_ ]queries", heading, re.I))
+
+
+_ANY_HEADING = re.compile(r"^(#{1,6})\s*(.*?)\s*$")
+
+
+def extract_rq(body: str) -> tuple[str, str]:
+    """Pull every Retrieval Queries block out of the body at ANY heading level and return
+    (rq_text, body_without_them). Cases mark them with `## Retrieval Queries` (H2) but
+    playbooks use `### RETRIEVAL_QUERIES` / `##### RETRIEVAL QUERIES` — below the H1/H2
+    split, so they used to hide inside the last section's body. A block runs until the
+    next heading of the same or a higher level."""
+    lines = body.splitlines()
+    keep, rq, i = [], [], 0
+    while i < len(lines):
+        m = _ANY_HEADING.match(lines[i])
+        if m and _is_rq(m.group(2).strip("*_ ")):
+            depth = len(m.group(1)); i += 1
+            while i < len(lines):
+                m2 = _ANY_HEADING.match(lines[i])
+                if m2 and len(m2.group(1)) <= depth:
+                    break
+                rq.append(lines[i]); i += 1
+            continue
+        keep.append(lines[i]); i += 1
+    return "\n".join(rq).strip(), "\n".join(keep)
 
 
 def _title(meta: dict, sections: list[tuple[str, str]], path: Path) -> str:
@@ -187,29 +217,81 @@ def _windows(text: str, size: int, overlap: float) -> list[str]:
 
 
 # ---- chunk builder -------------------------------------------------------
+def _as_of(meta: dict, path: Path, source: str | None) -> str:
+    """The contract's `as_of` (YYYY-MM-DD) for corpus material, which has no review date.
+
+    Award cases: the award year, as `YYYY-01-01`. That is when the lesson was judged true.
+    Everything else (playbooks, templates): the file's modification date. A playbook's
+    `year` is when the FRAMEWORK was invented (FCB Grid: 1980, first-principles: 350 BC),
+    which says nothing about how current the write-up is; the day the document was last
+    authored does. An explicit `as_of` in frontmatter always wins."""
+    explicit = str(meta.get("as_of") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", explicit):
+        return explicit
+    if source in _CASE_SOURCES:
+        y = str(meta.get("year") or "").strip()
+        if re.fullmatch(r"\d{4}", y):
+            return f"{y}-01-01"
+    return date.fromtimestamp(path.stat().st_mtime).isoformat()
+
+
+def _finalise_md(md: dict, *, source: str | None, heading: str, level: str, path: Path,
+                 role: str | None = None) -> dict:
+    """Everything that turns raw frontmatter into contract-valid metadata. One place, so
+    every chunk (per-file or corpus-level) goes through the same door."""
+    # Frontmatter `category` is the document KIND (ipa_effectiveness_case, effie_cautionary...).
+    # The contract reserves `category` for the closed client-category list, so move it aside.
+    if "category" in md:
+        md["doc_kind"] = md.pop("category")
+    if md.get("year") is not None:
+        md["year"] = str(md["year"])            # PyYAML reads `year: 2024` as int; contract says string
+    md.setdefault("as_of", _as_of(md, path, source))
+    # Free-text labels -> contract enums. normalise.py is the only place the spelling
+    # tables live; here we just call it. None means "unknown", which the contract allows.
+    raw_tier = md.get("award_tier")
+    md["award_tier_raw"] = str(raw_tier) if raw_tier else None
+    md["award_tier"] = normalise.award_tier(raw_tier)
+    md.setdefault("category", normalise.category_for(md.get("sector"), md.get("client")))
+    md["effectiveness_type"] = normalise.effectiveness_type(md.get("effectiveness_type"))
+    md["strategic_territory"] = normalise.strategic_territory(md.get("strategic_territory"))
+    md["discipline"] = normalise.discipline(md.get("doc_kind")) if source == "playbook" else None
+    md["lions_category"] = normalise.lions_category(md.get("lions_category"))
+    md["section_role"] = role or normalise.section_role(source, heading, level)
+    md["bucket"] = normalise.bucket(source, md["section_role"], md.get("doc_kind"))
+    return contract.apply_defaults(md)      # status=active, verdict=none, scope=global, schema_version
+
+
 def _mk(path: Path, meta: dict, *, source: str | None, doc_id: str, strategy: str, level: str,
         header: str, heading: str, text: str, idx: int, parent_id: str | None = None,
-        rq: str | None = "") -> dict:
+        rq: str | None = "", role: str | None = None) -> dict:
     cid = hashlib.sha1(f"{path.name}:{strategy}:{level}:{idx}:{heading}".encode()).hexdigest()[:12]
     md = {**meta, "source": source, "doc_id": doc_id, "level": level,
           "parent_id": parent_id, "strategy": strategy}
+    md = _finalise_md(md, source=source, heading=heading, level=level, path=path, role=role)
     return {"id": cid, "source": path.name, "section": heading, "chunk_index": idx,
             "metadata": md, "text": text, "header": header, "retrieval_queries": rq or ""}
 
 
-def chunk_file(path: Path) -> list[dict]:
+def _read(path: Path) -> tuple[dict, str, str | None, str]:
     meta, body = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
     source = infer_source(path, meta)
-    strategy = strategy_for(source, meta)
-    if strategy == "skip":
+    return meta, body, source, strategy_for(source, meta)
+
+
+def chunk_file(path: Path) -> list[dict]:
+    """Chunks for ONE file. D&AD entries return [] here because they are only useful in
+    groups — see chunk_corpus(), which is what the build calls."""
+    meta, body, source, strategy = _read(path)
+    if strategy in ("skip", "group"):
         return []
+    rq_block, body = extract_rq(body)            # any heading level, before the H1/H2 split
     sections = split_sections(body)
     title = _title(meta, sections, path)
     doc_id = str(meta.get("framework_id") or meta.get("id") or path.stem)
     header = context_header(source, meta, title, strategy)
 
     # pass 1: retrieval queries (frontmatter key and/or a section), body sections
-    rq_parts = []
+    rq_parts = [rq_block] if rq_block else []
     fm_rq = meta.get("RETRIEVAL_QUERIES") or meta.get("retrieval_queries")
     if fm_rq:
         rq_parts.append(fm_rq if isinstance(fm_rq, str) else " ".join(map(str, fm_rq)))
@@ -241,15 +323,24 @@ def chunk_file(path: Path) -> list[dict]:
         return chunks
 
     if strategy == "sections":
+        # Sections split at paragraph boundaries, never inside a table (table rows have
+        # no blank line between them, so a table is always one paragraph).
         i = 0
+        prev_role: str | None = None
         for h, t in body_secs:
+            role = normalise.section_role(source, h, "chunk")
+            if role == "other" and prev_role in _INHERITABLE_ROLES:
+                role = prev_role            # e.g. the "# Brand Audit Template" H1 inside SECTION 7: OUTPUT TEMPLATE
+            prev_role = role
+            if role in normalise.NOT_EMBEDDED_ROLES:
+                continue                    # identity card + bibliography: no retrievable lesson
             for piece in _split_paragraphs(t, SECTION_MAX_WORDS):
                 if len(piece.split()) < MIN_WORDS:
                     continue
-                chunks.append(_mk(path, meta, level="chunk", heading=h, text=piece, idx=i, **common)); i += 1
+                chunks.append(_mk(path, meta, level="chunk", heading=h, text=piece, idx=i, role=role, **common)); i += 1
         return chunks
 
-    # windows (templates, guides, anything unknown)
+    # windows (anything that explicitly asks for it)
     i = 0
     for h, t in body_secs:
         for w in _windows(t, WINDOW_WORDS, WINDOW_OVERLAP):
@@ -259,9 +350,106 @@ def chunk_file(path: Path) -> list[dict]:
     return chunks
 
 
+# Roles a following unrecognised sub-heading may inherit (playbook templates and examples
+# often contain their own H1/H2 titles).
+_INHERITABLE_ROLES = frozenset({"output_template", "worked_example", "thought_process", "process"})
+
+
+# ---- D&AD groups (corpus-level) -------------------------------------------------
+_FIRST_SENTENCE = re.compile(r"^(.*?[.!?])(\s|$)", re.S)
+
+
+def _first_sentence(text: str, cap: int = 220) -> str:
+    m = _FIRST_SENTENCE.match(text.strip())
+    s = (m.group(1) if m else text.strip())
+    return s[:cap].strip()
+
+
+def _dandad_entry(path: Path) -> dict | None:
+    meta, body, source, _ = _read(path)
+    if source != "dandad":
+        return None
+    rq, body = extract_rq(body)
+    sections = dict(split_sections(body))
+    overview = next((t for h, t in sections.items() if h.lower().startswith("overview")), "")
+    if len(overview.split()) < MIN_WORDS:
+        return None
+    return {"path": path, "meta": meta, "title": _title(meta, list(sections.items()), path),
+            "overview": overview.strip(), "rq": rq.strip(),
+            # "Book Design, Typography" -> group under "Book Design"; the full label stays in `sector`
+            "discipline": str(meta.get("sector") or "Uncategorised").split(",")[0].strip() or "Uncategorised",
+            "sector_full": str(meta.get("sector") or "").strip(),
+            "year": str(meta.get("year") or "").strip()}
+
+
+def chunk_dandad_groups(paths: list[Path]) -> list[dict]:
+    """D&AD entries are ~180 words with no client and no strategy; alone they are noise.
+    Grouped by discipline + year they become a useful reference: ONE parent per group
+    ("what award-winning Book Design looked like in 2026") and one child per entry.
+    The parent text here is deterministic (titles + first sentences); the enrichment
+    pass (step 2) may replace it with a written summary. Stage is `production`: these
+    serve the production clan, and brief retrieval excludes them by default."""
+    entries = [e for e in (_dandad_entry(p) for p in paths) if e]
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for e in entries:
+        groups.setdefault((e["discipline"], e["year"]), []).append(e)
+
+    chunks: list[dict] = []
+    for (disc, year), members in sorted(groups.items()):
+        members.sort(key=lambda e: e["title"])
+        first = members[0]
+        gid = f"dandad:{normalise.snake(disc)}:{year or 'undated'}"
+        strategy = "group"
+        base_meta = {"source": "dandad", "sector": disc, "year": year or None, "doc_kind": "dandad_group",
+                     "disciplines": sorted({e["sector_full"] for e in members if e["sector_full"]})[:20],
+                     "stage": "production", "award_tier": None,
+                     "tags": sorted({t for e in members for t in (e["meta"].get("tags") or []) if isinstance(t, str)})[:12]}
+        title = f"D&AD {disc} winners ({year})" if year else f"D&AD {disc} winners"
+        header = " · ".join(p for p in [title, "D&AD", disc, f"{len(members)} entries"] if p)
+        bullets = "\n".join(f"- {e['title']}: {_first_sentence(e['overview'])}" for e in members)
+        rq = "\n".join(e["rq"] for e in members if e["rq"])[:4000]
+        pid = hashlib.sha1(f"{gid}:parent".encode()).hexdigest()[:12]
+        pmd = _finalise_md({**base_meta, "doc_id": gid, "level": "parent", "parent_id": None,
+                            "strategy": strategy, "group_size": str(len(members))},
+                           source="dandad", heading=title, level="parent", path=first["path"], role="whole")
+        chunks.append({"id": pid, "source": gid, "section": title, "chunk_index": 0, "metadata": pmd,
+                       "text": f"{title}. {len(members)} Pencil-winning entries.\n\n{bullets}",
+                       "header": header, "retrieval_queries": rq})
+        for i, e in enumerate(members, 1):
+            tier = e["meta"].get("award_tier")
+            cmd = _finalise_md({**e["meta"], "source": "dandad", "doc_id": gid, "level": "child", "parent_id": pid,
+                                "strategy": strategy, "stage": "production", "award_tier": tier, "entry_id": str(e["meta"].get("framework_id") or e["path"].stem)},
+                               source="dandad", heading="Overview", level="child", path=e["path"], role="overview")
+            cid = hashlib.sha1(f"{gid}:{e['path'].name}".encode()).hexdigest()[:12]
+            chunks.append({"id": cid, "source": e["path"].name, "section": e["title"], "chunk_index": i, "metadata": cmd,
+                           "text": e["overview"], "header": f"{e['title']} · D&AD {tier or ''} · {disc}".replace("  ", " "),
+                           "retrieval_queries": e["rq"]})
+    return chunks
+
+
+def chunk_corpus(paths: list[Path]) -> list[dict]:
+    """What the build calls: per-file chunks for everything, plus D&AD grouped across files."""
+    chunks: list[dict] = []
+    dandad: list[Path] = []
+    for p in paths:
+        _, _, source, strategy = _read(p)
+        if strategy == "group":
+            dandad.append(p)
+        else:
+            chunks.extend(chunk_file(p))
+    if dandad:
+        chunks.extend(chunk_dandad_groups(dandad))
+    return chunks
+
+
+# doc_ids whose Retrieval Queries must NOT be embedded (golden-set holdout). Set by the
+# build from golden/holdout.json. Empty = embed everything (the production default).
+RQ_HOLDOUT: set[str] = set()
+
+
 def embed_text_of(chunk: dict, cap: int = 16000) -> str:
-    """What we embed: context header, section, body, retrieval queries."""
+    """What we embed: context header, section, body, retrieval queries (unless held out)."""
     parts = [chunk.get("header") or "", chunk["section"], chunk["text"]]
-    if chunk.get("retrieval_queries"):
+    if chunk.get("retrieval_queries") and (chunk.get("metadata") or {}).get("doc_id") not in RQ_HOLDOUT:
         parts.append(chunk["retrieval_queries"])
     return "\n".join(p for p in parts if p)[:cap]

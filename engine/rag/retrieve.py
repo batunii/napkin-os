@@ -18,6 +18,7 @@ index_available() returns False, so the caller can skip the stage cleanly.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -49,13 +50,28 @@ def index_label(index_dir: Path | str | None = None) -> str:
         return f"{rag.store_name()}:unavailable ({type(e).__name__})"
 
 
+# Material no brief-side caller should ever be served, whatever it asks for:
+#   stage=production   D&AD design-craft entries, indexed for the production clan. They
+#                      have no client and no strategy, and they only entered the index in
+#                      chunker v2 — before that they were skipped, so nothing downstream
+#                      was ever written expecting to filter them out.
+#   status=superseded  a human overruled it.
+# `ne` matches chunks where the field is absent, so this narrows nothing that existed
+# before these fields did. Pass brief_safe=False to search the index as it really is
+# (the golden eval and any production-clan caller).
+BRIEF_SAFE = {"stage": {"ne": "production"}, "status": {"ne": "superseded"}}
+
+
 def retrieve(query: str, k: int = 5, where: dict | None = None,
-             index_dir: Path | str | None = None, level: str | None = None) -> list[dict]:
+             index_dir: Path | str | None = None, level: str | None = None,
+             brief_safe: bool = True) -> list[dict]:
     """Top-k chunks for a query, each carrying a `source › section` citation.
     `level` narrows to 'parent' (whole cases — what Loops 4/6 want as precedents),
     'child' (case sections) or 'chunk' (playbooks/templates). Returns [] if the
     index is absent or nothing matches the metadata filter."""
     d = Path(index_dir) if index_dir else DEFAULT_INDEX
+    if brief_safe:
+        where = {**BRIEF_SAFE, **(where or {})}       # an explicit filter still wins
     if level:
         where = {**(where or {}), "level": level}
     if not rag.store_available(d):
@@ -69,7 +85,7 @@ def retrieve(query: str, k: int = 5, where: dict | None = None,
             "section": r["section"],
             "citation": f"{r['source']} › {r['section']}",
             "framework": md.get("framework_name"),
-            "category": md.get("category"),
+            "category": md.get("doc_kind") or md.get("category"),   # doc_kind = the corpus's old `category`
             "text": r["text"],
             "header": r.get("header") or "",
             "doc_id": md.get("doc_id"),
@@ -77,6 +93,36 @@ def retrieve(query: str, k: int = 5, where: dict | None = None,
             "metadata": md,
         })
     return out
+
+
+# ---- the brief's retrieval entry point -------------------------------------------
+def brief_context(pairs: dict, index_dir: Path | str | None = None, **kw):
+    """Campaign-clan pairs -> four budgeted, citable blocks. See brief_context.py.
+    Re-exported here so the pipeline has ONE import surface for retrieval."""
+    import brief_context as _bc
+    return _bc.build(pairs, index_dir=Path(index_dir) if index_dir else DEFAULT_INDEX, **kw)
+
+
+_CITE = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9_:.\-]*(?:#[a-z_]+)?)\]")
+
+
+def check_grounding(text: str, allowed: dict | set) -> dict:
+    """Verify that every citation in generated text points at something actually in the
+    retrieved context.
+
+    This is the check that makes grounding mechanical rather than a matter of reading.
+    A model that invents `[ipa_0999]` to support a claim is making the exact mistake a
+    reviewer would otherwise have to catch by hand, and an unsupported claim of precedent
+    is worse than no claim at all. Returns the cited ids, the invented ones, and whether
+    anything was cited — a confident paragraph with no citation is its own smell.
+
+    Deliberately NOT a model call: it is string matching against a known set, so it costs
+    nothing and cannot itself hallucinate."""
+    cited = list(dict.fromkeys(_CITE.findall(text or "")))
+    ok = set(allowed)
+    invented = [c for c in cited if c not in ok]
+    return {"cited": cited, "invented": invented, "grounded": bool(cited) and not invented,
+            "uncited": not cited}
 
 
 if __name__ == "__main__":                       # tiny manual check: retrieve.py "query" [k]

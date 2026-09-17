@@ -71,7 +71,7 @@ BATCH = 32
 # ---------------------------------------------------------------------------
 
 # Chunking lives in chunking.py (per-source strategies, context headers, parent/child).
-from chunking import (parse_frontmatter, split_sections as split_h2, chunk_file,  # noqa: E402,F401
+from chunking import (parse_frontmatter, split_sections as split_h2, chunk_file, chunk_corpus,  # noqa: E402,F401
                       embed_text_of, STRATEGY_BY_SOURCE)
 
 
@@ -151,16 +151,18 @@ def open_store(index_dir: Path | None = None, name: str | None = None) -> Vector
     return get_store(name, index_dir=index_dir)
 
 
-def build(corpus: Path, index_dir: Path):
+def build(corpus: Path, index_dir: Path, holdout: Path | None = None):
     """Chunk + embed the corpus. Always writes the LOCAL index (the canonical,
-    re-pushable artefact); if RAG_STORE names a remote store, mirrors into it too."""
+    re-pushable artefact); if RAG_STORE names a remote store, mirrors into it too.
+    `holdout` = golden/holdout.json: those docs are embedded WITHOUT their retrieval
+    queries so the golden eval measures retrieval, not memorised question text."""
+    import chunking as _chunking
+    _chunking.RQ_HOLDOUT = set(json.loads(Path(holdout).read_text())) if holdout else set()
     files = sorted(glob.glob(str(corpus / "**" / "*.md"), recursive=True))
     files = [f for f in files if "DROP-ZIPS-HERE" not in f]
     if not files:
         sys.exit(f"No .md files under {corpus}. Drop the playbooks in and re-run.")
-    chunks: list[dict] = []
-    for f in files:
-        chunks.extend(chunk_file(Path(f)))
+    chunks = chunk_corpus([Path(f) for f in files])
     print(f"  {len(files)} files → {len(chunks)} chunks")
     vecs, mode = embed([embed_text_of(c) for c in chunks], "passage")
     rows = [{**c, "vector": _norm(v)} for c, v in zip(chunks, vecs)]
@@ -175,7 +177,8 @@ def build(corpus: Path, index_dir: Path):
         by_src[k] = by_src.get(k, 0) + 1
     local.write_manifest({"files": len(files), "embed_mode": mode, "embed_model": EMBED_MODEL,
                           "corpus": str(corpus), "built_at": _now(),
-                          "chunking": {"version": 2, "strategies": STRATEGY_BY_SOURCE, "by_source_level": by_src}})
+                          "rq_holdout_docs": len(_chunking.RQ_HOLDOUT), "holdout_file": str(holdout) if holdout else None,
+                          "chunking": {"version": 3, "strategies": STRATEGY_BY_SOURCE, "by_source_level": by_src}})
     print(f"  embed mode: {mode}  ·  dim {dim}")
     print(f"  index → {index_dir}")
 
@@ -184,6 +187,42 @@ def build(corpus: Path, index_dir: Path):
         remote.ensure(dim)
         n = remote.upsert(rows)
         print(f"  mirrored {n} rows → {remote.describe()['label']}")
+
+
+def retag(corpus: Path, index_dir: Path, apply: bool = False) -> dict:
+    """Refresh metadata on an existing index WITHOUT re-embedding.
+
+    Metadata (category, bucket, section_role, ...) is payload: it is filtered on, never
+    embedded. So a change to the contract or to normalise.py only needs the payload
+    rewritten, which takes seconds, where a rebuild costs a full embedding pass.
+
+    Safety: a row is only updated when its chunk id AND its embedded text are both
+    unchanged. If the text moved, the vector is stale and the honest answer is a rebuild,
+    so those rows are reported and left alone."""
+    import chunking as _chunking
+    files = sorted(glob.glob(str(corpus / "**" / "*.md"), recursive=True))
+    files = [f for f in files if "DROP-ZIPS-HERE" not in f]
+    fresh = {c["id"]: c for c in _chunking.chunk_corpus([Path(f) for f in files])}
+    store = LocalStore(index_dir)
+    rows = list(store.scroll())
+    changed = stale = missing = 0
+    for r in rows:
+        f = fresh.get(r["id"])
+        if f is None:
+            missing += 1; continue
+        if _chunking.embed_text_of(f) != _chunking.embed_text_of(r):
+            stale += 1; continue                      # vector no longer matches the text
+        if f["metadata"] != r["metadata"]:
+            changed += 1
+            if apply:
+                r["metadata"] = f["metadata"]
+    report = {"rows": len(rows), "metadata_changed": changed, "text_changed_needs_rebuild": stale,
+              "not_in_corpus": missing, "new_chunks": len(set(fresh) - {r["id"] for r in rows}), "applied": apply}
+    if apply and changed:
+        store.replace_all(rows)
+        man = store.manifest(); man["retagged_at"] = _now(); store.write_manifest(
+            {k: v for k, v in man.items() if k not in ("chunks", "dim")})
+    return report
 
 
 def _now() -> str:
@@ -251,13 +290,27 @@ def push(index_dir: Path) -> int:
     return migrate("local", store_name(), src_index=index_dir)
 
 
-def search(index_dir: Path, q: str, k: int = 5, where: dict | None = None
+SEARCH_MODE = os.environ.get("RAG_SEARCH", "hybrid")      # hybrid | dense
+
+
+def search(index_dir: Path, q: str, k: int = 5, where: dict | None = None, mode: str | None = None
            ) -> list[tuple[float, dict]]:
     """Embed the query and return the top-k (score, chunk) rows. The single search
-    code path — both the `query` CLI and retrieve.py (Loops 3–7) call this."""
+    code path — both the `query` CLI and retrieve.py (Loops 3–7) call this.
+    mode: 'hybrid' (dense + BM25 fused by RRF; default) or 'dense'. Stores without a
+    search_hybrid() (Qdrant today) fall back to dense."""
     store = open_store(index_dir)
     qv, _ = embed([q], "query")
-    return store.search(_norm(qv[0]), k=k, where=where)
+    return search_vec(store, _norm(qv[0]), q, k=k, where=where, mode=mode)
+
+
+def search_vec(store, qvec: list[float], q: str, k: int = 5, where: dict | None = None, mode: str | None = None
+               ) -> list[tuple[float, dict]]:
+    """search() with a pre-computed query vector (the golden eval embeds in batches)."""
+    mode = (mode or SEARCH_MODE).lower()
+    if mode == "hybrid" and hasattr(store, "search_hybrid"):
+        return store.search_hybrid(qvec, q, k=k, where=where)
+    return store.search(qvec, k=k, where=where)
 
 
 def query(index_dir: Path, q: str, k: int = 5, where: dict | None = None):
@@ -319,6 +372,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build"); b.add_argument("--corpus", default="../reference/rag")
     b.add_argument("--index", default="./index")
+    b.add_argument("--holdout", default=None, help="golden/holdout.json: embed these docs without their retrieval queries")
     qp = sub.add_parser("query"); qp.add_argument("query")
     qp.add_argument("--index", default="./index"); qp.add_argument("-k", type=int, default=5)
     qp.add_argument("--where", help="metadata filter key=value")
@@ -331,6 +385,9 @@ def main():
     mg.add_argument("--to-index", default=None, help="local destination index dir")
     mg.add_argument("--replace", action="store_true", help="wipe destination first")
     mg.add_argument("--force", action="store_true", help="push even if the source embed model differs from the current one")
+    rt = sub.add_parser("retag", help="refresh metadata on an existing index without re-embedding")
+    rt.add_argument("--corpus", default="../reference/rag"); rt.add_argument("--index", default="./index")
+    rt.add_argument("--apply", action="store_true", help="write the changes (default: dry run)")
     ss = sub.add_parser("stores", help="list backends and their status"); ss.add_argument("--index", default="./index")
     sc = sub.add_parser("store-check", help="run the VectorStore contract against a backend")
     sc.add_argument("name", nargs="?", default=None); sc.add_argument("--index", default="./_index_check")
@@ -339,12 +396,14 @@ def main():
     def _abs(x): return Path(x) if Path(x).is_absolute() else here / x
     idx = _abs(a.index)
     if a.cmd == "build":
-        build(_abs(a.corpus).resolve(), idx)
+        build(_abs(a.corpus).resolve(), idx, holdout=_abs(a.holdout) if a.holdout else None)
     elif a.cmd == "push":
         push(idx)
     elif a.cmd == "migrate":
         migrate(a.src.lower(), a.dst.lower(), src_index=idx,
                 dst_index=_abs(a.to_index) if a.to_index else None, replace=a.replace, force=a.force)
+    elif a.cmd == "retag":
+        print(json.dumps(retag(_abs(a.corpus).resolve(), idx, apply=a.apply), indent=1))
     elif a.cmd == "stores":
         stores_status(idx)
     elif a.cmd == "store-check":

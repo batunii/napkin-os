@@ -29,6 +29,8 @@ import urllib.request
 import uuid
 from typing import Iterator
 
+import contract
+import filters
 from store_base import StoreConfigError, VectorStore
 
 _NS = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")  # stable namespace for point ids
@@ -103,18 +105,24 @@ def ensure_collection(dim: int, recreate: bool = False):
     ensure_payload_indexes()
 
 
-# Qdrant needs a payload index on any field used in a filter. These are the metadata
-# keys the pipeline filters on (where={"source": ...} etc.). Idempotent.
-_INDEX_FIELDS = ("metadata.source", "metadata.category", "metadata.award_tier", "metadata.year",
-                 "metadata.level", "metadata.parent_id", "metadata.doc_id", "metadata.sector")
+# Qdrant needs a payload index on any field used in a filter. Which fields those are
+# is the contract's decision (schema/rag_metadata.v1.json, `indexed: true`), not this
+# file's: the filter in _filter() and the index list must never drift apart, and the
+# contract is the single place both are read from. Idempotent.
+def _index_fields() -> list[tuple[str, str]]:
+    """[(qdrant field path, qdrant index type)] for every indexed contract field.
+    Dates get a `datetime` index so range filters (as_of > ...) work; everything else
+    is `keyword` (exact match on a string)."""
+    return [(f"metadata.{f.name}", "datetime" if f.type == "date" else "keyword")
+            for f in contract.SCHEMA.fields.values() if f.indexed]
 
 
 def ensure_payload_indexes():
     name = collection_name()
-    for field in _INDEX_FIELDS:
+    for field, kind in _index_fields():
         try:
             _req("PUT", f"/collections/{name}/index?wait=true",
-                 {"field_name": field, "field_schema": "keyword"})
+                 {"field_name": field, "field_schema": kind})
         except RuntimeError:
             pass  # already exists / non-fatal
 
@@ -135,12 +143,9 @@ def upsert(rows: list[dict], batch: int = 256) -> int:
 
 
 def _filter(where: dict | None):
-    """Map a {key: value} metadata filter to a Qdrant nested-field filter.
-    Keys are metadata keys (e.g. 'source'), stored under payload.metadata.<key>."""
-    if not where:
-        return None
-    return {"must": [{"key": f"metadata.{k}", "match": {"value": v}}
-                     for k, v in where.items()]}
+    """Map the shared filter language (filters.py) to Qdrant's filter JSON. Keys are
+    metadata keys (e.g. 'source'), stored under payload.metadata.<key>."""
+    return filters.to_qdrant(where)
 
 
 def search(qvec: list[float], k: int = 5, where: dict | None = None) -> list[tuple[float, dict]]:

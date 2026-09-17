@@ -11,6 +11,8 @@ rag/_testindex/
 rag/_index_test/
 rag/_index_v2/
 rag/_index*/
+rag/golden/*.jsonl
+rag/golden/*.json
 
 # OS / tooling junk
 .DS_Store

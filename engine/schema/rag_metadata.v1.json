@@ -1,0 +1,371 @@
+{
+  "$comment": "RAG chunk metadata contract, version 1. Shared by Track A (CLAN OS layer), Track B (dossier export) and Track C (RAG). Every chunk payload in every vector store carries exactly these keys under `metadata`. Adding a field = new minor version + backfill; renaming or removing = new major version. Enum lists are closed: a value not listed here is a validation error, never a new filter value. v1.1.0 adds bucket, section_role, effectiveness_type, strategic_territory, discipline, lions_category (all derivable from existing frontmatter) and turns award_tier into a closed enum with the raw spelling kept in award_tier_raw.",
+  "version": "1.1.0",
+  "locked": false,
+  "fields": {
+    "schema_version": {
+      "type": "string",
+      "indexed": false,
+      "required": true,
+      "origin": "system",
+      "description": "The version of this file the chunk was written under. Lets a reader tell which fields to expect."
+    },
+    "bucket": {
+      "type": "enum",
+      "indexed": true,
+      "required": true,
+      "origin": "system",
+      "default": "exemplars",
+      "values": [
+        "exemplars",
+        "craft",
+        "rules",
+        "instructions"
+      ],
+      "description": "Which slot of the brief prompt this chunk can fill. exemplars = precedent (award cases, worked examples); craft = how to think (process steps, guiding questions, synthesis); rules = never/always (common mistakes, decision rules, later dossier rejections) — retrieved by FILTER, never by similarity; instructions = what a good brief looks like (templates, criteria)."
+    },
+    "section_role": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "system",
+      "values": [
+        "insight",
+        "strategic_approach",
+        "idea",
+        "execution",
+        "results",
+        "what_made_it_work",
+        "identity_card",
+        "process",
+        "guiding_questions",
+        "worked_example",
+        "common_mistakes",
+        "output_template",
+        "decision_rules",
+        "bibliography",
+        "thought_process",
+        "how_it_works",
+        "entry_answer",
+        "overview",
+        "synthesis",
+        "template_section",
+        "criteria",
+        "whole",
+        "other"
+      ],
+      "description": "What kind of section the chunk is, normalised from its heading. Lets retrieval ask for 'Insight sections about launches' or route playbook sections into buckets. `whole` = a parent chunk covering a complete document."
+    },
+    "scope": {
+      "type": "scope",
+      "indexed": true,
+      "required": true,
+      "origin": "review",
+      "default": "global",
+      "pattern": "^(global|category:[a-z0-9_]+|brand:[a-z0-9_]+)$",
+      "description": "Who a lesson applies to. Queries filter with an OR across the scopes in play (global + this category + this brand) so house-wide lessons are never buried by a narrow filter."
+    },
+    "category": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "review",
+      "values": [
+        "fmcg",
+        "food_drink",
+        "alcohol",
+        "financial_services",
+        "retail",
+        "automotive",
+        "technology",
+        "telecoms",
+        "travel",
+        "public_sector",
+        "charity",
+        "healthcare",
+        "media_entertainment",
+        "fashion_beauty",
+        "other"
+      ],
+      "description": "Client category. CLOSED LIST — Phase 0 redlines this with a creative director before dossier ingestion. Values mirror what the IPA corpus distinguishes (Food & Drink and Alcohol are separate from FMCG in the awards data, so they stay separate here). Lower snake_case only, so `FMCG`, `fmcg` and `Fast-moving consumer goods` cannot become three filter values. Corpus chunks get it from a sector lookup (normalise.SECTOR_TO_CATEGORY)."
+    },
+    "campaign_type": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "review",
+      "values": [
+        "launch",
+        "always_on",
+        "seasonal",
+        "rebrand"
+      ],
+      "description": "Shape of the campaign the chunk came from."
+    },
+    "stage": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "review",
+      "values": [
+        "category_research",
+        "brand_research",
+        "campaign_research",
+        "brief",
+        "production",
+        "pitch"
+      ],
+      "description": "Which of the six pipeline apps produced the content."
+    },
+    "verdict": {
+      "type": "enum",
+      "indexed": true,
+      "required": true,
+      "origin": "review",
+      "default": "none",
+      "values": [
+        "accepted",
+        "rejected",
+        "exemplary",
+        "none"
+      ],
+      "description": "Human judgement on the chunk's subject. `accepted` is a weak signal (fine, ship it); `exemplary` is the rare strong positive worth imitating; `none` = never reviewed (all corpus material)."
+    },
+    "reason_code": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "review",
+      "values": [
+        "off_strategy",
+        "off_brand",
+        "factually_wrong",
+        "tone",
+        "cliche",
+        "legal_risk",
+        "client_preference"
+      ],
+      "description": "Why a verdict was `rejected`. Null when accepted. `client_preference` is scoped to that client and never promoted to house-level learning. Phase 0 redlines this list; changing it after ingestion means reprocessing."
+    },
+    "status": {
+      "type": "enum",
+      "indexed": true,
+      "required": true,
+      "origin": "review",
+      "default": "active",
+      "values": [
+        "active",
+        "superseded"
+      ],
+      "description": "Supersession state. Superseded chunks are excluded from generation by default (`status != superseded`) but kept, so the graph can still answer why a conclusion was reached."
+    },
+    "as_of": {
+      "type": "date",
+      "indexed": true,
+      "required": true,
+      "origin": "review",
+      "description": "ISO 8601 date (YYYY-MM-DD) the lesson was true. Drives recency weighting at rerank and periodic expiry review. Corpus material uses its publication year."
+    },
+    "reviewer_role": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "review",
+      "values": [
+        "creative_director",
+        "strategist",
+        "account",
+        "producer",
+        "other"
+      ],
+      "description": "Role of whoever gave the verdict. Stored so retrieval can weight taste over availability."
+    },
+    "run_id": {
+      "type": "string",
+      "indexed": false,
+      "required": false,
+      "origin": "review",
+      "description": "The CLAN run the dossier came from. Traceability only; never filtered on."
+    },
+    "source": {
+      "type": "enum",
+      "indexed": true,
+      "required": true,
+      "origin": "corpus",
+      "values": [
+        "ipa",
+        "cannes",
+        "dandad",
+        "effie",
+        "playbook",
+        "template",
+        "dossier"
+      ],
+      "description": "Which corpus the chunk belongs to. `dossier` is the new one Track B emits."
+    },
+    "doc_id": {
+      "type": "string",
+      "indexed": true,
+      "required": true,
+      "origin": "corpus",
+      "description": "Stable per-document id: framework_id, file stem, or dossier run id."
+    },
+    "level": {
+      "type": "enum",
+      "indexed": true,
+      "required": true,
+      "origin": "corpus",
+      "values": [
+        "parent",
+        "child",
+        "chunk"
+      ],
+      "description": "Parent/child chunking level. Only children (and flat `chunk`s) are embedded; parents are fetched by id after a child hits."
+    },
+    "parent_id": {
+      "type": "string",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "description": "The parent chunk id for children, else null. Indexed because parent fetch is a filter on it."
+    },
+    "strategy": {
+      "type": "string",
+      "indexed": false,
+      "required": false,
+      "origin": "corpus",
+      "description": "Which chunking strategy produced the chunk. Diagnostic only."
+    },
+    "doc_kind": {
+      "type": "string",
+      "indexed": false,
+      "required": false,
+      "origin": "corpus",
+      "description": "What kind of document the corpus file is (ipa_effectiveness_case, effie_cautionary, cannes_case, a playbook type...). This is the awards corpus's frontmatter `category`, renamed at chunk time so it cannot be confused with the closed client-category list above. Drives chunking strategy and display only."
+    },
+    "award_tier": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "values": [
+        "grand_prix",
+        "gold",
+        "silver",
+        "bronze",
+        "black_pencil",
+        "white_pencil",
+        "yellow_pencil",
+        "graphite_pencil",
+        "wood_pencil",
+        "shortlist",
+        "other"
+      ],
+      "description": "Award level, normalised across bodies (IPA/Effie/Cannes use metal tiers; D&AD uses pencils). The awarding body's own spelling is kept in award_tier_raw. Cannes 'Gold Cannes Lions' → gold."
+    },
+    "award_tier_raw": {
+      "type": "string",
+      "indexed": false,
+      "required": false,
+      "origin": "corpus",
+      "description": "The award tier exactly as the awarding body wrote it (e.g. 'Gold Cannes Lions', 'WOOD Pencil'). Display only."
+    },
+    "year": {
+      "type": "string",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "description": "Publication or award year as a 4-digit string. Kept for existing filters; `as_of` is the field new code should use."
+    },
+    "sector": {
+      "type": "string",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "description": "Sector as recorded by the awarding body. Free text today; `category` is the closed-list equivalent for new material."
+    },
+    "effectiveness_type": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "values": [
+        "turnaround",
+        "brand_building",
+        "sustained_success",
+        "social_environmental_change",
+        "launch",
+        "activation",
+        "challenger",
+        "other"
+      ],
+      "description": "IPA: what kind of business problem the campaign solved. A campaign clan saying 'launch' filters straight to Launch cases."
+    },
+    "strategic_territory": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "values": [
+        "reframing",
+        "emotional",
+        "rational",
+        "challenger",
+        "humor",
+        "community",
+        "purpose",
+        "other"
+      ],
+      "description": "IPA: the creative route taken. Maps from brand tone in the campaign clan."
+    },
+    "discipline": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "values": [
+        "brand_strategy",
+        "comms_planning",
+        "thinking_models",
+        "media_effectiveness",
+        "cultural_strategy",
+        "behavioural_science",
+        "research_methodology",
+        "planning_craft",
+        "audience_segmentation",
+        "competitive_strategy",
+        "trends_foresight",
+        "other"
+      ],
+      "description": "Playbooks: the planning discipline the framework belongs to (the playbook frontmatter `category`, normalised). Source of truth for the list is rag/00-master-index.md."
+    },
+    "lions_category": {
+      "type": "enum",
+      "indexed": true,
+      "required": false,
+      "origin": "corpus",
+      "values": [
+        "film",
+        "outdoor",
+        "direct",
+        "pr",
+        "media",
+        "creative_strategy",
+        "creative_effectiveness",
+        "other"
+      ],
+      "description": "Cannes: the Lions category the entry won in."
+    }
+  },
+  "excluded": {
+    "$comment": "Deliberately NOT in v1. Revenue, headcount and audience age are high-cardinality, near-useless as filters, and carry a re-identification risk: stripping a client name is pseudonymisation, not anonymisation, and these figures are usually the confidential information under the NDA. If bands are ever needed, add them behind a k-anonymity floor.",
+    "fields": [
+      "revenue_band",
+      "headcount_band",
+      "audience_age_band",
+      "client_name",
+      "revenue",
+      "headcount"
+    ]
+  }
+}
