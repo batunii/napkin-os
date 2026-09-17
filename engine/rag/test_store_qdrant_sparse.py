@@ -85,3 +85,38 @@ def test_hybrid_falls_back_to_dense_when_the_collection_has_no_sparse_vector(mon
     out = q.search_hybrid([0.1, 0.2], "xero", k=2)
     assert [p["id"] for _, p in out] == ["a", "b"]
     assert len([b for m, p, b in fake.seen if p.endswith("/points/search")]) == 1
+
+
+def test_get_looks_a_chunk_up_by_payload_id_so_parents_can_be_expanded(monkeypatch):
+    """Without this the remote store hands the brief one section where local hands it the
+    whole case — a silent local/remote divergence in what the model actually reads."""
+    seen = []
+
+    def fake(method, path, body=None, timeout=60):
+        seen.append((method, path, body))
+        if path.endswith("/points/scroll"):
+            return {"result": {"points": [{"payload": {"id": "p1", "text": "the whole case"}}]}}
+        return {"result": {}}
+
+    monkeypatch.setattr(q, "_req", fake)
+    monkeypatch.setattr(q, "collection_name", lambda: "test")
+    got = q.get("p1")
+    assert got["text"] == "the whole case"
+    body = [b for m, p, b in seen if p.endswith("/points/scroll")][0]
+    assert body["filter"]["must"][0] == {"key": "id", "match": {"value": "p1"}}
+
+
+def test_get_returns_none_when_the_chunk_is_absent(monkeypatch):
+    monkeypatch.setattr(q, "_req", lambda m, p, b=None, timeout=60: {"result": {"points": []}})
+    monkeypatch.setattr(q, "collection_name", lambda: "test")
+    assert q.get("nope") is None
+
+
+def test_the_chunk_id_is_indexed_so_parent_expansion_is_not_a_scan(monkeypatch):
+    seen = []
+    monkeypatch.setattr(q, "_req", lambda m, p, b=None, timeout=60: seen.append((m, p, b)) or {"result": {}})
+    monkeypatch.setattr(q, "collection_name", lambda: "test")
+    q.ensure_payload_indexes()
+    indexed = {b["field_name"] for m, p, b in seen if "/index" in p}
+    assert "id" in indexed                       # get() filters on it
+    assert "metadata.bucket" in indexed          # and the contract's own filtered fields

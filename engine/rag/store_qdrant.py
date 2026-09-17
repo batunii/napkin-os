@@ -144,7 +144,10 @@ def _index_fields() -> list[tuple[str, str]]:
 
 def ensure_payload_indexes():
     name = collection_name()
-    for field, kind in _index_fields():
+    # `id` is the chunk's own id, not a contract metadata field, so it is not in
+    # _index_fields(). It still needs an index: get() looks a chunk up by it to expand a
+    # matched section to its whole parent case, and without the index that is a scan.
+    for field, kind in [("id", "keyword"), ("parent_id", "keyword"), *_index_fields()]:
         try:
             _req("PUT", f"/collections/{name}/index?wait=true",
                  {"field_name": field, "field_schema": kind})
@@ -181,6 +184,23 @@ def upsert(rows: list[dict], batch: int = 256) -> int:
         _req("PUT", f"/collections/{name}/points?wait=true", {"points": pts})
         n += len(pts)
     return n
+
+
+def get(chunk_id: str) -> dict | None:
+    """One chunk payload by its chunk id. Used to present a whole parent case after one
+    of its sections matched, which the local store does via a dict lookup. Without this
+    the remote store would hand the brief a single section where local hands it the whole
+    case — the exact local/remote divergence the shared filter and scoring code exists to
+    prevent. Qdrant point ids are UUIDs derived from the chunk (see point_id), so this
+    looks the chunk up by its payload id rather than by point id."""
+    flt = {"must": [{"key": "id", "match": {"value": chunk_id}}]}
+    try:
+        r = _req("POST", f"/collections/{collection_name()}/points/scroll",
+                 {"filter": flt, "limit": 1, "with_payload": True})
+    except RuntimeError:
+        return None
+    pts = (r.get("result") or {}).get("points") or []
+    return pts[0].get("payload") if pts else None
 
 
 def _filter(where: dict | None):
@@ -281,6 +301,8 @@ class QdrantStore(VectorStore):
     def available(self) -> bool:            return available()
     def ensure(self, dim: int) -> None:     ensure_collection(dim)
     def upsert(self, rows: list[dict]) -> int:  return upsert(rows)
+    def get(self, chunk_id):                    return get(chunk_id)
+
     def search(self, qvec, k=5, where=None):    return search(qvec, k=k, where=where)
 
     def search_hybrid(self, qvec, qtext, k=5, where=None, n=50, rrf_k=10, weights=(1.0, 1.0)):
