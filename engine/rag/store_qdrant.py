@@ -26,6 +26,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import time as _time
 import uuid
 from typing import Iterator
 
@@ -56,20 +57,40 @@ def _cfg():
     return url, os.environ.get("QDRANT_API_KEY", ""), os.environ.get("QDRANT_COLLECTION", "napkin_rag")
 
 
+# urllib opens a fresh TCP connection per call, so a burst of requests — a migration in
+# 256-row batches, or an eval firing two searches per query — can exhaust connections and
+# come back "connection refused" from a server that is perfectly healthy. The embedding
+# path in rag.py already retries transient failures for exactly this reason; this one did
+# not, and a single blip anywhere would abort a whole migration. Retries cover connection
+# errors and 429/5xx; a 4xx is a bug in the request and retrying it just hides it.
+_RETRY_STATUS = (429, 500, 502, 503, 504)
+_ATTEMPTS = 4
+
+
 def _req(method: str, path: str, body: dict | None = None, timeout: int = 60):
     url, key, _ = _cfg()
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json"}
     if key:
         headers["api-key"] = key
-    req = urllib.request.Request(url + path, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Qdrant {method} {path} -> HTTP {e.code}: {e.read().decode()[:300]}")
-    except (urllib.error.URLError, OSError, TimeoutError) as e:      # DNS, reset, TLS, timeout
-        raise RuntimeError(f"Qdrant {method} {path} -> unreachable: {e}") from e
+    last = None
+    for attempt in range(_ATTEMPTS):
+        req = urllib.request.Request(url + path, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode()[:300]
+            if e.code in _RETRY_STATUS and attempt < _ATTEMPTS - 1:
+                last = RuntimeError(f"Qdrant {method} {path} -> HTTP {e.code}: {detail}")
+            else:
+                raise RuntimeError(f"Qdrant {method} {path} -> HTTP {e.code}: {detail}")
+        except (urllib.error.URLError, OSError, TimeoutError) as e:  # DNS, reset, TLS, timeout
+            last = RuntimeError(f"Qdrant {method} {path} -> unreachable: {e}")
+            if attempt == _ATTEMPTS - 1:
+                raise last from e
+        _time.sleep(0.4 * (2 ** attempt))                            # 0.4s, 0.8s, 1.6s
+    raise last if last else RuntimeError(f"Qdrant {method} {path} -> failed")
 
 
 def point_id(chunk: dict) -> str:

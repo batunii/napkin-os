@@ -120,3 +120,64 @@ def test_the_chunk_id_is_indexed_so_parent_expansion_is_not_a_scan(monkeypatch):
     indexed = {b["field_name"] for m, p, b in seen if "/index" in p}
     assert "id" in indexed                       # get() filters on it
     assert "metadata.bucket" in indexed          # and the contract's own filtered fields
+
+
+# ---- transient failures must not abort a migration ---------------------------
+def test_connection_errors_are_retried_then_succeed(monkeypatch):
+    import urllib.error
+    calls = {"n": 0}
+
+    def flaky(req, timeout=60):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise urllib.error.URLError("Connection refused")
+        class R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"result": {"ok": true}}'
+        return R()
+
+    monkeypatch.setattr(q.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(q._time, "sleep", lambda s: None)
+    monkeypatch.setattr(q, "_cfg", lambda: ("http://x", None, "c"))
+    monkeypatch.setattr(q.json, "load", lambda r: __import__("json").loads(r.read()))
+    assert q._req("GET", "/x") == {"result": {"ok": True}}
+    assert calls["n"] == 3
+
+
+def test_a_client_error_is_not_retried_because_retrying_hides_the_bug(monkeypatch):
+    import urllib.error, io, pytest
+    calls = {"n": 0}
+
+    def bad_request(req, timeout=60):
+        calls["n"] += 1
+        raise urllib.error.HTTPError("u", 400, "Bad Request", {}, io.BytesIO(b"malformed filter"))
+
+    monkeypatch.setattr(q.urllib.request, "urlopen", bad_request)
+    monkeypatch.setattr(q._time, "sleep", lambda s: None)
+    monkeypatch.setattr(q, "_cfg", lambda: ("http://x", None, "c"))
+    with pytest.raises(RuntimeError, match="HTTP 400"):
+        q._req("POST", "/x", {})
+    assert calls["n"] == 1
+
+
+def test_a_rate_limit_is_retried(monkeypatch):
+    import urllib.error, io
+    calls = {"n": 0}
+
+    def limited(req, timeout=60):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise urllib.error.HTTPError("u", 429, "Too Many", {}, io.BytesIO(b"slow down"))
+        class R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"result": 1}'
+        return R()
+
+    monkeypatch.setattr(q.urllib.request, "urlopen", limited)
+    monkeypatch.setattr(q._time, "sleep", lambda s: None)
+    monkeypatch.setattr(q, "_cfg", lambda: ("http://x", None, "c"))
+    monkeypatch.setattr(q.json, "load", lambda r: __import__("json").loads(r.read()))
+    assert q._req("GET", "/x") == {"result": 1}
+    assert calls["n"] == 2
