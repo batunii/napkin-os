@@ -234,7 +234,7 @@ def _clean_value(v) -> str:
     return str(v or "").strip()
 
 
-def plan(pairs: dict) -> tuple[str, list[str], dict]:
+def plan(pairs: dict) -> tuple[str, list[str], dict, list[str]]:
     """Campaign pairs -> (dense query text, exact keyword terms, contract filters).
 
     Deterministic on purpose. A model could write a better query, but this runs before
@@ -243,15 +243,23 @@ def plan(pairs: dict) -> tuple[str, list[str], dict]:
     step-8 experiment, measurable against the golden set like anything else."""
     pairs = {k.lower(): v for k, v in (pairs or {}).items()}
     filters: dict = {}
+    notes: list[str] = []
 
     for key, target in FILTER_PAIRS.items():
         raw = _clean_value(pairs.get(key))
         if not raw or target in filters:
             continue
-        value = (normalise.category_for(raw, None) if target == "category"
-                 else normalise.snake(raw))
+        if target == "category":
+            # The `category` key carries CONTRACT ENUM values (_gist is prompted with
+            # SCHEMA.enum_values). The `sector` key carries awarding-body free text.
+            # Enum first, spelling table second — the other order silently drops 8 of 18.
+            value = normalise.category_value(raw) or normalise.category_from_sector(raw)
+        else:
+            value = normalise.snake(raw)
         if value:
             filters[target] = value
+        else:
+            notes.append(f"plan: could not resolve {key}={raw!r} — searching unfiltered")
 
     extra_query: list[str] = []
     ct = filters.pop("campaign_type", None)
@@ -282,7 +290,7 @@ def plan(pairs: dict) -> tuple[str, list[str], dict]:
         if val and len(val.split()) <= 60:
             parts.append(val)
     query = ". ".join(p.rstrip(".") for p in parts + extra_query if p)
-    return query, keywords, filters
+    return query, keywords, filters, notes
 
 
 def scopes_for(pairs: dict, filters: dict) -> list[str]:
@@ -301,16 +309,20 @@ def scopes_for(pairs: dict, filters: dict) -> list[str]:
 def bucket_filters(bucket: str, filters: dict, scopes: list[str]) -> dict:
     """The filter for one bucket. Common to all four: never serve superseded material,
     and never serve production-stage chunks (D&AD) to the brief."""
+    # Scope is the confidentiality mechanism, so it applies to EVERY bucket, not just
+    # rules. Corpus chunks are all scope=global and `scopes` always contains "global",
+    # so this narrows nothing that exists today — but the moment Track B lands dossiers,
+    # an unscoped bucket is the path by which one client's private material reaches
+    # another client's brief. That is the failure the plan calls relationship-ending.
     base: dict = {"bucket": bucket,
                   "status": {"ne": "superseded"},
-                  "stage": {"ne": "production"}}
+                  "stage": {"ne": "production"},
+                  "scope": {"in": scopes}}
     if bucket == "exemplars":
         if filters.get("category"):
             base["category"] = filters["category"]
         if filters.get("effectiveness_type"):
             base["effectiveness_type"] = filters["effectiveness_type"]
-    elif bucket == "rules":
-        base["scope"] = {"in": scopes}
     return base
 
 
@@ -445,7 +457,7 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     import rag
 
     budget = {**DEFAULT_BUDGET, **(budget or {})}
-    query, keywords, filters = plan(pairs)
+    query, keywords, filters, notes = plan(pairs)
     scopes = scopes_for(pairs, filters)
 
     store = rag.open_store(index_dir)
@@ -454,7 +466,7 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     qvec = rag._norm(qvec[0])
 
     blocks: dict[str, Block] = {}
-    widened: list[str] = []
+    widened: list[str] = list(notes)
     used_filters: dict = {}
 
     for bucket in ("exemplars", "craft", "rules", "instructions"):
@@ -483,6 +495,19 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
             hits.sort(key=lambda h: (-_scope_rank(h.metadata), -h.score))
         blocks[bucket] = _fill(hits, budget[bucket], MAX_HIT_TOKENS.get(bucket),
                                one_per_client=(bucket == "exemplars"))
+
+    # Egress check. Every filter above constrains what we ASK for; nothing until now
+    # checked what came BACK. A hit outside the allowed scopes is a confidentiality
+    # breach, and check_grounding() cannot catch it — a leaked chunk that is present in
+    # the context block is, by its definition, perfectly grounded.
+    allowed = set(scopes)
+    for b in blocks.values():
+        for h in list(b.hits):
+            sc = str(h.metadata.get("scope") or "global")
+            if sc not in allowed:
+                b.hits.remove(h)
+                b.dropped += 1
+                widened.append(f"EGRESS: dropped {h.cite} — scope {sc!r} not in {sorted(allowed)}")
 
     return BriefContext(blocks=blocks, query=query, keywords=keywords,
                         filters=used_filters, widened=widened)

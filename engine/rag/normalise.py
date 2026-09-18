@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import re
 
+import contract
+
 # ---- shared cleaning -------------------------------------------------------
 _WS = re.compile(r"\s+")
 
@@ -69,6 +71,11 @@ SECTOR_TO_CATEGORY: dict[str, str] = {
     "fashion & beauty": "fashion_beauty",
     "technology": "technology",
     "tech": "technology",
+    "luxury": "luxury",
+    "luxury goods": "luxury",
+    "b2b": "b2b",
+    "gambling": "gambling_betting",
+    "gambling & betting": "gambling_betting",
     "other": "other",
 }
 
@@ -176,6 +183,25 @@ CLIENT_TO_CATEGORY: dict[str, str] = {
     # telecoms
     "o2": "telecoms",
 }
+
+
+# Two different vocabularies reach this module and they must not be confused:
+#   `sector`   awarding-body prose — "Food & Drink", "Government & Public Sector"
+#   `category` contract enum values — food_drink, public_sector
+# SECTOR_TO_CATEGORY translates the first into the second. Feeding it the second is a
+# type error that returns None silently, which is exactly the bug this guard closes:
+# 8 of 18 contract values had no matching sector key and were dropped on the floor.
+CATEGORY_VALUES = frozenset(contract.SCHEMA.enum_values("category"))
+
+
+def category_value(raw) -> str | None:
+    """A value that is ALREADY a contract category, returned unchanged. None otherwise.
+    `snake` is tried too so a human typing "Food & Drink" into the category field lands
+    on food_drink rather than being sent round the sector table."""
+    for cand in (clean(raw), snake(raw)):
+        if cand in CATEGORY_VALUES:
+            return cand
+    return None
 
 
 def category_from_client(client) -> str | None:

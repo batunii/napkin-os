@@ -17,7 +17,7 @@ PAIRS = {"brand": "BMW", "category": "Automotive", "campaign_type": "launch",
 
 # ---- planning ----------------------------------------------------------------
 def test_plan_maps_filters_keywords_and_query():
-    q, kw, f = bc.plan(PAIRS)
+    q, kw, f, _ = bc.plan(PAIRS)
     # campaign_type is review-origin (no corpus chunk has it) so it is translated into
     # the awarding body's vocabulary, which the corpus does carry
     assert f == {"category": "automotive", "effectiveness_type": "launch"}
@@ -28,18 +28,19 @@ def test_plan_maps_filters_keywords_and_query():
 
 
 def test_plan_survives_empty_and_unknown_category():
-    q, kw, f = bc.plan({})
+    q, kw, f, _ = bc.plan({})
     assert (q, kw, f) == ("", [], {})
-    _, _, f2 = bc.plan({"category": "Underwater Basket Weaving"})
+    _, _, f2, notes2 = bc.plan({"category": "Underwater Basket Weaving"})
     assert "category" not in f2            # never guesses a closed-list value
+    assert any("could not resolve" in n for n in notes2)   # and says so rather than going quiet
 
 
 def test_unmapped_campaign_type_becomes_query_text_not_a_filter():
-    q, _, f = bc.plan({"campaign_type": "always_on", "problem": "keep the brand present"})
+    q, _, f, _n = bc.plan({"campaign_type": "always_on", "problem": "keep the brand present"})
     assert "effectiveness_type" not in f and "campaign_type" not in f
     assert "always on campaign" in q          # not dropped: it is meaningful query text
     # and one that IS the same concept in both taxonomies does become a filter
-    _, _, f2 = bc.plan({"campaign_type": "launch"})
+    _, _, f2, _n2 = bc.plan({"campaign_type": "launch"})
     assert f2 == {"effectiveness_type": "launch"}
 
 
@@ -59,12 +60,12 @@ def test_citations_are_short_readable_and_stable(md, doc_id, expected):
 
 
 def test_scopes_or_across_global_category_and_brand():
-    _, _, f = bc.plan(PAIRS)
+    _, _, f, _ = bc.plan(PAIRS)
     assert bc.scopes_for(PAIRS, f) == ["global", "category:automotive", "brand:bmw"]
 
 
 def test_bucket_filters_always_exclude_superseded_and_production():
-    _, _, f = bc.plan(PAIRS)
+    _, _, f, _ = bc.plan(PAIRS)
     scopes = bc.scopes_for(PAIRS, f)
     ex = bc.bucket_filters("exemplars", f, scopes)
     assert ex["status"] == {"ne": "superseded"} and ex["stage"] == {"ne": "production"}
@@ -257,3 +258,47 @@ def test_widening_gives_up_sector_before_problem_type():
     src = inspect.getsource(bc.build)
     order = src[src.index('for drop in ('):]
     assert order.index('"category"') < order.index('"effectiveness_type"')
+
+
+# ---- regressions found by the break-the-flow workflow -------------------------
+def test_every_contract_category_survives_plan():
+    """8 of 18 used to be dropped here. plan() was passing a contract enum value into
+    the awarding-body SECTOR spelling table, which has no key for food_drink,
+    financial_services, luxury, b2b, public_sector, media_entertainment,
+    gambling_betting or fashion_beauty. The 10 that worked did so by coincidence —
+    their enum value happens to be spelled the same as a sector label — which is why
+    the automotive demo looked fine."""
+    from contract import SCHEMA
+    for v in SCHEMA.enum_values("category"):
+        _, _, f, _n = bc.plan({"category": v, "problem": "x"})
+        assert f.get("category") == v, f"{v} was dropped by plan()"
+
+
+def test_a_free_text_sector_still_resolves():
+    _, _, f, _n = bc.plan({"sector": "Food & Drink", "problem": "x"})
+    assert f["category"] == "food_drink"
+
+
+def test_every_bucket_is_scope_filtered_not_just_rules():
+    """Scope is the confidentiality mechanism. An unscoped bucket is how one client's
+    private material reaches another client's brief once dossiers exist."""
+    _, _, f, _n = bc.plan(PAIRS)
+    scopes = bc.scopes_for(PAIRS, f)
+    for bucket in ("exemplars", "craft", "rules", "instructions"):
+        assert bc.bucket_filters(bucket, f, scopes)["scope"] == {"in": scopes}, bucket
+
+
+def test_egress_check_drops_a_hit_from_a_scope_we_did_not_ask_for():
+    """check_grounding cannot catch this: a leaked chunk present in the context block is
+    by definition perfectly grounded. The only place to catch it is on the way out."""
+    ours = _hit("ipa_1", 100); ours.metadata = {"scope": "global"}
+    theirs = _hit("run_mercedes#tone", 100); theirs.metadata = {"scope": "brand:mercedes"}
+    blk = bc.Block("exemplars", [ours, theirs], 5000)
+    allowed = {"global", "brand:bmw"}
+    widened = []
+    for h in list(blk.hits):
+        if str(h.metadata.get("scope") or "global") not in allowed:
+            blk.hits.remove(h); blk.dropped += 1
+            widened.append(f"EGRESS: dropped {h.cite}")
+    assert [h.cite for h in blk.hits] == ["ipa_1"]
+    assert widened and "run_mercedes" in widened[0]
