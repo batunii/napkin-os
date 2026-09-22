@@ -152,6 +152,16 @@ class BriefContext:
     keywords: list[str]
     filters: dict
     widened: list[str] = field(default_factory=list)
+    # The scopes this run was AUTHORISED for. Recorded separately from what was actually
+    # served, because the interesting question is the gap between them.
+    scopes: list[str] = field(default_factory=lambda: ["global"])
+    # The tenants this run was authorised for. `house` is the licensed corpus that
+    # belongs to nobody; anything else is one agency's own material.
+    tenants: list[str] = field(default_factory=lambda: ["house"])
+    # Hits the egress check refused, structured rather than prose. A free-text line in
+    # `widened` reads fine and cannot be queried, and this is the field you would grep
+    # across every brief ever generated if a boundary were ever found wrong.
+    egress: list[dict] = field(default_factory=list)
 
     @property
     def tokens(self) -> int:
@@ -209,19 +219,58 @@ class BriefContext:
             parts.append(f"## {h['exemplars']}\n\n{b.text()}{note}")
         return "\n\n".join(parts)
 
+    def scopes_served(self) -> dict[str, int]:
+        """scope -> how many hits carrying it reached the prompt. The rollup that answers
+        'did anything but house material inform this brief', in one glance."""
+        out: dict[str, int] = {}
+        for b in self.blocks.values():
+            for h in b.hits:
+                s = str(h.metadata.get("scope") or "global")
+                out[s] = out.get(s, 0) + 1
+        return dict(sorted(out.items()))
+
+    def tenants_served(self) -> dict[str, int]:
+        """tenant -> how many hits carrying it reached the prompt. Anything other than
+        `house` means an agency's own material informed this brief."""
+        out: dict[str, int] = {}
+        for b in self.blocks.values():
+            for h in b.hits:
+                t = str(h.metadata.get("tenant") or "house")
+                out[t] = out.get(t, 0) + 1
+        return dict(sorted(out.items()))
+
     def trace(self) -> dict:
         """What was retrieved and why — logged per brief so a later verdict can be tied
-        back to the precedent that informed the field it judges."""
+        back to the precedent that informed the field it judges.
+
+        Scope is recorded per hit, not just per run. If a scope boundary is ever found
+        wrong, the only answerable version of 'which briefs were affected' is one that
+        names the offending chunk in the brief that used it — a run-level summary says a
+        breach happened somewhere, which is not an answer anyone can act on. It cannot be
+        reconstructed later either: the index is mutable, chunks are retagged and
+        superseded, so a scope not written down at retrieval time is gone. Cheap now,
+        impossible retrospectively."""
         return {
             "query": self.query,
             "keywords": self.keywords,
             "filters": {k: str(v) for k, v in self.filters.items()},
             "widened": self.widened,
             "tokens": self.tokens,
+            "scopes": list(self.scopes),            # what this run was allowed to see
+            "scopes_served": self.scopes_served(),  # what it actually got
+            "tenants": list(self.tenants),          # whose material it was allowed to read
+            "tenants_served": self.tenants_served(),
+            "egress": list(self.egress),            # what was refused on the way out
             "blocks": {
                 b.bucket: {"hits": len(b.hits), "tokens": b.tokens, "budget": b.budget,
                            "dropped": b.dropped, "over_target": b.over_target,
-                           "truncated": b.truncated, "cites": [h.cite for h in b.hits]}
+                           "truncated": b.truncated, "cites": [h.cite for h in b.hits],
+                           # cite -> scope. Additive: `cites` keeps its shape for the
+                           # existing consumers, and this answers the per-hit question.
+                           "scope_of": {h.cite: str(h.metadata.get("scope") or "global")
+                                        for h in b.hits},
+                           "tenant_of": {h.cite: str(h.metadata.get("tenant") or "house")
+                                         for h in b.hits}}
                 for b in self.blocks.values()
             },
         }
@@ -293,20 +342,69 @@ def plan(pairs: dict) -> tuple[str, list[str], dict, list[str]]:
     return query, keywords, filters, notes
 
 
-def scopes_for(pairs: dict, filters: dict) -> list[str]:
-    """Which scopes a lesson may carry to apply here: always global, plus this category
-    and this brand. The OR is what stops a narrow brand filter burying house lessons."""
+def scopes_for(pairs: dict, filters: dict, *, brand: str | None = None,
+               notes: list[str] | None = None) -> list[str]:
+    """Which scopes a lesson may carry to apply here: always global, plus this category,
+    plus this brand IF the caller is authorised for one. The OR is what stops a narrow
+    brand filter burying house lessons.
+
+    `brand` is the AUTHORISED brand and the only thing that can unlock brand scope. It
+    comes from the caller — today asserted explicitly, once auth exists resolved from the
+    session (foundation-spec M3: a handler never computes its own scope).
+
+    `pairs` is NOT trusted for this. Its client/brand keys are model output over an
+    uploaded document: research.py asks a model for {"client": ...} against raw
+    attachment text, and whatever comes back used to become `brand:<that>` directly. Text
+    inside a file the user dropped in therefore chose which brand's private material the
+    retrieval was allowed to see. Attachments are the least trustworthy input in the
+    system and scope is the most consequential output, so the edge between them is cut.
+
+    Note that field provenance does NOT rescue this. Loop-1 marks fields client_stated |
+    inferred | missing, and `client_stated` reads like an authorisation — it is not. It
+    means the model found the name verbatim in the attachment, which is exactly the
+    untrusted channel. Both values are model output over the same file.
+
+    Unauthorised means no brand scope at all, not a guess: the brief falls back to house
+    and category material, which is a thinner brief rather than a leak."""
     out = ["global"]
     if filters.get("category"):
         out.append(f"category:{filters['category']}")
-    brand = _clean_value({k.lower(): v for k, v in (pairs or {}).items()}.get("brand")
-                         or {k.lower(): v for k, v in (pairs or {}).items()}.get("client"))
-    if brand:
-        out.append(f"brand:{normalise.snake(brand)}")
+
+    flat = {k.lower(): v for k, v in (pairs or {}).items()}
+    claimed = normalise.snake(_clean_value(flat.get("brand") or flat.get("client")))
+    authorised = normalise.snake(_clean_value(brand)) if brand else ""
+
+    if authorised:
+        out.append(f"brand:{authorised}")
+        # A disagreement is reported, never reconciled. Widening to both would hand the
+        # attachment the leak it was refused; picking silently would hide that the
+        # document in front of the user is not the brand this run is scoped to.
+        if claimed and claimed != authorised:
+            if notes is not None:
+                notes.append(f"scope: document claims client {claimed!r} but this run is "
+                             f"authorised for {authorised!r} — using {authorised!r}")
+    elif claimed and notes is not None:
+        notes.append(f"scope: document claims client {claimed!r}, but no authorised brand "
+                     f"was supplied — brand-scoped material withheld")
     return out
 
 
-def bucket_filters(bucket: str, filters: dict, scopes: list[str]) -> dict:
+def tenants_for(tenant: str | None) -> list[str]:
+    """Which tenants a chunk may belong to for this run: always `house` — the licensed
+    craft corpus, which belongs to nobody — plus this agency if one is named.
+
+    Like `brand` in scopes_for(), `tenant` comes from the caller and never from the
+    document. Naming no agency yields house material only, which is the correct answer
+    for an unauthenticated run rather than a degraded one."""
+    out = ["house"]
+    t = normalise.snake(_clean_value(tenant)) if tenant else ""
+    if t and t != "house":
+        out.append(t)
+    return out
+
+
+def bucket_filters(bucket: str, filters: dict, scopes: list[str],
+                   tenants: list[str] | None = None) -> dict:
     """The filter for one bucket. Common to all four: never serve superseded material,
     and never serve production-stage chunks (D&AD) to the brief."""
     # Scope is the confidentiality mechanism, so it applies to EVERY bucket, not just
@@ -314,10 +412,14 @@ def bucket_filters(bucket: str, filters: dict, scopes: list[str]) -> dict:
     # so this narrows nothing that exists today — but the moment Track B lands dossiers,
     # an unscoped bucket is the path by which one client's private material reaches
     # another client's brief. That is the failure the plan calls relationship-ending.
+    # `tenant` sits beside `scope` for the same reason and on every bucket. Scope keeps
+    # one brand's lessons away from another inside an agency; tenant keeps one agency's
+    # material away from another entirely. A run that names no agency sees `house` only.
     base: dict = {"bucket": bucket,
                   "status": {"ne": "superseded"},
                   "stage": {"ne": "production"},
-                  "scope": {"in": scopes}}
+                  "scope": {"in": scopes},
+                  "tenant": {"in": tenants or ["house"]}}
     if bucket == "exemplars":
         if filters.get("category"):
             base["category"] = filters["category"]
@@ -452,13 +554,20 @@ def _fill(hits: list[Hit], budget: int, max_hit: int | None = None,
 
 
 def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
-          candidates: int = CANDIDATES) -> BriefContext:
-    """The entry point. Campaign pairs in, four budgeted citable blocks out."""
+          candidates: int = CANDIDATES, brand: str | None = None,
+          tenant: str | None = None) -> BriefContext:
+    """The entry point. Campaign pairs in, four budgeted citable blocks out.
+
+    `brand` is the authorised brand for this run and the only way to unlock brand-scoped
+    material — see scopes_for(). `tenant` is the agency, and the only way to reach
+    anything that agency produced. Omitting either is safe, not lax: the run gets the
+    licensed house corpus and category material only."""
     import rag
 
     budget = {**DEFAULT_BUDGET, **(budget or {})}
     query, keywords, filters, notes = plan(pairs)
-    scopes = scopes_for(pairs, filters)
+    scopes = scopes_for(pairs, filters, brand=brand, notes=notes)
+    tenants = tenants_for(tenant)
 
     store = rag.open_store(index_dir)
     search_text = " ".join([query] + keywords).strip() or "advertising strategy"
@@ -470,7 +579,7 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     used_filters: dict = {}
 
     for bucket in ("exemplars", "craft", "rules", "instructions"):
-        where = bucket_filters(bucket, filters, scopes)
+        where = bucket_filters(bucket, filters, scopes, tenants)
         rows = rag.search_vec(store, qvec, search_text, k=candidates, where=where)
 
         # widen one step at a time rather than return an empty block
@@ -501,16 +610,32 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     # breach, and check_grounding() cannot catch it — a leaked chunk that is present in
     # the context block is, by its definition, perfectly grounded.
     allowed = set(scopes)
+    allowed_tenants = set(tenants)
+    egress: list[dict] = []
     for b in blocks.values():
         for h in list(b.hits):
             sc = str(h.metadata.get("scope") or "global")
-            if sc not in allowed:
+            tn = str(h.metadata.get("tenant") or "house")
+            # Tenant is checked first: another agency's material is the worse breach, and
+            # its scope value is meaningless here anyway — `brand:bmw` from a different
+            # agency is not this agency's BMW.
+            bad = ("tenant", tn, sorted(allowed_tenants)) if tn not in allowed_tenants else \
+                  ("scope", sc, sorted(allowed)) if sc not in allowed else None
+            if bad:
+                field_name, got, allow = bad
                 b.hits.remove(h)
                 b.dropped += 1
-                widened.append(f"EGRESS: dropped {h.cite} — scope {sc!r} not in {sorted(allowed)}")
+                widened.append(f"EGRESS: dropped {h.cite} — {field_name} {got!r} not in {allow}")
+                # Also recorded structurally. An egress drop is the filter failing and the
+                # egress check catching it, so it is evidence of a bug somewhere upstream —
+                # it should be findable by query, not only by reading run logs.
+                egress.append({"cite": h.cite, "bucket": b.bucket, "on": field_name,
+                               "scope": sc, "tenant": tn, "doc_id": h.doc_id,
+                               "allowed": allow})
 
     return BriefContext(blocks=blocks, query=query, keywords=keywords,
-                        filters=used_filters, widened=widened)
+                        filters=used_filters, widened=widened, scopes=list(scopes),
+                        tenants=list(tenants), egress=egress)
 
 
 if __name__ == "__main__":                       # manual check

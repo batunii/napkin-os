@@ -1851,6 +1851,37 @@ def _load_retriever():
     return retrieve
 
 
+def _retrieval_scopes(fields, brand: str | None = None) -> list[str]:
+    """The scopes Loops 3–7 may retrieve from, derived the SAME way the brief's own
+    retrieval entry point derives them.
+
+    Both paths call brief_context.scopes_for(), rather than this file growing its own
+    idea of what a scope is. Two derivations of a confidentiality boundary drift, and
+    the one that drifts is the one nobody is looking at — which, until now, was this
+    one: Loops 3–7 passed no scope at all.
+
+    Loop-1 fields are capsules ({"value": ...}) or lists of them, and scopes_for()
+    expects flat strings, so they are flattened through _val() first. Falls back to
+    the house corpus on any error: a scope that cannot be derived must narrow, never
+    widen.
+
+    `brand` is the authorised brand for this run. `fields` cannot supply it — these are
+    extracted from the uploaded brief, so letting them name the brand would let the
+    attachment pick its own scope."""
+    try:
+        import brief_context                        # rag/ is on sys.path via _load_retriever
+        pairs = {k: _val(fields, k) for k in (fields or {})}
+        pairs = {k: v for k, v in pairs.items() if v}
+        _q, _kw, filters, _notes = brief_context.plan(pairs)
+        notes: list[str] = []
+        scopes = brief_context.scopes_for(pairs, filters, brand=brand, notes=notes)
+        for n in notes:
+            print(f"[i] {n}", file=sys.stderr)
+        return scopes
+    except Exception:
+        return ["global"]
+
+
 def _capsule_text(v) -> str:
     """Plain text from a Loop-2 capsule / Loop-1 field (dict | list | str)."""
     if isinstance(v, dict):
@@ -1985,6 +2016,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
 
     gist = _brief_gist(loop2, fields)
     intent = _classify_intent(gist, fields)
+    scopes = _retrieval_scopes(fields)
 
     # Case packs, discovered from the corpus dirs (or packs.lock at runtime) —
     # never a hardcoded list, so adding/removing a pack needs no code change
@@ -2004,7 +2036,8 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
         seen, evidence = set(), []
         # Over-retrieve for recall, then LLM-rerank down to k for precision.
         # 1.5× is enough headroom — 3× ranked 15 passages to keep 5 (dead tokens).
-        pool = retriever.retrieve(q, k=max(int(k * 1.5), 8), index_dir=index_dir)
+        pool = retriever.retrieve(q, k=max(int(k * 1.5), 8), index_dir=index_dir,
+                                  scopes=scopes)
         for h in _rerank_hits(q, pool, k):
             if h["source"] in seen:
                 continue
@@ -2014,6 +2047,11 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                 "framework": h.get("framework") or h["source"],
                 "category": h.get("category"),
                 "score": h["score"],
+                # Which confidentiality scope this passage came from. Written per hit and
+                # carried into the CLAN file, because the index is mutable — chunks get
+                # retagged and superseded — so a scope not recorded at retrieval time
+                # cannot be recovered afterwards from anything.
+                "scope": str((h.get("metadata") or {}).get("scope") or "global"),
                 "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
             })
         # Pull award-winning PRECEDENT cases from every case pack whose `loops`
@@ -2027,7 +2065,8 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                       if key == "loop6_substantiation" else q)
             for pack in eligible:
                 for h in retriever.retrieve(case_q, k=pack.k, index_dir=index_dir,
-                                            where={"source": pack.tag, "level": "parent"}):
+                                            where={"source": pack.tag, "level": "parent"},
+                                            scopes=scopes):
                     if h["source"] not in seen:
                         seen.add(h["source"])
                         evidence.append({
@@ -2035,6 +2074,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                             "framework": h.get("framework") or h["source"],
                             "category": h.get("category"),
                             "score": h["score"],
+                            "scope": str((h.get("metadata") or {}).get("scope") or "global"),
                             "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
                         })
         return key, {"title": title, "query": q, "evidence": evidence}
@@ -2046,6 +2086,16 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
     loops = {key: results[key] for key, _t, _q in LOOP37_SPECS}
     citations_all = [e["citation"] for d in loops.values() for e in d["evidence"]]
 
+    # Run-level scope record, alongside the per-hit one on every evidence entry. Two
+    # different questions: `scopes` is what this run was AUTHORISED for, `scopes_served`
+    # is what it actually used. A served scope that is not in the authorised set is the
+    # signal that something upstream is wrong — and without both written down, neither
+    # question has an answer after the fact.
+    served: dict[str, int] = {}
+    for d in loops.values():
+        for e in d["evidence"]:
+            served[e["scope"]] = served.get(e["scope"], 0) + 1
+
     synthesis_mode = _synthesize_loops37(gist, intent, loops)
     return {
         "enabled": True,
@@ -2053,6 +2103,8 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                   else str(index_dir or getattr(retriever, "DEFAULT_INDEX", HERE / "rag" / "index"))),
         "store": os.environ.get("RAG_STORE", "local").lower().strip() or "local",
         "intent": intent,
+        "scopes": list(scopes),
+        "scopes_served": dict(sorted(served.items())),
         "k": k,
         "gist": gist,
         "loops": loops,

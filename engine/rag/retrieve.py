@@ -61,24 +61,77 @@ def index_label(index_dir: Path | str | None = None) -> str:
 # (the golden eval and any production-clan caller).
 BRIEF_SAFE = {"stage": {"ne": "production"}, "status": {"ne": "superseded"}}
 
+# Sentinel for "search every scope". Deliberately not `None` and not a bare bool: an
+# unscoped read has to be written down at the call site, because grepping for the
+# callers that opted out of the confidentiality boundary is the only way to audit it.
+ALL_SCOPES = object()
+ALL_TENANTS = object()
+
+# What a caller gets if it says nothing. `global` is the house corpus — licensed craft
+# material that belongs to nobody — so today, when every row in the index is
+# scope=global, this narrows nothing and no existing caller changes behaviour. It
+# starts mattering the moment Track B lands its first client dossier: a caller that
+# forgot to pass scopes then retrieves house material only, instead of everything.
+# Fail-closed, so the cost of forgetting is a thinner brief rather than a breach.
+DEFAULT_SCOPES = ("global",)
+
+# The tenant equivalent. `house` is the licensed craft corpus that belongs to nobody, so
+# a caller that names no agency gets exactly that and nothing an agency has produced.
+# Two fields rather than one because they answer different questions: `tenant` is whose
+# material this IS, `scope` is who a lesson APPLIES to inside one agency. Collapsing them
+# would mean a brand-scoped lesson from one agency could be served to another, which is
+# the pair of mistakes this is here to keep separable.
+DEFAULT_TENANTS = ("house",)
+
 
 def retrieve(query: str, k: int = 5, where: dict | None = None,
              index_dir: Path | str | None = None, level: str | None = None,
-             brief_safe: bool = True) -> list[dict]:
+             brief_safe: bool = True, scopes=None, tenants=None) -> list[dict]:
     """Top-k chunks for a query, each carrying a `source › section` citation.
     `level` narrows to 'parent' (whole cases — what Loops 4/6 want as precedents),
     'child' (case sections) or 'chunk' (playbooks/templates). Returns [] if the
-    index is absent or nothing matches the metadata filter."""
+    index is absent or nothing matches the metadata filter.
+
+    `scopes` is the confidentiality boundary: the list of scopes this caller is
+    allowed to see, as built by brief_context.scopes_for(). Omit it and you get
+    DEFAULT_SCOPES; pass ALL_SCOPES to read the index unscoped (the golden eval and
+    admin tooling). Unlike every other filter here, an explicit `where` CANNOT widen
+    it — see below."""
     d = Path(index_dir) if index_dir else DEFAULT_INDEX
     if brief_safe:
         where = {**BRIEF_SAFE, **(where or {})}       # an explicit filter still wins
     if level:
         where = {**(where or {}), "level": level}
+
+    # Scope is applied LAST and overwrites, where BRIEF_SAFE is applied first and yields.
+    # The asymmetry is the point: `stage`/`status` are quality rules a caller may have a
+    # better answer for, and scope is a boundary a caller must not be able to talk its
+    # way past. A handler that could widen its own scope turns any handler bug into a
+    # cross-brand leak (foundation-spec M3).
+    allowed: tuple[str, ...] | None = None
+    if scopes is not ALL_SCOPES:
+        allowed = tuple(dict.fromkeys(scopes or DEFAULT_SCOPES))
+        where = {**(where or {}), "scope": {"in": list(allowed)}}
+
+    allowed_tenants: tuple[str, ...] | None = None
+    if tenants is not ALL_TENANTS:
+        allowed_tenants = tuple(dict.fromkeys(tenants or DEFAULT_TENANTS))
+        where = {**(where or {}), "tenant": {"in": list(allowed_tenants)}}
+
     if not rag.store_available(d):
         return []
     out: list[dict] = []
     for score, r in rag.search(d, query, k=k, where=where):
         md = r.get("metadata", {}) or {}
+        # Egress check. Everything above constrains what we ASK for; this is the only
+        # thing that checks what came BACK. filters.py warns that a store may render
+        # only part of the filter language, and a leaked chunk cannot be caught
+        # downstream — check_grounding() would call it perfectly grounded, because it
+        # is: it really is in the context block.
+        if allowed is not None and str(md.get("scope") or "global") not in allowed:
+            continue
+        if allowed_tenants is not None and str(md.get("tenant") or "house") not in allowed_tenants:
+            continue
         out.append({
             "score": round(float(score), 4),
             "source": r["source"],

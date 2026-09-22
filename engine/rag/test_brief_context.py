@@ -61,12 +61,47 @@ def test_citations_are_short_readable_and_stable(md, doc_id, expected):
 
 def test_scopes_or_across_global_category_and_brand():
     _, _, f, _ = bc.plan(PAIRS)
-    assert bc.scopes_for(PAIRS, f) == ["global", "category:automotive", "brand:bmw"]
+    assert bc.scopes_for(PAIRS, f, brand="BMW") == ["global", "category:automotive", "brand:bmw"]
+
+
+# ---- scope authorisation -----------------------------------------------------
+def test_pairs_alone_cannot_unlock_brand_scope():
+    """PAIRS names BMW, and that used to be enough. It is model output over an uploaded
+    document, so on its own it now buys nothing: the attachment does not get to choose
+    whose private material this brief may read."""
+    _, _, f, _ = bc.plan(PAIRS)
+    assert bc.scopes_for(PAIRS, f) == ["global", "category:automotive"]
+
+
+def test_an_unauthorised_run_says_so_rather_than_failing_quietly():
+    _, _, f, _ = bc.plan(PAIRS)
+    notes: list[str] = []
+    bc.scopes_for(PAIRS, f, notes=notes)
+    assert any("bmw" in n and "withheld" in n for n in notes)
+
+
+def test_a_document_claiming_another_client_cannot_widen_or_switch_the_scope():
+    """The attack this closes: an uploaded brief whose text names a different client.
+    Neither brand is dropped in favour of the other's material, and neither is added."""
+    pairs = {**PAIRS, "brand": "Mercedes"}
+    _, _, f, _ = bc.plan(pairs)
+    notes: list[str] = []
+    scopes = bc.scopes_for(pairs, f, brand="BMW", notes=notes)
+    assert scopes == ["global", "category:automotive", "brand:bmw"]
+    assert "brand:mercedes" not in scopes
+    assert any("mercedes" in n and "bmw" in n for n in notes)   # reported, not reconciled
+
+
+def test_provenance_is_not_authorisation():
+    """`client_stated` reads like a warrant and is not one — it means the model found the
+    name verbatim in the attachment, which is the untrusted channel itself."""
+    _, _, f, _ = bc.plan(PAIRS)
+    assert "brand:bmw" not in bc.scopes_for({**PAIRS, "source": "client_stated"}, f)
 
 
 def test_bucket_filters_always_exclude_superseded_and_production():
     _, _, f, _ = bc.plan(PAIRS)
-    scopes = bc.scopes_for(PAIRS, f)
+    scopes = bc.scopes_for(PAIRS, f, brand="BMW")
     ex = bc.bucket_filters("exemplars", f, scopes)
     assert ex["status"] == {"ne": "superseded"} and ex["stage"] == {"ne": "production"}
     assert ex["category"] == "automotive" and ex["effectiveness_type"] == "launch"
@@ -283,9 +318,45 @@ def test_every_bucket_is_scope_filtered_not_just_rules():
     """Scope is the confidentiality mechanism. An unscoped bucket is how one client's
     private material reaches another client's brief once dossiers exist."""
     _, _, f, _n = bc.plan(PAIRS)
-    scopes = bc.scopes_for(PAIRS, f)
+    scopes = bc.scopes_for(PAIRS, f, brand="BMW")
     for bucket in ("exemplars", "craft", "rules", "instructions"):
         assert bc.bucket_filters(bucket, f, scopes)["scope"] == {"in": scopes}, bucket
+
+
+def test_trace_records_the_scope_of_every_hit_not_just_the_run():
+    """The retrospective question is 'which briefs saw this chunk', and only a per-hit
+    record can answer it. It cannot be rebuilt later: the index is mutable, so the scope
+    a chunk carries today is not necessarily the one it carried when it was retrieved."""
+    ours = _hit("ipa_1", 100); ours.metadata = {"scope": "global"}
+    mine = _hit("run_bmw#tone", 100); mine.metadata = {"scope": "brand:bmw"}
+    ctx = bc.BriefContext(blocks={"exemplars": bc.Block("exemplars", [ours, mine], 5000)},
+                          query="q", keywords=[], filters={},
+                          scopes=["global", "brand:bmw"])
+    t = ctx.trace()
+    assert t["blocks"]["exemplars"]["scope_of"] == {"ipa_1": "global", "run_bmw#tone": "brand:bmw"}
+    assert t["scopes"] == ["global", "brand:bmw"]          # authorised
+    assert t["scopes_served"] == {"brand:bmw": 1, "global": 1}   # actually used
+    assert t["blocks"]["exemplars"]["cites"] == ["ipa_1", "run_bmw#tone"]   # shape unchanged
+
+
+def test_trace_defaults_an_unlabelled_hit_to_global_rather_than_omitting_it():
+    """A hit with no scope must still appear in the record. Leaving it out would make the
+    one chunk worth investigating the only one with no entry."""
+    h = _hit("legacy", 100); h.metadata = {}
+    ctx = bc.BriefContext(blocks={"craft": bc.Block("craft", [h], 500)},
+                          query="q", keywords=[], filters={})
+    assert ctx.trace()["blocks"]["craft"]["scope_of"] == {"legacy": "global"}
+
+
+def test_egress_drops_are_recorded_structurally_not_only_as_prose():
+    """An egress drop means the filter failed and the check caught it — evidence of a bug
+    upstream. It has to be findable by query across every brief, not by reading logs."""
+    ctx = bc.BriefContext(blocks={}, query="q", keywords=[], filters={},
+                          scopes=["global"],
+                          egress=[{"cite": "run_audi#tone", "bucket": "rules",
+                                   "scope": "brand:audi", "doc_id": "run_audi",
+                                   "allowed": ["global"]}])
+    assert ctx.trace()["egress"][0]["scope"] == "brand:audi"
 
 
 def test_egress_check_drops_a_hit_from_a_scope_we_did_not_ask_for():

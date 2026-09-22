@@ -101,7 +101,12 @@ def _corpus_track(gist: dict) -> list[dict]:
     if not index_available():
         return _digest_track()
     try:
-        ctx = build(gist)
+        # `gist` is model output over raw attachment text, including its "client" key, so
+        # it is passed as query/filter material ONLY. brand= is what unlocks brand-scoped
+        # material and it stays None until there is an authenticated session to resolve it
+        # from — otherwise a client name written inside an uploaded file would choose
+        # whose private dossier this panel may read. House and category material only.
+        ctx = build(gist, brand=None)
     except Exception:
         traceback.print_exc()
         return _digest_track()
