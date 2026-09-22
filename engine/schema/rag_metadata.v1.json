@@ -1,6 +1,6 @@
 {
-  "$comment": "RAG chunk metadata contract, version 1. Shared by Track A (CLAN OS layer), Track B (dossier export) and Track C (RAG). Every chunk payload in every vector store carries exactly these keys under `metadata`. Adding a field = new minor version + backfill; renaming or removing = new major version. Enum lists are closed: a value not listed here is a validation error, never a new filter value. v1.1.0 adds bucket, section_role, effectiveness_type, strategic_territory, discipline, lions_category (all derivable from existing frontmatter) and turns award_tier into a closed enum with the raw spelling kept in award_tier_raw. v1.2.0 is the creative-director sign-off: adds gambling_betting, luxury and b2b, tightens the fmcg/food_drink and technology descriptions, and sets locked:true. Ruling recorded in engine/schema/REVIEW-cannes-categories.md.",
-  "version": "1.2.0",
+  "$comment": "RAG chunk metadata contract, version 1. Shared by Track A (CLAN OS layer), Track B (dossier export) and Track C (RAG). Every chunk payload in every vector store carries exactly these keys under `metadata`. Adding a field = new minor version + backfill; renaming or removing = new major version. Enum lists are closed: a value not listed here is a validation error, never a new filter value. v1.1.0 adds bucket, section_role, effectiveness_type, strategic_territory, discipline, lions_category (all derivable from existing frontmatter) and turns award_tier into a closed enum with the raw spelling kept in award_tier_raw. v1.2.0 is the creative-director sign-off: adds gambling_betting, luxury and b2b, tightens the fmcg/food_drink and technology descriptions, and sets locked:true. Ruling recorded in engine/schema/REVIEW-cannes-categories.md. v1.3.0 adds `tenant` (default `house`), the field the retrieval scope filter partitions on once an agency's own dossiers share the index with the licensed corpus — additive, filtered never embedded, so retag backfills it without re-embedding. It also corrects the reason_code description, which asserted a reprocessing cost for ADDING a code that decision L2 explicitly removes. The three new reason codes L1 settles (unfeasible, not_single_minded, weak_branding) are NOT in this version: they await the creative director's redline, which open[] assigns to Shrey plus a CD, and the enum stays closed until then.",
+  "version": "1.3.0",
   "locked": true,
   "fields": {
     "schema_version": {
@@ -64,6 +64,14 @@
       "default": "global",
       "pattern": "^(global|category:[a-z0-9_]+|brand:[a-z0-9_]+)$",
       "description": "Who a lesson applies to. Queries filter with an OR across the scopes in play (global + this category + this brand) so house-wide lessons are never buried by a narrow filter."
+    },
+    "tenant": {
+      "type": "string",
+      "indexed": true,
+      "required": true,
+      "origin": "system",
+      "default": "house",
+      "description": "Which agency's material this is. `house` is the licensed craft corpus that belongs to nobody and is shared by every agency; any other value is an org slug and that org's material alone. Filtered on with plain equality, never embedded, so it is added by retag without re-embedding. The default is the literal string `house` rather than null BECAUSE the filter language does not match an absent field on `eq`/`in` (see filters.py): a null tenant could never be selected by `tenant in (house, acme)`, so every house row would silently vanish from every filtered query. Distinct from `scope`, which says who a lesson APPLIES to inside one agency; this says whose material it IS."
     },
     "category": {
       "type": "enum",
@@ -148,7 +156,7 @@
         "legal_risk",
         "client_preference"
       ],
-      "description": "Why a verdict was `rejected`. Null when accepted. `client_preference` is scoped to that client and never promoted to house-level learning. Phase 0 redlines this list; changing it after ingestion means reprocessing."
+      "description": "Why a verdict was `rejected`. Null when accepted. `client_preference` is scoped to that client and never promoted to house-level learning. Adding a code needs no reprocessing — older rows simply never use it; REDEFINING or removing one does, which is why the taxonomy rule is add freely, never redefine, deprecate rather than delete."
     },
     "status": {
       "type": "enum",
