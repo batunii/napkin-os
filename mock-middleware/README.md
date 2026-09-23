@@ -20,7 +20,7 @@ curl -s localhost:8790/healthz
 | `MOCK_MIDDLEWARE_HOST` | `127.0.0.1` | |
 | `MOCK_MIDDLEWARE_ORG` / `MOCK_MIDDLEWARE_BRAND` | `org/dev-agency` / `brand/dev-brand` | The fixed dev tenant, reported in `trace.scope`. Scope never comes from the request |
 | `MOCK_MIDDLEWARE_TOKEN` | unset (open) | When set, requests need `Authorization: Bearer <token>` or `x-api-key: <token>`, else 401 |
-| `MOCK_MIDDLEWARE_JOB_SECONDS` | `2.0` | How long a long job takes. `0` finishes on the first poll |
+| `MOCK_MIDDLEWARE_JOB_SECONDS` | `2.0` | How long a long job takes. `0` finishes on the first poll. A `start_campaign` job spreads it over its six stages; every poll advances at least one stage |
 | `MOCK_MIDDLEWARE_CLOCK` | unset | Freeze content timestamps (`2026-09-23T10:00:00Z`) for byte-identical output |
 | `MOCK_MIDDLEWARE_DUMP_DIR` | unset | Write each request body to this directory. Off by default: bodies carry client-confidential material |
 
@@ -136,15 +136,128 @@ names that version in `base_version` even if later polls carry a newer
 The host decides field by field. The stand-in never answers 409: it does not
 hold the document.
 
+## The chat intake: `start_campaign`, `answer_question`, `compose_report`
+
+Contract: `docs/contracts/middleware-api.md` §8 and Contract 3 §16–18. One
+`start_campaign` job runs six stages — `extract`, `identify`, `select`,
+`research`, `synthesise`, `report` — and `progress` counts them (`total: 6`).
+The reply to `start_campaign` is `queued`; each `job_status` poll advances the
+job (at least one stage per poll, more if `MOCK_MIDDLEWARE_JOB_SECONDS` has
+elapsed) and carries the change for the stages the request's
+`clan.decision_chain` does not hold yet. So a stage whose change did not land
+is sent again, byte-identical, with the same decision ids — the host skips it
+if it did land. Every staged field write is named by a decision's `targets`
+(`#campaign.<f>`, `#selection.<k>`, `#materials[<id>]`,
+`#intake.messages[<id>]`, `#report`), and every stage writes one agent message
+under `intake.messages.<id>` (a ULID-style key, so `at`-then-key order is
+creation order), also listed in `result.messages`.
+
+- **`extract`** — `extract_ask` over the prompt (a `kind: prompt` material,
+  matched to `data.materials` by sha256) and the attachments, minus `brand`,
+  `client_org` and `categories`, which `identify` owns.
+- **`identify`** (§8.6), in order: subject brand, categories, markets, client.
+  - *Brand*: clear when a `Brand:` label names it, the prompt names it as the
+    client's (`our client is X`, `X is our client`, `our brand X`), or it is the
+    only brand the material names and is not named as a comparator → written
+    `extracted` with its span. Brands are found from the roster names below,
+    comparator cues (`X as the one to beat`, `competitors include X`),
+    `brands: X and Y`, and `launching X`. Several, or a lone comparator →
+    `needs_input` "Which brand is the client's?": one `extracted` option per
+    brand with its span, plus "None of these". None → a free-text question.
+  - *Categories*: a roster pin already in `clan.facts` for the subject, else
+    the fixture roster below (pinned now: `roster.categories.primary|secondary`,
+    `roster.client_org`, brand layer, one `pin` decision) → `proposed` citing
+    the pins. No row → the material's words ranked into at most two leaves of a
+    small fixture taxonomy → `needs_input` with each leaf, "both", and
+    "Something else" (never written without a pick). Nothing matches → free text.
+  - *Markets*: none in the material → `needs_input`, free text.
+  - *Client*: the roster row → `proposed`; else a signature line → `extracted`.
+  - If the subject was listed as a comparator by `extract`, `identify` rewrites
+    `competitor_set` without it: a new decision, `read` = extract's value.
+  - *Free text* is resolved and asked again (new question id, same
+    `address`): brands by name against the roster and the brands found, plus the
+    text itself as a new brand, all `origin: stated`; category leaves by the
+    same keywords or a typed leaf code; markets by country names or ISO codes.
+    Nothing resolves → the question says so and allows text again.
+  - An answered field is never written by the job: the view writes it.
+- **`select`** — every lens × `campaign.markets`, except what the prompt rules
+  out: a sentence with `only` naming a lens and a market (`Effectiveness cases
+  only matter for Ireland` → skipped in the other markets); `skip / no need for
+  / don't need <lens>` → skipped everywhere; `just / only <lenses>` → the
+  others skipped. `regulation_clearance` is skipped when no category is in a
+  regulated vertical (drinks, food, finance, health, gambling). Everything
+  skipped is a `selection.lenses_skipped` entry with the reason (quoting the
+  prompt) and the select decision.
+- **`research`** / **`synthesise`** — `research_lens` over the selected pairs
+  only (a skipped pair has no run and no coverage), then `synthesise_findings`.
+  Handler on everything: `start_campaign@1.0`.
+- **`report`** — waits (`running`, `stage: report`) for a poll whose
+  `clan.decision_chain` holds every earlier decision, then composes from that
+  `clan`: a "Brand and category" section over the roster pins, then one section
+  per lens with a claim (a finding's own statement citing it and its pins, or a
+  sentence with no figure citing the lens's pins), a `pins` block, `finding`,
+  `contest` and `gap` blocks. Headline and up to four summary lines, all cited.
+  `based_on` copies `clan.version` and `projection.built_from`'s hashes (a
+  document with no projection gets a hash of the members as sent). `confirm`:
+  brand, categories, markets, comparators while `extracted`/`proposed`, then
+  every other `proposed` field. `not_researched`: every skipped entry, then any
+  lens × market with no run.
+
+**`answer_question`** — `{job_id, question_id, option_id | text}`. `409
+job_state` unless the job is `needs_input`; `400` for another question id,
+both or neither of option/text, the escape's id or an unknown id, text where
+not allowed. The request's `clan` (holding the view's write) becomes the base;
+the reply continues `identify` and is `running`, or `needs_input` with the next
+question. Its `task`/`handler` are the job's (`start_campaign@1.0`).
+
+**`compose_report`** — short; the same composer over the request's `clan`,
+`handler: compose_report@1.0`, one agent message. `409 job_state` while a
+`start_campaign` job on the document is unfinished (so is a second
+`start_campaign`); `400` when there is no pin and no finding to cite.
+
+**The fixture roster** (the brand layer; invented, like everything here):
+
+| Brand | Ref | Categories | Client |
+|---|---|---|---|
+| Lúnasa | `brand/lunasa` | `drinks.cider`, `drinks.no_low_alcohol` | Glenmore Drinks |
+| Brightwater 0.0 | `brand/brightwater` | `drinks.no_low_alcohol`, `drinks.beer` | Brightwater Brewing |
+| Kestrel Press | `brand/kestrel-press` | `drinks.cider` | Kestrel Cider Co |
+| Oakfield Dairy | `brand/oakfield` | `food.dairy` | Oakfield Foods |
+| Crunchwell | `brand/crunchwell` | `food.snacks` | Oakfield Foods |
+| Tidewater Bank | `brand/tidewater-bank` | `finance.banking` | Tidewater Financial |
+| Tidewater Cover | `brand/tidewater-cover` | `finance.insurance` | Tidewater Financial |
+
+### Try an ambiguous prompt
+
+In the Research Tool's chat, attach the example email
+(`app/templates/campaign-research/example/assets/client-email.txt`) and send
+*"Brief from Glenmore attached — can you pull together the landscape? Effectiveness
+cases only matter for Ireland."* The email names Lúnasa and Brightwater 0.0 and
+says neither is the client's, so the bot asks **"Which brand is the client's?"**
+with Lúnasa, Brightwater 0.0 and "None of these". Pick Lúnasa: its roster row
+proposes cider + no/low and Glenmore Drinks, research runs 15 pairs
+(effectiveness skipped in GB) and the report lands. Pick "None of these" and
+type *harbour tonic* instead: the bot asks again with "harbour tonic (new
+brand)"; pick it and, with no roster row, it asks **"Which category is it?"**
+with no/low alcohol, cider, both, and "Something else" — the leaves the email's
+words point at.
+
+Without the app, the contract suite drives the same flow (it plays the host
+and the view): `python3 mock-middleware/contract_test.py --base-url
+http://127.0.0.1:8790`.
+
 ## What it deliberately does not do
 
 - No LLM, no retrieval, no knowledge layer: every fact is a fixture from a
   `mock-source://` URI at tier `mock`. Never quote a figure it returns.
 - No usage estimates — token counts are zero because no model ran.
 - No persistence: jobs live in memory and die with the process (the real one
-  must survive restarts, N2). Never a `failed` job, never a 409.
+  must survive restarts, N2). Never a `failed` job except a `start_campaign`
+  stage that cannot run; never a `version_conflict`.
 - No layer writes, no branch per run, no roster write-back, no
-  `campaign.audience` proposal.
+  `campaign.audience` / `in_market` proposal from `synthesise`.
+- No model in `identify`/`select`/`report`: regexes over the prompt and the
+  material, a fixture roster and a keyword taxonomy stand in for them.
 - No request body on disk unless `MOCK_MIDDLEWARE_DUMP_DIR` is set.
 
 ## Removability test

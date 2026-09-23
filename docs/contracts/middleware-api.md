@@ -114,8 +114,10 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
   that message under in `intake.messages` (§8.2), so the view shows the list
   while the change is in flight and de-duplicates by id once it lands.
 - `job.stage` and `job.question` are present on `start_campaign` jobs (and
-  the replies of `answer_question`, which describe one); other tasks omit
-  them. `job.question` is non-null exactly when `job.state` is `needs_input`.
+  the replies of `answer_question`, which describe one) and on
+  `compose_report` replies (`stage: report`, `question: null`, §8.2); other
+  tasks omit them. `job.question` is non-null exactly when `job.state` is
+  `needs_input`.
 - `trace.usage` is what was actually spent; an implementation that ran no model
   reports zeros and never an estimate. `trace.model` is `null` when no model ran.
   `trace.hits` lists what was read: facts (`scope` = layer, `source` = origin
