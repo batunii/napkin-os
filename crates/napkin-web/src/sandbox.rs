@@ -64,8 +64,10 @@ async fn dispatch(
 
     let path = format!("/{}", rest.trim_start_matches('/'));
 
-    // The one route that spends money is metered before it is dispatched.
-    if path == "/api-proxy" {
+    // The one route that spends money is metered before it is dispatched —
+    // every call through it but a middleware `job_status` poll, which waits on
+    // work already charged (`meter::charged`; an unreadable body is charged).
+    if path == "/api-proxy" && crate::meter::charged(&body) {
         if let Err(usage) = ctx.meter.try_spend(&grant.tenant) {
             return refuse(
                 StatusCode::TOO_MANY_REQUESTS,

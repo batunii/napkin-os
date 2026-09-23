@@ -451,6 +451,65 @@ async fn the_agent_is_metered_on_both_paths_it_can_be_reached_from() {
     assert_eq!(via_sandbox.json()["ok"], false);
 }
 
+fn middleware_task(task: &str) -> String {
+    serde_json::json!({ "request_kind": "middleware",
+                        "payload": { "task": task, "input": { "job_id": "job_1" } } })
+    .to_string()
+}
+
+// Owner decision: only submitting work spends the quota. Polling a job is
+// free; a body the meter cannot read as a poll is not.
+#[tokio::test]
+async fn only_task_submissions_spend_the_agent_quota() {
+    let s = server(2);
+    let b = browser(&s).await;
+    let (_doc, token) = upload(&s, &b, "Intake").await;
+    let tenant = s.ctx.tokens.resolve(&token).unwrap().tenant;
+    let proxy = format!("/s/{token}/api-proxy");
+
+    // No endpoint is configured, so each call is answered without a network
+    // round trip — but a charged call is charged before it is dispatched.
+    for _ in 0..5 {
+        let r = post(&s, &proxy, &b.cookie, middleware_task("job_status")).await;
+        assert_eq!(r.status, StatusCode::OK);
+    }
+    assert_eq!(s.ctx.meter.usage(&tenant).used, 0, "polls are free");
+
+    let r = post(&s, &proxy, &b.cookie, middleware_task("start_campaign")).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(s.ctx.meter.usage(&tenant).used, 1);
+    let r = post(&s, &proxy, &b.cookie, middleware_task("answer_question")).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(s.ctx.meter.usage(&tenant).used, 2);
+
+    // The cap bites on submissions; polls of the job still get through.
+    let r = post(&s, &proxy, &b.cookie, middleware_task("compose_report")).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    let r = post(&s, &proxy, &b.cookie, middleware_task("job_status")).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(s.ctx.meter.usage(&tenant).used, 2);
+}
+
+#[tokio::test]
+async fn a_malformed_proxy_body_is_charged() {
+    let s = server(40);
+    let b = browser(&s).await;
+    let (_doc, token) = upload(&s, &b, "Malformed").await;
+    let tenant = s.ctx.tokens.resolve(&token).unwrap().tenant;
+    let proxy = format!("/s/{token}/api-proxy");
+
+    let bodies = [
+        r#"{"request_kind":"middleware","payload":{"task":"job_status""#.to_string(),
+        r#"{"request_kind":"middleware","payload":{}}"#.to_string(),
+        r#"{"payload":{"task":"job_status"}}"#.to_string(),
+        "not json".to_string(),
+    ];
+    for (n, body) in bodies.iter().enumerate() {
+        post(&s, &proxy, &b.cookie, body.clone()).await;
+        assert_eq!(s.ctx.meter.usage(&tenant).used, n as u32 + 1, "{body}");
+    }
+}
+
 // ── The shell itself ─────────────────────────────────────────────────────────
 
 #[tokio::test]

@@ -31,7 +31,7 @@ cargo run -p napkin-web                     # http://127.0.0.1:8080
 | `NAPKIN_WEB_STATIC` | found automatically | the built shell (`app/dist`) |
 | `NAPKIN_CONFIG_DIR` | `<data>/config` | `workspace.yaml` + `secrets.yaml` |
 | `NAPKIN_AGENT_URL` | `http://localhost:8787` | the briefing engine |
-| `NAPKIN_AGENT_CAP` | `40` | agent calls per tenant, per process |
+| `NAPKIN_AGENT_CAP` | `40` | agent calls per tenant, per process (a middleware `job_status` poll is not one) |
 | `NAPKIN_SANDBOX_ORIGIN` | unset (same origin) | where app frames load from |
 | `NAPKIN_WEB_SECURE_COOKIE` | unset | set behind TLS |
 
@@ -59,6 +59,13 @@ POST /api/t/{t}/agent/prompt                   {text} — metered
 GET  /api/t/{t}/events                         SSE
 ANY  /s/{token}/…                              the clan:// surface
 ```
+
+`/s/{token}/api-proxy` is metered like `agent/prompt`: each call spends one
+unit of `NAPKIN_AGENT_CAP`. The one exception is a `request_kind: middleware`
+call whose `payload.task` is `job_status` — polling a job already charged when
+it was submitted (`start_campaign`, `answer_question`, `compose_report` and
+every other task are charged). A body that cannot be read as such a poll —
+not JSON, no task, another kind — is charged.
 
 ## Deploying it
 
