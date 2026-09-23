@@ -23,6 +23,7 @@ the VectorStore adapter that rag.py actually uses (see store_base.py).
 from __future__ import annotations
 
 import json
+import sys
 import os
 import urllib.error
 import urllib.request
@@ -160,12 +161,25 @@ def has_sparse() -> bool:
     """Whether this collection was created with the BM25 sparse vector. A collection
     built before sparse support exists and cannot answer keyword queries, so hybrid has
     to fall back to dense rather than silently return half a result set."""
+    name = collection_name()
+    if name in _SPARSE_CACHE:
+        return _SPARSE_CACHE[name]
     try:
-        r = _req("GET", f"/collections/{collection_name()}")
-        cfg = (r.get("result", {}).get("config", {}).get("params", {}) or {})
-        return SPARSE_NAME in (cfg.get("sparse_vectors") or {})
-    except RuntimeError:
+        r = _req("GET", f"/collections/{name}")
+    except RuntimeError as e:
+        # A failed request is NOT "no sparse vector": say so and do not cache, so the next
+        # search asks again instead of pinning hybrid to dense for the whole process.
+        print(f"[!] qdrant: could not read collection config ({e}); hybrid falls back to "
+              f"dense for this search", file=sys.stderr)
         return False
+    cfg = (r.get("result", {}).get("config", {}).get("params", {}) or {})
+    _SPARSE_CACHE[name] = SPARSE_NAME in (cfg.get("sparse_vectors") or {})
+    return _SPARSE_CACHE[name]
+
+
+# collection -> has sparse vector. The answer cannot change during a run, and it was being
+# asked 42 times per brief (47% of RAG calls, measured 2026-09-23).
+_SPARSE_CACHE: dict[str, bool] = {}
 
 
 # Qdrant needs a payload index on any field used in a filter. Which fields those are

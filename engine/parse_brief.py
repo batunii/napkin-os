@@ -787,6 +787,10 @@ def _smp_territory_gate(value, territory: dict) -> "tuple[bool, str]":
     return on, str(obj.get("why") or ("walks onto the competitor's ground" if not on else ""))
 
 
+FULLTEXT_IPA_CHARS = 1200     # BRIEF_FULLTEXT arm: per IPA precedent (5 max)
+FULLTEXT_METHOD_CHARS = 800   # BRIEF_FULLTEXT arm: per playbook method (3 max)
+
+
 def _precedent_blocks(loops: dict, key: str):
     """Pull a loop's retrieved evidence into (ipa_block, method_block, evidence_ids):
     IPA effectiveness cases (shape/depth exemplars) and playbook/framework snippets.
@@ -794,17 +798,20 @@ def _precedent_blocks(loops: dict, key: str):
     proposition playbook, incl. the single-minded-proposition rulebook)."""
     loop = (loops or {}).get(key) or {}
     ipa_ex, methods, ev_ids = [], [], []
+    full = os.environ.get("BRIEF_FULLTEXT", "").lower() in ("1", "true", "yes")
     for e in (loop.get("evidence") or []):
-        snip = (e.get("snippet") or "").strip()
+        # BRIEF_FULLTEXT=1 is the A/B arm Sai approved: the generator reads the evidence
+        # span (`text`, capped) instead of the 280-char display snippet clipped again below.
+        snip = ((e.get("text") if full else None) or e.get("snippet") or "").strip()
         if not snip:
             continue
         src = e.get("source") or e.get("framework") or e.get("citation") or ""
         if (e.get("category") or "") == "ipa_effectiveness_case":
-            ipa_ex.append(f"- {snip[:220]}")
+            ipa_ex.append(f"- {snip[:FULLTEXT_IPA_CHARS if full else 220]}")
             if src:
                 ev_ids.append(src)
         else:
-            methods.append(f"- {snip[:160]}")
+            methods.append(f"- {snip[:FULLTEXT_METHOD_CHARS if full else 160]}")
     return ("\n".join(ipa_ex[:5]) or "(no IPA precedent retrieved)",
             "\n".join(methods[:3]) or "(no playbook evidence)", ev_ids)
 
@@ -1088,6 +1095,7 @@ class _RateLimited(RuntimeError):
 # waste — judges return ~100-token verdicts. BRIEF_MAX_TOKENS overrides everything.
 MAXTOK_JUDGE = 500       # rubric gates / judges / territory gate / rerank: tiny JSON verdicts
 MAXTOK_GEN = 1200        # candidate generation / refine: one field's worth of text
+MAXTOK_SYNTH_ONE = 700    # one loop's synthesis paragraph (was 2500 for all five in one call)
 MAXTOK_EXTRACT = 2500    # extraction / scorecard / golden / loop synthesis: big JSON
 
 
@@ -1911,6 +1919,9 @@ def _rerank_hits(query: str, hits: list, k: int) -> list:
     Disable with BRIEF_RERANK=0."""
     if os.environ.get("BRIEF_RERANK", "1") == "0" or len(hits) <= k:
         return hits[:k]
+    ordered = _chain_order(query, hits)
+    if ordered is not None:
+        return ordered[:k]
     def _snippet(t):
         return re.sub(r'\\s+', ' ', t)[:200]
     listing = "\n".join(f"[{i}] {h.get('citation','')}: {_snippet(h.get('text',''))}"
@@ -1926,6 +1937,53 @@ def _rerank_hits(query: str, hits: list, k: int) -> list:
         order += [i for i in range(len(hits)) if i not in order]   # keep any the judge dropped
         return [hits[i] for i in order][:k]
     return hits[:k]
+
+
+def _chain_order(query: str, hits: list) -> list | None:
+    """Order `hits` by the RAG validation chain (RAG_VALIDATOR) when one is configured:
+    one cross-encoder call instead of an LLM rerank call (~0.5s against ~2-12s). Ordering
+    ONLY — nothing is dropped, because a live brief showed a QA reranker rejects precedent
+    it should keep (engine/rag/docs/adr/0003, Live finding). Judged hits by calibrated
+    score, else raw output; unjudged ones after, in fused order.
+
+    Returns None — use the LLM rerank — when no chain is configured, nobody answered, or
+    the chain cannot be built. parse_brief's rule is that RAG never crashes a run, so a
+    misconfigured RAG_VALIDATOR is reported on stderr here rather than raised.
+    Note: with `local` leading the chain, the five loops' concurrent calls queue on one
+    worker and may time out; the chain then falls through or returns None (LLM rerank)."""
+    try:
+        _load_retriever()
+        import brief_context                              # rag/ is on sys.path now
+        from judge_base import Passage, Query
+        chain = brief_context.default_chain()
+    except Exception as e:
+        print(f"[!] validation chain unavailable ({e.__class__.__name__}: {e}); "
+              f"using the LLM rerank", file=sys.stderr)
+        return None
+    if chain.empty:
+        return None
+    res = chain.judge(Query(text=query), [
+        Passage(str(i), ((h.get("header") or "") + "\n" + (h.get("text") or "")).strip())
+        for i, h in enumerate(hits)])
+    if res.verdicts is None:
+        return None
+    aligned = res.aligned()
+    def key(i):
+        """Judged first by score (else raw), then unjudged in fused order."""
+        v = aligned[i]
+        if v is None:
+            return (1, 0.0, i)
+        return (0, -(v.score if v.score is not None else (v.raw or 0.0)), i)
+    return [hits[i] for i in sorted(range(len(hits)), key=key)]
+
+
+def _dedupe_by_source(hits: list) -> list:
+    """First (best-ranked) hit per source, order kept."""
+    seen, out = set(), []
+    for h in hits:
+        if h.get("source") not in seen:
+            seen.add(h.get("source")); out.append(h)
+    return out
 
 
 def _load_retriever():
@@ -2007,43 +2065,50 @@ def _classify_intent(gist, fields) -> str:
 
 def _synthesize_loops37(gist, intent, loops) -> str:
     """Ground a short paragraph per loop in the retrieved evidence, citing
-    `source › section`. Reuses the existing LLM provider; falls back to an
-    evidence-only summary when no provider / no clean JSON. Mutates loops."""
-    blocks = []
-    for key, d in loops.items():
+    `source › section`. One call per loop, run concurrently: the loops are independent,
+    and one call writing all five serially was 41.8s of a 56.9s brief (73%). Same
+    instructions, model and output shape as before; about 4 extra calls of small input.
+    Falls back per loop to an evidence-only summary when a call returns no paragraph.
+    Mutates loops."""
+    synth_model = os.environ.get("BRIEF_SYNTH_MODEL") or None
+
+    def one(item):
+        """Write one loop's paragraph; returns (key, paragraph or None)."""
+        key, d = item
         ev = "\n".join(f"  - ({e['citation']}) {e['snippet']}" for e in d["evidence"]) \
              or "  (no evidence retrieved)"
-        blocks.append(f"### {key} — {d['title']}\n{ev}")
-    user = (
-        "You are an advertising planning director. Using ONLY the retrieved evidence "
-        "below, write one grounded, specific paragraph per loop that applies the "
-        "frameworks to THIS brief. Cite the playbooks you use inline as "
-        "(source › section), copied exactly. Never invent frameworks or statistics.\n\n"
-        f"BRIEF GIST: problem={gist['problem']!r}; objective={gist['objective']!r}; "
-        f"audience={gist['audience']!r}; key_message={gist['key_message']!r}; intent={intent}.\n\n"
-        f"RETRIEVED EVIDENCE:\n" + "\n\n".join(blocks) + "\n\n"
-        "Return JSON only: an object mapping each loop key "
-        f"({', '.join(loops)}) to its paragraph string."
-    )
-    synth_model = os.environ.get("BRIEF_SYNTH_MODEL") or None
-    obj = _json_call(user, system="You are a precise strategy planner. Output JSON only.",
-                     model=synth_model, max_tokens=MAXTOK_EXTRACT)
-    if isinstance(obj, dict):
-        wrote = False
-        for key, d in loops.items():
-            para = obj.get(key)
-            if isinstance(para, str) and para.strip():
-                d["synthesis"] = para.strip(); wrote = True
-        if wrote:
-            prov = resolve_provider()
-            used = synth_model or model_for(prov)
-            return f"llm:{used}" if prov else "llm"
-    for d in loops.values():                          # evidence-only fallback
-        if d["evidence"]:
+        user = (
+            "You are an advertising planning director. Using ONLY the retrieved evidence "
+            "below, write one grounded, specific paragraph that applies the frameworks to "
+            "THIS brief. Cite the playbooks you use inline as (source › section), copied "
+            "exactly. Never invent frameworks or statistics.\n\n"
+            f"BRIEF GIST: problem={gist['problem']!r}; objective={gist['objective']!r}; "
+            f"audience={gist['audience']!r}; key_message={gist['key_message']!r}; intent={intent}.\n\n"
+            f"### {key} — {d['title']}\nRETRIEVED EVIDENCE:\n{ev}\n\n"
+            'Return JSON only: {"paragraph": "..."}')
+        obj = _json_call(user, system="You are a precise strategy planner. Output JSON only.",
+                         model=synth_model, max_tokens=MAXTOK_SYNTH_ONE,
+                         schema={"type": "object", "properties": {"paragraph": {"type": "string"}},
+                                 "required": ["paragraph"], "additionalProperties": False})
+        para = obj.get("paragraph") if isinstance(obj, dict) else None
+        return key, (para.strip() if isinstance(para, str) and para.strip() else None)
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, len(loops))) as ex:
+        paras = dict(ex.map(one, list(loops.items())))
+    wrote = False
+    for key, d in loops.items():
+        if paras.get(key):
+            d["synthesis"] = paras[key]; wrote = True
+        elif d["evidence"]:                           # evidence-only fallback, per loop
             tops = "; ".join(f"{e['framework']} ({e['citation']})" for e in d["evidence"][:3])
             d["synthesis"] = f"Apply, in order of fit: {tops}."
         else:
             d["synthesis"] = "No playbook evidence retrieved for this loop."
+    if wrote:
+        prov = resolve_provider()
+        used = synth_model or model_for(prov)
+        return f"llm:{used}" if prov else "llm"
     return "evidence-only"
 
 
@@ -2138,6 +2203,10 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
         # 1.5× is enough headroom — 3× ranked 15 passages to keep 5 (dead tokens).
         pool = retriever.retrieve(q, k=max(int(k * 1.5), 8), index_dir=index_dir,
                                   scopes=scopes)
+        # One section per source BEFORE the cut to k, not after: several sections of one
+        # playbook used to fill the top k and then collapse to one — loop5_proposition
+        # returned 1 evidence item where its siblings returned 5-8.
+        pool = _dedupe_by_source(pool)
         for h in _rerank_hits(q, pool, k):
             if h["source"] in seen:
                 continue

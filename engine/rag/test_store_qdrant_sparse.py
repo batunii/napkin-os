@@ -8,6 +8,34 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import lexical  # noqa: E402
 import store_qdrant as q  # noqa: E402
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fresh_sparse_cache():
+    """has_sparse() caches per collection for the life of a process; each test fakes a
+    different collection config, so each starts with an empty cache."""
+    q._SPARSE_CACHE.clear()
+    yield
+    q._SPARSE_CACHE.clear()
+
+
+def test_has_sparse_is_cached_and_a_failed_request_is_not(monkeypatch):
+    """One config GET per collection per process; a failed GET is not cached as 'no sparse'."""
+    monkeypatch.setattr(q, "collection_name", lambda: "c")
+    calls = []
+    def fake(method, path, body=None):
+        """Record the GET and answer with a sparse-enabled collection."""
+        calls.append(path)
+        return {"result": {"config": {"params": {"sparse_vectors": {q.SPARSE_NAME: {}}}}}}
+    monkeypatch.setattr(q, "_req", fake)
+    assert q.has_sparse() and q.has_sparse() and len(calls) == 1
+    q._SPARSE_CACHE.clear()
+    def boom(method, path, body=None):
+        """Simulate a network failure."""
+        raise RuntimeError("connection refused")
+    monkeypatch.setattr(q, "_req", boom)
+    assert q.has_sparse() is False and q._SPARSE_CACHE == {}
 
 
 class _Fake:

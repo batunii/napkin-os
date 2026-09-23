@@ -33,7 +33,7 @@ middleware ◀─response── rag_io.response_from()
 | Confidentiality boundary (scope, tenant, egress) | **live** | `brief_context.scopes_for / tenants_for / build` |
 | Validation (relevance gate, jev → nemotron → local switch) | **wired, off by default** (ADR 0003) | `judge.py`, `judge_*.py`, `calibrate.py` |
 | Pool width set by the live validator | **wired** | `judge.Chain.pool_width` |
-| Rerank | today: LLM rerank in `parse_brief.loops_3_7`; to be replaced by sorting on the validator's score (step 4) | `parse_brief._rerank_hits` |
+| Rerank | `brief_context`: sort by validator score (when on). `loops_3_7`: validation chain orders hits when `RAG_VALIDATOR` is set (ordering only, no drops), else the LLM rerank; sources are deduplicated before the cut | `parse_brief._rerank_hits`, `_chain_order` |
 | Edge ordering (strongest at both ends) | **built**, `RAG_ORDER=edge`, default off pending A/B | `brief_context.edge_order` |
 | Output: structured chunks + rendered prompt text | **live** | `rag_io.response_from`, `BriefContext.prompt_text` |
 
@@ -491,6 +491,8 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `NVIDIA_API_KEY` | — | embeddings |
 | `QDRANT_CLUSTER_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | — | Qdrant backend |
 | `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
+| `BRIEF_FULLTEXT` | unset | `1` = A/B arm: the brief generator reads evidence spans (capped 1200 / 800 chars) instead of 220 / 160-char snippets |
+| `BRIEF_SYNTH_MODEL` | model chain default | model for the per-loop synthesis paragraphs (now one call per loop, in parallel) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
 | `RAG_VALIDATOR` | unset (off) | Validation chain in priority order, e.g. `nemotron,local`; `jev` first once `TYPESAFE_API_KEY` is set |
 | `RAG_VALIDATOR_DEADLINE_S` | `3.0` | Per-call deadline for backends that declare none |
