@@ -722,8 +722,8 @@ def _egress_refusal(h: Hit, allowed_scopes: set, allowed_tenants: set) -> dict |
 # ---- per-bucket retrieval, shared by build() and build_multi() ---------------------
 # A bucket is THIN when its candidates cover fewer distinct documents than this. Widening
 # used to fire only on an EMPTY bucket; a three-path test on real briefs showed a filtered
-# bucket returning 2 exemplars while the right cases sat one category away (Friskies,
-# tagged fmcg, missed food_drink cases). Thin buckets now widen too.
+# bucket returning 2 exemplars while the right cases sat one category away (a pet-food
+# brief tagged fmcg missed the food_drink cases). Thin buckets now widen too.
 MIN_DISTINCT_DOCS = {"exemplars": 4, "craft": 3}
 
 

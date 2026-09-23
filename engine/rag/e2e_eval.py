@@ -36,8 +36,16 @@ sys.path.insert(0, str(ENGINE))
 
 OUT = ENGINE / "outputs" / "e2e"
 BRIEFS = ENGINE.parent / "client_briefs"
-PICK = ["friskies-engleza", "vwcv-pitch-brief", "betfair-romania-creative-campaign",
-        "mr-diy-engleza", "employer-awareness-campaign-brief"]
+
+
+def _pick() -> list[str]:
+    """The client briefs to run, in order, from golden/labels/client/pick.txt (git-ignored:
+    the file names are client names). Empty when the file is absent."""
+    f = HERE / "golden" / "labels" / "client" / "pick.txt"
+    return [ln.strip() for ln in f.read_text().splitlines()
+            if ln.strip() and not ln.startswith("#")] if f.exists() else []
+
+
 PRICES = {"claude-opus-4-6": (5, 25), "claude-opus-5": (5, 25), "claude-sonnet-5": (2, 10),
           "claude-haiku-4-5": (1, 5), "claude-fable-5-1": (10, 50)}
 JUDGE_MODEL = "claude-sonnet-5"
@@ -45,9 +53,12 @@ JUDGE_MODEL = "claude-sonnet-5"
 
 def _price(label: str) -> tuple[float, float]:
     """(input, output) USD per million tokens for a provider:model label; 0 if not Claude."""
-    model = label.split(":", 1)[-1]
+    if ":" not in label:                        # the Claude call records a bare "anthropic"
+        import parse_brief
+        label = f"{label}:{parse_brief.model_for(label)}"
+    model = label.split(":", 1)[-1].lower()
     for k, v in PRICES.items():
-        if model.startswith(k):
+        if k in model:
             return v
     return (0.0, 0.0)
 
@@ -105,6 +116,83 @@ class Meter:
                 "cost_usd": round(cost, 4), "embed_requests": self.embed, "qdrant_requests": self.qdrant}
 
 
+def trace_one(stem: str, path: str = "mix") -> dict:
+    """Every call of one full brief, timed: LLM calls by pipeline step (caller function),
+    model, seconds and tokens; RAG calls (hosted embed, Qdrant, validator) with seconds.
+    Writes outputs/e2e/trace_<path>_<stem>.json. The per-step view the call counts alone
+    cannot give."""
+    import inspect
+    import rag
+    import store_qdrant as q
+    import parse_brief as pb
+    import judge
+    import labelset
+    os.environ["RAG_PATH"] = path
+    events, lock, tl = [], threading.Lock(), threading.local()
+    t0 = time.time()
+    orig_json, orig_usage, orig_call = pb._json_call, pb._stats_usage, pb._stats_call
+    orig_embed, orig_req, orig_judge = rag._nim_embed, q._req, judge.Chain.judge
+    skip = {"traced_json", "_json_call", "wrapper"}
+
+    def step_name():
+        """The pipeline function that made this call (first frame outside the plumbing)."""
+        for fr in inspect.stack()[2:12]:
+            if fr.function not in skip and fr.filename.endswith("parse_brief.py"):
+                return fr.function
+        return "?"
+
+    def stats_call(label, in_chars):
+        """Remember the model this thread is calling."""
+        tl.label = label
+        return orig_call(label, in_chars)
+
+    def stats_usage(usage, out_chars):
+        """Accumulate this thread's tokens for the call in flight."""
+        tl.tin = getattr(tl, "tin", 0) + int((usage or {}).get("prompt_tokens") or 0)
+        tl.tout = getattr(tl, "tout", 0) + int((usage or {}).get("completion_tokens") or 0)
+        return orig_usage(usage, out_chars)
+
+    def traced_json(*a, **k):
+        """Time one LLM call and attribute its tokens and model."""
+        tl.tin = tl.tout = 0; tl.label = "?"
+        st = step_name(); t = time.time()
+        try:
+            return orig_json(*a, **k)
+        finally:
+            with lock:
+                events.append({"kind": "llm", "step": st, "model": getattr(tl, "label", "?"),
+                               "start": round(t - t0, 2), "secs": round(time.time() - t, 2),
+                               "in": tl.tin, "out": tl.tout})
+
+    def timed(kind, fn):
+        """Wrap a RAG call to log its duration."""
+        def wrapper(*a, **k):
+            t = time.time()
+            try:
+                return fn(*a, **k)
+            finally:
+                with lock:
+                    events.append({"kind": kind, "start": round(t - t0, 2), "secs": round(time.time() - t, 2)})
+        return wrapper
+    pb._json_call, pb._stats_usage, pb._stats_call = traced_json, stats_usage, stats_call
+    rag._nim_embed, q._req = timed("embed", orig_embed), timed("qdrant", orig_req)
+    judge.Chain.judge = lambda self, *a, **k: timed("validator", orig_judge)(self, *a, **k)
+    try:
+        text = labelset._doc_text({f.stem: f for f in BRIEFS.iterdir()}[stem]).strip()
+        brief = pb.run(None, loops37=True, golden=True, raw_text=text, source_name=stem)
+    finally:
+        pb._json_call, pb._stats_usage, pb._stats_call = orig_json, orig_usage, orig_call
+        rag._nim_embed, q._req, judge.Chain.judge = orig_embed, orig_req, orig_judge
+    for e in events:
+        if e["kind"] == "llm":
+            pi, po = _price(e["model"])
+            e["usd"] = round(e["in"] / 1e6 * pi + e["out"] / 1e6 * po, 5)
+    out = {"brief": stem, "path": path, "wall_secs": round(time.time() - t0, 1), "events": events}
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / f"trace_{path}_{stem}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    return out
+
+
 def _quality(brief_json: Path, brief: dict) -> dict:
     """golden_critic health and failures, plus the BetterBriefs scorecard tally."""
     import subprocess
@@ -150,13 +238,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--paths", default="mix,loops")
+    ap.add_argument("--trace", default=None, help="trace every call of ONE brief (a client_briefs stem)")
     a = ap.parse_args()
+    if a.trace:
+        t = trace_one(a.trace, a.paths.split(",")[0])
+        print(json.dumps({"wall_secs": t["wall_secs"], "events": len(t["events"])}))
+        return
     import rag
     import store_qdrant as q
     import parse_brief as pb
     import labelset
     files = {f.stem: f for f in BRIEFS.iterdir()}
-    chosen = [s for s in PICK if s in files][:a.n]
+    chosen = [s for s in _pick() if s in files][:a.n]
     rows, finished = [], {}
     for stem in chosen:
         text = labelset._doc_text(files[stem]).strip()

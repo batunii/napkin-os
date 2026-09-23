@@ -54,10 +54,28 @@ markdown with headless Chrome: `--headless=new --print-to-pdf`).
 | `QDRANT_CLUSTER_ENDPOINT` + `QDRANT_API_KEY` (+`QDRANT_COLLECTION`) | remote RAG (`RAG_STORE=qdrant`) |
 | `BRIEF_MODEL_CHAIN` / `BRIEF_MODEL` | override the model fallback chain |
 | `BRIEF_LOOPS37` / `BRIEF_RERANK` / `BRIEF_HERO_CANDIDATES` | stage toggles |
+| `BRIEF_CAPTURE` | `toon` (default): Loop 1 capture in TOON citing sentence numbers, how_to_win in its own call; `json`: the one-call JSON capture |
+| `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |
+| `BRIEF_BATCH_GATES` | `1` (default): one judge call ranks + gates all hero drafts; `0`: one gate call per draft |
 
 The tool is **model-agnostic**: every LLM step walks a best→reliable provider chain
 (Cerebras → Groq → NVIDIA NIM by default) and degrades to heuristic mode with no keys
 at all. `.env` is loaded automatically (dependency-free fallback included).
+
+### Pipeline stages (`parse_brief.run`)
+
+| Stage | Calls | Starts after | Code |
+|---|---|---|---|
+| Capture (TOON, `src` sentence numbers) | 1 | — | `capture_toon` (+ `toon_lite.decode`) |
+| How-to-win | 1 | — (alongside capture) | `how_to_win_toon` |
+| Golden extraction | 1 | — (alongside capture) | `extract_golden_brief` |
+| Scorecard | 1 | capture | `score_betterbriefs` |
+| Retrieval (RAG, no LLM) | 0 | capture | `loops_3_7(..., synthesize=False)` |
+| Loop synthesis | 5 | retrieval (alongside hero fields) | `_synthesize_loops37` |
+| Hero fields | ~13 | retrieval + golden | `fill_derivable_fields` → `_judge_and_gate` |
+
+Measured on 3 real briefs, 2026-09-23: 110–157 s and $0.35–0.44 per brief (was 294–351 s,
+$0.46–0.64). Why and how: `rag/docs/adr/0004-brief-pipeline-speedups.md`.
 
 ## RAG corpora
 

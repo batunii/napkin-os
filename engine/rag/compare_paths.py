@@ -33,8 +33,16 @@ sys.path.insert(0, str(HERE.parent))
 
 CLIENT = HERE / "golden" / "labels" / "client"
 JUDGE_MODEL = "claude-sonnet-5"
-PICK = ["client:friskies-engleza", "client:vwcv-pitch-brief", "client:betfair-romania-creative-campaign",
-        "client:employer-awareness-campaign-brief", "client:mr-diy-engleza", "client:bord-gais-energy-media-agency-selection"]
+
+
+def _pick() -> list[str]:
+    """The client briefs to run, in order, from golden/labels/client/pick.txt (git-ignored:
+    the file names are client names). Empty when the file is absent."""
+    f = HERE / "golden" / "labels" / "client" / "pick.txt"
+    return [ln.strip() for ln in f.read_text().splitlines()
+            if ln.strip() and not ln.startswith("#")] if f.exists() else []
+
+
 
 
 def _pairs(b: dict) -> dict:
@@ -113,7 +121,7 @@ def main() -> None:
     import parse_brief as pb
     pb._synthesize_loops37 = lambda *a, **k: "skipped (retrieval-only comparison)"
     briefs = {b["doc_id"]: b for b in map(json.loads, (CLIENT / "briefs.jsonl").read_text().splitlines())}
-    chosen = [briefs[d] for d in PICK if d in briefs][:n]
+    chosen = [briefs[f"client:{d}"] for d in _pick() if f"client:{d}" in briefs][:n]
     rows, md = [], ["# Retrieval paths A / B / MIX on real client briefs", "",
                     "Judge: Sonnet, blind (sets shown as X/Y/Z in a per-brief shuffled order). Scores 1-5.", ""]
     for i, b in enumerate(chosen):

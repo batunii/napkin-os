@@ -640,17 +640,12 @@ def _brand_boilerplate(text: str) -> str:
     return " ".join(lines)
 
 
-def _rubric_gate(field, value, brand_lines: str = "", ctx: str = "") -> "tuple[bool, list]":
-    """Run a field's own schema rubric against a generated value. Auto tests run
-    inline; the llm tests run in one judge call. Returns (passed, failures).
-    A hard failure (over limit / forbidden verb / masterbrand echo) fails outright;
-    up to one soft (llm) failure is tolerated so a subjective judge can't nuke every field.
-    `ctx` (the field's upstream deps, e.g. the insight + competitor_context) is given to
-    the judge so derivation/ownability tests are checked against real context, not blind."""
-    rubric = field.get("rubric") or []
+def _rubric_hard(field, value, brand_lines: str = "") -> list:
+    """The rubric's code tests (no model call): word limit, a 'do' that is not an observable
+    behaviour, an SMP that echoes the masterbrand line. Any failure here is final."""
     mw = field.get("max_words")
     blob = (json.dumps(value).lower() if not isinstance(value, str) else value.lower())
-    hard, soft = [], []
+    hard = []
     if mw and _word_count(value) > mw * 1.2:
         hard.append(f"over the {mw}-word limit ({_word_count(value)} words)")
     if field.get("type") == "tfd" and any(v in blob for v in FORBIDDEN_DO_VERBS):
@@ -659,6 +654,18 @@ def _rubric_gate(field, value, brand_lines: str = "", ctx: str = "") -> "tuple[b
     if field.get("id") == "smp" and brand_lines and isinstance(value, str) \
             and _text_overlap(value, brand_lines) >= 0.5:
         hard.append("SMP echoes the masterbrand vision/claim — needs a campaign-specific proposition")
+    return hard
+
+
+def _rubric_gate(field, value, brand_lines: str = "", ctx: str = "") -> "tuple[bool, list]":
+    """Run a field's own schema rubric against a generated value. Auto tests run
+    inline; the llm tests run in one judge call. Returns (passed, failures).
+    A hard failure (over limit / forbidden verb / masterbrand echo) fails outright;
+    up to one soft (llm) failure is tolerated so a subjective judge can't nuke every field.
+    `ctx` (the field's upstream deps, e.g. the insight + competitor_context) is given to
+    the judge so derivation/ownability tests are checked against real context, not blind."""
+    rubric = field.get("rubric") or []
+    hard, soft = _rubric_hard(field, value, brand_lines), []
     llm_tests = [r for r in rubric if r.get("method") == "llm"]
     if llm_tests:
         tests = "\n".join(f'- {r["id"]}: {r["test"]}' for r in llm_tests)
@@ -710,6 +717,72 @@ def _judge_hero_candidates(field, candidates, brand_lines: str = ""):
             ranked[0] = {**ranked[0], "_judge_why": judge["why"]}
         return ranked
     return candidates
+
+
+MAXTOK_BATCH_JUDGE = 1500   # one verdict per candidate x test, plus the ranking
+
+
+def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", territory=None) -> list:
+    """Rank the candidates AND run every llm rubric test (and, for the SMP, the two territory
+    tests) on every candidate in ONE judge call. Returns [(candidate, passed, failures)]
+    best-first. Same pass rule as _rubric_gate + _smp_territory_gate: a code (hard) failure
+    is final, up to one soft failure is tolerated, and a line off the brand's territory fails.
+
+    Replaces, per hero field, one ranking call + one gate call per candidate tried + one
+    territory call per candidate that passed (measured 2026-09-23: 11 gate calls, 73 s, on
+    one brief). If the judge call fails, the order is kept and only the code tests apply —
+    exactly what the per-candidate path did when its judge failed."""
+    llm_tests = [r for r in (field.get("rubric") or []) if r.get("method") == "llm"]
+    many = len(candidates) > 1
+    judge = None
+    if llm_tests or territory or many:
+        tests = "\n".join(f'- {r["id"]}: {r["test"]}' for r in llm_tests)
+        if territory:
+            tests += (f"\n- own_territory: does the line live on what the BRAND should own "
+                      f"({territory['own']}) rather than on {territory['rival']}'s ground "
+                      f"({territory['avoid']}) — counting synonyms and rephrasings?"
+                      f"\n- not_rival_line: could {territory['rival']}'s own campaign NOT run this line "
+                      f"verbatim without changing its meaning? (pass = only this brand can say it)")
+        listing = "\n".join(f"[{i}] {json.dumps(c.get('value'))}" for i, c in enumerate(candidates))
+        judge = _json_call(
+            (f"UPSTREAM CONTEXT (use this to judge derivation/ownability — do NOT re-test it):\n{ctx}\n\n"
+             if ctx else "")
+            + f"FIELD: {field['label']}\nGOOD shape (different brand, do not copy): {field.get('good_example','')}\n"
+            f"BAD: {field.get('bad_example','')} ({field.get('bad_reason','')})\n\n"
+            f"TESTS (judge EVERY candidate on each):\n{tests}\n\nCANDIDATES:\n{listing}",
+            system=("You are a strategy director judging candidate '" + field["label"] + "' lines for a "
+                    "creative brief — fair but rigorous. Judge each candidate on each test on its own "
+                    "merits, using the upstream context where given (do not fail derivation merely because "
+                    "the context wasn't repeated in the line). Then rank the candidates: reward PURITY and "
+                    "single-mindedness (one idea, never a list or an 'and'), ownable territory, and a real "
+                    "human tension specific to THIS brand; penalise category truths, restated taglines and "
+                    "lines that try to say two things. Return ONLY raw JSON: "
+                    '{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short"}}}, '
+                    '"ranking": [candidate indexes, best first], "why": "one line on the winner"}'),
+            retries=1, max_tokens=MAXTOK_BATCH_JUDGE)
+    judge = judge if isinstance(judge, dict) else {}
+    order = [i for i in (judge.get("ranking") or []) if isinstance(i, int) and 0 <= i < len(candidates)]
+    order = list(dict.fromkeys(order)) + [i for i in range(len(candidates)) if i not in order]
+    results = judge.get("results") if isinstance(judge.get("results"), dict) else {}
+    out = []
+    for rank, i in enumerate(order):
+        c = candidates[i]
+        if rank == 0 and many and isinstance(judge.get("why"), str):
+            c = {**c, "_judge_why": judge["why"]}
+        res = results.get(str(i)) or results.get(i) or {}
+        verdict = lambda tid: res.get(tid) if isinstance(res.get(tid), dict) else {"pass": res.get(tid)}
+        hard = _rubric_hard(field, c["value"], brand_lines)
+        soft = [f'{r["id"]}: {verdict(r["id"]).get("why", "failed")}' for r in llm_tests
+                if verdict(r["id"]).get("pass") is False]
+        ok = not hard and len(soft) < 2
+        fails = hard + soft
+        if ok and territory:
+            own, only_us = verdict("own_territory").get("pass"), verdict("not_rival_line").get("pass")
+            if own is False or only_us is False:
+                why = verdict("own_territory").get("why") or verdict("not_rival_line").get("why") or ""
+                ok, fails = False, [f"walks onto the competitor's ground: {why}"]
+        out.append((c, ok, fails))
+    return out
 
 
 def _refine_field(field, value, note: str = ""):
@@ -866,14 +939,28 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     "reason": "echoed the masterbrand vision/claim, not a campaign-specific proposition",
                 }
 
-    fills, open_qs = {}, []
-    for fid in GEN_ZONE3_ORDER:
+    from concurrent.futures import ThreadPoolExecutor
+    batch = os.environ.get("BRIEF_BATCH_GATES", "1").lower() not in ("0", "false", "no")
+    parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
+
+    def gate_one(field, value, ctx, territory=None) -> bool:
+        """Does one value clear its field's rubric (and, given a territory, the SMP's
+        territory tests)? One judge call when batching, else the rubric gate + territory gate."""
+        if batch:
+            return _judge_and_gate(field, [{"value": value}], brand_blob, ctx, territory)[0][1]
+        ok, _f = _rubric_gate(field, value, brand_lines=brand_blob, ctx=ctx)
+        return ok and (territory is None or _smp_territory_gate(value, territory)[0])
+
+    def _one(fid):
+        """Generate, judge, gate and sharpen ONE field. Returns (entry or None, open questions).
+        Writes golden_fields[fid] so a later field can read it."""
+        qs = []
         field = _field_by_id(schema, fid)
         if not field:
-            continue
+            return None, qs
         cur = golden_fields.get(fid) or {}
         if isinstance(cur, dict) and cur.get("source") == "client_stated":
-            continue  # never overwrite a client fact
+            return None, qs  # never overwrite a client fact
 
         deps = list(field.get("depends_on", []))
         # The sharpest captured thinking (the white space vs the competitor) must reach
@@ -906,7 +993,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         territory = None
         if fid == "smp":
             n_cand = max(n_cand, int(os.environ.get("BRIEF_SMP_CANDIDATES", "6")))
-            territory = _smp_territory(brief_text, val("competitor_context"))
+            territory = f_terr.result() if f_terr else _smp_territory(brief_text, val("competitor_context"))
         # SMP territory block — built once, reused by the batched call and the fallback.
         terr_block = ""
         if fid == "smp" and territory:
@@ -949,25 +1036,37 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         if not candidates:
             golden_fields[fid] = {"value": None, "source": "missing",
                                   "reason": "generation produced no output"}
-            open_qs.append({"question": f"Agree the {field['label'].lower()} — none could be derived.",
+            qs.append({"question": f"Agree the {field['label'].lower()} — none could be derived.",
                             "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
-            continue
-
-        if fid in ("insight", "smp"):
-            candidates = _judge_hero_candidates(field, candidates, brand_blob)   # reorder best-first
+            return None, qs
 
         chosen, chosen_fail = None, None
-        for c in candidates:
-            ok, fails = _rubric_gate(field, c["value"], brand_lines=brand_blob, ctx=ctx)
-            if ok and fid == "smp" and territory:
-                on_terr, why = _smp_territory_gate(c["value"], territory)
-                if not on_terr:
-                    ok, fails = False, [f"walks onto the competitor's ground: {why}"]
-            if ok:
-                chosen, chosen_fail = c, []
-                break
-            if chosen is None:
-                chosen, chosen_fail = c, fails
+        if fid in ("insight", "smp") and batch:
+            # One call ranks every draft and runs every gate on it (BRIEF_BATCH_GATES=0: the
+            # per-candidate path below). The best-ranked draft that passes wins; if none
+            # passes, the best-ranked one carries its failures, as before.
+            judged = _judge_and_gate(field, candidates, brand_blob, ctx, territory)
+            candidates = [c for c, _ok, _f in judged]
+            for c, ok, fails in judged:
+                if ok:
+                    chosen, chosen_fail = c, []
+                    break
+                if chosen is None:
+                    chosen, chosen_fail = c, fails
+        else:
+            if fid in ("insight", "smp"):
+                candidates = _judge_hero_candidates(field, candidates, brand_blob)   # reorder best-first
+            for c in candidates:
+                ok, fails = _rubric_gate(field, c["value"], brand_lines=brand_blob, ctx=ctx)
+                if ok and fid == "smp" and territory:
+                    on_terr, why = _smp_territory_gate(c["value"], territory)
+                    if not on_terr:
+                        ok, fails = False, [f"walks onto the competitor's ground: {why}"]
+                if ok:
+                    chosen, chosen_fail = c, []
+                    break
+                if chosen is None:
+                    chosen, chosen_fail = c, fails
         # SMP territory rescue: if no candidate could both pass the rubric AND hold the white
         # space, push the best draft off the competitor's ground once before giving up.
         if fid == "smp" and territory and chosen_fail:
@@ -978,8 +1077,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     f"derives from the insight, not a finished tagline or headline.")
             resc = _refine_field(field, chosen["value"], note=note)
             if resc:
-                ok3, _f3 = _rubric_gate(field, resc["value"], brand_lines=brand_blob, ctx=ctx)
-                if ok3 and _smp_territory_gate(resc["value"], territory)[0]:
+                if gate_one(field, resc["value"], ctx, territory):
                     chosen = {**resc, "_judge_why": chosen.get("_judge_why", "")}
                     chosen_fail = []
         conf = float(chosen.get("confidence") or floor)
@@ -990,23 +1088,21 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                 "reason": "; ".join(chosen_fail) or f"confidence {conf:.2f} < floor {floor}",
                 "rejected_attempt": chosen.get("value"),
             }
-            open_qs.append({"question": f"Agree the {field['label'].lower()}.",
+            qs.append({"question": f"Agree the {field['label'].lower()}.",
                             "why_it_matters": "; ".join(chosen_fail) or "below confidence floor",
                             "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
-            continue
+            return None, qs
 
         # Sharpen the winning hero line once; keep the refinement only if it still clears the gate.
         if fid in ("insight", "smp"):
             refined = _refine_field(field, chosen["value"], chosen.get("_judge_why", ""))
             if refined:
-                ok2, _f2 = _rubric_gate(field, refined["value"], brand_lines=brand_blob, ctx=ctx)
-                if ok2 and float(refined.get("confidence") or conf) >= floor:
-                    # Never let the sharpen pass drift the SMP back onto the competitor's ground.
-                    keep = True if fid != "smp" or not territory \
-                        else _smp_territory_gate(refined["value"], territory)[0]
-                    if keep:
-                        refined["_judge_why"] = chosen.get("_judge_why", "")
-                        chosen, conf = refined, float(refined.get("confidence") or conf)
+                # gate_one includes the territory tests for the SMP: never let the sharpen
+                # pass drift it back onto the competitor's ground.
+                if float(refined.get("confidence") or conf) >= floor \
+                        and gate_one(field, refined["value"], ctx, territory if fid == "smp" else None):
+                    refined["_judge_why"] = chosen.get("_judge_why", "")
+                    chosen, conf = refined, float(refined.get("confidence") or conf)
 
         entry = {"value": chosen["value"], "source": "inferred",
                  "method": f"gen:{fid}", "confidence": round(conf, 2)}
@@ -1019,8 +1115,33 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         alts = [c["value"] for c in candidates if c.get("value") != chosen["value"]]
         if alts:
             entry["alternatives"] = alts[:3]
-        fills[fid] = entry
         golden_fields[fid] = entry  # downstream deps see the generated value
+        return entry, qs
+
+    # Waves from depends_on: a field waits only for the generated fields it reads. Measured
+    # order insight -> smp -> {reasons_to_believe, desired_response}: the last two both read
+    # the smp and not each other, so they run together. The SMP's territory map needs only the
+    # brief, so it starts at once, alongside the insight.
+    waves: dict[str, int] = {}
+    for fid in GEN_ZONE3_ORDER:
+        deps = (_field_by_id(schema, fid) or {}).get("depends_on", [])
+        waves[fid] = 1 + max((waves[d] for d in deps if d in waves), default=-1)
+    results = {}
+    smp_cur = golden_fields.get("smp") or {}
+    smp_generated = not (isinstance(smp_cur, dict) and smp_cur.get("source") == "client_stated")
+    with ThreadPoolExecutor(max_workers=4) if parallel else _Inline() as ex:
+        f_terr = (ex.submit(_smp_territory, brief_text, val("competitor_context"))
+                  if smp_generated and _field_by_id(schema, "smp") else None)
+        for w in sorted(set(waves.values())):
+            wave = [f for f in GEN_ZONE3_ORDER if waves[f] == w]
+            for fid, fut in [(f, ex.submit(_one, f)) for f in wave]:
+                results[fid] = fut.result()
+    fills, open_qs = {}, []
+    for fid in GEN_ZONE3_ORDER:                     # canonical order, whatever finished first
+        entry, qs = results.get(fid) or (None, [])
+        if entry:
+            fills[fid] = entry
+        open_qs += qs
     return fills, open_qs
 
 
@@ -1098,7 +1219,7 @@ MAXTOK_JUDGE = 500       # rubric gates / judges / territory gate / rerank: tiny
 MAXTOK_GEN = 1200        # candidate generation / refine: one field's worth of text
 MAXTOK_SYNTH_ONE = 700    # one loop's synthesis paragraph (was 2500 for all five in one call)
 MAXTOK_EXTRACT = 8000    # extraction / scorecard / golden: one big JSON. Was 2500: measured 2026-09-23 on a
-                         # real 4,156-char client brief (Friskies), Loop-1 extraction hit stop_reason=max_tokens
+                         # real 4,156-char client brief, Loop-1 extraction hit stop_reason=max_tokens
                          # at 2,500 output tokens, the JSON was cut off, and every chain link failed the same way.
                          # A ceiling, not a cost: billing is per token actually produced.
 
@@ -1414,16 +1535,18 @@ def _chat(user, system=None, model=None, max_tokens=None):
 
 
 def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens=None,
-               schema=None):
+               schema=None, parse=None):
     """Chat call that must return JSON, with provider juggling: each chain link gets up to
     `retries`+1 tries; unparseable output (or one rejected by `accept`) advances to the next
-    link. Returns the first usable object, or None if the whole chain is exhausted."""
+    link. Returns the first usable object, or None if the whole chain is exhausted.
+    `parse` replaces the JSON reader for a non-JSON reply format (the TOON calls pass
+    _loads_toon) and turns the providers' JSON mode off; it returns None on failure."""
     _stats_logical()
     for provider, m in _model_chain(model):
         for attempt in range(retries + 1):
             try:
                 raw = _call_link(provider, m, user, system=system, max_tokens=max_tokens,
-                                 json_mode=True, schema=schema)
+                                 json_mode=parse is None, schema=schema)
             except _RateLimited:
                 _cooldown(provider, m)
                 print(f"[i] link {provider}:{m} rate-limited; cooling {int(_COOLDOWN_SECS)}s, next link…",
@@ -1435,8 +1558,8 @@ def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens
                 break                            # this link is down — go to the next one
             if not raw:
                 break
-            raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            obj = _loads_lenient(raw)
+            raw = re.sub(r"^```(?:json|toon)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            obj = (parse or _loads_lenient)(raw)
             if obj is not None and (accept is None or accept(obj)):
                 return obj
             if attempt < retries:
@@ -1462,6 +1585,164 @@ def extract_llm(text, schema):
             print("[i] LLM JSON had no usable 'fields'.", file=sys.stderr)
         print("[i] Falling back to heuristic extraction.", file=sys.stderr)
         return None
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 3c. EXTRACT (LLM, TOON + sentence citations) — the default Loop 1 capture
+# ---------------------------------------------------------------------------
+# Measured 2026-09-23 on a real client brief: the JSON capture above wrote 5,256 output
+# tokens (78 s, 30% of the brief's cost) for a 1,200-token brief — 43% of it verbatim
+# source_quotes copying the brief back out, the rest JSON keys repeated on every list item,
+# plus how_to_win in the same call. So the default capture (Sai, 2026-09-23):
+#   * numbers the brief's sentences (the same segment() rows the no-loss ledger counts) and
+#     asks for `src: 4 7` instead of a quote — code attaches the verbatim text, so quotes
+#     are exact by construction instead of "copied word-for-word" by the model;
+#   * writes TOON, the format CLAN uses: list fields are one header + one row per item;
+#   * moves how_to_win to its own call, run alongside (run() starts both at once).
+# The output shape is unchanged (fields with value/status/source_quote/confidence, plus
+# `source_refs`), so everything downstream reads it as before. BRIEF_CAPTURE=json restores
+# the one-call JSON capture; a TOON reply that fails to parse falls back to it too.
+
+CAPTURE_ARRAY_FIELDS = ("objective", "deliverables", "mandatories", "timeline", "success_metrics",
+                        "proof_points", "evaluation_criteria", "decision_makers", "constraints")
+HOW_TO_WIN_KEYS = ("stated_evaluation_criteria", "unstated_needs", "likely_landmines",
+                   "winning_themes", "proof_required")
+
+_CAPTURE_KEYS = EXTRACTION_SYSTEM[EXTRACTION_SYSTEM.index('"fields" MUST'):
+                                  EXTRACTION_SYSTEM.index("Each value is an object")]
+
+CAPTURE_TOON_SYSTEM = ("""You are Loop 1 of an ad-agency briefing system, the Client Brief
+Parser. Convert a messy client brief into a faithful structured capture.
+
+""" + _CAPTURE_KEYS + """
+The brief is given as numbered sentences [1]..[N]. NEVER copy brief text as a quote: cite
+sentence numbers in `src`, space-separated (src: 4 7). Code attaches the verbatim text.
+- status: fact (stated) | assumption (inferred) | gap (not provided: value null, no src).
+- value: a concise capture on ONE line — no line breaks, never the | character.
+- objective rows also carry objective_type: commercial | behavioural | attitudinal
+  (BetterBriefs: the three should coexist and link — attitude -> behaviour -> commercial).
+- LOSE NOTHING: every concrete sentence number should appear in some field's src.
+- Every one of the 18 keys appears under fields (a gap if absent).
+- open_questions = what the brief FAILS to answer; never ask for something it states.
+
+Reply in TOON (not JSON), 2-space indentation, nothing before or after:
+fields:
+  business_problem:
+    value: Under-30s see the bank as the one their parents use
+    status: fact
+    src: 4 5
+    confidence: 0.9
+  budget:
+    value: null
+    status: gap
+  objective[2|]{value|status|objective_type|src|confidence}:
+    Grow app sign-ups among under-30s|fact|commercial|6|0.9
+    Get lapsed users opening the app weekly|assumption|behavioural|7 8|0.6
+  mandatories[1|]{value|status|src|confidence}:
+    Every asset carries the regulator disclaimer|fact|11|0.95
+open_questions[2]:
+  - What is the media budget?
+  - Who signs off the creative?
+Every array field (""" + ", ".join(CAPTURE_ARRAY_FIELDS) + """) is a table like
+objective or mandatories; every other field is a block like business_problem.""")
+
+HOW_TO_WIN_TOON_SYSTEM = """You are Loop 1's how-to-win reader for an ad-agency pitch. From the
+numbered client brief, list ONLY what the brief itself reveals about winning this work — do
+NOT invent strategy. Five tables, AT MOST 5 rows each (the most important first); each row
+is one point on ONE line, under 20 words (never the | character), and the numbers of the
+sentences that evidence it:
+  stated_evaluation_criteria  how the client says the work will be judged
+  unstated_needs              what they need but do not say outright
+  likely_landmines            what would lose the pitch
+  winning_themes              what a winning answer is built around
+  proof_required              what we will have to prove
+Reply in TOON (not JSON), nothing before or after, e.g.:
+stated_evaluation_criteria[1|]{point|src}:
+  Must prove the app is simpler than the challenger banks|12
+unstated_needs[0|]{point|src}:
+(an empty table is a header with no rows)"""
+
+
+def _numbered(segs: list[str], limit: int) -> str:
+    """The brief as `[i] sentence` lines — the numbering `src` cites — clipped at `limit` chars."""
+    out, n = [], 0
+    for i, s in enumerate(segs, 1):
+        line = f"[{i}] {s}"
+        if n + len(line) > limit and out:
+            break
+        out.append(line); n += len(line) + 1
+    return "\n".join(out)
+
+
+def _loads_toon(raw: str):
+    """TOON reply -> dict, or None when unreadable (so _json_call moves on)."""
+    import toon_lite
+    try:
+        return toon_lite.decode(raw)
+    except toon_lite.ToonError:
+        return None
+
+
+def _refs(src, n_segs: int) -> list[int]:
+    """Sentence numbers from a `src` cell (`4 7`, `4,7`, 4, None), kept to 1..n_segs."""
+    nums = [int(x) for x in re.findall(r"\d+", str(src if src is not None else ""))]
+    return list(dict.fromkeys(i for i in nums if 1 <= i <= n_segs))
+
+
+def _quote(refs: list[int], segs: list[str]) -> "str | None":
+    """The verbatim sentences `refs` cite, joined — the source_quote, attached by code."""
+    return " ".join(segs[i - 1] for i in refs) or None
+
+
+def _capture_item(it: dict, segs: list[str]) -> dict:
+    """One captured value in the pipeline's shape: value/status/source_quote/confidence,
+    plus source_refs (the cited sentence numbers) and objective_type where given."""
+    refs = _refs(it.get("src"), len(segs))
+    out = {"value": it.get("value"), "status": it.get("status") or ("gap" if it.get("value") is None else "fact"),
+           "source_quote": _quote(refs, segs), "confidence": it.get("confidence"), "source_refs": refs}
+    if it.get("objective_type"):
+        out["objective_type"] = it["objective_type"]
+    return out
+
+
+def capture_toon(segs: list[str]) -> "dict | None":
+    """Loop 1 capture as TOON with sentence citations. Returns the same
+    {fields, how_to_win: {}, open_questions} shape as extract_llm, or None on failure
+    (run() then falls back to extract_llm's JSON capture)."""
+    if not segs:
+        return None
+    obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
+                     system=CAPTURE_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon,
+                     accept=lambda o: isinstance(o.get("fields"), dict) and bool(o["fields"]))
+    if not obj:
+        return None
+    fields = {}
+    for k, v in obj["fields"].items():
+        if isinstance(v, list):
+            fields[k] = [_capture_item(it, segs) for it in v if isinstance(it, dict)]
+        elif isinstance(v, dict):
+            fields[k] = _capture_item(v, segs)
+    qs = obj.get("open_questions") or []
+    return _normalize_llm({"fields": fields, "how_to_win": {},
+                           "open_questions": [q for q in qs if isinstance(q, (str, dict))]})
+
+
+def how_to_win_toon(segs: list[str]) -> dict:
+    """how_to_win in its own call (TOON, sentence citations), shaped as before:
+    {key: [{"point", "evidence"}]} with evidence the verbatim cited sentences.
+    Returns {} on failure — how_to_win is advisory, never a reason to fail the run."""
+    if not segs:
+        return {}
+    obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
+                     system=HOW_TO_WIN_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon,
+                     accept=lambda o: any(k in o for k in HOW_TO_WIN_KEYS))
+    out = {}
+    for k in HOW_TO_WIN_KEYS:
+        rows = (obj or {}).get(k) or []
+        out[k] = [{"point": r.get("point"), "evidence": _quote(_refs(r.get("src"), len(segs)), segs),
+                   "source_refs": _refs(r.get("src"), len(segs))}
+                  for r in rows if isinstance(r, dict) and r.get("point")]
     return out
 
 
@@ -2177,10 +2458,12 @@ def _loops37_from_digests(loop2, fields) -> dict | None:
 EVIDENCE_MAX_CHARS = 6000
 
 
-def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
+def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True) -> dict:
     """Loops 3–7: classify intent → build queries from the Loop-2 brief → retrieve
     top-k playbooks + effectiveness evidence → ground a short strategy with
-    citations. Retrieval-only; degrades to a disabled stub if the index is absent."""
+    citations. Retrieval-only; degrades to a disabled stub if the index is absent.
+    synthesize=False skips the five synthesis calls (synthesis_mode "deferred") so run()
+    can make them in parallel with the hero fields."""
     try:
         retriever = _load_retriever()
     except Exception as e:                            # never crash the run over RAG
@@ -2295,7 +2578,9 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
         for e in d["evidence"]:
             served[e["scope"]] = served.get(e["scope"], 0) + 1
 
-    synthesis_mode = _synthesize_loops37(gist, intent, loops)
+    # synthesize=False: run() writes the five paragraphs itself, alongside the hero fields,
+    # which read the evidence and never the synthesis ("deferred" until then).
+    synthesis_mode = _synthesize_loops37(gist, intent, loops) if synthesize else "deferred"
     return {
         "enabled": True,
         "index": (retriever.index_label(index_dir) if hasattr(retriever, "index_label")
@@ -2668,6 +2953,29 @@ def write_rich_formats(md_text: str, md_file: Path, formats: list[str]) -> list[
 # MAIN
 # ---------------------------------------------------------------------------
 
+class _Inline:
+    """A stand-in for ThreadPoolExecutor that runs each submit() at once (BRIEF_PARALLEL=0):
+    the same code path, the same futures, one step at a time."""
+
+    def __enter__(self):
+        """Nothing to start."""
+        return self
+
+    def __exit__(self, *exc):
+        """Nothing to join."""
+        return False
+
+    def submit(self, fn, *a, **k):
+        """Run fn now; return a completed Future holding its result or its exception."""
+        from concurrent.futures import Future
+        f = Future()
+        try:
+            f.set_result(fn(*a, **k))
+        except Exception as e:
+            f.set_exception(e)
+        return f
+
+
 def run(path: Path | None, client=None, project=None, loops37=False, golden=False,
         raw_text: str | None = None, source_name: str | None = None) -> dict:
     _stats_reset()
@@ -2682,53 +2990,76 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     segs = segment(text)
 
     provider = resolve_provider()
-    llm = extract_llm(text, schema)
-    if llm:
-        fields = llm.get("fields", {}); how_to_win = llm.get("how_to_win", {})
-        llm_oqs = llm.get("open_questions", []); used = None
-        mode = f"{provider}:{model_for(provider)}"
-    else:
-        fields, used = extract_heuristic(segs); how_to_win = {}; llm_oqs = []
-        mode = "heuristic"
+    # Stages run as a dependency graph, not a queue (measured 2026-09-23: every stage
+    # waited for the one before it, 316 s per brief). Three reads of the raw brief start
+    # together; the scorecard and retrieval need only the capture; the hero fields need
+    # retrieval + the golden fields; the loop synthesis feeds review notes only, so it runs
+    # alongside them. BRIEF_PARALLEL=0 runs the same steps one at a time.
+    from concurrent.futures import ThreadPoolExecutor
+    parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
+    toon = os.environ.get("BRIEF_CAPTURE", "toon").lower() != "json"
+    with ThreadPoolExecutor(max_workers=4) if parallel else _Inline() as ex:
+        f_cap = ex.submit(capture_toon, segs) if toon else None
+        f_htw = ex.submit(how_to_win_toon, segs) if toon else None
+        f_gold = ex.submit(extract_golden_brief, text) if golden else None
 
-    loop2 = shape_loop2(fields, llm_oqs)
-    loop2["review"] = review_loop2(loop2)
+        llm = f_cap.result() if f_cap else None
+        capture_format = "toon" if llm else "json"
+        if llm:
+            how_to_win = f_htw.result()
+        else:                                          # BRIEF_CAPTURE=json, or TOON failed
+            llm = extract_llm(text, schema)
+            how_to_win = (llm or {}).get("how_to_win", {})
+        if llm:
+            fields = llm.get("fields", {})
+            llm_oqs = llm.get("open_questions", []); used = None
+            mode = f"{provider}:{model_for(provider)}"
+        else:
+            fields, used = extract_heuristic(segs); how_to_win = {}; llm_oqs = []
+            mode = "heuristic"; capture_format = "heuristic"
 
-    ledger = build_ledger(segs, used, fields, src_name, how_to_win, loop2["open_questions"])
-    loop1 = {"fields": fields, "how_to_win": how_to_win, "no_loss_ledger": ledger}
-    loop1["review"] = review_loop1(ledger, fields)
+        loop2 = shape_loop2(fields, llm_oqs)
+        loop2["review"] = review_loop2(loop2)
 
-    scorecard = score_betterbriefs(text, fields)
+        ledger = build_ledger(segs, used, fields, src_name, how_to_win, loop2["open_questions"])
+        loop1 = {"fields": fields, "how_to_win": how_to_win, "no_loss_ledger": ledger}
+        loop1["review"] = review_loop1(ledger, fields)
 
-    out = {
-        "meta": {"client": client, "project": project, "source_files": [src_name],
-                 "parsed_at": dt.datetime.now().isoformat(timespec="seconds"),
-                 "parser_version": PARSER_VERSION, "extraction_mode": mode,
-                 "prompt_version": PROMPT_VERSION},
-        "loop1_capture": loop1, "loop2_brief": loop2,
-        "betterbriefs_scorecard": scorecard,
-    }
-    # Loops 3–7 (RAG) only when explicitly enabled — key is omitted otherwise, so
-    # output is byte-for-byte identical to a Loops 1–2 run.
-    if loops37:
-        out["loops3_7"] = loops_3_7(loop2, fields)
-    if golden:
-        gb = extract_golden_brief(text)
+        f_score = ex.submit(score_betterbriefs, text, fields)
+        out = {
+            "meta": {"client": client, "project": project, "source_files": [src_name],
+                     "parsed_at": dt.datetime.now().isoformat(timespec="seconds"),
+                     "parser_version": PARSER_VERSION, "extraction_mode": mode,
+                     "capture_format": capture_format, "prompt_version": PROMPT_VERSION},
+            "loop1_capture": loop1, "loop2_brief": loop2,
+            "betterbriefs_scorecard": None,            # filled when its call returns
+        }
+        # Loops 3–7 (RAG) only when explicitly enabled — key is omitted otherwise, so
+        # output is byte-for-byte identical to a Loops 1–2 run.
+        if loops37:
+            out["loops3_7"] = loops_3_7(loop2, fields, synthesize=False)
+        l37 = out.get("loops3_7") or {}
+        f_synth = (ex.submit(_synthesize_loops37, l37["gist"], l37["intent"], l37["loops"])
+                   if l37.get("synthesis_mode") == "deferred" else None)
+        gb = f_gold.result() if f_gold else None
         if gb:
             out["loop2_golden"] = gb
 
-    # Loop 4+5: fill insight + desired_response from IPA precedents + playbooks.
-    # Only runs when loops37 ran successfully AND golden extraction produced fields.
-    if loops37 and out.get("loops3_7", {}).get("enabled") and out.get("loop2_golden"):
-        gf = out["loop2_golden"].setdefault("fields", {})
-        golden_schema = json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
-        # Generates insight/smp/rtb/desired_response from the brief + retrieved IPA
-        # precedent, schema-driven and rubric-gated. Mutates gf in place; never
-        # overwrites a client_stated field. Failures become open questions.
-        _fills, gen_open_qs = fill_derivable_fields(gf, out["loops3_7"], golden_schema, brief_text=text)
-        if gen_open_qs:
-            out["loop2_golden"]["generation_open_questions"] = gen_open_qs
-            out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)
+        # Loop 4+5: fill insight + desired_response from IPA precedents + playbooks.
+        # Only runs when loops37 ran successfully AND golden extraction produced fields.
+        if loops37 and l37.get("enabled") and out.get("loop2_golden"):
+            gf = out["loop2_golden"].setdefault("fields", {})
+            golden_schema = json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
+            # Generates insight/smp/rtb/desired_response from the brief + retrieved IPA
+            # precedent, schema-driven and rubric-gated. Mutates gf in place; never
+            # overwrites a client_stated field. Failures become open questions.
+            _fills, gen_open_qs = fill_derivable_fields(gf, l37, golden_schema, brief_text=text)
+            if gen_open_qs:
+                out["loop2_golden"]["generation_open_questions"] = gen_open_qs
+                out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)
+        if f_synth:
+            l37["synthesis_mode"] = f_synth.result()
+        out["betterbriefs_scorecard"] = f_score.result()
     # Snapshot the LLM call ledger so optimisation work is measured per run.
     out["meta"]["llm_stats"] = {**_LLM_STATS,
                                 "wall_seconds": round((dt.datetime.now() - _t_run0).total_seconds(), 1)}
