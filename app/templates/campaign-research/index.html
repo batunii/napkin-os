@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campaign Research</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style id="cr-style">
+/* Campaign Research — the human view of the campaign document (Contract 3,
+   docs/contracts/campaign-clan.md). Renders from window.__CLAN__.data only;
+   the decision chain is read lazily from clan://chain. */
+:root{
+  color-scheme: light;
+  --ink:#14161B; --ink2:#4A4F5C; --ink3:#737987;
+  --paper:#FFFFFF; --soft:#F5F6F8; --line:#D6DAE2; --line-soft:#E7E9EE;
+  --create:#FF4F2E; --create-soft:#FFF1EE; --create-ink:#B8321A;
+  --produce:#8B919E; --learn:#DADDE3;
+  --green:#22C55E; --green-soft:#DCFCE7; --green-ink:#146C35;
+  --amber:#F5A524; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
+  --frost:rgba(255,255,255,.82);
+  --shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07);
+  --shadow-lg:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.16);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --f:"Geist","Helvetica Neue",Arial,system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-color-scheme="light"]){
+    color-scheme: dark;
+    --ink:#F2F3F5; --ink2:#B6BBC6; --ink3:#8E94A1;
+    --paper:#0E1014; --soft:#171A20; --line:#2D323C; --line-soft:#22262E;
+    --create:#FF5A3A; --create-soft:#2A1612; --create-ink:#FF8A70;
+    --produce:#8B919E; --learn:#3A3F49;
+    --green-soft:#10281A; --green-ink:#6EE7A0;
+    --amber-soft:#2A2110; --amber-ink:#F7C361;
+    --frost:rgba(14,16,20,.8);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    --shadow-lg:0 2px 6px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="dark"],:root[data-color-scheme="dark"]{
+  color-scheme: dark;
+  --ink:#F2F3F5; --ink2:#B6BBC6; --ink3:#8E94A1;
+  --paper:#0E1014; --soft:#171A20; --line:#2D323C; --line-soft:#22262E;
+  --create:#FF5A3A; --create-soft:#2A1612; --create-ink:#FF8A70;
+  --produce:#8B919E; --learn:#3A3F49;
+  --green-soft:#10281A; --green-ink:#6EE7A0;
+  --amber-soft:#2A2110; --amber-ink:#F7C361;
+  --frost:rgba(14,16,20,.8);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:120px}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--create);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.mono{font-family:var(--mono)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.muted{color:var(--ink3)}
+
+/* ---------- top bar ---------- */
+.top{position:sticky;top:0;z-index:40;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line-soft)}
+.top-in{max-width:1180px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mark{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.03em;font-size:16px;white-space:nowrap}
+.mark i{display:inline-grid;grid-template-columns:1fr 1fr;width:20px;height:20px;border-radius:50%;overflow:hidden;transform:rotate(-45deg)}
+.mark i b:nth-child(1){background:var(--ink)}.mark i b:nth-child(2){background:var(--create)}
+.mark i b:nth-child(3){background:var(--learn)}.mark i b:nth-child(4){background:var(--produce)}
+.mark small{font-family:var(--mono);font-weight:400;font-size:11px;color:var(--ink3);letter-spacing:.04em}
+.nav{display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:999px;flex-wrap:wrap}
+.nav a{text-decoration:none;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:500;color:var(--ink2);transition:background .2s var(--ease),color .2s var(--ease)}
+.nav a:hover{background:var(--paper);color:var(--ink)}
+.nav a span{font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-left:5px}
+.top-act{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------- buttons & pills ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:transform .2s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease)}
+.btn:hover{border-color:var(--ink3);box-shadow:var(--shadow)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.btn.primary:hover{box-shadow:var(--shadow-lg)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--soft);box-shadow:none}
+.btn[disabled],.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed;box-shadow:none}
+.btn[aria-disabled="true"]:hover{border-color:var(--line)}
+.btn .dot{width:7px;height:7px;border-radius:50%;background:var(--create)}
+.btn .n{font-family:var(--mono);font-size:11px;background:var(--create);color:#fff;border-radius:999px;padding:0 7px;line-height:18px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--ink2);white-space:nowrap;line-height:17px;background:var(--paper)}
+.pill.gate-created,.pill.gate-research,.pill.gate-brief,.pill.gate-none{color:var(--ink3)}
+.pill.ok{background:var(--green-soft);border-color:transparent;color:var(--green-ink)}
+.pill.warn{background:var(--amber-soft);border-color:transparent;color:var(--amber-ink)}
+.pill.alert{background:var(--create-soft);border-color:transparent;color:var(--create-ink)}
+.pill.solid{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.pill.dash{border-style:dashed;border-color:var(--ink3);color:var(--ink2);background:transparent}
+.pill .d{width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.ok .d{background:var(--green)}.pill.warn .d{background:var(--amber)}.pill.alert .d{background:var(--create)}
+
+/* ---------- page ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 24px 120px}
+.notice{display:flex;gap:10px;align-items:flex-start;background:var(--amber-soft);color:var(--amber-ink);border-radius:12px;padding:10px 14px;font-size:13px;margin:0 0 12px}
+.notice.info{background:var(--soft);color:var(--ink2)}
+.notice b{font-weight:600}
+.hero{margin:28px 0 8px}
+.hero h1{font-size:clamp(32px,4.6vw,56px);line-height:1.02;letter-spacing:-.045em;margin:10px 0 12px;font-weight:800;text-wrap:balance;max-width:20ch}
+.hero h1.empty{color:var(--ink3)}
+.hero .sub{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--ink2);font-size:15px}
+.hero .sub .sep{color:var(--line)}
+
+/* gate bar */
+.gates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:28px 0 8px;border:1px solid var(--line-soft);border-radius:18px;overflow:hidden;background:var(--paper);box-shadow:var(--shadow)}
+.gatec{padding:18px 20px;position:relative}
+.gatec + .gatec{border-left:1px solid var(--line-soft)}
+.gatec .top-l{display:flex;align-items:center;gap:8px}
+.gatec .num{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.gatec h3{margin:6px 0 4px;font-size:17px;letter-spacing:-.02em;font-weight:700}
+.gatec p{margin:0;font-size:13px;color:var(--ink2)}
+.gatec .needs{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.gatec .needs a{text-decoration:none}
+.gatec .bar{position:absolute;left:0;right:0;top:0;height:3px;background:var(--line-soft)}
+.gatec.reached .bar{background:var(--green)}
+.gatec.blocked .bar{background:var(--create)}
+@media (max-width:780px){.gates{grid-template-columns:1fr}.gatec + .gatec{border-left:0;border-top:1px solid var(--line-soft)}}
+
+/* sections */
+section.region{margin-top:72px}
+.sec-h{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 6px}
+.sec-h h2{margin:0;font-size:28px;letter-spacing:-.03em;font-weight:800}
+.sec-h .count{font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.sec-lede{margin:0 0 24px;color:var(--ink2);max-width:72ch}
+.group{margin:34px 0 0}
+.group > h3{margin:0 0 12px;font-size:12px;font-family:var(--mono);font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.grid2 .wide{grid-column:1 / -1}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:12px 16px;border-radius:14px;background:var(--soft);font-size:12.5px;color:var(--ink2)}
+.legend > span{display:inline-flex;align-items:center;gap:7px}
+
+/* field card */
+.field{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:16px 18px 12px;box-shadow:var(--shadow);position:relative;transition:box-shadow .25s var(--ease),border-color .25s var(--ease)}
+.field.o-proposed{border-style:dashed;border-color:var(--ink3)}
+.field.absent{background:var(--soft);border:1px dashed var(--line);box-shadow:none}
+.field.flagged{border-color:var(--create);border-style:solid;box-shadow:0 0 0 3px var(--create-soft)}
+.field:target{box-shadow:0 0 0 3px var(--create-soft),var(--shadow-lg)}
+.fh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.fh .lab{font-weight:600;font-size:13.5px;letter-spacing:-.01em}
+.fh .path{font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+.fh .sp{flex:1}
+.fv{font-size:15.5px;line-height:1.45;margin:2px 0 10px;word-wrap:break-word}
+.fv.big{font-size:18px;letter-spacing:-.01em;font-weight:500}
+.fv .code{font-family:var(--mono);font-size:13px;background:var(--soft);border-radius:6px;padding:1px 6px}
+.fv ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.fv li{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.fv .chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipv{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:3px 10px;border-radius:999px;background:var(--soft);border:1px solid var(--line-soft)}
+.chipv.p-proposed{border-style:dashed;border-color:var(--ink3);background:transparent}
+.chipv.p-extracted{border-color:var(--ink)}
+.chipv small{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.empty-v{color:var(--ink3);font-size:14px;margin:4px 0 10px}
+.empty-v b{color:var(--ink2);font-weight:600}
+
+/* origin badges */
+.ob{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:2px 9px 2px 8px;border-radius:999px;white-space:nowrap;line-height:18px}
+.ob.extracted{background:var(--ink);color:var(--paper)}
+.ob.proposed{border:1px dashed var(--ink2);color:var(--ink2)}
+.ob.confirmed{background:var(--green-soft);color:var(--green-ink)}
+.ob.stated{border:1px solid var(--ink);color:var(--ink)}
+.ob svg{width:12px;height:12px;flex:none}
+
+/* provenance */
+.prov{border-top:1px solid var(--line-soft);padding-top:10px;margin-top:4px;display:grid;gap:8px;font-size:13px}
+.quote{margin:0;border-left:3px solid var(--ink);padding:2px 0 2px 12px;font-style:italic;color:var(--ink);font-size:13.5px}
+.quote::before{content:"\201C"}.quote::after{content:"\201D"}
+.srcline{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.srcline a{color:var(--ink2)}
+.inferbox{border:1px dashed var(--ink3);border-radius:10px;padding:8px 10px;display:grid;gap:6px}
+.inferbox .h{font-size:12px;color:var(--ink2)}
+.wholine{font-size:12.5px;color:var(--ink2)}
+.wholine b{color:var(--ink);font-weight:600}
+.flag{display:flex;gap:8px;align-items:flex-start;background:var(--create-soft);color:var(--create-ink);border-radius:10px;padding:8px 10px;font-size:12.5px}
+.flag b{font-weight:600}
+.flag.amber{background:var(--amber-soft);color:var(--amber-ink)}
+.flag.ok{background:var(--green-soft);color:var(--green-ink)}
+.marks{display:flex;flex-wrap:wrap;gap:6px}
+
+/* pin chip */
+a.pinc{display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-size:12px;padding:2px 9px 2px 7px;border-radius:8px;background:var(--soft);border:1px solid var(--line-soft);max-width:100%;transition:border-color .2s var(--ease)}
+a.pinc:hover{border-color:var(--ink3)}
+a.pinc .id{font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+a.pinc .v{font-weight:600}
+a.pinc .k{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:26ch}
+a.pinc .st{width:7px;height:7px;border-radius:50%;background:var(--amber);flex:none}
+a.pinc.missing{border-style:dashed;color:var(--ink3)}
+.pins{display:flex;flex-wrap:wrap;gap:6px}
+
+/* controls */
+.ctl{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line-soft);opacity:.72;transition:opacity .2s var(--ease)}
+.field:hover .ctl,.field:focus-within .ctl,.card:hover .ctl,.card:focus-within .ctl{opacity:1}
+.ctl .btn{font-size:12px;padding:3px 10px}
+.ctl .btn.live{border-color:var(--ink2)}
+.ctl .sp{flex:1}
+
+/* audience */
+.aud{display:grid;gap:12px}
+.aud .def{font-size:17px;line-height:1.45;font-weight:500;letter-spacing:-.01em}
+.aud .row{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:start}
+.aud .row > .eyebrow{padding-top:3px}
+.aud .it{display:grid;gap:5px;padding:8px 10px;background:var(--soft);border-radius:10px}
+.aud .it + .it{margin-top:6px}
+@media (max-width:640px){.aud .row{grid-template-columns:1fr}}
+
+/* facts */
+.layer{margin-top:28px}
+.layer > h3{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:18px;letter-spacing:-.02em;font-weight:700}
+.entity{border:1px solid var(--line-soft);border-radius:16px;overflow:hidden;margin-bottom:12px;background:var(--paper);box-shadow:var(--shadow)}
+.entity > header{display:flex;gap:10px;align-items:center;padding:10px 16px;background:var(--soft);font-family:var(--mono);font-size:12px;color:var(--ink2);flex-wrap:wrap}
+.entity > header b{color:var(--ink);font-weight:500}
+table.facts{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+table.facts col.c-key{width:27%}table.facts col.c-val{width:31%}table.facts col.c-date{width:11%}table.facts col.c-conf{width:10%}table.facts col.c-lic{width:11%}table.facts col.c-by{width:10%}
+table.facts td{overflow-wrap:anywhere}
+table.facts th{font-family:var(--mono);font-weight:500;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+table.facts td{padding:10px 12px;vertical-align:top;border-bottom:1px solid var(--line-soft)}
+table.facts tr:last-child td{border-bottom:0}
+table.facts tr:target td{background:var(--create-soft)}
+table.facts .key{font-family:var(--mono);font-size:12px}
+table.facts .val{font-weight:600;font-size:14px}
+table.facts .val.text{font-weight:500;font-size:13px;max-width:44ch}
+table.facts .dates{font-family:var(--mono);font-size:11px;color:var(--ink2);white-space:nowrap}
+table.facts .by{font-size:11.5px;color:var(--ink3)}
+.stale{margin-top:6px;display:grid;gap:6px;background:var(--amber-soft);color:var(--amber-ink);border-radius:8px;padding:6px 9px;font-size:12px}
+.tablewrap{overflow-x:auto}
+@media (max-width:760px){table.facts{min-width:760px}}
+
+/* findings */
+.cards{display:grid;gap:12px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:16px 18px 12px;box-shadow:var(--shadow)}
+.card:target{box-shadow:0 0 0 3px var(--create-soft),var(--shadow-lg)}
+.card.s-proposed{border-style:dashed;border-color:var(--ink3)}
+.card.s-rejected{background:var(--soft)}
+.card.s-rejected .stmt{text-decoration:line-through;text-decoration-color:var(--create);text-decoration-thickness:1.5px;color:var(--ink2)}
+.card .stmt{font-size:16px;line-height:1.45;margin:8px 0 10px;font-weight:500;letter-spacing:-.01em}
+.derived{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+.derived svg{width:13px;height:13px}
+.cards > div > a.pill{justify-self:start}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;font-size:13px;align-items:start}
+.kv > dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);padding-top:3px}
+.kv > dd{margin:0}
+
+/* selection */
+.matrix{border:1px solid var(--line-soft);border-radius:16px;overflow:hidden;background:var(--paper);box-shadow:var(--shadow)}
+table.mx{width:100%;border-collapse:collapse;font-size:13px}
+table.mx th,table.mx td{padding:10px 14px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:middle}
+table.mx thead th{font-family:var(--mono);font-weight:500;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);background:var(--soft)}
+table.mx tbody tr:last-child td,table.mx tbody tr:last-child th{border-bottom:0}
+table.mx tbody th{font-weight:600;font-size:13.5px}
+table.mx tbody th small{display:block;font-family:var(--mono);font-weight:400;font-size:10.5px;color:var(--ink3)}
+table.mx td.merged{border-left:1px solid var(--line-soft);background:color-mix(in srgb,var(--soft) 60%,transparent)}
+.cov{display:inline-flex;align-items:center;gap:7px;font-size:12.5px}
+.cov i{width:12px;height:12px;border-radius:50%;flex:none;border:2px solid var(--ink)}
+.cov.filled i{background:var(--ink)}
+.cov.thin i{background:linear-gradient(90deg,var(--ink) 50%,transparent 50%)}
+.cov.empty i{border-color:var(--create);background:transparent}
+.cov.empty{color:var(--create-ink)}
+.cov.none i{border-style:dashed;border-color:var(--ink3)}
+.cov.none{color:var(--ink3)}
+.runst{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-top:2px}
+.runst.pending{color:var(--amber-ink)}
+.runst.err{color:var(--create-ink)}
+.runst.ok{color:var(--green-ink)}
+.contest{display:grid;gap:10px}
+.cvals{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.cval{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:4px}
+.cval .v{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.cval.chosen{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft)}
+.cval.loser{background:var(--soft);color:var(--ink2)}
+.cval.loser .v{text-decoration:line-through;text-decoration-color:var(--ink3)}
+.prog{height:6px;border-radius:999px;background:var(--line-soft);overflow:hidden;margin-top:8px}
+.prog i{display:block;height:100%;background:var(--ink);border-radius:999px;transition:width .4s var(--ease)}
+.gap .searched{font-size:14.5px;font-weight:500}
+
+/* timeline */
+.tl-filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;align-items:center}
+.tl-filters label{font-size:12px;color:var(--ink2);display:inline-flex;gap:6px;align-items:center}
+select,input[type=text],textarea{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px}
+textarea{width:100%;min-height:84px;resize:vertical;line-height:1.45}
+ol.tl{list-style:none;margin:0;padding:0;border-left:2px solid var(--line-soft);margin-left:6px}
+ol.tl > li{position:relative;padding:0 0 18px 20px}
+ol.tl > li::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--paper);border:2px solid var(--ink3)}
+ol.tl > li.k-verdict.bad::before,ol.tl > li.k-contest::before{border-color:var(--create)}
+ol.tl > li.k-verdict.good::before,ol.tl > li.k-verify::before,ol.tl > li.k-resolve::before{border-color:var(--green)}
+ol.tl > li.hl::before{background:var(--ink);border-color:var(--ink)}
+.tlh{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px}
+.tlh time{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.tlh .actor{font-weight:600}
+.tlr{margin:4px 0 0;font-size:13.5px;color:var(--ink);max-width:80ch}
+.tlt{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tlt code{font-family:var(--mono);font-size:10.5px;background:var(--soft);border-radius:6px;padding:1px 6px;color:var(--ink2)}
+
+/* dialogs */
+dialog{border:0;padding:0;border-radius:18px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-lg);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px)}
+dialog::backdrop{background:rgba(14,16,24,.38);backdrop-filter:blur(3px)}
+dialog[open]{animation:pop .28s var(--ease)}
+@keyframes pop{from{transform:translateY(8px) scale(.985)}to{transform:none}}
+.dlg{padding:22px 24px 20px;display:grid;gap:14px;max-height:calc(100vh - 48px);overflow:auto}
+.dlg h2{margin:0;font-size:22px;letter-spacing:-.03em;font-weight:800}
+.dlg .addr{font-family:var(--mono);font-size:11px;color:var(--ink3);word-break:break-all}
+.dlg .foot{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.dlg .foot .why{margin-right:auto;font-size:12px;color:var(--ink3);max-width:40ch}
+.dlg fieldset{border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px;margin:0;display:grid;gap:8px}
+.dlg legend{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);padding:0 4px}
+.dlg label.opt{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;cursor:pointer}
+.dlg label.opt input{margin-top:3px;accent-color:var(--ink)}
+.dlg .req{color:var(--create-ink);font-size:12px}
+details.preview summary{cursor:pointer;font-size:12px;color:var(--ink2)}
+details.preview pre{font-family:var(--mono);font-size:11px;background:var(--soft);border-radius:10px;padding:10px 12px;overflow:auto;max-height:240px;margin:8px 0 0;white-space:pre-wrap;word-break:break-word}
+.blockers{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.blockers li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--create-soft);color:var(--create-ink);font-size:13px}
+.blockers li.info{background:var(--soft);color:var(--ink2)}
+.blockers li a{color:inherit;font-weight:600}
+.blockers li .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;padding-top:2px}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:999px;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:90;max-width:calc(100vw - 32px)}
+.toast.on{opacity:1;transform:translateX(-50%)}
+
+.empty-state{padding:22px;border:1px dashed var(--line);border-radius:16px;color:var(--ink2);background:var(--soft);font-size:13.5px}
+.empty-state b{color:var(--ink)}
+
+footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line-soft);font-family:var(--mono);font-size:11px;color:var(--ink3);display:flex;flex-wrap:wrap;gap:6px 18px}
+
+@media (max-width:640px){
+  .top{position:static}
+  .top-in{padding:10px 16px}
+  main{padding:24px 16px 96px}
+  .top-act{margin-left:0}
+}
+/* ---------- print / export ---------- */
+@media print{
+  :root{color-scheme:light}
+  body{background:#fff;color:#14161B;font-size:11pt}
+  .top,.ctl,.no-print,dialog,.toast,.tl-filters{display:none!important}
+  main{padding:0;max-width:none}
+  section.region{margin-top:28pt;break-before:auto}
+  .field,.card,.entity,.matrix,.gates{box-shadow:none!important;break-inside:avoid;page-break-inside:avoid}
+  .field:target,.card:target{box-shadow:none}
+  a{text-decoration:none}
+  @page{margin:16mm}
+}
+</style>
+</head>
+<body>
+<header class="top no-print" role="banner">
+  <div class="top-in">
+    <div class="mark" aria-label="Napkin Research"><i aria-hidden="true"><b></b><b></b><b></b><b></b></i>Research <small>campaign</small></div>
+    <nav class="nav" aria-label="Sections">
+      <a href="#ask">The ask<span id="nav-ask"></span></a>
+      <a href="#facts">Facts<span id="nav-facts"></span></a>
+      <a href="#findings">Findings<span id="nav-findings"></span></a>
+      <a href="#selection">Selection</a>
+      <a href="#history">History<span id="nav-history"></span></a>
+    </nav>
+    <div class="top-act">
+      <button type="button" class="btn ghost sm" id="whoBtn" title="Who these review marks are attributed to"></button>
+      <button type="button" class="btn sm" id="extractBtn">Extract the ask</button>
+      <button type="button" class="btn sm" id="researchBtn">Run research</button>
+      <button type="button" class="btn sm" id="synthBtn">Synthesise</button>
+      <button type="button" class="btn sm" id="exportBtn">Export</button>
+      <button type="button" class="btn primary sm" id="lockBtn">Lock and accept</button>
+    </div>
+  </div>
+</header>
+
+<main id="doc">
+  <div id="notices"></div>
+  <div class="hero" id="hero"></div>
+  <div id="gates"></div>
+  <div id="jobs" aria-live="polite"></div>
+
+  <section class="region" id="ask" aria-labelledby="h-ask">
+    <div class="sec-h"><h2 id="h-ask">The ask</h2><span class="count" id="ask-count"></span></div>
+    <p class="sec-lede">What the client wants done. Every field says how it got here: <b>you said this</b> is the client's own material, quoted; <b>we inferred this</b> is derived from pinned facts. A field nobody has filled stays empty, with the gate that waits on it.</p>
+    <div class="legend" id="legend"></div>
+    <div id="ask-body"></div>
+  </section>
+
+  <section class="region" id="facts" aria-labelledby="h-facts">
+    <div class="sec-h"><h2 id="h-facts">Pinned facts</h2><span class="count" id="facts-count"></span></div>
+    <p class="sec-lede">Frozen copies of knowledge-layer rows. The document owns no facts; it pins them. A pin never follows a newer version on its own — a stale pin is flagged and the current version offered.</p>
+    <div id="facts-body"></div>
+  </section>
+
+  <section class="region" id="findings" aria-labelledby="h-findings">
+    <div class="sec-h"><h2 id="h-findings">Findings</h2><span class="count" id="findings-count"></span></div>
+    <p class="sec-lede">Synthesis over the pins. Every finding is derived by the agent and stays a proposal until a human verifies it; nothing unverified enters the layers.</p>
+    <div id="findings-body"></div>
+  </section>
+
+  <section class="region" id="selection" aria-labelledby="h-selection">
+    <div class="sec-h"><h2 id="h-selection">Selection</h2><span class="count" id="selection-count"></span></div>
+    <p class="sec-lede">What research drew on, lens by lens and market by market; what it looked for and did not find; what two sources could not agree on; and what it chose to leave out.</p>
+    <div id="selection-body"></div>
+  </section>
+
+  <section class="region" id="history" aria-labelledby="h-history">
+    <div class="sec-h"><h2 id="h-history">Decision history</h2><span class="count" id="history-count"></span></div>
+    <p class="sec-lede">Every decision about this document, newest first.</p>
+    <div id="history-body"></div>
+  </section>
+
+  <footer class="doc-foot" id="docfoot"></footer>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlg-title"><form method="dialog" class="dlg" id="dlg-form"></form></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Contract 3 constants (docs/contracts/campaign-clan.md §2.3, §7)
+  // ════════════════════════════════════════════════════════════════════════
+  var FIELDS = [
+    {k:'id',               label:'Campaign id',         gate:'created',  type:'code'},
+    {k:'name',             label:'Working name',        gate:'created',  type:'text'},
+    {k:'brand',            label:'Subject brand',       gate:'created',  type:'ref', hint:'The subject. Ambiguity blocks; it never defaults.'},
+    {k:'client_org',       label:'Client',              gate:'created',  type:'ref'},
+    {k:'ask_source',       label:'Ask source',          gate:'created',  type:'asksrc', hint:'The client’s own brief or email, by hash. Source of record.'},
+    {k:'categories',       label:'Categories',          gate:'research', type:'codes', hint:'Ranked leaf codes.'},
+    {k:'markets',          label:'Markets',             gate:'research', type:'codes', hint:'Research runs once per market.'},
+    {k:'campaign_type',    label:'Campaign type',       gate:'none',     type:'enum'},
+    {k:'problem',          label:'The problem',         gate:'brief',    type:'prose', hint:'Verbatim.'},
+    {k:'objective',        label:'Objective',           gate:'brief',    type:'prose'},
+    {k:'audience_stated',  label:'Audience, as stated', gate:'brief',    type:'prose'},
+    {k:'budget_band',      label:'Budget band',         gate:'brief',    type:'band', hint:'A band, never the figure.'},
+    {k:'audience',         label:'Researched audience', gate:'brief',    type:'audience'},
+    {k:'competitor_set',   label:'Comparators',         gate:'none',     type:'refs', hint:'Every one is a comparator — public material only.'},
+    {k:'in_market',        label:'In market',           gate:'none',     type:'range'},
+    {k:'success_measures', label:'Success measures',    gate:'none',     type:'items'},
+    {k:'channels_mandated',label:'Mandated channels',   gate:'none',     type:'codes'},
+    {k:'deliverables',     label:'Deliverables',        gate:'none',     type:'codes'},
+    {k:'constraints',      label:'Constraints',         gate:'none',     type:'items'}
+  ];
+  var FIELD = {}; FIELDS.forEach(function(f){ FIELD[f.k]=f; });
+  var GROUPS = [
+    {h:'Who and what',          keys:['name','brand','client_org','campaign_type','id','ask_source']},
+    {h:'Where and when',        keys:['markets','categories','in_market']},
+    {h:'In the client’s words', keys:['problem','objective','audience_stated','budget_band','success_measures']},
+    {h:'The researched audience', keys:['audience']},
+    {h:'Competition',           keys:['competitor_set']},
+    {h:'What we must make',     keys:['deliverables','channels_mandated','constraints']}
+  ];
+  var GATES = [
+    {g:'created',  n:'01', h:'Created',  p:'The document can exist.'},
+    {g:'research', n:'02', h:'Research', p:'Research can run, lens by lens, per market.'},
+    {g:'brief',    n:'03', h:'Brief-ready', p:'A brief can be spun off from it.'}
+  ];
+  var LENSES = [
+    {k:'market_structure',       l:'Market structure',        c:'quarterly'},
+    {k:'brands_positioning',     l:'Brands & positioning',    c:'weekly'},
+    {k:'consumer_culture',       l:'Consumer & culture',      c:'weekly'},
+    {k:'category_codes',         l:'Category codes',          c:'quarterly'},
+    {k:'rhythm_moments',         l:'Rhythm & moments',        c:'monthly'},
+    {k:'media_spend',            l:'Media & spend',           c:'monthly'},
+    {k:'regulation_clearance',   l:'Regulation & clearance',  c:'monthly'},
+    {k:'effectiveness_evidence', l:'Effectiveness evidence',  c:'quarterly'}
+  ];
+  var LENS = {}; LENSES.forEach(function(x){ LENS[x.k]=x; });
+  var BANDS = {under_50k:'Under €50k', '50k_250k':'€50k–€250k', '250k_1m':'€250k–€1m', '1m_5m':'€1m–€5m', over_5m:'Over €5m'};
+  var TYPES = {launch:'Launch', always_on:'Always-on', seasonal:'Seasonal', rebrand:'Rebrand'};
+  var LICENCE = {'open':'open','licensed-internal':'licensed internal','client-confidential':'client confidential'};
+
+  // Which task enables each control that cannot be live yet.
+  var STUB = {
+    verdict:  'Typed verdict decisions (kind, polarity, targets) arrive with W2-O2 on W1P-I5’s decision struct. patch-data cannot record a decision without a data change.',
+    classify: 'Classify decisions {model, export, corpus} arrive with W2-O2; on a fact-backed field the mark supersedes the fact’s licence in the layer.',
+    finding:  'shared/findings.yaml is a host-owned member (W2-A3); verify and reject are typed decisions (W2-O2). The view must not write the projection.',
+    pin:      'Taking the current version is a new pin in shared/facts.yaml (W2-A3), recorded as a pin decision (W2-O2).',
+    lock:     'Accept-and-seal is W5-Z1: one approve decision over the version and content hash, with each finding verified.'
+  };
+
+  // ════════════════════════════════════════════════════════════════════════
+  // helpers
+  // ════════════════════════════════════════════════════════════════════════
+  var clanScheme = (navigator.userAgent.indexOf('Windows') !== -1) ? 'http://clan.localhost' : 'clan://localhost';
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function isObj(o){ return o!==null && typeof o==='object' && !Array.isArray(o); }
+  function D(){ var c=window.__CLAN__||{}; return isObj(c.data)?c.data:{}; }
+  function docId(){ var m=(window.__CLAN__||{}).manifest; return (m&&m.id)||'unsaved'; }
+  function camp(){ var c=D().campaign; return isObj(c)?c:{}; }
+  function sel(){ var s=D().selection; return isObj(s)?s:{}; }
+  function proj(){ var p=D().projection; return isObj(p)?p:null; }
+  function pins(){ var p=proj(); return (p&&isObj(p.pins))?p.pins:{}; }
+  function fnds(){ var p=proj(); return (p&&isObj(p.findings))?p.findings:{}; }
+  function mats(){ var m=D().materials; return isObj(m)?m:{}; }
+  function arr(a){ return Array.isArray(a)?a:[]; }
+  function addr(path){ return docId()+'#'+path; }
+  function pathOf(a){ var i=String(a).indexOf('#'); return i<0?String(a):String(a).slice(i+1); }
+  function slug(s){ return String(s).replace(/[^A-Za-z0-9_-]+/g,'-'); }
+  function human(a){ return String(a||'').replace(/^human:/,''); }
+  function fmtDate(s){ if(!s) return ''; return String(s).replace('T',' ').replace(/:\d\d(\.\d+)?Z$/,'Z').replace('Z',' UTC'); }
+  function toast(msg){ var t=$('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.remove('on');},3800); }
+  function hasHost(){ return !!(window.clan && window.clan.patchData); }
+
+  var ICON = {
+    quote:'<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 9.5C3 7 4.3 5.2 6.6 4.5l.4 1c-1.3.5-2 1.4-2.1 2.5H7v4H3V9.5Zm6 0C9 7 10.3 5.2 12.6 4.5l.4 1c-1.3.5-2 1.4-2.1 2.5H13v4H9V9.5Z"/></svg>',
+    infer:'<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 6c2-2 4 2 6 0s4-2 6 0M2 10c2-2 4 2 6 0s4-2 6 0"/></svg>',
+    check:'<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="m3 8.5 3 3 7-7"/></svg>',
+    person:'<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="2.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 14c.7-3 2.9-4.3 5.5-4.3s4.8 1.3 5.5 4.3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+    agent:'<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M3.4 3.4l2.1 2.1M10.5 10.5l2.1 2.1M3.4 12.6l2.1-2.1M10.5 5.5l2.1-2.1"/></svg>'
+  };
+  function originBadge(o, env){
+    if(o==='extracted') return '<span class="ob extracted" title="Read from the material you supplied">'+ICON.quote+'You said this</span>';
+    if(o==='proposed')  return '<span class="ob proposed" title="Derived from pinned layer facts">'+ICON.infer+'We inferred this</span>';
+    if(o==='confirmed') return '<span class="ob confirmed" title="A human accepted or corrected it">'+ICON.check+'Confirmed</span>';
+    if(o==='stated')    return '<span class="ob stated" title="A human supplied it directly">'+ICON.person+'Stated</span>';
+    return '<span class="pill">'+esc(o||'unknown origin')+'</span>';
+  }
+  function gatePill(g){ return '<span class="pill gate-'+esc(g)+'" title="'+(g==='none'?'No state waits on this field':'The document cannot reach “'+esc(g)+'” without it')+'">'+(g==='none'?'no gate':'gate · '+esc(g))+'</span>'; }
+
+  // ── pin formatting ─────────────────────────────────────────────────────────
+  function fmtPinValue(p){
+    if(!p) return '';
+    var v=p.value, u=p.unit;
+    if(typeof v==='number'){
+      if(u==='proportion') return (Math.round(v*1000)/10)+'%';
+      if(u==='percent_abv') return v+'% ABV';
+      if(u==='percent') return v+'%';
+      return String(v)+(u&&u!=='count'?' '+u:'');
+    }
+    if(typeof v==='boolean') return v?'yes':'no';
+    return String(v);
+  }
+  function pinChip(id){
+    var p=pins()[id];
+    if(!p) return '<a class="pinc missing" href="#facts" title="Not in the projection — the host rebuilds it from shared/facts.yaml"><span class="id">'+esc(id)+'</span><span class="k">not in projection</span></a>';
+    var v=fmtPinValue(p); var shortV=v.length>34?v.slice(0,32)+'…':v;
+    return '<a class="pinc" href="#fact-'+esc(id)+'" title="'+esc(p.entity+' · '+p.key+(p.market?' · '+p.market:'')+' = '+v+' (as of '+p.as_of+', '+p.confidence+' confidence'+(p.stale?', STALE':'')+')')+'">'
+      +(p.stale?'<span class="st" aria-label="stale"></span>':'')
+      +'<span class="k">'+esc(p.key)+(p.market?' · '+esc(p.market):'')+'</span><span class="v">'+esc(shortV)+'</span></a>';
+  }
+  function pinChips(ids){ ids=arr(ids); if(!ids.length) return ''; return '<div class="pins">'+ids.map(pinChip).join('')+'</div>'; }
+  function findingChip(id){
+    var f=fnds()[id];
+    var st=f?f.status:'unknown';
+    var cls=st==='verified'?'ok':st==='rejected'?'alert':'dash';
+    return '<a class="pill '+cls+'" href="#finding-'+esc(id)+'" title="'+esc(f?f.statement:'Not in the projection')+'">'+(st==='rejected'?'<span class="d"></span>':'')+esc(id)+' · '+esc(st)+'</a>';
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // The decision chain — read lazily from clan://chain (host route; the
+  // context object omits it on purpose). Absent host → empty chain.
+  // ════════════════════════════════════════════════════════════════════════
+  var CHAIN = {state:'loading', decisions:[]};
+  function loadChain(){
+    return fetch(clanScheme+'/chain').then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); })
+      .then(function(c){ CHAIN={state:'ok', decisions:arr(c&&c.decisions)}; })
+      .catch(function(e){ CHAIN={state:'unavailable', decisions:[], err:String(e&&e.message||e)}; })
+      .then(render);
+  }
+  function decs(){ return CHAIN.decisions; }
+  function decById(id){ var d=decs(); for(var i=0;i<d.length;i++) if(d[i].id===id) return d[i]; return null; }
+  function ts(d){ return Date.parse(d&&d.timestamp)||0; }
+  // Does decision d touch address path p (entity-keyed, doc id stripped)?
+  function touches(d, p){
+    var hit=false;
+    arr(d.targets).concat(arr(d.flags)).forEach(function(a){ var q=pathOf(a); if(q===p||q.indexOf(p+'[')===0||q.indexOf(p+'.')===0) hit=true; });
+    if(hit) return true;
+    // Legacy entries (no targets): this view writes the address into the rationale.
+    if(!d.targets && typeof d.rationale==='string' && d.rationale.indexOf('#'+p)!==-1) return true;
+    return false;
+  }
+  function decisionsFor(p){ return decs().filter(function(d){ return touches(d,p); }); }
+  function targets(d, p){ return arr(d.targets).some(function(a){ return pathOf(a)===p; }); }
+  function typedCount(){ return decs().filter(function(d){ return d.id||d.kind||d.targets; }).length; }
+
+  // Verdicts on a field: the latest good/bad and whether a bad one is answered
+  // (revised by a later edit, or overridden by a later verdict with a reason).
+  function verdictState(p){
+    var ds=decs().filter(function(d){ return d.kind==='verdict' && targets(d,p); }).sort(function(a,b){ return ts(b)-ts(a); });
+    var out={good:[], bad:[], unanswered:[]};
+    ds.forEach(function(v){
+      (v.polarity==='bad'?out.bad:out.good).push(v);
+      if(v.polarity==='bad'){
+        var answered=decisionsFor(p).some(function(d){
+          if(ts(d)<=ts(v) || d===v) return false;
+          if(d.kind==='edit' || (!d.kind && /^(confirm|edit|patch-data)/.test(d.action||''))) return true;
+          if(d.kind==='verdict' && d.polarity==='good' && d.rationale) return true;
+          return false;
+        });
+        if(!answered) out.unanswered.push(v);
+      }
+    });
+    return out;
+  }
+  function classifyState(p){
+    var ds=decs().filter(function(d){ return d.kind==='classify' && targets(d,p); }).sort(function(a,b){ return ts(b)-ts(a); });
+    return ds[0]||null;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // derived state: flags, gates, blockers
+  // ════════════════════════════════════════════════════════════════════════
+  function citedFindings(env){
+    var ids=arr(env&&env.finding_ids).slice();
+    if(env && isObj(env.value)){
+      ['behaviours','attitudes'].forEach(function(k){ arr(env.value[k]).forEach(function(it){ arr(it.finding_ids).forEach(function(x){ ids.push(x); }); }); });
+      arr(env.value.synthesis_finding_ids).forEach(function(x){ ids.push(x); });
+    }
+    return ids.filter(function(x,i,a){ return a.indexOf(x)===i; });
+  }
+  function rejectedCited(env){ return citedFindings(env).filter(function(id){ var f=fnds()[id]; return f&&f.status==='rejected'; }); }
+  function missingFor(g){ var c=camp(); return FIELDS.filter(function(f){ return f.gate===g && !isObj(c[f.k]); }); }
+  function gateReached(g){
+    var order=['created','research','brief']; var idx=order.indexOf(g);
+    for(var i=0;i<=idx;i++) if(missingFor(order[i]).length) return false;
+    return true;
+  }
+  function blockers(){
+    var b=[], c=camp();
+    arr(sel().contested).forEach(function(ct){ if(ct.status==='open') b.push({k:'Open contest', html:'<a href="#contest-'+esc(ct.id)+'">'+esc(ct.key)+'</a> — two values, nothing picked'}); });
+    // contest decisions not reflected in selection and never resolved
+    decs().filter(function(d){ return d.kind==='contest'; }).forEach(function(d){
+      arr(d.targets).forEach(function(a){
+        var p=pathOf(a), m=/^selection\.contested\[(.+)\]$/.exec(p);
+        var inSel=m && arr(sel().contested).some(function(ct){ return ct.id===m[1]; });
+        var resolved=decs().some(function(r){ return r.kind==='resolve' && touches(r,p); });
+        if(!inSel && !resolved) b.push({k:'Open contest', html:esc(p)+' — opened by '+esc(d.id||d.action)+', not resolved'});
+      });
+    });
+    Object.keys(fnds()).forEach(function(id){ if(fnds()[id].status==='proposed') b.push({k:'Unverified finding', html:'<a href="#finding-'+esc(id)+'">'+esc(id)+'</a> — '+esc(fnds()[id].statement)}); });
+    FIELDS.forEach(function(f){
+      var env=c[f.k]; if(!isObj(env)) return;
+      rejectedCited(env).forEach(function(id){ b.push({k:'Flagged field', html:'<a href="#field-'+f.k+'">'+esc(f.label)+'</a> cites rejected finding '+esc(id)+' — revise it'}); });
+      verdictState('campaign.'+f.k).unanswered.forEach(function(v){ b.push({k:'Bad verdict', html:'<a href="#field-'+f.k+'">'+esc(f.label)+'</a> — “'+esc(v.rationale||'')+'” ('+esc(human(v.actor||v.agent))+'), unanswered'}); });
+    });
+    ['created','research','brief'].forEach(function(g){ missingFor(g).forEach(function(f){ b.push({k:'Missing · '+g, html:'<a href="#field-'+f.k+'">'+esc(f.label)+'</a> is not filled'}); }); });
+    return b;
+  }
+  function stalePins(){ return Object.keys(pins()).filter(function(id){ return pins()[id].stale; }); }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // render: header, notices, gates
+  // ════════════════════════════════════════════════════════════════════════
+  function renderNotices(){
+    var h='', d=D();
+    if(d.example_notice) h+='<div class="notice" role="note"><b>Example.</b> '+esc(d.example_notice)+'</div>';
+    var p=proj();
+    if(!p && (Object.keys(camp()).length || arr(sel().contested).length)) h+='<div class="notice" role="note"><b>No projection.</b> The host has not built <span class="mono">projection</span> from shared/facts.yaml and shared/findings.yaml, so pins and findings cannot be shown. The members are the authority.</div>';
+    if(CHAIN.state==='unavailable') h+='<div class="notice info no-print" role="note">The decision chain could not be read (<span class="mono">clan://chain</span>: '+esc(CHAIN.err)+'). Verdicts, confidential marks and history are not shown.</div>';
+    $('notices').innerHTML=h;
+  }
+  function renderHero(){
+    var c=camp();
+    var name=c.name&&c.name.value;
+    var bits=[];
+    if(c.brand) bits.push('<span>'+esc(c.brand.value&&c.brand.value.name)+'</span>');
+    if(c.client_org) bits.push('<span class="muted">for '+esc(c.client_org.value&&c.client_org.value.name)+'</span>');
+    if(c.markets) bits.push(arr(c.markets.value).map(function(m){ return '<span class="pill">'+esc(m)+'</span>'; }).join(' '));
+    if(c.campaign_type) bits.push('<span class="pill">'+esc(TYPES[c.campaign_type.value]||c.campaign_type.value)+'</span>');
+    $('hero').innerHTML='<div class="eyebrow">Campaign research'+(c.id?' · '+esc(c.id.value):'')+'</div>'
+      +'<h1 class="'+(name?'':'empty')+'">'+(name?esc(name):'A campaign with no ask yet')+'</h1>'
+      +'<div class="sub">'+(bits.length?bits.join('<span class="sep" aria-hidden="true">/</span>'):'<span class="muted">Nothing has been extracted. Open it from the client’s brief, then extract the ask.</span>')+'</div>';
+  }
+  function renderGates(){
+    var h='<div class="gates" role="list" aria-label="Gates">';
+    var prevOk=true;
+    GATES.forEach(function(G){
+      var miss=missingFor(G.g), ok=!miss.length && prevOk;
+      var cls=ok?'reached':(miss.length?'blocked':'');
+      h+='<div class="gatec '+cls+'" role="listitem"><div class="bar" aria-hidden="true"></div>'
+        +'<div class="top-l"><span class="num">'+G.n+'</span>'+(ok?'<span class="pill ok"><span class="d"></span>reached</span>':miss.length?'<span class="pill alert"><span class="d"></span>'+miss.length+' missing</span>':'<span class="pill">waits on '+esc(GATES[GATES.indexOf(G)-1].h.toLowerCase())+'</span>')+'</div>'
+        +'<h3>'+esc(G.h)+'</h3><p>'+esc(G.p)+'</p>';
+      if(miss.length) h+='<div class="needs">'+miss.map(function(f){ return '<a class="pill" href="#field-'+f.k+'">'+esc(f.label)+'</a>'; }).join('')+'</div>';
+      h+='</div>';
+      prevOk=ok;
+    });
+    $('gates').innerHTML=h+'</div>';
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // render: the ask
+  // ════════════════════════════════════════════════════════════════════════
+  function material(id){ return mats()[id]||null; }
+  function assetHref(m){
+    if(!m||!m.asset) return null;
+    var rel=String(m.asset).replace(/^(human\/)?assets\//,'');
+    var a=(window.__CLAN__||{}).assets||{};
+    return a[rel]||null;
+  }
+  function spanHtml(src, noQuoteNote){
+    if(!src) return '';
+    var m=material(src.material_id); var href=assetHref(m);
+    var name=m?(m.name||src.material_id):src.material_id;
+    var h='';
+    if(src.quote) h+='<blockquote class="quote">'+esc(src.quote)+'</blockquote>';
+    else if(noQuoteNote) h+='<div class="wholine">'+esc(noQuoteNote)+'</div>';
+    h+='<div class="srcline">'+(href?'<a href="'+esc(href)+'" target="_blank" rel="noopener">'+esc(name)+'</a>':esc(name))+' · '+esc(src.locator||'')+(m&&m.licence?' · '+esc(LICENCE[m.licence]||m.licence):'')+' · <span title="material id">'+esc(src.material_id)+'</span></div>';
+    return h;
+  }
+  function provenance(env, f){
+    var o=env.origin, h='';
+    if(o==='extracted'){
+      h+=spanHtml(env.source, f.k==='budget_band'?'The span carries no quote — the quote would carry the figure.':'');
+    } else if(o==='proposed'){
+      h+='<div class="inferbox"><div class="h">Derived from '+arr(env.fact_ids).length+' pinned fact'+(arr(env.fact_ids).length===1?'':'s')+' — no one said this.</div>'+pinChips(env.fact_ids)+'</div>';
+    } else if(o==='confirmed'){
+      h+='<div class="wholine">'+ICON.check.replace('<svg','<svg style="width:12px;height:12px;vertical-align:-1px;color:var(--green-ink)"')+' Confirmed by <b>'+esc(human(env.by))+'</b>, from <b>'+esc(env.confirmed_from||'?')+'</b>.</div>';
+      if(env.source) h+=spanHtml(env.source, f.k==='budget_band'?'The span carries no quote.':'');
+      if(arr(env.fact_ids).length) h+='<div class="inferbox"><div class="h">Originally inferred from</div>'+pinChips(env.fact_ids)+'</div>';
+    } else if(o==='stated'){
+      h+='<div class="wholine">Stated by <b>'+esc(human(env.by))+'</b>'+(f.k==='id'||f.k==='ask_source'?' when they opened the document on this material.':'.')+'</div>';
+    }
+    if(o!=='proposed' && o!=='confirmed' && arr(env.fact_ids).length && o!=='extracted') h+=pinChips(env.fact_ids);
+    if(o==='extracted' && arr(env.fact_ids).length) h+='<div class="inferbox"><div class="h">Some items inferred from</div>'+pinChips(env.fact_ids)+'</div>';
+    var fi=arr(env.finding_ids);
+    if(fi.length) h+='<div class="marks"><span class="eyebrow" style="padding-top:3px">Rests on</span>'+fi.map(findingChip).join('')+'</div>';
+    return h;
+  }
+  function itemOrigin(env, key){
+    var ip=isObj(env.item_provenance)?env.item_provenance[key]:null;
+    return ip||null;
+  }
+  function itemMark(ip){
+    if(!ip) return '';
+    var o=ip.origin, t='';
+    if(o==='extracted'&&ip.source) t='“'+(ip.source.quote||'')+'” — '+ip.source.locator;
+    if(o==='proposed') t='from '+arr(ip.fact_ids).join(', ');
+    if(o==='stated'||o==='confirmed') t='by '+human(ip.by);
+    return '<small title="'+esc(t)+'">'+(o==='extracted'?'you said':o==='proposed'?'inferred':o)+'</small>';
+  }
+  function renderValue(f, env){
+    var v=env.value;
+    switch(f.type){
+      case 'code': return '<div class="fv"><span class="code">'+esc(v)+'</span></div>';
+      case 'text': return '<div class="fv big">'+esc(v)+'</div>';
+      case 'prose': return '<div class="fv">'+esc(v)+'</div>';
+      case 'enum': return '<div class="fv big">'+esc(TYPES[v]||v)+'</div>';
+      case 'band': return '<div class="fv big">'+esc(BANDS[v]||v)+' <span class="muted" style="font-size:12px">EUR band</span></div>';
+      case 'ref': return '<div class="fv big">'+esc(v&&v.name)+' <span class="code">'+esc(v&&v.ref)+'</span></div>';
+      case 'asksrc':
+        var m=material(v&&v.material_id), href=assetHref(m);
+        return '<div class="fv">'+(href?'<a href="'+esc(href)+'" target="_blank" rel="noopener">'+esc(m?m.name:v.material_id)+'</a>':esc(m?m.name:(v&&v.material_id)))
+          +'<div class="srcline" style="margin-top:4px;word-break:break-all">'+esc(v&&v.material_id)+' · '+esc(v&&v.sha256)+'</div></div>';
+      case 'range': return '<div class="fv big">'+esc(v&&v.from)+' → '+esc(v&&v.to)+'</div>';
+      case 'codes':
+        return '<div class="fv"><div class="chips">'+arr(v).map(function(x,i){ var ip=itemOrigin(env,x);
+          return '<span class="chipv'+(ip?' p-'+esc(ip.origin):'')+'" data-address="'+esc(addr('campaign.'+f.k+'['+x+']'))+'">'+(f.k==='categories'?'<small>'+(i+1)+'</small>':'')+esc(x)+itemMark(ip)+'</span>'; }).join('')+'</div></div>';
+      case 'refs':
+        return '<div class="fv"><div class="chips">'+arr(v).map(function(x){ var ip=itemOrigin(env,x.ref);
+          return '<span class="chipv'+(ip?' p-'+esc(ip.origin):'')+'" data-address="'+esc(addr('campaign.'+f.k+'['+x.ref+']'))+'">'+esc(x.name)+' <small>'+esc(x.ref)+'</small>'+itemMark(ip)+'</span>'; }).join('')+'</div></div>';
+      case 'items':
+        return '<div class="fv"><ul>'+arr(v).map(function(x){ var ip=itemOrigin(env,x.id);
+          return '<li data-address="'+esc(addr('campaign.'+f.k+'['+x.id+']'))+'">'+(x.kind?'<span class="pill">'+esc(x.kind)+'</span>':'')+'<span style="flex:1;min-width:12ch">'+esc(x.text)+'</span>'+(ip?'<span class="chipv p-'+esc(ip.origin)+'">'+itemMark(ip)+'</span>':'')+'</li>'; }).join('')+'</ul></div>';
+      case 'audience': return renderAudience(env);
+    }
+    return '<div class="fv">'+esc(JSON.stringify(v))+'</div>';
+  }
+  function renderAudience(env){
+    var v=isObj(env.value)?env.value:{};
+    var h='<div class="aud fv">';
+    if(v.definition) h+='<div class="def">'+esc(v.definition)+'</div>';
+    if(v.size){
+      h+='<div class="row"><span class="eyebrow">Size</span><div>'+pinChips(v.size.fact_ids)+(v.size.note?'<div class="muted" style="font-size:12.5px;margin-top:4px">'+esc(v.size.note)+'</div>':'')+'</div></div>';
+    }
+    ['behaviours','attitudes'].forEach(function(k){
+      var items=arr(v[k]); if(!items.length) return;
+      h+='<div class="row"><span class="eyebrow">'+k+'</span><div>'+items.map(function(it){
+        return '<div class="it" data-address="'+esc(addr('campaign.audience.'+k+'['+it.id+']'))+'"><div>'+esc(it.statement)+'</div>'+pinChips(it.fact_ids)
+          +(arr(it.finding_ids).length?'<div class="marks">'+arr(it.finding_ids).map(findingChip).join('')+'</div>':'')+'</div>';
+      }).join('')+'</div></div>';
+    });
+    if(arr(v.synthesis_finding_ids).length){
+      h+='<div class="row"><span class="eyebrow">Syntheses</span><div class="cards">'+arr(v.synthesis_finding_ids).map(function(id){ var f=fnds()[id];
+        return '<div style="display:grid;gap:4px"><span class="derived">'+ICON.agent+'derived by the agent · '+esc(f?f.status:'?')+'</span><div style="font-size:13.5px">'+esc(f?f.statement:id)+'</div>'+findingChip(id)+'</div>'; }).join('')+'</div></div>';
+    }
+    return h+'</div>';
+  }
+  function fieldMarks(p){
+    var h='';
+    var vs=verdictState(p);
+    vs.good.slice(0,1).forEach(function(v){ h+='<div class="flag ok">'+ICON.check.replace('<svg','<svg style="width:14px;height:14px;flex:none;margin-top:1px"')+'<div><b>Marked good</b> by '+esc(human(v.actor||v.agent))+(v.reason_code?' · <span class="mono">'+esc(v.reason_code)+'</span>':'')+(v.rationale?' — “'+esc(v.rationale)+'”':'')+'</div></div>'; });
+    vs.bad.forEach(function(v){ var open=vs.unanswered.indexOf(v)!==-1;
+      h+='<div class="flag'+(open?'':' amber')+'"><div><b>Marked bad</b> by '+esc(human(v.actor||v.agent))+(v.reason_code?' · <span class="mono">'+esc(v.reason_code)+'</span>':'')+' — “'+esc(v.rationale||'')+'” '+(open?'<b>Unanswered:</b> revise the field or override with a reason. Re-extraction will not write over it.':'(answered)')+'</div></div>'; });
+    var cl=classifyState(p);
+    if(cl&&cl.licence){ var L=cl.licence;
+      h+='<div class="flag amber"><div><b>Confidential</b> — model '+(L.model?'yes':'no')+' · export '+(L.export?'yes':'no')+' · corpus '+(L.corpus?'yes':'no')+(cl.rationale?' — “'+esc(cl.rationale)+'”':'')+' <span class="mono">('+esc(human(cl.actor||cl.agent))+')</span></div></div>'; }
+    return h;
+  }
+  function stubBtn(label, why, act, a){ return '<button type="button" class="btn sm" aria-disabled="true" title="'+esc(why)+'" data-act="'+act+'" data-address="'+esc(a)+'">'+esc(label)+'</button>'; }
+  function renderField(f){
+    var env=camp()[f.k], p='campaign.'+f.k, A=addr(p);
+    if(!isObj(env)){
+      return '<article class="field absent'+(f.type==='audience'||f.type==='prose'?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'">'
+        +'<div class="fh"><span class="lab">'+esc(f.label)+'</span>'+gatePill(f.gate)+'<span class="sp"></span><span class="path">'+esc(p)+'</span></div>'
+        +'<div class="empty-v"><b>Not filled.</b> '+(f.gate==='none'?'No state waits on it.':'The document cannot reach “'+esc(f.gate)+'” without it.')+(f.hint?' '+esc(f.hint):'')+'</div>'
+        +'</article>';
+    }
+    var flagged=rejectedCited(env);
+    var wide=(f.type==='audience'||f.type==='prose'||f.type==='items'||f.type==='asksrc');
+    var h='<article class="field o-'+esc(env.origin)+(flagged.length?' flagged':'')+(wide?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'">'
+      +'<div class="fh"><span class="lab">'+esc(f.label)+'</span>'+originBadge(env.origin, env)+gatePill(f.gate)+'<span class="sp"></span><span class="path">'+esc(p)+'</span></div>';
+    if(flagged.length) h+='<div class="flag" style="margin-bottom:10px"><div><b>Flagged.</b> Cites '+flagged.map(function(id){ return '<a href="#finding-'+esc(id)+'">'+esc(id)+'</a>'; }).join(', ')+', which a reviewer rejected. Revise the field to stop citing it before lock.</div></div>';
+    h+=renderValue(f, env);
+    h+='<div class="prov">'+provenance(env, f)+fieldMarks(p)+'</div>';
+    var canConfirm=(env.origin==='extracted'||env.origin==='proposed');
+    h+='<div class="ctl no-print" role="group" aria-label="Review '+esc(f.label)+'">'
+      +(canConfirm?'<button type="button" class="btn sm live" data-act="confirm" data-field="'+f.k+'" data-address="'+esc(A)+'">'+ICON.check.replace('<svg','<svg style="width:12px;height:12px"')+'Confirm</button>':'')
+      +'<button type="button" class="btn sm" data-act="verdict-good" data-field="'+f.k+'" data-address="'+esc(A)+'" title="'+esc(STUB.verdict)+'" aria-disabled="true">Good</button>'
+      +'<button type="button" class="btn sm" data-act="verdict-bad" data-field="'+f.k+'" data-address="'+esc(A)+'" title="'+esc(STUB.verdict)+'" aria-disabled="true">Bad…</button>'
+      +'<button type="button" class="btn sm" data-act="classify" data-field="'+f.k+'" data-address="'+esc(A)+'" title="'+esc(STUB.classify)+'" aria-disabled="true">Confidential…</button>'
+      +'<span class="sp"></span>'
+      +'<button type="button" class="btn sm ghost" data-act="why" data-path="'+esc(p)+'" data-address="'+esc(A)+'">Why is this here?</button>'
+      +'</div>';
+    return h+'</article>';
+  }
+  function renderAsk(){
+    var c=camp(), n=FIELDS.filter(function(f){ return isObj(c[f.k]); }).length;
+    $('ask-count').textContent=n+' of 19 filled';
+    $('nav-ask').textContent=n+'/19';
+    $('legend').innerHTML='<span>'+originBadge('extracted')+' read from your material, quoted</span><span>'+originBadge('proposed')+' derived from pinned facts</span><span>'+originBadge('confirmed')+' a human accepted it</span><span>'+originBadge('stated')+' a human supplied it</span>';
+    $('ask-body').innerHTML=GROUPS.map(function(g){
+      return '<div class="group"><h3>'+esc(g.h)+'</h3><div class="grid2">'+g.keys.map(function(k){ return renderField(FIELD[k]); }).join('')+'</div></div>';
+    }).join('');
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // render: facts (from projection.pins)
+  // ════════════════════════════════════════════════════════════════════════
+  function citersOf(fid){
+    var out=[]; var c=camp();
+    FIELDS.forEach(function(f){ var e=c[f.k]; if(!isObj(e)) return;
+      var ids=arr(e.fact_ids).slice();
+      if(isObj(e.value)){ if(e.value.size) ids=ids.concat(arr(e.value.size.fact_ids)); ['behaviours','attitudes'].forEach(function(k){ arr(e.value[k]).forEach(function(it){ ids=ids.concat(arr(it.fact_ids)); }); }); }
+      if(isObj(e.item_provenance)) Object.keys(e.item_provenance).forEach(function(k){ ids=ids.concat(arr(e.item_provenance[k].fact_ids)); });
+      if(ids.indexOf(fid)!==-1) out.push('<a href="#field-'+f.k+'">'+esc(f.label)+'</a>');
+    });
+    arr(sel().contested).forEach(function(ct){ arr(ct.values).forEach(function(v){ if(v.fact_id===fid) out.push('<a href="#contest-'+esc(ct.id)+'">'+(ct.status==='resolved'&&ct.chosen===fid?'chosen in ':'contest ')+esc(ct.id)+'</a>'); }); });
+    Object.keys(fnds()).forEach(function(id){ var fi=fnds()[id]; if(arr(fi.cites).indexOf(fid)!==-1) out.push('<a href="#finding-'+esc(id)+'">'+esc(id)+'</a>'); if(fi.fact_id===fid) out.push('verified from <a href="#finding-'+esc(id)+'">'+esc(id)+'</a>'); });
+    return out;
+  }
+  function renderFacts(){
+    var P=pins(), ids=Object.keys(P), p=proj();
+    $('facts-count').textContent=ids.length+' pinned'+(stalePins().length?' · '+stalePins().length+' stale':'');
+    $('nav-facts').textContent=ids.length||'';
+    var h='';
+    if(p&&p.built_from){ h+='<div class="notice info" role="note"><div>Read from the host’s projection, built <span class="mono">'+esc(fmtDate(p.built_from.built_at))+'</span> from <span class="mono" title="'+esc(p.built_from.facts_sha256)+'">facts '+esc(String(p.built_from.facts_sha256).slice(7,19))+'</span> and <span class="mono" title="'+esc(p.built_from.findings_sha256)+'">findings '+esc(String(p.built_from.findings_sha256).slice(7,19))+'</span>. The members are the authority; the view cannot hash them, so a mismatch is the host’s to report. When each fact was learned, its sources, version and why it was pinned live in shared/facts.yaml and are not in the projection.</div></div>'; }
+    if(!ids.length){
+      $('facts-body').innerHTML=h+'<div class="empty-state"><b>No pins yet.</b> A first campaign starts with none: it still reaches created and research from the ask alone. Research pins facts from the brand and category layers.</div>';
+      return;
+    }
+    var layers={brand:{}, category:{}};
+    ids.forEach(function(id){ var x=P[id]; var L=layers[x.layer]||(layers[x.layer]={}); (L[x.entity]||(L[x.entity]=[])).push(id); });
+    ['brand','category'].concat(Object.keys(layers).filter(function(k){return k!=='brand'&&k!=='category';})).forEach(function(layer){
+      var ents=layers[layer]; if(!ents||!Object.keys(ents).length) return;
+      h+='<div class="layer"><h3>'+(layer==='brand'?'Brand layer':layer==='category'?'Category layer':esc(layer)+' layer')+' <span class="pill">'+Object.keys(ents).reduce(function(n,e){return n+ents[e].length;},0)+' pins</span></h3>';
+      Object.keys(ents).sort().forEach(function(ent){
+        var rows=ents[ent].sort(function(a,b){ var A=P[a],B=P[b]; return (A.key+(A.market||'')).localeCompare(B.key+(B.market||'')); });
+        var isComparator = layer==='category' && /^brand\//.test(ent);
+        h+='<div class="entity"><header><b>'+esc(ent)+'</b>'+(isComparator?'<span class="pill">comparator · public material</span>':'')+'</header><div class="tablewrap"><table class="facts"><colgroup><col class="c-key"><col class="c-val"><col class="c-date"><col class="c-conf"><col class="c-lic"><col class="c-by"></colgroup><thead><tr><th scope="col">Key</th><th scope="col">Value</th><th scope="col">True as of</th><th scope="col">Confidence</th><th scope="col">Licence</th><th scope="col">Cited by</th></tr></thead><tbody>';
+        rows.forEach(function(id){
+          var x=P[id]; var v=fmtPinValue(x); var isText=(x.unit==='text'||typeof x.value==='string'&&v.length>24);
+          var cit=citersOf(id);
+          h+='<tr id="fact-'+esc(id)+'" data-address="'+esc(addr('facts['+id+']'))+'">'
+            +'<td><div class="key">'+esc(x.key)+'</div><div class="by mono">'+esc(id)+(x.market?' · <span class="pill" style="padding:0 6px">'+esc(x.market)+'</span>':' · all markets')+(x.method?' · '+esc(x.method):'')+'</div></td>'
+            +'<td><div class="val'+(isText?' text':'')+'">'+esc(v)+'</div><div class="by">'+esc(x.unit)+'</div>'
+            +(x.stale?'<div class="stale" role="note"><div><b>Stale.</b> The layer has moved on to v'+esc(x.current_version||'?')+'. This pin keeps its value.'+(x.current_value!==undefined?' Current: <b>'+esc(x.current_value)+'</b>.':' The current value is not in the projection.')+'</div>'
+              +'<div class="no-print">'+stubBtn('Take current version…', STUB.pin, 'pin', addr('facts['+id+']'))+'</div></div>':'')
+            +'</td>'
+            +'<td class="dates">'+esc(x.as_of)+(x.retrieved_at?'<div class="by">learned '+esc(x.retrieved_at)+'</div>':'')+'</td>'
+            +'<td><span class="pill '+(x.confidence==='high'?'ok':x.confidence==='low'?'alert':'')+'" title="Derived from source tier and corroboration, never asserted">'+esc(x.confidence)+'</span></td>'
+            +'<td><span class="pill'+(x.licence==='client-confidential'?' warn':'')+'">'+esc(LICENCE[x.licence]||x.licence)+'</span></td>'
+            +'<td class="by">'+(cit.length?cit.join(', '):'<span class="muted">not cited</span>')+'</td>'
+            +'</tr>';
+        });
+        h+='</tbody></table></div></div>';
+      });
+      h+='</div>';
+    });
+    $('facts-body').innerHTML=h;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // render: findings (from projection.findings + the chain)
+  // ════════════════════════════════════════════════════════════════════════
+  function fieldsCiting(fid){
+    var c=camp(); return FIELDS.filter(function(f){ return isObj(c[f.k]) && citedFindings(c[f.k]).indexOf(fid)!==-1; });
+  }
+  function renderFindings(){
+    var F=fnds(), ids=Object.keys(F);
+    var counts={proposed:0,verified:0,rejected:0}; ids.forEach(function(id){ counts[F[id].status]=(counts[F[id].status]||0)+1; });
+    $('findings-count').textContent=ids.length?(counts.verified+' verified · '+counts.proposed+' proposed · '+counts.rejected+' rejected'):'';
+    $('nav-findings').textContent=ids.length||'';
+    if(!ids.length){ $('findings-body').innerHTML='<div class="empty-state"><b>No findings yet.</b> Synthesis runs over the pins once research has merged.</div>'; return; }
+    var order={proposed:0,rejected:1,verified:2};
+    ids.sort(function(a,b){ return (order[F[a].status]-order[F[b].status])||a.localeCompare(b); });
+    $('findings-body').innerHTML='<div class="cards">'+ids.map(function(id){
+      var f=F[id], A=addr('findings['+id+']');
+      var ds=decisionsFor('findings['+id+']');
+      var rej=ds.filter(function(d){ return d.kind==='verdict'&&d.polarity==='bad'; })[0];
+      var ver=ds.filter(function(d){ return d.kind==='verify'; })[0];
+      var syn=ds.filter(function(d){ return d.kind==='finding'; })[0];
+      var citing=fieldsCiting(id);
+      var st=f.status;
+      var h='<article class="card s-'+esc(st)+'" id="finding-'+esc(id)+'" data-address="'+esc(A)+'">'
+        +'<div class="fh"><span class="derived">'+ICON.agent+'Derived by the agent</span>'
+        +(st==='verified'?'<span class="pill ok"><span class="d"></span>verified</span>':st==='rejected'?'<span class="pill alert"><span class="d"></span>rejected</span>':'<span class="pill dash">proposed · not yet verified</span>')
+        +'<span class="sp" style="flex:1"></span><span class="path">'+esc(id)+'</span></div>'
+        +'<div class="stmt">'+esc(f.statement)+'</div>'
+        +'<dl class="kv">'
+        +'<dt>Rests on</dt><dd>'+pinChips(f.cites)+'</dd>'
+        +'<dt>Confidence</dt><dd><span class="pill" title="The lowest among the cited pins, one lower for a single or stale citation">'+esc(f.confidence)+'</span> <span class="muted" style="font-size:12px">derived from the pins, never asked of the model</span></dd>'
+        +(syn?'<dt>Derived</dt><dd class="muted" style="font-size:12.5px">'+esc(syn.handler||syn.agent)+(syn.backend?' · '+esc(syn.backend):'')+' · '+esc(fmtDate(syn.timestamp))+'</dd>':'')
+        +(st==='verified'?'<dt>Verified</dt><dd>'+(ver?'by <b>'+esc(human(ver.actor||ver.agent))+'</b> · '+esc(fmtDate(ver.timestamp))+(ver.rationale?' — “'+esc(ver.rationale)+'”':''):'')+(f.fact_id?'<div style="margin-top:4px">Written to the layer and pinned as '+pinChip(f.fact_id)+'</div>':'')+'</dd>':'')
+        +(st==='rejected'?'<dt>Rejected</dt><dd>'+(rej?'by <b>'+esc(human(rej.actor||rej.agent))+'</b> · '+esc(fmtDate(rej.timestamp))+' — “'+esc(rej.rationale||'')+'”':'<span class="muted">reason is in shared/findings.yaml; no verdict found in the chain</span>')+'</dd>':'')
+        +(citing.length?'<dt>'+(st==='rejected'?'Flags':'Used by')+'</dt><dd>'+citing.map(function(x){ return '<a class="pill'+(st==='rejected'?' alert':'')+'" href="#field-'+x.k+'">'+(st==='rejected'?'<span class="d"></span>':'')+esc(x.label)+'</a>'; }).join(' ')+(st==='rejected'?' <span style="font-size:12px;color:var(--create-ink)">revise to stop citing it</span>':st==='proposed'?' <span class="muted" style="font-size:12px">a brief may use it only visibly labelled</span>':'')+'</dd>':'')
+        +'</dl>';
+      h+='<div class="ctl no-print" role="group" aria-label="Review '+esc(id)+'">'
+        +(st==='proposed'?stubBtn('Verify…', STUB.finding, 'verify', A)+stubBtn('Reject…', STUB.finding, 'reject', A):'')
+        +'<span class="sp"></span><button type="button" class="btn sm ghost" data-act="why" data-path="findings['+esc(id)+']" data-address="'+esc(A)+'">Why is this here?</button></div>';
+      return h+'</article>';
+    }).join('')+'</div>';
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // render: selection — coverage matrix, gaps, contests, exclusions
+  // ════════════════════════════════════════════════════════════════════════
+  function marketsAll(){
+    var ms=arr(camp().markets&&camp().markets.value).slice();
+    Object.keys(sel().coverage_by_market||{}).forEach(function(m){ if(ms.indexOf(m)===-1) ms.push(m); });
+    return ms;
+  }
+  function covCell(v){
+    if(!v) return '<span class="cov none"><i aria-hidden="true"></i>not run</span>';
+    var t={filled:'filled — corroborated', thin:'thin — single source', empty:'empty — nothing found'}[v]||v;
+    return '<span class="cov '+esc(v)+'"><i aria-hidden="true"></i>'+esc(t)+'</span>';
+  }
+  function renderSelection(){
+    var S=sel(), ms=marketsAll(), runs=arr(S.lenses_run);
+    var cbm=isObj(S.coverage_by_market)?S.coverage_by_market:{}, cov=isObj(S.coverage)?S.coverage:{};
+    var h='<div class="group" style="margin-top:0"><h3>Coverage · lens × market</h3><div class="matrix"><div class="tablewrap"><table class="mx"><thead><tr><th scope="col">Lens</th>'
+      +ms.map(function(m){ return '<th scope="col">'+esc(m)+'</th>'; }).join('')+'<th scope="col" class="merged">Merged</th></tr></thead><tbody>';
+    LENSES.forEach(function(L){
+      h+='<tr><th scope="row">'+esc(L.l)+'<small>'+esc(L.k)+' · '+esc(L.c)+'</small></th>';
+      ms.forEach(function(m){
+        var run=runs.filter(function(r){ return r.lens===L.k&&r.market===m; })[0];
+        h+='<td data-address="'+esc(addr('selection.lenses_run['+L.k+'/'+m+']'))+'"'+(run?' title="ran '+esc(fmtDate(run.ran_at))+' · '+esc(run.handler)+'"':'')+'>'+covCell(cbm[m]&&cbm[m][L.k])
+          +(!run&&cbm[m]&&cbm[m][L.k]?'<span class="runst">no run recorded</span>':'')+'</td>';
+      });
+      h+='<td class="merged">'+covCell(cov[L.k])+'</td></tr>';
+    });
+    if(!ms.length) h+='<tr><td colspan="2" class="muted">No markets yet — research runs once per market.</td></tr>';
+    h+='</tbody></table></div></div>';
+    if(runs.length){
+      var hs=[], times=runs.map(function(r){ return r.ran_at; }).sort();
+      runs.forEach(function(r){ if(hs.indexOf(r.handler)===-1) hs.push(r.handler); });
+      h+='<div class="srcline" style="margin-top:8px">'+runs.length+' of '+(LENSES.length*ms.length)+' lens \u00d7 market runs recorded \u00b7 '+esc(hs.join(', '))+' \u00b7 '+esc(fmtDate(times[0]))+(times.length>1&&times[times.length-1]!==times[0]?' \u2013 '+esc(fmtDate(times[times.length-1])):'')+'. Merged: filled only if filled in every market, empty only if empty in every market, otherwise thin.</div>';
+    }
+    h+='</div>';
+
+    // contests
+    var ct=arr(S.contested);
+    h+='<div class="group"><h3>Contests · '+ct.length+'</h3>';
+    if(!ct.length) h+='<div class="empty-state">No contests. When two writers produce different values for one fact identity, it opens here and nothing is picked.</div>';
+    h+='<div class="cards">'+ct.map(function(c){
+      var A=addr('selection.contested['+c.id+']'), open=c.status==='open';
+      var dec=c.decided_by?decById(c.decided_by):null;
+      var x='<article class="card" id="contest-'+esc(c.id)+'" data-address="'+esc(A)+'"><div class="fh">'
+        +(open?'<span class="pill alert"><span class="d"></span>open · nothing picked</span>':'<span class="pill ok"><span class="d"></span>resolved</span>')
+        +'<span class="lab mono" style="font-weight:500;font-size:12.5px">'+esc(c.key)+'</span><span class="sp" style="flex:1"></span><span class="path">'+esc(c.id)+'</span></div>'
+        +'<div class="contest"><div class="cvals">'+arr(c.values).map(function(v){
+          var chosen=!open && c.chosen===v.fact_id, loser=!open && !chosen;
+          return '<div class="cval'+(chosen?' chosen':'')+(loser?' loser':'')+'">'
+            +'<div class="eyebrow">'+(chosen?'chosen':loser?'not chosen · kept':'value')+'</div>'
+            +'<div class="v">'+esc(fmtPinValue({value:v.value,unit:v.unit}))+'</div>'
+            +'<div class="srcline">from '+esc(v.from)+(arr(v.sources).length?' · '+esc(arr(v.sources).join(', ')):'')+'</div>'
+            +'<div class="srcline">'+(pins()[v.fact_id]?'<a href="#fact-'+esc(v.fact_id)+'">'+esc(v.fact_id)+'</a> · pinned':esc(v.fact_id)+' · layer row, not pinned')+'</div></div>';
+        }).join('')+'</div>';
+      if(!open) x+='<div class="wholine"><b>Why:</b> '+esc(c.reason)+(dec?' <span class="mono">— '+esc(human(dec.actor||dec.agent))+', '+esc(fmtDate(dec.timestamp))+'</span>':'')+'</div>';
+      x+='</div><div class="ctl no-print" role="group" aria-label="Review contest '+esc(c.id)+'">'
+        +(open?'<button type="button" class="btn sm live" data-act="resolve" data-contest="'+esc(c.id)+'" data-address="'+esc(A)+'">Resolve…</button>':'')
+        +'<span class="sp"></span><button type="button" class="btn sm ghost" data-act="why" data-path="selection.contested['+esc(c.id)+']" data-address="'+esc(A)+'">Why is this here?</button></div>';
+      return x+'</article>';
+    }).join('')+'</div></div>';
+
+    // gaps
+    var gaps=arr(S.gaps);
+    h+='<div class="group"><h3>Gaps · '+gaps.length+'</h3>';
+    if(!gaps.length) h+='<div class="empty-state">No gaps recorded.</div>';
+    h+='<div class="cards">'+gaps.map(function(g){
+      return '<article class="card gap" id="gap-'+esc(g.id)+'" data-address="'+esc(addr('selection.gaps['+g.id+']'))+'"><div class="fh"><span class="pill warn"><span class="d"></span>not found</span>'
+        +(g.lens?'<span class="pill">'+esc((LENS[g.lens]||{}).l||g.lens)+'</span>':'')+(g.market?'<span class="pill">'+esc(g.market)+'</span>':'')
+        +'<span class="sp" style="flex:1"></span><span class="path">'+esc(g.key)+'</span></div>'
+        +'<div class="searched">'+esc(g.searched)+'</div>'
+        +'<dl class="kv" style="margin-top:8px"><dt>Tried</dt><dd>'+arr(g.sources_tried).map(function(s){ return '<span class="pill">'+esc(s)+'</span>'; }).join(' ')+'</dd>'
+        +(g.note?'<dt>Note</dt><dd>'+esc(g.note)+'</dd>':'')+'</dl></article>';
+    }).join('')+'</div></div>';
+
+    // exclusions
+    var ex=arr(S.excluded);
+    h+='<div class="group"><h3>Excluded · '+ex.length+'</h3>';
+    if(!ex.length) h+='<div class="empty-state">Nothing deliberately left out.</div>';
+    h+='<div class="cards">'+ex.map(function(e){ var d=e.decision?decById(e.decision):null;
+      return '<article class="card" data-address="'+esc(addr('selection.excluded['+e.fact_id+']'))+'"><div class="fh"><span class="pill">excluded · not pinned</span><span class="sp" style="flex:1"></span><span class="path">'+esc(e.fact_id)+'</span></div>'
+        +'<div style="font-size:14.5px">'+esc(e.reason)+'</div>'+(d?'<div class="srcline" style="margin-top:6px">'+esc(human(d.actor||d.agent))+' · '+esc(fmtDate(d.timestamp))+'</div>':'')+'</article>';
+    }).join('')+'</div></div>';
+
+    $('selection-body').innerHTML=h;
+    var open=ct.filter(function(c){return c.status==='open';}).length;
+    $('selection-count').textContent=runs.length+' runs · '+gaps.length+' gaps · '+ct.length+' contests'+(open?' ('+open+' open)':'');
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // render: history timeline
+  // ════════════════════════════════════════════════════════════════════════
+  var TL={kind:'', actor:''};
+  function kindOf(d){ return d.kind||'legacy'; }
+  function actorOf(d){ return d.actor||d.agent||'unknown'; }
+  function decisionLi(d, hl){
+    var k=kindOf(d);
+    return '<li class="k-'+esc(k)+(d.polarity?' '+esc(d.polarity):'')+(hl?' hl':'')+'">'
+      +'<div class="tlh"><time datetime="'+esc(d.timestamp)+'">'+esc(fmtDate(d.timestamp))+'</time>'
+      +'<span class="pill'+(k==='verdict'&&d.polarity==='bad'||k==='contest'?' alert':k==='verify'||k==='resolve'||(k==='verdict'&&d.polarity==='good')?' ok':'')+'">'+esc(k)+(d.polarity?' · '+esc(d.polarity):'')+'</span>'
+      +'<span class="actor">'+esc(actorOf(d))+'</span><span class="muted">'+esc(d.action||'')+'</span>'+(d.id?'<span class="mono muted" style="font-size:10.5px">'+esc(d.id)+'</span>':'')+(hl?'<span class="pill solid">set the current value</span>':'')+'</div>'
+      +(d.rationale?'<p class="tlr">'+esc(d.rationale)+'</p>':'')
+      +((arr(d.targets).length||arr(d.cites).length)?'<div class="tlt">'+arr(d.targets).map(function(a){ return '<code title="target">→ '+esc(pathOf(a))+'</code>'; }).join('')+arr(d.cites).map(function(c){ return '<code title="cites">'+esc(c)+'</code>'; }).join('')+'</div>':'')
+      +((!d.targets&&arr(d.fields_changed).length)?'<div class="tlt">'+arr(d.fields_changed).map(function(c){ return '<code title="fields changed">'+esc(c)+'</code>'; }).join('')+'</div>':'')
+      +'</li>';
+  }
+  function renderHistory(){
+    var all=decs().slice().sort(function(a,b){ return ts(b)-ts(a); });
+    $('history-count').textContent=CHAIN.state==='ok'?all.length+' decisions':CHAIN.state==='loading'?'loading…':'unavailable';
+    $('nav-history').textContent=all.length||'';
+    if(!all.length){ $('history-body').innerHTML='<div class="empty-state">'+(CHAIN.state==='loading'?'Reading the decision chain…':CHAIN.state==='ok'?'No decisions yet.':'The decision chain is not available here.')+'</div>'; return; }
+    var kinds=[], actors=[];
+    all.forEach(function(d){ if(kinds.indexOf(kindOf(d))===-1) kinds.push(kindOf(d)); if(actors.indexOf(actorOf(d))===-1) actors.push(actorOf(d)); });
+    var shown=all.filter(function(d){ return (!TL.kind||kindOf(d)===TL.kind)&&(!TL.actor||actorOf(d)===TL.actor); });
+    $('history-body').innerHTML='<div class="tl-filters no-print"><label>Kind <select id="tlKind"><option value="">all</option>'+kinds.sort().map(function(k){ return '<option'+(TL.kind===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select></label>'
+      +'<label>Actor <select id="tlActor"><option value="">all</option>'+actors.sort().map(function(k){ return '<option'+(TL.actor===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select></label>'
+      +'<span class="muted" style="font-size:12px">'+shown.length+' shown</span></div>'
+      +'<ol class="tl">'+shown.map(function(d){ return decisionLi(d,false); }).join('')+'</ol>';
+    $('tlKind').onchange=function(e){ TL.kind=e.target.value; renderHistory(); };
+    $('tlActor').onchange=function(e){ TL.actor=e.target.value; renderHistory(); };
+  }
+
+  function renderTop(){
+    var b=blockers();
+    var lb=$('lockBtn');
+    lb.innerHTML='Lock and accept'+(b.length?' <span class="n" aria-label="'+b.length+' blockers">'+b.length+'</span>':'');
+    lb.title=b.length?b.length+' items block the lock — open to see them':'Nothing blocks the lock';
+    $('whoBtn').textContent=reviewer()?'Reviewing as '+reviewer():'Set reviewer';
+    var rb=$('researchBtn');
+    var ok=gateReached('research');
+    rb.setAttribute('aria-disabled', ok?'false':'true');
+    rb.title=ok?'research_lens: one run per lens × market ('+(8*arr(camp().markets&&camp().markets.value).length)+' runs)':'Research needs the created and research gates: '+missingFor('created').concat(missingFor('research')).map(function(f){return f.label;}).join(', ');
+    var m=(window.__CLAN__||{}).manifest||{};
+    $('docfoot').innerHTML='<span>document '+esc(docId())+'</span><span>'+esc((m.app&&m.app.name)||'campaign-research')+(m.app&&m.app.version?' '+esc(m.app.version):'')+'</span><span>contract campaign-clan/1</span><span>'+stalePins().length+' stale pin'+(stalePins().length===1?'':'s')+' (accepted as frozen at lock)</span>';
+    var sb=$('synthBtn'), hasPins=Object.keys(pins()).length>0;
+    sb.setAttribute('aria-disabled', hasPins?'false':'true');
+    sb.title=hasPins?'synthesise_findings over the pinned facts':'Synthesis reads the pins; there are none yet';
+  }
+
+  function render(){
+    try{
+      renderNotices(); renderHero(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop();
+    }catch(e){
+      console.error(e);
+      $('notices').innerHTML='<div class="notice" role="alert"><b>The view could not render this document.</b> '+esc(e&&e.message)+'</div>';
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // reviewer identity — the envelope's `by` needs human:<id>. Until the OS
+  // layer's Ctx supplies the actor (W2-O2), the reviewer names themselves.
+  // ════════════════════════════════════════════════════════════════════════
+  function reviewer(){ try{ return localStorage.getItem('clan.research.reviewer')||''; }catch(e){ return ''; } }
+  function setReviewer(v){ try{ localStorage.setItem('clan.research.reviewer', v); }catch(e){} }
+
+  // ULID-shaped decision id (d_ + 26 Crockford base32). The SDK does not mint
+  // decision ids until W1P-I5, so the view mints one and writes it both into
+  // the data (envelope.decision / contested.decided_by) and into the rationale.
+  function mintDecisionId(){
+    var A='0123456789ABCDEFGHJKMNPQRSTVWXYZ', t=Date.now(), s='';
+    for(var i=0;i<10;i++){ s=A.charAt(t%32)+s; t=Math.floor(t/32); }
+    var r=new Uint8Array(16); (window.crypto||{getRandomValues:function(a){for(var j=0;j<a.length;j++)a[j]=Math.random()*256|0;return a;}}).getRandomValues(r);
+    for(var j=0;j<16;j++) s+=A.charAt(r[j]%32);
+    return 'd_'+s;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // dialogs
+  // ════════════════════════════════════════════════════════════════════════
+  var dlg=$('dlg'), form=$('dlg-form'), lastFocus=null;
+  function openDialog(html, onReady){
+    lastFocus=document.activeElement;
+    form.innerHTML=html;
+    if(typeof dlg.showModal==='function') dlg.showModal(); else dlg.setAttribute('open','');
+    var c=form.querySelector('[data-close]'); if(c) c.addEventListener('click',function(e){ e.preventDefault(); closeDialog(); });
+    if(onReady) onReady(form);
+    var first=form.querySelector('textarea,input:not([type=hidden]),select'); if(first) first.focus();
+  }
+  function closeDialog(){ if(dlg.open) dlg.close(); else dlg.removeAttribute('open'); if(lastFocus&&lastFocus.focus) lastFocus.focus(); }
+  dlg.addEventListener('close',function(){ if(lastFocus&&lastFocus.focus) lastFocus.focus(); });
+  function preview(title, obj){ return '<details class="preview"><summary>'+esc(title)+'</summary><pre>'+esc(JSON.stringify(obj,null,2))+'</pre></details>'; }
+  function chainWarning(){
+    var n=typedCount(); if(!n) return '';
+    return '<div class="flag amber" role="note"><div><b>Heads up.</b> Saving goes through <span class="mono">patch-data</span>, which rewrites agent/decision-chain.yaml with the SDK’s decision struct. Until W1P-I5 adds the flatten tail, that drops the typed fields (id, kind, targets, cites…) of the '+n+' entries that carry them.</div></div>';
+  }
+  function whoField(){
+    return '<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Reviewing as <span style="display:flex;gap:6px;align-items:center"><span class="mono">human:</span><input type="text" name="who" required pattern="[A-Za-z0-9_.\\-]+" value="'+esc(reviewer())+'" placeholder="your user id" style="flex:1" autocomplete="username"></span><span class="muted" style="font-size:11.5px">Until the OS layer supplies the actor (W2-O2), marks are attributed to the id you give.</span></label>';
+  }
+  function stubFoot(why){ return '<div class="foot"><span class="why">'+esc(why)+'</span><button type="button" class="btn" data-close>Close</button><button type="button" class="btn primary" aria-disabled="true" title="'+esc(why)+'" disabled>Record</button></div>'; }
+
+  // ── LIVE: confirm an extracted/proposed field → origin confirmed (Contract 3 §10: edit)
+  function doConfirm(k){
+    var f=FIELD[k], env=camp()[k]; if(!isObj(env)) return;
+    var A=addr('campaign.'+k);
+    // Confirming a field that carries an unanswered bad verdict, unchanged, is
+    // overriding that verdict — which needs a written reason (Contract 3 §11.5).
+    var bad=verdictState('campaign.'+k).unanswered;
+    openDialog('<h2 id="dlg-title">Confirm “'+esc(f.label)+'”</h2><div class="addr">'+esc(A)+'</div>'
+      +'<p style="margin:0">'+(env.origin==='extracted'?'The client said this. Confirming makes it yours: re-extraction will never write over it without asking.':'This was inferred from pinned facts. Confirming accepts the inference as the ask; the pins it came from stay cited.')+'</p>'
+      +'<div class="field" style="box-shadow:none">'+renderValue(f, env)+'</div>'
+      +(bad.length?'<div class="flag" role="note"><div><b>This field carries an unanswered bad verdict</b> from '+esc(human(bad[0].actor||bad[0].agent))+': “'+esc(bad[0].rationale||'')+'” Confirming it unchanged overrides that verdict, so say why.</div></div>':'')
+      +whoField()
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">'+(bad.length?'Why it stands, despite the verdict <span class="req">required</span>':'Note (optional)')+'<textarea name="note" '+(bad.length?'required ':'')+'placeholder="Why this is right"></textarea></label>'
+      +chainWarning()
+      +'<div id="dlg-prev"></div>'
+      +'<div class="foot"><span class="why">Writes campaign.'+esc(k)+' via patch-data, attributed to you, pinned.</span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary" '+(hasHost()?'':'aria-disabled="true" title="Needs the Napkin host"')+'>Confirm</button></div>',
+      function(fm){
+        function build(){
+          var who=fm.who.value.trim(), id=mintDecisionId();
+          var next=JSON.parse(JSON.stringify(env));
+          next.confirmed_from=env.origin; next.origin='confirmed'; next.by='human:'+(who||'<you>'); next.decision=id;
+          var rationale=id+' · edit · '+A+' · confirmed from '+env.origin+' by human:'+(who||'<you>')+(fm.note.value.trim()?' — '+fm.note.value.trim():'');
+          return {id:id, who:who, env:next, rationale:rationale};
+        }
+        function upd(){ var b=build(); $('dlg-prev').innerHTML=preview('What will be written', {path:'campaign.'+k, value:b.env, decision:{agent:'human', action:'confirm', pinned:true, rationale:b.rationale}}); }
+        fm.who.addEventListener('input',upd); fm.note.addEventListener('input',upd); upd();
+        fm.onsubmit=function(e){
+          e.preventDefault();
+          if(!hasHost()){ toast('Confirming needs the Napkin Studio OS host.'); return; }
+          if(!fm.who.checkValidity()){ fm.who.reportValidity(); return; }
+          if(!fm.note.checkValidity()){ fm.note.reportValidity(); return; }
+          var b=build(); setReviewer(b.who);
+          window.clan.patchData('campaign.'+k, b.env, {actor:'human', action:'confirm', pinned:true, rationale:b.rationale}).then(function(res){
+            if(res&&res.ok){ closeDialog(); toast(f.label+' confirmed.'); loadChain(); }
+            else toast('Not saved: '+((res&&(res.error||res.message))||'the host refused the write'));
+          }).catch(function(err){ toast('Not saved: '+err); });
+        };
+      });
+  }
+
+  // ── LIVE: resolve a contest (Contract 3 §7, §10: resolve, rationale required)
+  function doResolve(cid){
+    var list=arr(sel().contested), c=list.filter(function(x){return x.id===cid;})[0]; if(!c) return;
+    var A=addr('selection.contested['+cid+']');
+    openDialog('<h2 id="dlg-title">Resolve the contest</h2><div class="addr">'+esc(A)+'</div>'
+      +'<p style="margin:0"><span class="mono">'+esc(c.key)+'</span> — pick the value this document uses. The other stays, with your reason.</p>'
+      +'<fieldset><legend>Chosen value</legend>'+arr(c.values).map(function(v,i){
+        return '<label class="opt"><input type="radio" name="chosen" value="'+esc(v.fact_id)+'" required><span><b>'+esc(fmtPinValue({value:v.value,unit:v.unit}))+'</b> <span class="muted">from '+esc(v.from)+'</span><br><span class="srcline">'+esc(v.fact_id)+(arr(v.sources).length?' · '+esc(arr(v.sources).join(', ')):'')+'</span></span></label>';
+      }).join('')+'</fieldset>'
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Reason <span class="req">required</span><textarea name="reason" required placeholder="Why this value, and why not the other"></textarea></label>'
+      +whoField()
+      +'<div class="flag amber" role="note"><div>This records the resolution in <span class="mono">selection.contested</span>. Pinning the chosen value into shared/facts.yaml is host work (W2-A3), and the typed <span class="mono">resolve</span> decision lands with W2-O2.</div></div>'
+      +chainWarning()
+      +'<div id="dlg-prev"></div>'
+      +'<div class="foot"><span class="why">Writes selection.contested via patch-data, attributed to you, pinned.</span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Resolve</button></div>',
+      function(fm){
+        function build(){
+          var ch=(fm.querySelector('input[name=chosen]:checked')||{}).value, who=fm.who.value.trim(), id=mintDecisionId();
+          var entry={id:c.id, key:c.key, status:'resolved', values:c.values, chosen:ch, reason:fm.reason.value.trim(), decided_by:id};
+          if(c.opened_by) entry.opened_by=c.opened_by;
+          var next=list.map(function(x){ return x.id===cid?entry:x; });
+          var rationale=id+' · resolve · '+A+' · chose '+(ch||'?')+' · by human:'+(who||'<you>')+' — '+entry.reason;
+          return {who:who, ch:ch, next:next, entry:entry, rationale:rationale};
+        }
+        function upd(){ var b=build(); $('dlg-prev').innerHTML=preview('What will be written', {path:'selection.contested', entry:b.entry, decision:{agent:'human', action:'resolve', pinned:true, rationale:b.rationale}}); }
+        fm.addEventListener('input',upd); fm.addEventListener('change',upd); upd();
+        fm.onsubmit=function(e){
+          e.preventDefault();
+          if(!hasHost()){ toast('Resolving needs the Napkin Studio OS host.'); return; }
+          var b=build();
+          if(!b.ch){ toast('Pick the value this document uses.'); return; }
+          if(!b.entry.reason){ fm.reason.reportValidity(); return; }
+          if(!fm.who.checkValidity()){ fm.who.reportValidity(); return; }
+          setReviewer(b.who);
+          window.clan.patchData('selection.contested', b.next, {actor:'human', action:'resolve', pinned:true, rationale:b.rationale}).then(function(res){
+            if(res&&res.ok){ closeDialog(); toast('Contest resolved.'); loadChain(); }
+            else toast('Not saved: '+((res&&(res.error||res.message))||'the host refused the write'));
+          }).catch(function(err){ toast('Not saved: '+err); });
+        };
+      });
+  }
+
+  // ── STUBS: show the control and the typed decision it will record.
+  function doVerdict(k, polarity){
+    var f=FIELD[k], A=addr('campaign.'+k);
+    var codes=['other']; decs().forEach(function(d){ if(d.reason_code && codes.indexOf(d.reason_code)===-1) codes.push(d.reason_code); });
+    openDialog('<h2 id="dlg-title">Mark “'+esc(f.label)+'” '+polarity+'</h2><div class="addr">'+esc(A)+'</div>'
+      +(polarity==='bad'?'<p style="margin:0">A bad verdict stops re-extraction from writing over the field until it is revised, or the verdict overridden with a reason. It blocks the lock while unanswered.</p>':'<p style="margin:0">A good verdict feeds exemplars.</p>')
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Reason code<input type="text" name="code" list="codes" value="'+(polarity==='bad'?'other':'')+'"><datalist id="codes">'+codes.map(function(c){return '<option value="'+esc(c)+'">';}).join('')+'</datalist></label>'
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Rationale '+(polarity==='bad'?'<span class="req">required</span>':'(required for other)')+'<textarea name="why" '+(polarity==='bad'?'required':'')+'></textarea></label>'
+      +'<div id="dlg-prev"></div>'+stubFoot(STUB.verdict),
+      function(fm){ function upd(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', {kind:'verdict', polarity:polarity, reason_code:fm.code.value||undefined, targets:[A], actor:'human:'+(reviewer()||'<you>'), rationale:fm.why.value}); } fm.addEventListener('input',upd); upd(); fm.onsubmit=function(e){ e.preventDefault(); }; });
+  }
+  function doClassify(k){
+    var f=FIELD[k], A=addr('campaign.'+k), env=camp()[k]||{};
+    var cur=classifyState('campaign.'+k), L=(cur&&cur.licence)||{model:true,export:true,corpus:true};
+    var backed=arr(env.fact_ids).length>0;
+    openDialog('<h2 id="dlg-title">Confidential — “'+esc(f.label)+'”</h2><div class="addr">'+esc(A)+'</div>'
+      +'<fieldset><legend>May it reach…</legend>'
+      +['model','export','corpus'].map(function(d){ return '<label class="opt"><input type="checkbox" name="'+d+'"'+(L[d]?' checked':'')+'><span><b>'+{model:'The model',export:'An export',corpus:'The corpus'}[d]+'</b><br><span class="muted" style="font-size:12px">'+{model:'prompt selection may include it',export:'it may appear in anything sent outside',corpus:'it may enter the dossier the system learns from'}[d]+'</span></span></label>'; }).join('')+'</fieldset>'
+      +(backed?'<div class="flag amber"><div>This field is backed by pins. The mark supersedes the licence of those facts in the layer, so it does not leak into the next campaign.</div></div>':'')
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Rationale<textarea name="why"></textarea></label>'
+      +'<div id="dlg-prev"></div>'+stubFoot(STUB.classify),
+      function(fm){ function upd(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', {kind:'classify', targets:[A], licence:{model:fm.model.checked, export:fm.export.checked, corpus:fm.corpus.checked}, cites:backed?env.fact_ids:undefined, actor:'human:'+(reviewer()||'<you>'), rationale:fm.why.value}); } fm.addEventListener('input',upd); fm.addEventListener('change',upd); upd(); fm.onsubmit=function(e){ e.preventDefault(); }; });
+  }
+  function doFinding(id, act){
+    var f=fnds()[id], A=addr('findings['+id+']'); if(!f) return;
+    var flags=fieldsCiting(id);
+    openDialog('<h2 id="dlg-title">'+(act==='verify'?'Verify':'Reject')+' finding</h2><div class="addr">'+esc(A)+'</div>'
+      +'<div class="card s-proposed" style="box-shadow:none"><span class="derived">'+ICON.agent+'Derived by the agent</span><div class="stmt">'+esc(f.statement)+'</div>'+pinChips(f.cites)+'</div>'
+      +(act==='verify'?'<p style="margin:0">Verifying creates a <span class="mono">human:&lt;you&gt;</span> source at tier reviewer-verified, writes the finding to the layer as a synthesis fact citing these pins, and pins it. It inherits the strictest licence among its citations.</p>'
+        :'<p style="margin:0">Rejecting flags every field that cites it'+(flags.length?' — '+flags.map(function(x){return '<b>'+esc(x.label)+'</b>';}).join(', '):'')+' — and the lock waits until they are revised.</p>')
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Rationale '+(act==='reject'?'<span class="req">required</span>':'')+'<textarea name="why"></textarea></label>'
+      +'<div id="dlg-prev"></div>'+stubFoot(STUB.finding),
+      function(fm){ function upd(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', act==='verify'
+          ? {kind:'verify', targets:[A], cites:[id].concat(f.cites), source:{uri:'human:'+(reviewer()||'<you>'), tier:'reviewer-verified'}, rationale:fm.why.value}
+          : {kind:'verdict', polarity:'bad', targets:[A], cites:[id].concat(f.cites), flags:flags.map(function(x){return addr('campaign.'+x.k);}), rationale:fm.why.value}); } fm.addEventListener('input',upd); upd(); fm.onsubmit=function(e){ e.preventDefault(); }; });
+  }
+  function doPin(a){
+    var id=/facts\[(.+)\]$/.exec(a); id=id&&id[1]; var p=pins()[id]; if(!p) return;
+    openDialog('<h2 id="dlg-title">Take the current version</h2><div class="addr">'+esc(a)+'</div>'
+      +'<p style="margin:0">Pinned <b>'+esc(fmtPinValue(p))+'</b> ('+esc(p.key)+(p.market?', '+esc(p.market):'')+', as of '+esc(p.as_of)+'). The layer is now at v'+esc(p.current_version||'?')+'. Taking it is a new pin the lease holder makes; the old one is superseded, not edited.</p>'
+      +'<div id="dlg-prev"></div>'+stubFoot(STUB.pin),
+      function(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', {kind:'pin', targets:[a], cites:[id], rationale:'Take v'+(p.current_version||'?')+' of '+p.entity+' '+p.key}); });
+  }
+  function doWhy(p, A){
+    var env=null, m=/^campaign\.([a-z_]+)$/.exec(p); if(m) env=camp()[m[1]];
+    var ds=decisionsFor(p).sort(function(a,b){ return ts(b)-ts(a); });
+    var setter=env&&env.decision;
+    var lbl=m?FIELD[m[1]].label:p;
+    openDialog('<h2 id="dlg-title">Why is this here?</h2><div class="addr">'+esc(A)+'</div>'
+      +(env?'<div class="field o-'+esc(env.origin)+'" style="box-shadow:none"><div class="fh"><span class="lab">'+esc(lbl)+'</span>'+originBadge(env.origin)+'</div>'+renderValue(FIELD[m[1]], env)+'<div class="prov">'+provenance(env, FIELD[m[1]])+'</div></div>':'')
+      +(setter?'<div class="wholine">Current value set by <span class="mono">'+esc(setter)+'</span>'+(decById(setter)?'':' <span class="muted">(not in the chain yet — entries written before W1P-I5 carry no id; see the rationale)</span>')+'</div>':'')
+      +(CHAIN.state!=='ok'?'<div class="empty-state">The decision chain is not available here.</div>':ds.length?'<ol class="tl">'+ds.map(function(d){ return decisionLi(d, d.id&&d.id===setter); }).join('')+'</ol>':'<div class="empty-state">No decision in the chain names this address.</div>')
+      +'<div class="foot"><span class="why">Read from agent/decision-chain.yaml. The OS layer’s /history adds each cited fact’s source and tier.</span><button type="button" class="btn primary" data-close>Done</button></div>');
+  }
+
+  // ── LOCK (Contract 3 §11): lists blockers; final step is W5-Z1.
+  function doLock(){
+    var b=blockers(), F=fnds(), st=stalePins();
+    var h='<h2 id="dlg-title">Lock and accept</h2><div class="addr">'+esc(docId())+'</div>';
+    if(b.length){
+      h+='<p style="margin:0">'+b.length+' item'+(b.length===1?'':'s')+' must be resolved first. Locking is file-wide: a locked campaign is brief-ready.</p><ul class="blockers">'+b.map(function(x){ return '<li><span class="k">'+esc(x.k)+'</span><span>'+x.html+'</span></li>'; }).join('')+'</ul>';
+    } else {
+      h+='<p style="margin:0">Nothing blocks the lock. Confirming verifies each finding below and writes it to the layer.</p>'
+        +'<ul class="blockers">'+Object.keys(F).map(function(id){ return '<li class="info"><span class="k">'+esc(F[id].status)+'</span><span>'+esc(F[id].statement)+'</span></li>'; }).join('')+'</ul>';
+    }
+    h+='<ul class="blockers"><li class="info"><span class="k">Branches</span><span>Unmerged agent branches are checked by the host at lock.</span></li>'
+      +(st.length?'<li class="info"><span class="k">Stale pins</span><span>'+st.length+' stale pin'+(st.length===1?'':'s')+' ('+st.map(function(id){ return '<a href="#fact-'+esc(id)+'">'+esc(pins()[id].key)+'</a>'; }).join(', ')+') will be accepted as frozen.</span></li>':'')+'</ul>';
+    h+='<div class="foot"><span class="why">'+esc(b.length?'Disabled while anything above is open.':STUB.lock)+'</span><button type="button" class="btn" data-close>Close</button><button type="button" class="btn primary" disabled aria-disabled="true" title="'+esc(b.length?b.length+' blockers':STUB.lock)+'">Accept and lock</button></div>';
+    openDialog(h);
+  }
+
+  // ── reviewer
+  function doWho(){
+    openDialog('<h2 id="dlg-title">Who is reviewing?</h2>'+whoField()+'<div class="foot"><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Save</button></div>',
+      function(fm){ fm.onsubmit=function(e){ e.preventDefault(); if(!fm.who.checkValidity()){ fm.who.reportValidity(); return; } setReviewer(fm.who.value.trim()); closeDialog(); renderTop(); }; });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // research actions — clan.apiProxy('middleware', {task, input}) per the
+  // napkin.middleware/1 envelope. Tasks are the ones app/pipeline.yaml declares.
+  // The HOST applies any `change` and rebuilds the projection; the view never
+  // writes middleware output. It shows the reply, polls long jobs, and
+  // re-renders when the host's write lands (clan:dataupdated).
+  // ════════════════════════════════════════════════════════════════════════
+  var MW_API='napkin.middleware/1';
+  var JOBS=[]; // {key, task, state, handler, progress, summary, scope, applied, version, error, jobId}
+  function mwError(res){
+    if(!res) return 'Empty reply from the host.';
+    if(res.error){
+      var e=res.error;
+      if(typeof e==='string') return e;
+      return (e.type?e.type+(e.status?' ('+e.status+')':'')+': ':'')+(e.message||JSON.stringify(e));
+    }
+    if(res.api!==MW_API) return 'Not a '+MW_API+' reply'+(res.api?' (got '+res.api+')':'')+'. Nothing was applied.';
+    if(res.job && res.job.state==='failed') return 'Job failed: '+(res.job.error && (res.job.error.message||res.job.error) || 'no reason given');
+    return null;
+  }
+  function jobFrom(j, res){
+    j.handler=res.handler||j.handler;
+    if(res.job){ j.state=res.job.state; j.progress=res.job.progress||j.progress; j.jobId=res.job.id||j.jobId; }
+    if(res.result && res.result.summary) j.summary=res.result.summary;
+    if(res.trace && res.trace.scope) j.scope=res.trace.scope;
+    if(res.trace && res.trace.backend) j.backend=res.trace.backend;
+    if(res.change){ j.applied=res.change.applied; j.version=res.change.version; j.reason=res.change.reason; }
+  }
+  function renderJobs(){
+    var el=$('jobs'); if(!el) return;
+    if(!JOBS.length){ el.innerHTML=''; return; }
+    el.innerHTML='<div class="group no-print"><h3>Research activity</h3><div class="cards">'+JOBS.map(function(j){
+      var pg=j.progress&&j.progress.total?j.progress:null, pct=pg?Math.round(100*pg.done/pg.total):null;
+      var st=j.error?'alert':j.state==='done'?'ok':'warn';
+      var stl=j.error?'failed':j.state||'sending';
+      var sc=j.scope?Object.keys(j.scope).map(function(k){ return k+' '+j.scope[k]; }).join(' · '):'';
+      return '<article class="card job"><div class="fh"><span class="pill '+st+'"><span class="d"></span>'+esc(stl)+'</span><span class="lab mono" style="font-weight:500">'+esc(j.task)+'</span>'
+        +(j.handler?'<span class="pill">'+esc(j.handler)+'</span>':'')+'<span class="sp" style="flex:1"></span>'+(j.jobId?'<span class="path">'+esc(j.jobId)+'</span>':'')+'</div>'
+        +(pg?'<div class="prog" role="progressbar" aria-valuemin="0" aria-valuemax="'+pg.total+'" aria-valuenow="'+pg.done+'" aria-label="'+esc(j.task)+' progress"><i style="width:'+pct+'%"></i></div><div class="srcline">'+pg.done+' of '+pg.total+' runs</div>':'')
+        +(j.summary?'<div style="font-size:14px;margin-top:6px">'+esc(j.summary)+'</div>':'')
+        +(j.error?'<div class="flag" style="margin-top:8px"><div>'+esc(j.error)+'</div></div>':'')
+        +'<dl class="kv" style="margin-top:8px">'
+        +(sc?'<dt>Scope</dt><dd class="mono" style="font-size:12px">'+esc(sc)+'</dd>':'')
+        +(j.backend?'<dt>Backend</dt><dd class="mono" style="font-size:12px">'+esc(j.backend)+'</dd>':'')
+        +(j.applied!==undefined?'<dt>Change</dt><dd>'+(j.applied?'<span class="pill ok"><span class="d"></span>applied by the host</span> <span class="mono" style="font-size:12px">version '+esc(j.version)+'</span>':'<span class="pill alert"><span class="d"></span>not applied</span> '+esc(j.reason||''))+'</dd>':(j.state==='done'&&!j.error?'<dt>Change</dt><dd class="muted">none</dd>':''))
+        +'</dl></article>';
+    }).join('')+'</div></div>';
+  }
+  function afterApplied(j){
+    // The host wrote the change; the bridge / shell refreshes __CLAN__.data and
+    // fires clan:dataupdated. Re-read the chain and re-render either way.
+    if(j.applied){ loadChain(); render(); }
+  }
+  function poll(j, delay){
+    setTimeout(function(){
+      window.clan.apiProxy('middleware', {task:'job_status', input:{job_id:j.jobId}}).then(function(res){
+        var err=mwError(res);
+        if(err){ j.error=err; renderJobs(); return; }
+        jobFrom(j, res); renderJobs();
+        if(res.job && (res.job.state==='queued'||res.job.state==='running')) poll(j, Math.min(delay*1.5, 10000));
+        else afterApplied(j);
+      }).catch(function(e){ j.error='The middleware could not be reached: '+(e&&e.message||e); renderJobs(); });
+    }, delay);
+  }
+  function runTask(task, input){
+    if(!(window.clan&&window.clan.apiProxy)){ toast('Research runs through the Napkin host’s api-proxy.'); return; }
+    var j={task:task, state:'sending'}; JOBS.unshift(j); renderJobs();
+    var el=$('jobs'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'nearest'});
+    window.clan.apiProxy('middleware', {task:task, input:input}).then(function(res){
+      var err=mwError(res);
+      if(err){ j.error=err; renderJobs(); return; }
+      jobFrom(j, res); renderJobs();
+      if(res.job && (res.job.state==='queued'||res.job.state==='running') && j.jobId) poll(j, 1200);
+      else afterApplied(j);
+    }).catch(function(e){ j.error='The middleware could not be reached: '+(e&&e.message||e); renderJobs(); });
+  }
+  function attachments(){
+    return Object.keys(mats()).filter(function(id){ return mats()[id].asset; }).map(function(id){ var m=mats()[id];
+      return {name:String(m.asset).replace(/^(human\/)?assets\//,''), sha256:m.sha256}; });
+  }
+  function doExtract(){
+    var protectedF=FIELDS.filter(function(f){ var e=camp()[f.k]; return isObj(e)&&(e.origin==='confirmed'||e.origin==='stated'||verdictState('campaign.'+f.k).unanswered.length); });
+    openDialog('<h2 id="dlg-title">Extract the ask</h2>'
+      +'<p style="margin:0">One grounded extraction over your prompt, the attached material and what the brand and category layers already know. It abstains where nothing supports a value — it never fills a field because it was empty.</p>'
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Your prompt<textarea name="prompt" placeholder="What has the client asked for? The attached brief is the source of record."></textarea></label>'
+      +'<fieldset><legend>Material it reads</legend>'+(attachments().length?attachments().map(function(a){ return '<div class="srcline">'+esc(a.name)+' · '+esc(String(a.sha256).slice(0,19))+'…</div>'; }).join(''):'<div class="muted" style="font-size:12.5px">No attached material. Open the campaign from the client’s brief or email first.</div>')+'</fieldset>'
+      +(protectedF.length?'<div class="wholine">'+protectedF.length+' field'+(protectedF.length===1?' is':'s are')+' human-owned or carry a bad verdict ('+protectedF.map(function(f){ return esc(f.label); }).join(', ')+'). Extraction proposes over those; it does not write them.</div>':'')
+      +'<div id="dlg-prev"></div>'
+      +'<div class="foot"><span class="why">The host applies what comes back and records the decision; this view writes nothing.</span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Extract</button></div>',
+      function(fm){
+        function payload(){ return {task:'extract_ask', input:{prompt:fm.prompt.value, attachments:attachments()}}; }
+        function upd(){ $('dlg-prev').innerHTML=preview('Request', payload()); }
+        fm.prompt.addEventListener('input',upd); upd();
+        fm.onsubmit=function(e){ e.preventDefault(); var p=payload(); closeDialog(); runTask(p.task, p.input); };
+      });
+  }
+  function doResearch(){
+    if(!gateReached('research')){ toast('Research needs: '+missingFor('created').concat(missingFor('research')).map(function(f){return f.label;}).join(', ')); return; }
+    var ms=arr(camp().markets.value);
+    openDialog('<h2 id="dlg-title">Run research</h2>'
+      +'<p style="margin:0">One run per lens × market, each on its own branch, merged by entity + key + market. A difference between markets is two facts; a disagreement opens a contest and nothing is picked.</p>'
+      +'<fieldset><legend>Lenses</legend>'+LENSES.map(function(L){ return '<label class="opt"><input type="checkbox" name="lens" value="'+L.k+'" checked><span>'+esc(L.l)+' <span class="muted mono" style="font-size:11px">'+esc(L.c)+'</span></span></label>'; }).join('')+'</fieldset>'
+      +'<fieldset><legend>Markets</legend>'+ms.map(function(m){ return '<label class="opt"><input type="checkbox" name="market" value="'+esc(m)+'" checked><span>'+esc(m)+'</span></label>'; }).join('')+'</fieldset>'
+      +'<div id="dlg-prev"></div>'
+      +'<div class="foot"><span class="why" id="dlg-n"></span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Run</button></div>',
+      function(fm){
+        function vals(n){ return Array.prototype.slice.call(fm.querySelectorAll('input[name='+n+']:checked')).map(function(x){ return x.value; }); }
+        function payload(){ var l=vals('lens'), m=vals('market'); var input={};
+          if(l.length!==LENSES.length) input.lenses=l; if(m.length!==ms.length) input.markets=m; return {task:'research_lens', input:input, n:l.length*m.length}; }
+        function upd(){ var p=payload(); $('dlg-prev').innerHTML=preview('Request', {task:p.task, input:p.input}); $('dlg-n').textContent=p.n+' run'+(p.n===1?'':'s')+'. The host applies the merged result; this view writes nothing.'; }
+        fm.addEventListener('change',upd); upd();
+        fm.onsubmit=function(e){ e.preventDefault(); var p=payload(); if(!p.n){ toast('Pick at least one lens and one market.'); return; } closeDialog(); runTask(p.task, p.input); };
+      });
+  }
+  function doSynthesise(){
+    if(!Object.keys(pins()).length){ toast('Synthesis reads the pins; there are none yet. Run research first.'); return; }
+    openDialog('<h2 id="dlg-title">Synthesise findings</h2>'
+      +'<p style="margin:0">Findings are drawn from the pins only, never the raw layer. Each comes back <b>proposed</b>, labelled derived by the agent, with its confidence computed from the pins it cites.</p>'
+      +'<fieldset><legend>Lenses</legend>'+LENSES.map(function(L){ return '<label class="opt"><input type="checkbox" name="lens" value="'+L.k+'" checked><span>'+esc(L.l)+'</span></label>'; }).join('')+'</fieldset>'
+      +'<div id="dlg-prev"></div>'
+      +'<div class="foot"><span class="why">The host applies what comes back; this view writes nothing.</span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Synthesise</button></div>',
+      function(fm){
+        function payload(){ var l=Array.prototype.slice.call(fm.querySelectorAll('input[name=lens]:checked')).map(function(x){return x.value;}); return {task:'synthesise_findings', input:l.length===LENSES.length?{}:{lenses:l}}; }
+        function upd(){ $('dlg-prev').innerHTML=preview('Request', payload()); }
+        fm.addEventListener('change',upd); upd();
+        fm.onsubmit=function(e){ e.preventDefault(); var p=payload(); closeDialog(); runTask(p.task, p.input); };
+      });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // export (EXPORT-CONTRACT Path B): the view renders at runtime, so it claims
+  // clan:export and hands the host a static, light, control-free document.
+  // ════════════════════════════════════════════════════════════════════════
+  function buildExportHTML(){
+    var clone=$('doc').cloneNode(true);
+    clone.querySelectorAll('.ctl,.no-print,button,dialog,select').forEach(function(n){ n.remove(); });
+    var css=$('cr-style').textContent;
+    var title=(camp().name&&camp().name.value)||'Campaign research';
+    return '<!DOCTYPE html><html lang="en" data-theme="light" data-color-scheme="light"><head><meta charset="UTF-8"><title>'+esc(title)+'</title>'
+      +'<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">'
+      +'<style>'+css+'<\/style><\/head><body><main id="doc">'+clone.innerHTML+'<\/main><\/body><\/html>';
+  }
+  function doExport(kind){
+    if(!(window.clan&&window.clan.exportDoc)){ window.print(); return; }
+    var base=((camp().name&&camp().name.value)||'campaign-research').replace(/[^\w.-]+/g,'-');
+    window.clan.exportDoc(kind, base, buildExportHTML()).then(function(res){ if(res&&res.ok===false) toast('Could not start export.'); }).catch(function(e){ toast('Export failed: '+e); });
+  }
+  window.addEventListener('clan:export', function(e){ e.preventDefault(); doExport((e.detail&&e.detail.kind)==='html'?'html':'pdf'); });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // wiring
+  // ════════════════════════════════════════════════════════════════════════
+  document.addEventListener('click', function(e){
+    var b=e.target.closest('[data-act]'); if(!b) return;
+    var act=b.getAttribute('data-act');
+    e.preventDefault();
+    switch(act){
+      case 'confirm': doConfirm(b.getAttribute('data-field')); break;
+      case 'verdict-good': doVerdict(b.getAttribute('data-field'),'good'); break;
+      case 'verdict-bad': doVerdict(b.getAttribute('data-field'),'bad'); break;
+      case 'classify': doClassify(b.getAttribute('data-field')); break;
+      case 'resolve': doResolve(b.getAttribute('data-contest')); break;
+      case 'verify': doFinding(/findings\[(.+)\]$/.exec(b.getAttribute('data-address'))[1],'verify'); break;
+      case 'reject': doFinding(/findings\[(.+)\]$/.exec(b.getAttribute('data-address'))[1],'reject'); break;
+      case 'pin': doPin(b.getAttribute('data-address')); break;
+      case 'why': doWhy(b.getAttribute('data-path'), b.getAttribute('data-address')); break;
+    }
+  });
+  $('lockBtn').addEventListener('click', doLock);
+  $('whoBtn').addEventListener('click', doWho);
+  $('extractBtn').addEventListener('click', doExtract);
+  $('researchBtn').addEventListener('click', doResearch);
+  $('synthBtn').addEventListener('click', doSynthesise);
+  $('exportBtn').addEventListener('click', function(){ doExport('pdf'); });
+
+  window.addEventListener('clan:dataupdated', render);
+  render();
+  loadChain();
+})();
+</script>
+</body>
+</html>
