@@ -681,28 +681,39 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     egress: list[dict] = []
     for b in blocks.values():
         for h in list(b.hits):
-            sc = str(h.metadata.get("scope") or "global")
-            tn = str(h.metadata.get("tenant") or "house")
-            # Tenant is checked first: another agency's material is the worse breach, and
-            # its scope value is meaningless here anyway — `brand:bmw` from a different
-            # agency is not this agency's BMW.
-            bad = ("tenant", tn, sorted(allowed_tenants)) if tn not in allowed_tenants else \
-                  ("scope", sc, sorted(allowed)) if sc not in allowed else None
-            if bad:
-                field_name, got, allow = bad
+            rec = _egress_refusal(h, allowed, allowed_tenants)
+            if rec:
                 b.hits.remove(h)
                 b.dropped += 1
-                widened.append(f"EGRESS: dropped {h.cite} — {field_name} {got!r} not in {allow}")
+                widened.append(f"EGRESS: dropped {h.cite} — {rec['on']} {rec[rec['on']]!r} not in {rec['allowed']}")
                 # Also recorded structurally. An egress drop is the filter failing and the
                 # egress check catching it, so it is evidence of a bug somewhere upstream —
                 # it should be findable by query, not only by reading run logs.
-                egress.append({"cite": h.cite, "bucket": b.bucket, "on": field_name,
-                               "scope": sc, "tenant": tn, "doc_id": h.doc_id,
-                               "allowed": allow})
+                egress.append({**rec, "bucket": b.bucket})
 
     return BriefContext(blocks=blocks, query=query, keywords=keywords,
                         filters=used_filters, widened=widened, scopes=list(scopes),
                         tenants=list(tenants), egress=egress, validation=validation)
+
+
+# ---- the egress rule, shared by build() and build_multi() --------------------------
+def _egress_refusal(h: Hit, allowed_scopes: set, allowed_tenants: set) -> dict | None:
+    """The record for a hit that must not leave retrieval, or None if it may.
+
+    One rule for both entry points, because it is the confidentiality boundary: two
+    copies of it can drift, and the one that drifts is the one nobody is looking at.
+    Tenant is checked first — another agency's material is the worse breach, and its
+    scope value is meaningless here anyway (`brand:bmw` from a different agency is not
+    this agency's BMW)."""
+    sc = str(h.metadata.get("scope") or "global")
+    tn = str(h.metadata.get("tenant") or "house")
+    if tn not in allowed_tenants:
+        on, allow = "tenant", sorted(allowed_tenants)
+    elif sc not in allowed_scopes:
+        on, allow = "scope", sorted(allowed_scopes)
+    else:
+        return None
+    return {"cite": h.cite, "on": on, "scope": sc, "tenant": tn, "doc_id": h.doc_id, "allowed": allow}
 
 
 # ---- per-bucket retrieval, shared by build() and build_multi() ---------------------
@@ -852,9 +863,9 @@ def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_fie
                    for h in tier if h is not None]                      # interleave buckets
         field_hits = []
         for h in ordered:
-            sc, tn = str(h.metadata.get("scope") or "global"), str(h.metadata.get("tenant") or "house")
-            if tn not in allowed_t or sc not in allowed:
-                egress.append({"cite": h.cite, "field": f, "scope": sc, "tenant": tn})
+            rec = _egress_refusal(h, allowed, allowed_t)
+            if rec:
+                egress.append({**rec, "field": f})
                 continue
             if h.cite in seen or len(field_hits) >= per_field:
                 continue

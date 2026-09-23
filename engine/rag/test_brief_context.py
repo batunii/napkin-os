@@ -408,17 +408,20 @@ def test_egress_drops_are_recorded_structurally_not_only_as_prose():
     assert ctx.trace()["egress"][0]["scope"] == "brand:audi"
 
 
-def test_egress_check_drops_a_hit_from_a_scope_we_did_not_ask_for():
+def test_egress_check_drops_a_hit_from_a_scope_we_did_not_ask_for(monkeypatch):
     """check_grounding cannot catch this: a leaked chunk present in the context block is
-    by definition perfectly grounded. The only place to catch it is on the way out."""
-    ours = _hit("ipa_1", 100); ours.metadata = {"scope": "global"}
-    theirs = _hit("run_mercedes#tone", 100); theirs.metadata = {"scope": "brand:mercedes"}
-    blk = bc.Block("exemplars", [ours, theirs], 5000)
-    allowed = {"global", "brand:bmw"}
-    widened = []
-    for h in list(blk.hits):
-        if str(h.metadata.get("scope") or "global") not in allowed:
-            blk.hits.remove(h); blk.dropped += 1
-            widened.append(f"EGRESS: dropped {h.cite}")
-    assert [h.cite for h in blk.hits] == ["ipa_1"]
-    assert widened and "run_mercedes" in widened[0]
+    by definition perfectly grounded. The only place to catch it is on the way out.
+    Runs the REAL build() egress (the earlier version re-implemented the loop inline, so
+    deleting the check left it passing)."""
+    import rag
+    import judge
+    ours = _hit("ipa_1", 100); ours.metadata = {"scope": "global", "tenant": "house"}
+    theirs = _hit("run_mercedes#tone", 100); theirs.metadata = {"scope": "brand:mercedes", "tenant": "house"}
+    monkeypatch.setattr(rag, "open_store", lambda *a, **k: None)
+    monkeypatch.setattr(rag, "embed_query", lambda q: [1.0])
+    monkeypatch.setattr(bc, "_bucket_hits",
+                        lambda *a, **k: ([ours, theirs] if a[3] == "exemplars" else [], {}))
+    ctx = bc.build({"brand": "BMW", "problem": "p"}, brand="bmw", chain=judge.Chain([]))
+    assert [h.cite for h in ctx.blocks["exemplars"].hits] == ["ipa_1"]
+    assert any("run_mercedes" in w and "EGRESS" in w for w in ctx.widened)
+    assert ctx.egress[0]["cite"] == "run_mercedes#tone" and ctx.egress[0]["on"] == "scope"

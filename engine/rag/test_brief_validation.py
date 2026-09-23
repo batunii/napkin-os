@@ -215,3 +215,21 @@ def test_build_multi_embeds_once_and_validates_each_field_against_its_own_query(
     assert embeds == [5] and len(be.calls) == 5 and mc.trace["calls"]["searches"] == 15   # one call per field
     all_cites = [h.cite for hs in mc.fields.values() for h in hs]
     assert len(all_cites) == len(set(all_cites))                        # deduplicated across fields
+
+
+def test_build_multi_egress_drops_and_records_out_of_scope_hits(monkeypatch):
+    """The production (mix) path's confidentiality boundary: a hit from another tenant or
+    an unauthorised brand scope is removed and recorded, never served (review finding:
+    this branch had no test)."""
+    import rag
+    monkeypatch.setattr(rag, "open_store", lambda *a, **k: None)
+    monkeypatch.setattr(rag, "embed", lambda texts, t="passage": ([[1.0]] * len(texts), "nim:x"))
+    leak = [bc.Hit(cite="leak_t", doc_id="d1", source="ipa", bucket="exemplars", title="t", section="s",
+                   header="", text="x", score=1.0, metadata={"scope": "global", "tenant": "other_agency"}),
+            bc.Hit(cite="leak_s", doc_id="d2", source="ipa", bucket="exemplars", title="t", section="s",
+                   header="", text="x", score=1.0, metadata={"scope": "brand:mercedes", "tenant": "house"}),
+            hit("ok", "exemplars")]
+    monkeypatch.setattr(bc, "_bucket_hits", lambda *a, **k: (list(leak) if a[3] == "exemplars" else [], {}))
+    mc = bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([]))
+    assert [h.cite for h in mc.fields["f"]] == ["ok"]
+    assert {(e["cite"], e["on"]) for e in mc.trace["egress"]} == {("leak_t", "tenant"), ("leak_s", "scope")}
