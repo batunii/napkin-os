@@ -4,6 +4,12 @@
 
 //! The Napkin Studio OS app library: installed template apps, the documents
 //! instantiated from them, and the home page (which is itself a CLAN app).
+//!
+//! Each thing that makes a document comes twice: a `*_change` that says what
+//! would be written and writes nothing, and a helper of the old name that
+//! applies it through the store for a shell that just wants it done. Home and
+//! installed templates are library documents rather than instances, but they
+//! go through the same funnel.
 
 use clan_sdk::{
     create, instantiate, make_template, spinoff, AppInfo, ClanBuilder, ClanFile, CreateOptions,
@@ -11,6 +17,7 @@ use clan_sdk::{
 };
 use serde::Serialize;
 
+use crate::document::Document;
 use crate::error::{HostError, HostResult};
 use crate::store::{Change, DocId, DocStore};
 
@@ -94,6 +101,14 @@ pub fn scan_recent(store: &dyn DocStore) -> Vec<RecentDoc> {
 
 /// Install a template app from its packed bytes into the library.
 pub fn install_app(store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<InstalledApp> {
+    let (app, change) = install_change(store, bytes)?;
+    store.apply(&change)?;
+    Ok(app)
+}
+
+/// What installing `bytes` would write, without writing it. Reinstalling
+/// replaces the copy that is there, and says which version it expected.
+pub fn install_change(store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<(InstalledApp, Change)> {
     let clan = ClanFile::from_bytes(bytes.clone())?;
     let m = clan.manifest();
     if m.document_type.as_deref() != Some("template") {
@@ -106,20 +121,43 @@ pub fn install_app(store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<Installed
         .clone()
         .ok_or_else(|| HostError::bad_request("template has no app block"))?;
     let dest = store.app_template(&a.app_id);
-    // Reinstalling replaces the copy that is there, and says which one.
     let change = if store.exists(&dest) {
         Change::replace(dest.clone(), store.version(&dest)?, bytes)
     } else {
         Change::create(dest.clone(), bytes)
     };
-    store.apply(&change)?;
-    Ok(InstalledApp {
-        app_id: a.app_id,
-        name: a.name,
-        version: a.version,
-        path: dest.to_string(),
-        icon: a.icon,
-    })
+    Ok((
+        InstalledApp {
+            app_id: a.app_id,
+            name: a.name,
+            version: a.version,
+            path: dest.to_string(),
+            icon: a.icon,
+        },
+        change,
+    ))
+}
+
+/// The installed template for `app_id`, or a "not installed" error carrying
+/// the store's status.
+fn load_template(store: &dyn DocStore, app_id: &str) -> HostResult<ClanFile> {
+    let tpl_id = store.app_template(app_id);
+    store
+        .read(&tpl_id)
+        .and_then(|b| Ok(ClanFile::from_bytes(b)?))
+        .map_err(|e| HostError::new(e.status, format!("app not installed: {e}")))
+}
+
+/// A new document's id: the library's name for it, from the first characters
+/// of its manifest id so the name is stable and readable.
+fn allocate(store: &dyn DocStore, app_id: &str, bytes: &[u8]) -> HostResult<DocId> {
+    let id_short = ClanFile::from_bytes(bytes.to_vec())?
+        .manifest()
+        .id
+        .chars()
+        .take(8)
+        .collect::<String>();
+    store.new_document(app_id, &id_short)
 }
 
 /// Instantiate a working document from an installed app and return its id.
@@ -129,11 +167,18 @@ pub fn create_instance(
     app_id: &str,
     title: Option<String>,
 ) -> HostResult<DocId> {
-    let tpl_id = store.app_template(app_id);
-    let template = store
-        .read(&tpl_id)
-        .and_then(|b| Ok(ClanFile::from_bytes(b)?))
-        .map_err(|e| HostError::new(e.status, format!("app not installed: {e}")))?;
+    let change = instance_change(store, app_id, title)?;
+    store.apply(&change)?;
+    Ok(change.doc)
+}
+
+/// The new document [`create_instance`] would write, without writing it.
+pub fn instance_change(
+    store: &dyn DocStore,
+    app_id: &str,
+    title: Option<String>,
+) -> HostResult<Change> {
+    let template = load_template(store, app_id)?;
     let bytes = instantiate(
         &template,
         InstantiateOptions {
@@ -143,15 +188,8 @@ pub fn create_instance(
             instance_id: None,
         },
     )?;
-    let id_short = ClanFile::from_bytes(bytes.clone())?
-        .manifest()
-        .id
-        .chars()
-        .take(8)
-        .collect::<String>();
-    let out = store.new_document(app_id, &id_short)?;
-    store.apply(&Change::create(out.clone(), bytes))?;
-    Ok(out)
+    let out = allocate(store, app_id, &bytes)?;
+    Ok(Change::create(out, bytes))
 }
 
 /// Which installed apps will take `source_app_id` as a spin-off source.
@@ -201,37 +239,70 @@ pub fn spinoff_document(
     title: Option<String>,
     map: Option<String>,
 ) -> HostResult<DocId> {
-    let tpl_id = store.app_template(target_app_id);
-    let template = store
-        .read(&tpl_id)
-        .and_then(|b| Ok(ClanFile::from_bytes(b)?))
-        .map_err(|e| HostError::new(e.status, format!("app not installed: {e}")))?;
+    // The target first: "that app is not installed" is the better answer
+    // when both are wrong.
+    let template = load_template(store, target_app_id)?;
     let source_clan = store
         .read(source)
         .and_then(|b| Ok(ClanFile::from_bytes(b)?))
         .map_err(|e| HostError::new(e.status, format!("source document: {e}")))?;
-
-    let bytes = spinoff(
+    let change = spinoff_from(
+        store,
         &template,
         &source_clan,
+        source,
+        target_app_id,
+        title,
+        map,
+    )?;
+    store.apply(&change)?;
+    Ok(change.doc)
+}
+
+/// The new document [`spinoff_document`] would write from the snapshot
+/// `source`, without writing it.
+pub fn spinoff_change(
+    store: &dyn DocStore,
+    source: &Document,
+    target_app_id: &str,
+    title: Option<String>,
+    map: Option<String>,
+) -> HostResult<Change> {
+    let template = load_template(store, target_app_id)?;
+    spinoff_from(
+        store,
+        &template,
+        source.clan(),
+        source.id(),
+        target_app_id,
+        title,
+        map,
+    )
+}
+
+fn spinoff_from(
+    store: &dyn DocStore,
+    template: &ClanFile,
+    source: &ClanFile,
+    source_id: &DocId,
+    target_app_id: &str,
+    title: Option<String>,
+    map: Option<String>,
+) -> HostResult<Change> {
+    let bytes = spinoff(
+        template,
+        source,
         SpinoffOptions {
             title: title.unwrap_or_default(),
             map,
             instance_id: None,
             // A DocId is the store's own address for the file; recording it is
             // what lets a restore find the parent again.
-            source_uri: Some(format!("clan-store:{source}")),
+            source_uri: Some(format!("clan-store:{source_id}")),
         },
     )?;
-    let id_short = ClanFile::from_bytes(bytes.clone())?
-        .manifest()
-        .id
-        .chars()
-        .take(8)
-        .collect::<String>();
-    let out = store.new_document(target_app_id, &id_short)?;
-    store.apply(&Change::create(out.clone(), bytes))?;
-    Ok(out)
+    let out = allocate(store, target_app_id, &bytes)?;
+    Ok(Change::create(out, bytes))
 }
 
 // ── The home page, as a CLAN file ───────────────────────────────────────────
@@ -250,9 +321,19 @@ pub const HOME_VERSION: &str = "v7";
 
 /// Build the home CLAN template (idempotent) and return its id.
 pub fn ensure_home(store: &dyn DocStore) -> HostResult<DocId> {
+    let (id, change) = home_change(store)?;
+    if let Some(change) = change {
+        store.apply(&change)?;
+    }
+    Ok(id)
+}
+
+/// Where the home app lives, and the change that builds it when this version
+/// of it has not been built yet.
+pub fn home_change(store: &dyn DocStore) -> HostResult<(DocId, Option<Change>)> {
     let id = store.home(HOME_VERSION)?;
     if store.exists(&id) {
-        return Ok(id);
+        return Ok((id, None));
     }
     let base = create(CreateOptions {
         title: "Napkin Studio".into(),
@@ -287,8 +368,8 @@ pub fn ensure_home(store: &dyn DocStore) -> HostResult<DocId> {
         },
         MakeTemplateOptions::default(),
     )?;
-    store.apply(&Change::create(id.clone(), tpl))?;
-    Ok(id)
+    let change = Change::create(id.clone(), tpl);
+    Ok((id, Some(change)))
 }
 
 #[cfg(test)]

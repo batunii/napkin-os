@@ -8,11 +8,17 @@
 //! pixels: opening a document, the `clan://` API an app inside the file calls,
 //! the app library, export, and the inference proxy.
 //!
-//! Nothing here knows what a shell is. A handler takes a [`session::Session`]
-//! and a [`config::HostConfig`], reaches storage only through a
-//! [`store::DocStore`], and returns bytes plus a list of [`event::HostEvent`]s
-//! for the shell to act on. The desktop shell binds that to a custom URI scheme
-//! and Tauri events; a web server binds the same table to HTTP.
+//! Nothing here knows what a shell is, and nothing here holds a document. An
+//! operation ([`ops`]) takes a [`ctx::Ctx`] saying who is asking and a
+//! [`document::Document`] — a snapshot at a version — and returns the
+//! [`document::Change`]s it implies; a store applies them through
+//! [`store::PartStore::apply`], the single write funnel, and a
+//! [`store::Library`] names where documents go. [`session::Session`] is the
+//! thin wrapper the desktop and browser shells use to hold one open snapshot
+//! and apply its changes; the routing table ([`routes`]) runs on top of it and
+//! returns bytes plus [`event::HostEvent`]s for the shell to act on. The
+//! desktop binds that to a custom URI scheme and Tauri events; a web server
+//! binds the same table to HTTP.
 
 pub mod config;
 pub mod ctx;
@@ -24,6 +30,7 @@ pub mod export;
 pub mod html;
 pub mod library;
 pub mod log;
+pub mod ops;
 pub mod prompt;
 #[cfg(feature = "native")]
 pub mod proxy;
@@ -39,14 +46,16 @@ pub use document::{Base, Change, Document, Version};
 pub use error::{HostError, HostResult};
 pub use event::HostEvent;
 pub use library::{
-    create_instance, ensure_home, install_app, scan_apps, scan_recent, spinoff_document,
-    spinoff_targets, InstalledApp, RecentDoc, SpinoffTarget,
+    create_instance, ensure_home, home_change, install_app, install_change, instance_change,
+    scan_apps, scan_recent, spinoff_change, spinoff_document, spinoff_targets, InstalledApp,
+    RecentDoc, SpinoffTarget,
 };
+pub use ops::Outcome;
 pub use prompt::{build as build_prompt, AgentPrompt};
 pub use routes::{
     dispatch, dispatch_async, handle, handle_async, is_async, HostRequest, HostResponse,
 };
-pub use session::{AppMeta, LineageInfo, ManifestInfo, OpenResult, Session};
+pub use session::{AppMeta, Applied, LineageInfo, ManifestInfo, OpenResult, Session};
 #[cfg(feature = "native")]
 pub use store::FsStore;
 pub use store::{DocId, DocStore, Library, PartStore};

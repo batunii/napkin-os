@@ -147,7 +147,7 @@ impl Ctx {
     /// free-text field `clan-sdk`'s `Decision` has that survives every
     /// read-modify-write — an unknown YAML key would be dropped by the next SDK
     /// write, and the `agent` field keeps the claim the app made (see
-    /// [`crate::session::attribute`]).
+    /// [`crate::ops::attribute`]).
     pub fn attribution(&self) -> String {
         let mut tag = format!("[actor {}", self.actor);
         if let Some(h) = &self.handler {

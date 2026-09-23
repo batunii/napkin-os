@@ -23,7 +23,7 @@ use crate::export::write_temp_html;
 use crate::library::{create_instance, scan_apps, scan_recent, spinoff_document, spinoff_targets};
 #[cfg(feature = "native")]
 use crate::proxy::api_proxy;
-use crate::session::{Session, TRUSTED_CAPABILITIES};
+use crate::session::{Applied, Session, TRUSTED_CAPABILITIES};
 
 pub struct HostRequest {
     pub path: String,
@@ -119,6 +119,23 @@ impl HostResponse {
         self.events.push(e);
         self
     }
+
+    pub fn with_events(mut self, events: impl IntoIterator<Item = HostEvent>) -> Self {
+        self.events.extend(events);
+        self
+    }
+}
+
+/// The events a write fans out: the ones its changes carry, or — when it
+/// changed nothing — the same notice built from its reply. `/patch` and
+/// `/patch-data` have always told the shell on an unchanged edit too, and a
+/// frozen app may be listening for it.
+fn notify_even_if_unchanged(done: &Applied, notice: fn(Value) -> HostEvent) -> Vec<HostEvent> {
+    if done.noop {
+        vec![notice(done.reply.clone())]
+    } else {
+        done.events.clone()
+    }
 }
 
 impl From<HostError> for HostResponse {
@@ -213,23 +230,29 @@ pub fn dispatch(
 
         "/snapshot" => {
             if let Ok(html) = String::from_utf8(req.body.clone()) {
-                let _ = session.snapshot(&html);
+                let _ = session.snapshot_as(ctx, &html);
             }
             HostResponse::empty()
         }
 
-        "/patch" => match session.handle_patch_request(&req.body_str()) {
-            Some(payload) => HostResponse::empty().with_event(HostEvent::PatchSaved(payload)),
+        "/patch" => match session.handle_patch_request_as(ctx, &req.body_str()) {
+            Some(done) => {
+                let events = notify_even_if_unchanged(&done, HostEvent::PatchSaved);
+                HostResponse::empty().with_events(events)
+            }
             None => HostResponse::empty(),
         },
 
         "/patch-data" => match session.patch_data_as(ctx, &req.body_str()) {
-            Ok(v) => HostResponse::json(200, &v).with_event(HostEvent::DataChanged(v)),
+            Ok(done) => {
+                let events = notify_even_if_unchanged(&done, HostEvent::DataChanged);
+                HostResponse::json(200, &done.reply).with_events(events)
+            }
             Err(e) => e.into(),
         },
 
-        "/fork" => match session.fork(&req.body_str()) {
-            Ok(v) => HostResponse::json(200, &v),
+        "/fork" => match session.fork_as(ctx, &req.body_str()) {
+            Ok(done) => HostResponse::json(200, &done.reply).with_events(done.events),
             Err(e) => e.into(),
         },
 
@@ -237,7 +260,7 @@ pub fn dispatch(
             let name = query_param(&req.query, "name").unwrap_or_default();
             let agent = query_param(&req.query, "agent");
             match session.upload_asset_as(ctx, &name, agent.as_deref(), req.body) {
-                Ok(v) => HostResponse::json(200, &v),
+                Ok(done) => HostResponse::json(200, &done.reply).with_events(done.events),
                 Err(e) => e.into(),
             }
         }
@@ -336,10 +359,8 @@ pub fn dispatch(
         "/open-file" => HostResponse::ok_json().with_event(HostEvent::OpenFileRequest),
 
         "/set-title" => match req.body_json().get("title").and_then(|x| x.as_str()) {
-            Some(t) if !t.trim().is_empty() => match session.set_title(t) {
-                Ok(r) => {
-                    HostResponse::json(200, &r).with_event(HostEvent::TitleChanged(t.to_string()))
-                }
+            Some(t) if !t.trim().is_empty() => match session.set_title_as(ctx, t) {
+                Ok(done) => HostResponse::json(200, &done.reply).with_events(done.events),
                 Err(e) => e.into(),
             },
             _ => HostResponse::error(400, "missing title"),
@@ -398,8 +419,8 @@ pub fn dispatch(
             if md.trim().is_empty() {
                 return HostResponse::error(400, "missing markdown");
             }
-            match session.set_context(md, append) {
-                Ok(r) => HostResponse::json(200, &r),
+            match session.set_context_as(ctx, md, append) {
+                Ok(done) => HostResponse::json(200, &done.reply).with_events(done.events),
                 Err(e) => e.into(),
             }
         }

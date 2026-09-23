@@ -2,29 +2,32 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! One open document, and every operation that reads or mutates it.
+//! The document a shell has open, and the thin wrapper that runs the OS
+//! layer's operations against it.
 //!
-//! Every mutating operation follows the established pattern: SDK fn ->
-//! `store.write` -> reload the `ClanFile`. The packed archive is the single
-//! source of truth; nothing is cached beside it.
+//! The store's version is the truth. What a session holds is a [`Document`]:
+//! a snapshot of one document at the version it was read or last written at,
+//! which another writer may already have moved past. Every operation lives in
+//! [`crate::ops`] as a function from a snapshot to the [`Change`]s it implies;
+//! this wrapper hands them the snapshot, applies what they return through the
+//! store's single write funnel, and moves the snapshot on to the version the
+//! store reports. The desktop and browser shells keep calling the same methods
+//! they always have; a server calls the operations directly, inside its own
+//! transaction, and never needs a `Session` at all.
 
 use std::sync::{Arc, Mutex};
 
-use clan_sdk::{
-    apply_patch_and_repack, export_html, fork, patch_asset_with, patch_context, patch_data_with,
-    validate, ClanBuilder, ClanFile, DecisionEntry, ExportOptions, PatchDataOptions,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ctx::Ctx;
+use crate::document::{Change, Document, Version};
 use crate::error::{HostError, HostResult};
-use crate::html::{
-    apply_patches, auto_inject_adf_ids, inject_clan_data, inject_styles, resolve_bindings,
-    strip_scripts,
-};
-use crate::log::log;
-use crate::store::{Change, DocId, DocStore, Version};
+use crate::event::HostEvent;
+use crate::ops::{edit, read, Outcome};
+use crate::store::{DocId, DocStore};
+
+pub use crate::ops::{attribute, content_type_for, sanitize_asset_name};
 
 /// Napkin's app-signing public key (ed25519, base64). Safe to embed and ship
 /// open-source: it can only VERIFY signatures, never forge them. Apps signed by
@@ -35,11 +38,6 @@ pub const NAPKIN_PUBLIC_KEY: &str = "iE5TL/Am5Tu4jktPTXNp52HhgJWo8eLoDKgjtlyZ4fc
 /// Untrusted apps get none of these; they keep only the safe clan:// data/asset
 /// /proxy routes.
 pub const TRUSTED_CAPABILITIES: &[&str] = &["notify", "set-theme"];
-
-/// Cap on extracted text we cache + send, to bound the agent's token cost
-/// (~6k tokens). The full asset always stays in the archive; this only limits
-/// what the agent reads.
-const MAX_EXTRACT_CHARS: usize = 24_000;
 
 #[derive(Serialize, Deserialize)]
 pub struct ManifestInfo {
@@ -91,28 +89,32 @@ pub struct OpenResult {
     pub trusted: bool,
 }
 
-pub struct LoadedClan {
-    pub id: DocId,
-    // The ClanFile already holds the raw archive bytes (clan.raw_bytes()).
-    pub clan: ClanFile,
-    // True if the app is validly signed by Napkin's key → gets scoped host
-    // capabilities. Untrusted files are limited to the safe clan:// subset.
-    pub trusted: bool,
+/// What a write did, once its changes are in the store: the reply for the
+/// caller, and the events to fan out.
+#[derive(Debug)]
+pub struct Applied {
+    pub reply: Value,
+    pub events: Vec<HostEvent>,
+    /// Nothing needed writing (an unchanged edit). The caller still gets its
+    /// reply; the shell may still want telling.
+    pub noop: bool,
 }
 
-/// The document a shell (or, later, one browser session) currently has open,
-/// together with the transient view state that belongs to it.
+/// The document a shell (or one browser session) currently has open, together
+/// with the transient view state that belongs to it.
 pub struct Session {
     store: Arc<dyn DocStore>,
     /// Who this shell acts as when a caller does not say otherwise: the one
     /// local user on the desktop and in the browser. A server passes its own
     /// per-request [`Ctx`] to the `_as` operations instead.
     ctx: Ctx,
-    current: Mutex<Option<LoadedClan>>,
+    current: Mutex<Option<Document>>,
     edit_mode: Mutex<bool>,
     preview_html: Mutex<String>,
 }
 
+/// Counts the legacy patches that reached the store, so tests can assert that
+/// one edit is one write (#9) and an unchanged one is none (F4).
 #[cfg(test)]
 pub(crate) static SAVE_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
@@ -143,18 +145,49 @@ impl Session {
         &self.ctx
     }
 
-    /// Run `f` against the open document, or fail with "no file open".
-    fn with<T>(&self, f: impl FnOnce(&LoadedClan) -> HostResult<T>) -> HostResult<T> {
+    /// Run a read against the open snapshot, or fail with "no file open".
+    pub fn read<T>(&self, f: impl FnOnce(&Document) -> HostResult<T>) -> HostResult<T> {
         let guard = self.current.lock().unwrap();
         f(guard.as_ref().ok_or_else(HostError::no_file_open)?)
     }
 
-    /// Replace the open document's bytes: write through the store, then reload
-    /// so the in-memory archive and the stored one can never diverge.
-    fn commit(loaded: &mut LoadedClan, store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<()> {
-        let base = Version::of_archive(loaded.clan.raw_bytes());
-        store.apply(&Change::replace(loaded.id.clone(), base, bytes.clone()))?;
-        loaded.clan = ClanFile::from_bytes(bytes)?;
+    /// Run a write operation against the open snapshot and apply what it
+    /// returns.
+    ///
+    /// The lock is held from the snapshot the operation sees until the store
+    /// has taken its changes, so two writes through one session cannot
+    /// interleave. That serialises this process only; another writer to the
+    /// same store is what `Change::base` — checked at apply, W2-A4 — is for.
+    pub fn perform(
+        &self,
+        ctx: &Ctx,
+        op: impl FnOnce(&Ctx, &Document) -> HostResult<Outcome>,
+    ) -> HostResult<Applied> {
+        let mut guard = self.current.lock().unwrap();
+        let doc = guard.as_ref().ok_or_else(HostError::no_file_open)?;
+        let outcome = op(ctx, doc)?;
+        let events = outcome.events();
+        let noop = outcome.is_noop();
+        for change in &outcome.changes {
+            self.commit(&mut guard, change)?;
+        }
+        Ok(Applied {
+            reply: outcome.reply,
+            events,
+            noop,
+        })
+    }
+
+    /// Apply one change through the store — the only write a session makes —
+    /// and, when it is to the open document, move the snapshot on to the
+    /// version the store now reports.
+    fn commit(&self, current: &mut Option<Document>, change: &Change) -> HostResult<()> {
+        let version = self.store.apply(change)?;
+        if let Some(open) = current.as_mut() {
+            if open.id() == &change.doc {
+                *open = open.advance(change, version)?;
+            }
+        }
         Ok(())
     }
 
@@ -167,21 +200,34 @@ impl Session {
             .lock()
             .unwrap()
             .as_ref()
-            .map(|c| c.trusted)
+            .map(Document::trusted)
             .unwrap_or(false)
     }
 
     pub fn current_id(&self) -> Option<DocId> {
-        self.current.lock().unwrap().as_ref().map(|c| c.id.clone())
+        self.current
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|d| d.id().clone())
     }
 
-    /// The packed archive exactly as stored — the single-file handoff.
+    /// The version the open snapshot is at — what a write from it is based on.
+    pub fn current_version(&self) -> Option<Version> {
+        self.current
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|d| d.version().clone())
+    }
+
+    /// The packed archive of the open snapshot — the single-file handoff.
     pub fn raw_bytes(&self) -> HostResult<Vec<u8>> {
-        self.with(|l| Ok(l.clan.raw_bytes().to_vec()))
+        self.read(|d| Ok(d.bytes().to_vec()))
     }
 
     pub fn title(&self) -> HostResult<String> {
-        self.with(|l| Ok(l.clan.manifest().title.clone()))
+        self.read(|d| Ok(d.title().to_string()))
     }
 
     /// The open document's app id, when it is an instance of one. What decides
@@ -191,63 +237,17 @@ impl Session {
             .lock()
             .unwrap()
             .as_ref()
-            .and_then(|c| c.clan.manifest().app.as_ref().map(|a| a.app_id.clone()))
+            .and_then(|d| d.app_id().map(String::from))
     }
 
     // ── Opening ─────────────────────────────────────────────────────────────
 
+    /// Read `id` as it stands now and make it the open snapshot.
     pub fn open(&self, id: DocId) -> HostResult<OpenResult> {
-        let clan = ClanFile::from_bytes(self.store.read(&id)?)?;
-        let manifest = clan.manifest().clone();
-        let report = validate(&clan);
-        let has_human_view = clan.has_entry("human/index.html");
-        let sha256 = clan.sha256();
-
-        let is_authored = manifest.view.as_ref().and_then(|v| v.source.as_deref()) == Some("app");
-        let is_template = manifest.document_type.as_deref() == Some("template");
-
-        let info = ManifestInfo {
-            title: manifest.title.clone(),
-            id: manifest.id.clone(),
-            version: format!("{}.{}", manifest.clan_version, manifest.clan_version_minor),
-            created_at: manifest.created_at.clone(),
-            updated_at: manifest.updated_at.clone(),
-            document_type: manifest.document_type.clone(),
-            sha256,
-            file_count: manifest.files.len(),
-            lineage: manifest.lineage.as_ref().map(|l| LineageInfo {
-                parent_id: l.parent_id.clone(),
-                parent_uri: l.parent_uri.clone(),
-                parent_sha256: l.parent_sha256.clone(),
-                delta: l.delta.clone(),
-            }),
-            app: manifest.app.as_ref().map(|a| AppMeta {
-                name: a.name.clone(),
-                app_id: a.app_id.clone(),
-                version: a.version.clone(),
-                icon: a.icon.clone(),
-            }),
-        };
-
-        // The trust gate: is this app validly signed by Napkin's key?
-        let trusted = clan_sdk::verify_app(&clan, NAPKIN_PUBLIC_KEY);
-
-        let result = OpenResult {
-            path: id.to_string(),
-            manifest: info,
-            validation: report.display(),
-            has_human_view,
-            render_model: if is_authored {
-                "authored".into()
-            } else {
-                "legacy".into()
-            },
-            is_template,
-            trusted,
-        };
-
-        // The ClanFile already read the bytes once; no second read needed.
-        *self.current.lock().unwrap() = Some(LoadedClan { id, clan, trusted });
+        // One read: the snapshot holds the bytes it was built from (#10).
+        let doc = Document::load(self.store.parts(), id)?;
+        let result = read::describe(&doc);
+        *self.current.lock().unwrap() = Some(doc);
         Ok(result)
     }
 
@@ -256,86 +256,46 @@ impl Session {
     /// One entry of the open archive, as text. Backs the shell's `get_data` /
     /// `get_chain` / `get_agent_state` / `get_context`.
     pub fn entry_string(&self, path: &str) -> HostResult<String> {
-        self.with(|l| Ok(l.clan.read_entry_string(path)?))
+        self.read(|d| read::entry_string(d, path))
     }
 
     pub fn human_html(&self) -> HostResult<String> {
-        log("get_human_html: called");
-        self.with(|loaded| {
-            let html = loaded.clan.read_entry_string("human/index.html")?;
-
-            // Authored template apps (view.source == "app") render client-side
-            // from window.__CLAN__.data. Legacy AI-generated views keep the
-            // server-side {{binding}} + auto-id + patch pipeline.
-            let authored = loaded
-                .clan
-                .manifest()
-                .view
-                .as_ref()
-                .and_then(|v| v.source.as_deref())
-                == Some("app");
-
-            let data_value: serde_yaml::Value = loaded
-                .clan
-                .read_entry("shared/data.yaml")
-                .ok()
-                .and_then(|b| serde_yaml::from_slice(&b).ok())
-                .unwrap_or(serde_yaml::Value::Null);
-
-            let body = if authored {
-                // Don't munge the authored markup — the app owns its rendering.
-                html
-            } else {
-                let resolved = resolve_bindings(&html, &data_value);
-                let with_ids = auto_inject_adf_ids(&resolved);
-                if loaded.clan.has_entry("human/patches.yaml") {
-                    match loaded.clan.read_entry_string("human/patches.yaml") {
-                        Ok(yaml) => apply_patches(&with_ids, &yaml),
-                        Err(_) => with_ids,
-                    }
-                } else {
-                    with_ids
-                }
-            };
-
-            let css = loaded
-                .clan
-                .read_entry_string("human/styles.css")
-                .unwrap_or_default();
-            let styled_html = inject_styles(&body, &css);
-
-            let context = build_clan_context(&loaded.clan, &data_value);
-            let context_json = serde_json::to_string(&context).unwrap_or_else(|_| "{}".to_string());
-            Ok(inject_clan_data(&styled_html, &context_json))
-        })
+        self.read(read::human_html)
     }
 
     /// `GET /assets/<rel>` — serve a binary asset from inside the artifact ZIP.
     pub fn serve_asset(&self, rel: &str) -> HostResult<(String, Vec<u8>)> {
-        if rel.is_empty() || rel.contains("..") || rel.contains('\\') || rel.starts_with('/') {
-            return Err(HostError::bad_request("invalid asset path"));
-        }
-        self.with(|loaded| {
-            let full = format!("human/assets/{rel}");
-            let bytes = loaded
-                .clan
-                .read_entry(&full)
-                .map_err(|_| HostError::not_found(format!("asset not found: {rel}")))?;
-            Ok((content_type_for(rel).to_string(), bytes))
-        })
+        read::check_asset_path(rel)?;
+        self.read(|d| read::serve_asset(d, rel))
     }
 
     /// `GET /chain` — the decision chain as JSON (lazy fetch for the view).
     pub fn chain_json(&self) -> HostResult<Value> {
-        self.with(|loaded| {
-            let yaml = loaded
-                .clan
-                .read_entry("agent/decision-chain.yaml")
-                .map_err(|e| HostError::not_found(e.to_string()))?;
-            let v: serde_yaml::Value =
-                serde_yaml::from_slice(&yaml).map_err(|e| HostError::internal(e.to_string()))?;
-            serde_json::to_value(&v).map_err(|e| HostError::internal(e.to_string()))
-        })
+        self.read(read::chain_json)
+    }
+
+    /// Compose a standalone document from the open `.clan`. Returns
+    /// `(html, filename_stem)`.
+    pub fn compose_export(&self, provenance: bool, no_brand: bool) -> HostResult<(String, String)> {
+        self.read(|d| read::compose_export(d, provenance, no_brand))
+    }
+
+    /// Splice each attachment's cached extracted text into `payload`. A no-op
+    /// with nothing open.
+    pub fn attach_extracted_text(&self, payload: &mut Value) {
+        if let Some(d) = self.current.lock().unwrap().as_ref() {
+            read::attach_extracted_text(d, payload);
+        }
+    }
+
+    /// The provenance bundle an agent reads; `null` with nothing open.
+    pub fn clan_context_for_agent(&self) -> Value {
+        self.current
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(read::clan_context_for_agent)
+            .unwrap_or(Value::Null)
     }
 
     // ── Transient view state ────────────────────────────────────────────────
@@ -357,61 +317,33 @@ impl Session {
     }
 
     // ── Writing ─────────────────────────────────────────────────────────────
+    //
+    // Each write comes twice: as the session's own context (what the desktop
+    // and browser shells have always called) and `_as` an explicit one (what
+    // the routing table calls with the context the shell resolved).
 
     pub fn snapshot(&self, rendered_html: &str) -> HostResult<()> {
-        let clean = strip_scripts(rendered_html);
-        log(&format!("snapshot: stripped len={}", clean.len()));
+        self.snapshot_as(&self.ctx, rendered_html).map(|_| ())
+    }
 
-        let mut guard = self.current.lock().unwrap();
-        let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-
-        let mut builder = ClanBuilder::new(loaded.clan.manifest().clone());
-        for (path, bytes) in loaded.clan.read_all_entries()? {
-            if path == "manifest.yaml" || path == "human/index.html" {
-                continue;
-            }
-            builder.add_entry(path, bytes);
-        }
-        builder.add_entry("human/index.html", clean.into_bytes());
-        let new_bytes = builder.build()?;
-        Self::commit(loaded, &*self.store, new_bytes)?;
-        log("snapshot: written to human/index.html");
-        Ok(())
+    pub fn snapshot_as(&self, ctx: &Ctx, rendered_html: &str) -> HostResult<Applied> {
+        let applied = self.perform(ctx, |c, d| edit::snapshot(c, d, rendered_html))?;
+        crate::log::log("snapshot: written to human/index.html");
+        Ok(applied)
     }
 
     pub fn save_patch(&self, id: String, content: String) -> HostResult<()> {
-        log(&format!(
-            "save_patch: id={id:?} content={:?}…",
-            &content[..content.len().min(80)]
-        ));
+        self.save_patch_as(&self.ctx, &id, &content).map(|_| ())
+    }
 
-        let mut guard = self.current.lock().unwrap();
-        let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-
-        // No-op guard (F4): if a patch with this id already holds identical
-        // content, skip the rewrite entirely. Backstops the client-side
-        // skip-if-unchanged so a blur with no edit never churns the file.
-        if let Ok(bytes) = loaded.clan.read_entry("human/patches.yaml") {
-            if let Ok(existing) = clan_sdk::Patches::from_yaml(&bytes) {
-                if existing
-                    .patches
-                    .iter()
-                    .any(|p| p.id == id && p.content == content)
-                {
-                    log(&format!("save_patch: no-op (id={id:?} unchanged), skipped"));
-                    return Ok(());
-                }
-            }
+    pub fn save_patch_as(&self, ctx: &Ctx, id: &str, content: &str) -> HostResult<Applied> {
+        let applied = self.perform(ctx, |c, d| edit::save_patch(c, d, id, content))?;
+        if !applied.noop {
+            #[cfg(test)]
+            SAVE_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            crate::log::log(&format!("save_patch: done, file repacked. id={id:?}"));
         }
-
-        #[cfg(test)]
-        SAVE_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        let new_bytes = apply_patch_and_repack(&loaded.clan, id.clone(), content.clone())?;
-        Self::commit(loaded, &*self.store, new_bytes)?;
-
-        log(&format!("save_patch: done, file repacked. id={id:?}"));
-        Ok(())
+        Ok(applied)
     }
 
     /// Handle a `clan://patch` request body. Saves the patch exactly once and
@@ -419,126 +351,41 @@ impl Session {
     /// The frontend listener must treat that event as a notification only and
     /// never call `save_patch` in response — doing so writes the file twice (#9).
     pub fn handle_patch_request(&self, body: &str) -> Option<Value> {
+        self.handle_patch_request_as(&self.ctx, body)
+            .map(|a| a.reply)
+    }
+
+    pub fn handle_patch_request_as(&self, ctx: &Ctx, body: &str) -> Option<Applied> {
         let json = serde_json::from_str::<Value>(body).ok()?;
         let id = json["id"].as_str()?;
         let content = json["content"].as_str()?;
-        self.save_patch(id.to_string(), content.to_string()).ok()?;
-        Some(serde_json::json!({ "id": id, "content": content }))
+        self.save_patch_as(ctx, id, content).ok()
     }
 
     /// `POST /patch-data` — structured write to shared/data.yaml with attribution,
     /// recorded in the decision chain (the provenance-native human/AI co-author
     /// write path).
     pub fn patch_data(&self, body: &str) -> HostResult<Value> {
-        self.patch_data_as(&self.ctx, body)
+        self.patch_data_as(&self.ctx, body).map(|a| a.reply)
     }
 
     /// [`Self::patch_data`] under an explicit context — the server's path, where
     /// the actor is whoever authenticated this request.
-    pub fn patch_data_as(&self, ctx: &Ctx, body: &str) -> HostResult<Value> {
-        let json: Value = serde_json::from_str(body)
-            .map_err(|e| HostError::bad_request(format!("invalid JSON: {e}")))?;
-        let patch = json
-            .get("patch")
-            .cloned()
-            .ok_or_else(|| HostError::bad_request("missing 'patch'"))?;
-        if !patch.is_object() {
-            return Err(HostError::bad_request("'patch' must be an object"));
-        }
-        let keys: Vec<String> = patch
-            .as_object()
-            .map(|o| o.keys().cloned().collect())
-            .unwrap_or_default();
-        let append_keys: Vec<String> = json
-            .get("append_keys")
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-        // Attribution: when the body names an agent (or "human"), record a
-        // decision over exactly the patched keys (F15). The name is the app's
-        // claim; who actually asked comes from `ctx`.
-        let decision = json.get("agent").and_then(|v| v.as_str()).map(|claimed| {
-            attribute(
-                ctx,
-                claimed,
-                json.get("action")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("edit"),
-                json.get("rationale").and_then(|v| v.as_str()).unwrap_or(""),
-                json.get("pinned")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false),
-                Some(keys.clone()),
-            )
-        });
-
-        let mut guard = self.current.lock().unwrap();
-        let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-
-        // No-op guard: if applying the patch changes nothing, skip entirely — no
-        // rewrite, no decision-chain entry. Stops redundant "edits" (e.g. opening
-        // a field and saving without changing it) from polluting the provenance.
-        if append_keys.is_empty() {
-            let existing: Value = loaded
-                .clan
-                .read_entry("shared/data.yaml")
-                .ok()
-                .and_then(|b| serde_yaml::from_slice::<serde_yaml::Value>(&b).ok())
-                .and_then(|y| serde_json::to_value(y).ok())
-                .unwrap_or(Value::Object(Default::default()));
-            let mut merged = existing.clone();
-            json_merge(&mut merged, &patch);
-            if merged == existing {
-                return Ok(serde_json::json!({ "ok": true, "noop": true, "keys": [] }));
-            }
-        }
-
-        let opts = PatchDataOptions {
-            append_keys,
-            decision,
-        };
-        let new_bytes = patch_data_with(&loaded.clan, &patch, opts, None)?;
-        Self::commit(loaded, &*self.store, new_bytes)?;
-        Ok(serde_json::json!({ "ok": true, "keys": keys }))
+    pub fn patch_data_as(&self, ctx: &Ctx, body: &str) -> HostResult<Applied> {
+        let input = edit::PatchData::parse(body)?;
+        self.perform(ctx, |c, d| edit::patch_data(c, d, input))
     }
 
     /// `POST /fork` — fork into ≥2 branch siblings written next to the parent.
     /// Does NOT advance the open document.
     pub fn fork(&self, body: &str) -> HostResult<Value> {
-        let json: Value = serde_json::from_str(body)
-            .map_err(|e| HostError::bad_request(format!("invalid JSON: {e}")))?;
-        let agents: Vec<String> = json
-            .get("agents")
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if agents.len() < 2 {
-            return Err(HostError::bad_request("fork needs at least 2 agents"));
-        }
-        self.with(|loaded| {
-            let branches = fork(&loaded.clan, &agents)?;
-            let mut written = Vec::new();
-            for (agent_id, bytes) in &branches {
-                let branch = self.store.fork_branch(&loaded.id, agent_id);
-                if self.store.exists(&branch) {
-                    return Err(HostError::conflict(format!(
-                        "refusing to overwrite {branch}"
-                    )));
-                }
-                self.store
-                    .apply(&Change::create(branch.clone(), bytes.clone()))?;
-                written.push(serde_json::json!({ "agent": agent_id, "path": branch.to_string() }));
-            }
-            Ok(serde_json::json!({ "ok": true, "branches": written }))
-        })
+        self.fork_as(&self.ctx, body).map(|a| a.reply)
+    }
+
+    pub fn fork_as(&self, ctx: &Ctx, body: &str) -> HostResult<Applied> {
+        let agents = edit::parse_fork(body)?;
+        let store = self.store.clone();
+        self.perform(ctx, |c, d| edit::fork(c, d, &*store, &agents))
     }
 
     /// `POST /upload-asset?name=&agent=` — store a binary asset inside the archive.
@@ -549,6 +396,7 @@ impl Session {
         body: Vec<u8>,
     ) -> HostResult<Value> {
         self.upload_asset_as(&self.ctx, name, agent, body)
+            .map(|a| a.reply)
     }
 
     pub fn upload_asset_as(
@@ -557,319 +405,28 @@ impl Session {
         name: &str,
         agent: Option<&str>,
         body: Vec<u8>,
-    ) -> HostResult<Value> {
-        let name = sanitize_asset_name(name)
-            .ok_or_else(|| HostError::bad_request("invalid asset name"))?;
-        let mut guard = self.current.lock().unwrap();
-        let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-        let decision = agent.map(|claimed| {
-            attribute(
-                ctx,
-                claimed,
-                "upload-asset",
-                &format!("added asset {name}"),
-                false,
-                None,
-            )
-        });
-        // Extract text BEFORE the bytes are moved into the repack.
-        let extracted = extract_text(&name, &body);
-        let new_bytes = patch_asset_with(&loaded.clan, &name, body, decision)?;
-        Self::commit(loaded, &*self.store, new_bytes)?;
-        // Cache the extracted text as a sidecar INSIDE the .clan so it travels
-        // with the document and is never re-extracted. No decision entry (it's a
-        // cache, not an authored decision), and it stays out of the data layer.
-        let mut extracted_chars = 0usize;
-        if let Some(text) = extracted {
-            extracted_chars = text.chars().count();
-            let sidecar = format!("human/assets/.extracted/{name}.txt");
-            if let Ok(nb) = patch_asset_with(&loaded.clan, &sidecar, text.into_bytes(), None) {
-                Self::commit(loaded, &*self.store, nb)?;
-            }
-        }
-        Ok(serde_json::json!({
-            "ok": true,
-            "internal_path": format!("human/assets/{name}"),
-            "extracted_chars": extracted_chars
-        }))
+    ) -> HostResult<Applied> {
+        let name = edit::parse_asset_name(name)?;
+        self.perform(ctx, |c, d| edit::upload_asset(c, d, &name, agent, body))
     }
 
-    /// Update the open document's title (e.g. to the AI-set brief name) and
-    /// repack in place. Title is not covered by the app signature, so trust is
-    /// preserved.
+    /// Update the open document's title (e.g. to the AI-set brief name).
     pub fn set_title(&self, title: &str) -> HostResult<Value> {
-        let mut guard = self.current.lock().unwrap();
-        let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-        let mut manifest = loaded.clan.manifest().clone();
-        manifest.title = title.to_string();
-        let mut builder = ClanBuilder::new(manifest);
-        for (p, b) in loaded.clan.read_all_entries()? {
-            if p == "manifest.yaml" {
-                continue;
-            }
-            builder.add_entry(p, b);
-        }
-        let bytes = builder.build()?;
-        Self::commit(loaded, &*self.store, bytes)?;
-        Ok(serde_json::json!({ "ok": true, "title": title }))
+        self.set_title_as(&self.ctx, title).map(|a| a.reply)
     }
 
-    /// Replace or append `agent/context.md` — the running brief context
-    /// downstream agents read. Used by the first generate (full context) and
-    /// human notes.
+    pub fn set_title_as(&self, ctx: &Ctx, title: &str) -> HostResult<Applied> {
+        self.perform(ctx, |c, d| edit::set_title(c, d, title))
+    }
+
+    /// Replace or append `agent/context.md`.
     pub fn set_context(&self, markdown: &str, append: bool) -> HostResult<Value> {
-        let mut guard = self.current.lock().unwrap();
-        let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-        let bytes = patch_context(&loaded.clan, markdown, append)?;
-        Self::commit(loaded, &*self.store, bytes)?;
-        Ok(serde_json::json!({ "ok": true }))
+        self.set_context_as(&self.ctx, markdown, append)
+            .map(|a| a.reply)
     }
 
-    // ── Export ──────────────────────────────────────────────────────────────
-
-    /// Compose a standalone document from the open `.clan` via the SDK
-    /// (bindings resolved, assets inlined, scripts stripped, brand chrome +
-    /// optional provenance). Returns `(html, filename_stem)`.
-    pub fn compose_export(&self, provenance: bool, no_brand: bool) -> HostResult<(String, String)> {
-        self.with(|loaded| {
-            let title = loaded.clan.manifest().title.trim().to_string();
-            let base: String = (if title.is_empty() { "document" } else { &title })
-                .chars()
-                .map(|c| {
-                    if c.is_alphanumeric() || c == '.' || c == '-' {
-                        c
-                    } else {
-                        '-'
-                    }
-                })
-                .collect();
-            let html = export_html(
-                &loaded.clan,
-                &ExportOptions {
-                    brand: !no_brand,
-                    provenance,
-                },
-            )?;
-            Ok((html, base))
-        })
-    }
-
-    // ── The agent's view of the document ────────────────────────────────────
-
-    /// For each attachment carrying a `name`, read its cached extracted-text
-    /// sidecar from the open .clan and splice it in as `extracted_text`. Read at
-    /// call time so the text never has to live in the data layer or be
-    /// re-extracted.
-    pub fn attach_extracted_text(&self, payload: &mut Value) {
-        let guard = self.current.lock().unwrap();
-        let Some(loaded) = guard.as_ref() else {
-            return;
-        };
-        let Some(atts) = payload
-            .get_mut("attachments")
-            .and_then(|v| v.as_array_mut())
-        else {
-            return;
-        };
-        for a in atts.iter_mut() {
-            let Some(name) = a.get("name").and_then(|v| v.as_str()).map(str::to_string) else {
-                continue;
-            };
-            let sidecar = format!("human/assets/.extracted/{name}.txt");
-            if let Ok(text) = loaded.clan.read_entry_string(&sidecar) {
-                if let Some(obj) = a.as_object_mut() {
-                    obj.insert("extracted_text".into(), Value::String(text));
-                }
-            }
-        }
-    }
-
-    /// The provenance bundle an agent needs to fill the boxes coherently: the
-    /// schema (what boxes exist), current data (the brief so far), the decision
-    /// chain (what's been decided + by whom), the agent context, and lineage.
-    /// Built host-side from the open document.
-    pub fn clan_context_for_agent(&self) -> Value {
-        let guard = self.current.lock().unwrap();
-        let Some(loaded) = guard.as_ref() else {
-            return Value::Null;
-        };
-        let clan = &loaded.clan;
-        let yaml_to_json = |p: &str| -> Value {
-            clan.read_entry(p)
-                .ok()
-                .and_then(|b| serde_yaml::from_slice::<serde_yaml::Value>(&b).ok())
-                .and_then(|y| serde_json::to_value(y).ok())
-                .unwrap_or(Value::Null)
-        };
-        let schema: Value = clan
-            .read_entry("agent/output-schema.json")
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or(Value::Null);
-        let m = clan.manifest();
-        serde_json::json!({
-            "document_type": m.document_type,
-            "app": m.app.as_ref().map(|a| serde_json::json!({ "name": a.name, "app_id": a.app_id, "version": a.version })),
-            "schema": schema,
-            "data": yaml_to_json("shared/data.yaml"),
-            "decision_chain": yaml_to_json("agent/decision-chain.yaml"),
-            "context": clan.read_entry_string("agent/context.md").unwrap_or_default(),
-            "lineage": m.lineage.as_ref().map(|l| serde_json::json!({ "parent_id": l.parent_id, "delta": l.delta })),
-        })
-    }
-}
-
-/// The decision an attributed write records.
-///
-/// `agent` keeps what the caller *claimed* — `human`, `analysis-model` — because
-/// that is what apps use to tell an AI draft from a person's edit, and what the
-/// SDK and every existing chain reader match on. The actor who actually asked
-/// comes from `ctx` and is recorded ahead of the rationale, until `Decision`
-/// grows `actor` and `claimed_agent` fields of its own (W1P-I5): `clan-sdk`'s
-/// `Decision` has no catch-all, so any other key would be dropped by the next
-/// SDK read-modify-write.
-pub fn attribute(
-    ctx: &Ctx,
-    claimed: &str,
-    action: &str,
-    rationale: &str,
-    pinned: bool,
-    fields_changed: Option<Vec<String>>,
-) -> DecisionEntry {
-    let tag = ctx.attribution();
-    DecisionEntry {
-        agent_name: claimed.to_string(),
-        action: action.to_string(),
-        rationale: if rationale.is_empty() {
-            tag
-        } else {
-            format!("{tag} {rationale}")
-        },
-        pinned,
-        fields_changed,
-        typed: None,
-    }
-}
-
-/// Build the `window.__CLAN__` context object the template/view reads:
-/// `{ data, manifest, assets }`. The decision chain is intentionally omitted
-/// here (it can be large) — the view fetches it lazily via `clan://chain`.
-fn build_clan_context(clan: &ClanFile, data: &serde_yaml::Value) -> Value {
-    let data_json: Value = serde_json::to_value(data).unwrap_or(Value::Null);
-    let m = clan.manifest();
-
-    // Map every human/assets/<rel> entry to a relative URL the iframe resolves
-    // against its own clan:// origin.
-    let mut assets = serde_json::Map::new();
-    for f in &m.files {
-        if let Some(rel) = f.path.strip_prefix("human/assets/") {
-            assets.insert(rel.to_string(), Value::String(format!("/assets/{rel}")));
-        }
-    }
-
-    let manifest_json = serde_json::json!({
-        "id": m.id,
-        "title": m.title,
-        "document_type": m.document_type,
-        "app": m.app.as_ref().map(|a| serde_json::json!({
-            "name": a.name,
-            "app_id": a.app_id,
-            "version": a.version,
-        })),
-    });
-
-    serde_json::json!({
-        "data": data_json,
-        "manifest": manifest_json,
-        "assets": Value::Object(assets),
-    })
-}
-
-/// RFC 7396 JSON Merge Patch applied in place — used only to test whether a
-/// patch would actually change anything (the no-op guard).
-fn json_merge(target: &mut Value, patch: &Value) {
-    match patch {
-        Value::Object(pm) => {
-            if !target.is_object() {
-                *target = Value::Object(Default::default());
-            }
-            let tm = target.as_object_mut().unwrap();
-            for (k, v) in pm {
-                if v.is_null() {
-                    tm.remove(k);
-                } else {
-                    json_merge(tm.entry(k.clone()).or_insert(Value::Null), v);
-                }
-            }
-        }
-        _ => *target = patch.clone(),
-    }
-}
-
-/// Reject asset names with path separators or traversal — the SDK does NOT
-/// sanitize, so the host must.
-pub fn sanitize_asset_name(name: &str) -> Option<String> {
-    let n = name.trim();
-    if n.is_empty() || n.contains("..") || n.contains('/') || n.contains('\\') {
-        return None;
-    }
-    Some(n.to_string())
-}
-
-/// Pull readable text out of an uploaded asset so the agent sees document
-/// *contents*, not just a filename. Plain-text family is decoded directly;
-/// PDFs go through `pdf_extract` (wrapped in `catch_unwind` — malformed PDFs
-/// can panic deep in the parser). Returns None for binary formats and empties.
-fn extract_text(name: &str, bytes: &[u8]) -> Option<String> {
-    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    let raw = match ext.as_str() {
-        "txt" | "text" | "md" | "markdown" | "csv" | "tsv" | "json" | "yaml" | "yml" | "log" => {
-            String::from_utf8_lossy(bytes).into_owned()
-        }
-        #[cfg(feature = "native")]
-        "pdf" => {
-            let owned = bytes.to_vec();
-            std::panic::catch_unwind(move || pdf_extract::extract_text_from_mem(&owned).ok())
-                .ok()
-                .flatten()?
-        }
-        _ => return None,
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    Some(clamp_chars(trimmed, MAX_EXTRACT_CHARS))
-}
-
-fn clamp_chars(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let mut out: String = s.chars().take(max).collect();
-    out.push_str("\n\n[… truncated for length …]");
-    out
-}
-
-pub fn content_type_for(rel: &str) -> &'static str {
-    match rel
-        .rsplit('.')
-        .next()
-        .map(|e| e.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("svg") => "image/svg+xml",
-        Some("pdf") => "application/pdf",
-        Some("css") => "text/css",
-        Some("js") => "text/javascript",
-        Some("json") => "application/json",
-        Some("woff2") => "font/woff2",
-        Some("woff") => "font/woff",
-        _ => "application/octet-stream",
+    pub fn set_context_as(&self, ctx: &Ctx, markdown: &str, append: bool) -> HostResult<Applied> {
+        self.perform(ctx, |c, d| edit::set_context(c, d, markdown, append))
     }
 }
 
@@ -877,6 +434,7 @@ pub fn content_type_for(rel: &str) -> &'static str {
 mod tests {
     use super::*;
     use crate::store::FsStore;
+    use clan_sdk::ClanFile;
 
     /// Serialises tests that assert on the global SAVE_COUNT, so one test's
     /// saves never land inside another's before/after delta window.
@@ -914,9 +472,9 @@ mod tests {
 
         let guard = session.current.lock().unwrap();
         let loaded = guard.as_ref().expect("state must hold the opened file");
-        assert_eq!(loaded.clan.manifest().title, "Viewer Test");
+        assert_eq!(loaded.title(), "Viewer Test");
         assert_eq!(
-            loaded.clan.raw_bytes(),
+            loaded.bytes(),
             std::fs::read(id.as_str()).unwrap().as_slice(),
             "in-memory archive must match the file on disk"
         );
@@ -1021,6 +579,25 @@ mod tests {
             chain.contains("verdict"),
             "fields_changed records the key: {chain}"
         );
+    }
+
+    // The body's `agent` is a claim; the actor is whoever the shell says asked.
+    // Both survive in the chain, and the claim cannot displace the actor.
+    #[test]
+    fn attribution_comes_from_ctx_and_the_body_agent_is_only_a_claim() {
+        let (_dir, session, id) = open_temp_clan();
+        let ctx = Ctx::new(crate::ctx::Actor::human("u-42").unwrap());
+        let body = r#"{"patch":{"tone":"warm"},"agent":"analysis-model","rationale":"drafted"}"#;
+        session.patch_data_as(&ctx, body).unwrap();
+
+        let chain = ClanFile::open(id.as_str())
+            .unwrap()
+            .read_entry("agent/decision-chain.yaml")
+            .unwrap();
+        let chain = clan_sdk::DecisionChain::from_yaml(&chain).unwrap();
+        let newest = &chain.decisions[0];
+        assert_eq!(newest.agent, "analysis-model", "the claim is kept");
+        assert_eq!(newest.rationale, "[actor human:u-42] drafted");
     }
 
     #[test]
