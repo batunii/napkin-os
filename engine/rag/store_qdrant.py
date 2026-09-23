@@ -47,6 +47,9 @@ _NS = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")  # stable namespace for 
 
 
 def _cfg():
+    """Read the Qdrant connection from the environment: (url without a trailing slash, api
+    key or '', collection name, default 'napkin_rag'). Raises RuntimeError when no URL is
+    set; QdrantStore turns that into StoreConfigError. Read on every call, never cached."""
     # accept QDRANT_URL or QDRANT_CLUSTER_ENDPOINT (the name Qdrant Cloud's dashboard uses)
     url = (os.environ.get("QDRANT_URL") or os.environ.get("QDRANT_CLUSTER_ENDPOINT") or "").rstrip("/")
     if not url:
@@ -68,6 +71,12 @@ _ATTEMPTS = 4
 
 
 def _req(method: str, path: str, body: dict | None = None, timeout: int = 60):
+    """Send one JSON request to Qdrant and return the parsed JSON response.
+
+    Connection errors, timeouts and HTTP 429/5xx are retried, four attempts in all,
+    waiting 0.4, 0.8 then 1.6 seconds; any other HTTP status fails at once. Every failure
+    is raised as RuntimeError, which the functions in this module treat as "unavailable"
+    or "absent"."""
     url, key, _ = _cfg()
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json"}
@@ -100,6 +109,8 @@ def point_id(chunk: dict) -> str:
 
 
 def collection_name() -> str:
+    """The configured collection name (QDRANT_COLLECTION, default 'napkin_rag'). Raises
+    RuntimeError if Qdrant is not configured at all."""
     return _cfg()[2]
 
 
@@ -117,6 +128,12 @@ def available() -> bool:
 
 
 def ensure_collection(dim: int, recreate: bool = False):
+    """Create the collection, if absent, for `dim`-sized cosine vectors plus the BM25
+    sparse vector, then make sure the payload indexes exist.
+
+    `recreate=True` deletes the collection first, and every point with it. An existing
+    collection is left as it is, so one created before sparse support stays dense-only
+    (see has_sparse())."""
     name = collection_name()
     if recreate:
         try:
@@ -164,6 +181,9 @@ def _index_fields() -> list[tuple[str, str]]:
 
 
 def ensure_payload_indexes():
+    """Create a keyword index on `id` and `parent_id` and one per indexed contract field
+    (see _index_fields()). Every failure is swallowed so an index that already exists is
+    not an error, which also means a genuine failure here is silent."""
     name = collection_name()
     # `id` is the chunk's own id, not a contract metadata field, so it is not in
     # _index_fields(). It still needs an index: get() looks a chunk up by it to expand a
@@ -278,6 +298,7 @@ def search_hybrid(qvec: list[float], qtext: str, k: int = 5, where: dict | None 
 
 
 def count() -> int:
+    """Number of points in the collection, or 0 when it is missing or unreachable."""
     try:
         r = _req("GET", f"/collections/{collection_name()}")
         return int(r.get("result", {}).get("points_count") or 0)
@@ -303,6 +324,8 @@ def scroll(batch: int = 512) -> Iterator[dict]:
 
 
 def delete_collection():
+    """Delete the whole collection and every point in it. A missing or unreachable
+    collection is ignored."""
     try:
         _req("DELETE", f"/collections/{collection_name()}")
     except RuntimeError:
@@ -314,24 +337,47 @@ class QdrantStore(VectorStore):
     name = "qdrant"
 
     def __init__(self, **_ignored):
+        """Read the Qdrant config once, for describe(). Raises StoreConfigError if no URL
+        is set, as the VectorStore contract requires, and makes no network call.
+        Constructor kwargs (such as index_dir) are accepted and ignored."""
         try:
             self.url, _, self.collection = _cfg()
         except RuntimeError as e:
             raise StoreConfigError(str(e)) from e
 
-    def available(self) -> bool:            return available()
-    def ensure(self, dim: int) -> None:     ensure_collection(dim)
-    def upsert(self, rows: list[dict]) -> int:  return upsert(rows)
-    def get(self, chunk_id):                    return get(chunk_id)
+    def available(self) -> bool:
+        """True if the collection exists and holds points. See available()."""
+        return available()
+    def ensure(self, dim: int) -> None:
+        """Create the collection and payload indexes if missing. See ensure_collection()."""
+        ensure_collection(dim)
+    def upsert(self, rows: list[dict]) -> int:
+        """Write rows as points, with sparse vectors when supported. See upsert()."""
+        return upsert(rows)
+    def get(self, chunk_id):
+        """One chunk payload by chunk id, or None. See get()."""
+        return get(chunk_id)
 
-    def search(self, qvec, k=5, where=None):    return search(qvec, k=k, where=where)
+    def search(self, qvec, k=5, where=None):
+        """Dense top-k as [(score, payload)]. See search()."""
+        return search(qvec, k=k, where=where)
 
     def search_hybrid(self, qvec, qtext, k=5, where=None, n=50, rrf_k=10, weights=(1.0, 1.0)):
+        """Dense + BM25 fused by RRF, with the same defaults as the local store. See
+        search_hybrid()."""
         return search_hybrid(qvec, qtext, k=k, where=where, n=n, rrf_k=rrf_k, weights=weights)
-    def scroll(self, batch: int = 512):     return scroll(batch)
-    def count(self) -> int:                 return count()
-    def delete_all(self) -> None:           delete_collection()
+    def scroll(self, batch: int = 512):
+        """Yield every payload with its vector. See scroll()."""
+        return scroll(batch)
+    def count(self) -> int:
+        """Points in the collection, 0 if unreachable. See count()."""
+        return count()
+    def delete_all(self) -> None:
+        """Drop the whole collection, for migrate --replace. See delete_collection()."""
+        delete_collection()
 
     def describe(self) -> dict:
+        """Identity for run metadata: `qdrant:<collection>` as the label, plus the URL and
+        collection name. The API key is never included."""
         return {"store": "qdrant", "label": f"qdrant:{self.collection}",
                 "url": self.url, "collection": self.collection}

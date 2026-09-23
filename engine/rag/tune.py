@@ -51,6 +51,10 @@ def focus_configs() -> dict[str, dict]:
 
 
 def configs() -> dict[str, dict]:
+    """Round one of the sweep: a baseline plus variants that each change one knob from it
+    (the RRF constant, the dense:lexical weighting, the candidate pool `n`, or one BM25
+    parameter). Keys starting with `_` are not search_hybrid() arguments: main() uses
+    `_bm25` to rebuild the keyword index for that run."""
     base = {"n": 50, "rrf_k": 60, "weights": (1.0, 1.0)}
     out: dict[str, dict] = {"baseline (n50 k60 1:1)": dict(base)}
     for k in (10, 30, 120):
@@ -65,9 +69,15 @@ def configs() -> dict[str, dict]:
 
 
 def score(store, cases, qvecs, cfg, ks=(5, 10)) -> dict:
+    """Golden-set recall for one configuration: every case goes through
+    store.search_hybrid() with the config's non-underscore keys, filtered by source, using
+    the query vectors pre-computed in `qvecs` (a query missing from it raises KeyError).
+    Returns golden.evaluate()'s report."""
     hy = {k: v for k, v in cfg.items() if not k.startswith("_")}
 
     def search(q, k, where):
+        """The search(q, k, where) callable golden.evaluate() expects, over the cached
+        query vector."""
         rows = store.search_hybrid(qvecs[q], q, k=k, where=where, **hy)
         return [r for _, r in rows]
 
@@ -75,6 +85,15 @@ def score(store, cases, qvecs, cfg, ks=(5, 10)) -> dict:
 
 
 def main() -> None:
+    """CLI: embed every selected golden query once, score each configuration (configs(),
+    or focus_configs() with --focus), and print recall with each row's change in holdout
+    recall@5 against the first row. Needs a store with search_hybrid() and bm25(), i.e.
+    the local store.
+
+    A `_bm25` configuration swaps a freshly built BM25 onto the store for its run, and the
+    store's own index is put back at the end. That rebuild passes an empty holdout set to
+    _lexical_text(), so unlike LocalStore.bm25() it indexes the holdout documents'
+    retrieval queries too."""
     ap = argparse.ArgumentParser()
     ap.add_argument("index")
     ap.add_argument("--golden", default="golden")

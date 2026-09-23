@@ -129,6 +129,12 @@ def cases_for_dandad(paths: list[Path]) -> list[dict]:
 
 
 def build_golden(corpus: Path) -> tuple[list[dict], set[str]]:
+    """Build every golden case from a corpus directory: returns (cases, holdout doc_ids).
+
+    Walks every .md file (skipping DROP-ZIPS-HERE placeholders), sends D&AD entries to
+    cases_for_dandad() because they are only indexed inside groups, then fills each case's
+    acceptable-answer set. The holdout set is what `rag.py build --holdout` reads to embed
+    those documents without their retrieval queries."""
     files = [p for p in sorted(corpus.rglob("*.md")) if "DROP-ZIPS-HERE" not in p.name]
     cases: list[dict] = []
     dandad: list[Path] = []
@@ -168,6 +174,10 @@ def attach_acceptable(cases: list[dict]) -> None:
 
 
 def write_golden(cases: list[dict], holdout: set[str], out: Path) -> None:
+    """Write the golden set to `out`: cases.jsonl (one case per line), holdout.json (the
+    sorted holdout doc_ids) and summary.json (counts by kind and by source and split, and
+    the median acceptable-set size of templated cases). Creates the folder; overwrites
+    existing files."""
     out.mkdir(parents=True, exist_ok=True)
     with (out / "cases.jsonl").open("w", encoding="utf-8") as f:
         for c in cases:
@@ -198,6 +208,8 @@ def select_cases(cases: list[dict], sources: list[str] | None = None, per_source
 
 
 def load_golden(folder: Path) -> tuple[list[dict], set[str]]:
+    """Read a folder written by write_golden(): returns (cases, holdout doc_ids). Raises
+    if either file is missing."""
     cases = [json.loads(l) for l in (folder / "cases.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
     holdout = set(json.loads((folder / "holdout.json").read_text()))
     return cases, holdout
@@ -240,6 +252,8 @@ def evaluate(cases: list[dict], search, ks=(5, 10), filtered: bool = True, limit
 
 
 def print_report(rep: dict) -> None:
+    """Print an evaluate() report: recall@k per group as a table, then up to ten of the
+    recorded misses."""
     print(f"golden eval  n={rep['n']}  filtered={rep['filtered']}")
     print(f"{'group':<40} {'n':>6}  " + "  ".join(f"recall@{k:<3}" for k in rep["ks"]))
     for g, row in rep["groups"].items():
@@ -251,6 +265,9 @@ def print_report(rep: dict) -> None:
 
 
 def rag_mode() -> str:
+    """The search mode rag.py uses by default (RAG_SEARCH, else hybrid), recorded in the
+    report when --mode is not given. rag is imported here rather than at module top, like
+    its other uses in this file, so `golden.py build` never loads the store layer."""
     import rag
     return rag.SEARCH_MODE
 
@@ -270,6 +287,8 @@ def _store_search(index_dir: Path, queries: list[str] | None = None, batch: int 
             cache.update({q: rag._norm(v) for q, v in zip(chunk, vecs)})
             print(f"  embedded {min(i + batch, len(uniq))}/{len(uniq)} queries", file=sys.stderr, flush=True)
     def search(q: str, k: int, where):
+        """The search(q, k, where) callable evaluate() expects: ranked rows, scores
+        dropped. Uses the pre-embedded vector when the query was supplied up front."""
         qv = cache.get(q)
         if qv is None:
             vecs, _ = rag.embed([q], "query"); qv = rag._norm(vecs[0])
@@ -278,6 +297,9 @@ def _store_search(index_dir: Path, queries: list[str] | None = None, batch: int 
 
 
 def main():
+    """CLI: `build` writes the golden set from a corpus; `eval` scores a store against it
+    and prints recall@k (optionally saving the report as JSON). Relative paths resolve
+    against the rag/ directory, not the working directory."""
     ap = argparse.ArgumentParser(description="RAG retrieval golden set")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build"); b.add_argument("--corpus", default="../reference/rag"); b.add_argument("--out", default="golden")
@@ -288,7 +310,9 @@ def main():
     e.add_argument("--save", default=None, help="write the report JSON here")
     e.add_argument("--mode", default=None, help="dense | hybrid (default: $RAG_SEARCH or hybrid)")
     a = ap.parse_args()
-    def _abs(x): return Path(x) if Path(x).is_absolute() else HERE / x
+    def _abs(x):
+        """Resolve a relative CLI path against the rag/ directory."""
+        return Path(x) if Path(x).is_absolute() else HERE / x
     if a.cmd == "build":
         cases, holdout = build_golden(_abs(a.corpus).resolve())
         write_golden(cases, holdout, _abs(a.out))

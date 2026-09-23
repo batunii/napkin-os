@@ -66,6 +66,10 @@ BRIEFS = [
 
 
 def summarise(ctx: bc.BriefContext) -> None:
+    """Print one brief's retrieval at a glance: the plan (query, keywords, exemplar
+    filter), any widening, hits and tokens per block, each precedent's category and
+    effectiveness type, and the opening words of each constraint. For reading by eye, not
+    parsing."""
     t = ctx.trace()
     print(f"  query      : {ctx.query[:104]}{'…' if len(ctx.query) > 104 else ''}")
     print(f"  keywords   : {ctx.keywords}")
@@ -88,6 +92,10 @@ def summarise(ctx: bc.BriefContext) -> None:
 
 
 def main() -> None:
+    """CLI: build the context for each sample brief (or only `--brief N`) against the
+    index named by the first argument and print its summary. The full prompt text is
+    printed for brief 0 when all briefs run, and for every brief shown with --full. With
+    no index argument, rag.open_store() picks the default (RAG_STORE, RAG_INDEX)."""
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     index = args[0] if args else None
     full = "--full" in sys.argv

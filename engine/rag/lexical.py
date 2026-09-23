@@ -37,6 +37,9 @@ _TOKEN = re.compile(r"[a-z0-9]+")
 
 
 def tokenize(text: str) -> list[str]:
+    """Lower-case `text` and split it into runs of a-z and 0-9, dropping one-character
+    tokens. Everything else is a separator, accented letters included. No stemming or stop
+    words: exact tokens are what this scorer is for."""
     return [t for t in _TOKEN.findall((text or "").lower()) if len(t) > 1]
 
 
@@ -52,6 +55,9 @@ class BM25:
     # like a +0.026 gain on its own, but scored IDENTICALLY to b=0.3 alone when combined,
     # so it was correcting the same length bias twice rather than adding anything.
     def __init__(self, docs: Iterable[tuple[Hashable, str]], k1: float = 1.5, b: float = 0.3):
+        """Index `docs`, an iterable of (doc_id, text) pairs, once: per-document lengths,
+        a posting list per token and each token's idf. The iterable is consumed a single
+        time, so a generator is fine."""
         self.k1, self.b = k1, b
         self.ids: list[Hashable] = []
         self.doc_len: list[int] = []
@@ -69,6 +75,7 @@ class BM25:
         self.idf = {tok: math.log(1 + (n - len(pl) + 0.5) / (len(pl) + 0.5)) for tok, pl in self.postings.items()}
 
     def __len__(self) -> int:
+        """Number of indexed documents."""
         return len(self.ids)
 
     def search(self, query: str, k: int = 50, allowed: set[Hashable] | None = None) -> list[tuple[float, Hashable]]:

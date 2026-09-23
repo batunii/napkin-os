@@ -28,6 +28,8 @@ HERE = Path(__file__).resolve().parent
 
 
 def default_index_dir() -> Path:
+    """Where the local index lives when no index_dir is given: $RAG_INDEX (absolute, or
+    relative to the rag/ directory), else rag/index."""
     env = os.environ.get("RAG_INDEX")
     if env:
         return Path(env) if os.path.isabs(env) else HERE / env
@@ -35,9 +37,17 @@ def default_index_dir() -> Path:
 
 
 class LocalStore(VectorStore):
+    """VectorStore over index/chunks.jsonl, held fully in memory after the first read.
+
+    Also offers hybrid search (dense + BM25) and get() by chunk id, which the Qdrant store
+    mirrors so local and remote retrieval agree. The row list, BM25 index, NumPy matrix
+    and id map are each built lazily and thrown away on every write."""
     name = "local"
 
     def __init__(self, index_dir: Path | str | None = None):
+        """Point the store at `index_dir` (default: default_index_dir()). A relative path
+        resolves against the rag/ directory, not the working directory. Nothing is read
+        until first use, so a missing directory is not an error here."""
         d = Path(index_dir) if index_dir else default_index_dir()
         self.index_dir = d if d.is_absolute() else HERE / d
         self._cache: list[dict] | None = None
@@ -48,13 +58,17 @@ class LocalStore(VectorStore):
     # -- files --------------------------------------------------------------
     @property
     def chunks_path(self) -> Path:
+        """The JSONL file holding one row per line."""
         return self.index_dir / "chunks.jsonl"
 
     @property
     def manifest_path(self) -> Path:
+        """The JSON manifest recording how the index was built."""
         return self.index_dir / "manifest.json"
 
     def _rows(self) -> list[dict]:
+        """All rows, read from chunks.jsonl on the first call and cached. A missing file
+        is an empty index, not an error."""
         if self._cache is None:
             rows: list[dict] = []
             if self.chunks_path.exists():
@@ -66,6 +80,9 @@ class LocalStore(VectorStore):
         return self._cache
 
     def _write(self, rows: list[dict]) -> None:
+        """Replace chunks.jsonl with `rows` atomically (write a temp file, then rename),
+        so a crash mid-write never leaves a half-written index. The new rows become the
+        cache and the BM25, matrix and id caches are dropped to rebuild on next use."""
         self.index_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.chunks_path.with_suffix(".jsonl.tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -78,11 +95,15 @@ class LocalStore(VectorStore):
         self._by_id = None
 
     def write_manifest(self, extra: dict) -> None:
+        """Write manifest.json: the current row count (`chunks`) and vector `dim`, plus
+        `extra`, whose keys win. The whole file is replaced, so a caller that wants to
+        keep existing keys passes them back in `extra`, as rag.retag() does."""
         rows = self._rows()
         man = {"chunks": len(rows), "dim": len(rows[0]["vector"]) if rows else 0, **extra}
         self.manifest_path.write_text(json.dumps(man, indent=2))
 
     def manifest(self) -> dict:
+        """The parsed manifest, or {} when it is missing or not valid JSON."""
         if self.manifest_path.exists():
             try:
                 return json.loads(self.manifest_path.read_text())
@@ -92,12 +113,18 @@ class LocalStore(VectorStore):
 
     # -- contract -----------------------------------------------------------
     def available(self) -> bool:
+        """True if chunks.jsonl exists and holds at least one row."""
         return self.chunks_path.exists() and self.count() > 0
 
     def ensure(self, dim: int) -> None:
+        """Create the index directory. `dim` is ignored: a JSONL file has no fixed vector
+        size."""
         self.index_dir.mkdir(parents=True, exist_ok=True)
 
     def upsert(self, rows: list[dict]) -> int:
+        """Merge `rows` into the index by id (a row replaces any existing row with the
+        same id), then rewrite the whole file. Returns the number of rows passed in, not
+        the number that changed. A full build uses replace_all() instead."""
         by_id = {r["id"]: r for r in self._rows()}
         for r in rows:
             by_id[r["id"]] = r
@@ -132,6 +159,8 @@ class LocalStore(VectorStore):
 
     def search(self, qvec: list[float], k: int = 5,
                where: dict | None = None) -> list[tuple[float, dict]]:
+        """Dense-only top-k by cosine over the rows that pass `where`. Returns [] when
+        nothing passes the filter."""
         idxs = self._filtered(where)
         if not idxs:
             return []
@@ -183,21 +212,31 @@ class LocalStore(VectorStore):
         return self._by_id.get(chunk_id)
 
     def scroll(self, batch: int = 512) -> Iterator[dict]:
+        """Yield every row with its vector. `batch` is ignored; the rows are already in
+        memory."""
         yield from self._rows()
 
     def count(self) -> int:
+        """Number of rows in the index (reads the file on the first call)."""
         return len(self._rows())
 
     def describe(self) -> dict:
+        """Identity for run metadata: the index path as the label, plus embed mode, dim
+        and chunk count from the manifest (None where the manifest lacks them)."""
         m = self.manifest()
         return {"store": "local", "label": str(self.index_dir), "path": str(self.index_dir),
                 "embed_mode": m.get("embed_mode"), "dim": m.get("dim"), "chunks": m.get("chunks")}
 
     def delete_all(self) -> None:
+        """Delete chunks.jsonl and empty the cached rows. The manifest is left in place,
+        and the id map behind get() is not reset, so get() on this same instance can still
+        return a deleted row until the next write."""
         if self.chunks_path.exists():
             self.chunks_path.unlink()
         self._cache = []
 
 
 def _dot(a: list[float], b: list[float]) -> float:
+    """Dot product of two vectors, equal to cosine because rows and queries are
+    L2-normalised. The scoring path when NumPy is not installed."""
     return sum(x * y for x, y in zip(a, b))   # vectors are L2-normalised at store time

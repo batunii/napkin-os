@@ -107,6 +107,12 @@ def estimate_tokens(text: str) -> int:
 # ---- the unit of context ---------------------------------------------------------
 @dataclass
 class Hit:
+    """One retrieved item as the prompt shows it: a citable id plus the text.
+
+    `cite` is the short id the draft cites and the judge checks (see cite_for()); `doc_id`
+    is the corpus document it came from; `bucket` is the block it was retrieved for.
+    `metadata` is the chunk's full contract payload, kept so the egress check and the
+    trace can read scope and tenant per hit."""
     cite: str
     doc_id: str
     source: str
@@ -119,17 +125,25 @@ class Hit:
     metadata: dict = field(default_factory=dict)
 
     def render(self) -> str:
+        """The hit as it appears in the prompt: `[cite] header` on one line, then the
+        body. Falls back to the title when the chunk has no context header."""
         head = self.header or self.title
         body = self.text.strip()
         return f"[{self.cite}] {head}\n{body}"
 
     @property
     def tokens(self) -> int:
+        """Estimated token cost of the rendered hit, citation line included."""
         return estimate_tokens(self.render())
 
 
 @dataclass
 class Block:
+    """One of the four prompt blocks after budgeting: the hits that made it in, plus the
+    counters the trace reports, so a thin or overfull block is visible rather than silent.
+
+    `dropped` counts every hit left out for any reason (budget, per-hit cap, one per
+    client, egress); `over_target` and `truncated` are set by _fill()."""
     bucket: str
     hits: list[Hit] = field(default_factory=list)
     budget: int = 0
@@ -139,14 +153,22 @@ class Block:
 
     @property
     def tokens(self) -> int:
+        """Estimated tokens of every hit in the block."""
         return sum(h.tokens for h in self.hits)
 
     def text(self) -> str:
+        """The hits rendered and joined by blank lines, in rank order."""
         return "\n\n".join(h.render() for h in self.hits)
 
 
 @dataclass
 class BriefContext:
+    """What build() returns: the four blocks plus everything needed to explain them.
+
+    Frozen once built (module docstring, rule 1): the same object feeds the draft, judge
+    and revise calls. `filters` holds the filter each bucket was actually searched with,
+    after any widening; `widened` collects plan notes, widening steps and egress drops as
+    readable lines."""
     blocks: dict[str, Block]
     query: str
     keywords: list[str]
@@ -165,6 +187,7 @@ class BriefContext:
 
     @property
     def tokens(self) -> int:
+        """Estimated tokens across all four blocks: the size of the retrieved prefix."""
         return sum(b.tokens for b in self.blocks.values())
 
     def citations(self) -> dict[str, Hit]:
@@ -186,6 +209,18 @@ class BriefContext:
         return [h for h in self.blocks.get("rules", Block("rules")).hits if id(h) not in rejected]
 
     def prompt_text(self, headings: dict[str, str] | None = None) -> str:
+        """Render the blocks as the prompt section the brief model reads.
+
+        Order: instructions, constraints, pitfalls, craft, precedent. The rules block is
+        split into constraints (reviewer rejections, which the model must check one by
+        one) and pitfalls (advisory), so the model can tell a human rejection from
+        textbook advice. When the precedent block holds three or fewer cases and dropped
+        none, a note says that is every matching case in the corpus, so a short list is
+        not mistaken for a curated shortlist. Empty blocks are omitted.
+
+        `headings` replaces the default titles and must then supply all three keys
+        (exemplars, craft, instructions); a missing key raises KeyError when that block
+        has hits."""
         h = headings or {
             "exemplars": "PRECEDENT — comparable work, and worked examples of the craft",
             "craft": "CRAFT — how planners approach this",
@@ -278,6 +313,9 @@ class BriefContext:
 
 # ---- planning: pairs -> query + filters -------------------------------------------
 def _clean_value(v) -> str:
+    """A pair value as one clean string: a list is joined with commas (empty items
+    skipped), None becomes ''. Pairs come from forms and model output, so either shape can
+    arrive."""
     if isinstance(v, (list, tuple, set)):
         return ", ".join(str(x) for x in v if x)
     return str(v or "").strip()
@@ -478,6 +516,8 @@ def cite_for(md: dict, doc_id: str) -> str:
 
 
 def _to_hit(score: float, r: dict, bucket: str) -> Hit:
+    """Turn a store row into a Hit for `bucket`. The title prefers framework_name, then
+    title, then doc_id; the score is rounded to four places for the trace."""
     md = r.get("metadata") or {}
     doc_id = str(md.get("doc_id") or r.get("id"))
     title = str(md.get("framework_name") or md.get("title") or doc_id)
@@ -488,6 +528,8 @@ def _to_hit(score: float, r: dict, bucket: str) -> Hit:
 
 
 def _client_of(h: Hit) -> str:
+    """The key _fill() uses to keep one exemplar per client: the cleaned client name, else
+    the framework name, else the doc_id."""
     return normalise.clean(h.metadata.get("client") or h.metadata.get("framework_name") or h.doc_id)
 
 

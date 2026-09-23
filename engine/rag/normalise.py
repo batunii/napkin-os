@@ -270,11 +270,17 @@ _TERRITORY = {
 
 
 def effectiveness_type(label) -> str | None:
+    """IPA effectiveness label -> contract value ('Brand Building' -> 'brand_building').
+    None for an empty or unrecognised label; 'other' only when the label itself says
+    Other."""
     c = clean(label)
     return _EFFECTIVENESS.get(c) if c else None
 
 
 def strategic_territory(label) -> str | None:
+    """IPA strategic-territory label -> contract value ('Humour' and 'humor' both ->
+    'humor'). None for an empty or unrecognised label; 'other' only when the label itself
+    says Other."""
     c = clean(label)
     return _TERRITORY.get(c) if c else None
 
@@ -293,6 +299,9 @@ _DISCIPLINE = {
 
 
 def discipline(label) -> str | None:
+    """Playbook discipline label -> contract value. Empty -> None; a label not in the
+    table -> 'other'. chunking passes a playbook's frontmatter `category` (its doc_kind)
+    here."""
     c = clean(label)
     if not c:
         return None
@@ -307,6 +316,8 @@ _LIONS = {
 
 
 def lions_category(label) -> str | None:
+    """Cannes Lions category label -> contract value. Empty -> None; a category not in the
+    table -> 'other'."""
     c = clean(label)
     if not c:
         return None

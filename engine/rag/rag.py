@@ -93,6 +93,12 @@ def _offline_embed(texts: list[str], dim: int = OFFLINE_DIM) -> list[list[float]
 
 
 def _nim_embed(texts: list[str], input_type: str, key: str) -> list[list[float]]:
+    """Embed one batch through NVIDIA NIM's OpenAI-compatible /embeddings endpoint.
+
+    `input_type` is 'passage' or 'query'; the model embeds the two differently. Over-long
+    input is truncated at the end rather than rejected. HTTP 429/5xx, connection errors
+    and timeouts are retried, five attempts in all, waiting 2, 4, 6 then 8 seconds; any
+    other HTTP error, or the fifth failure, raises."""
     body = json.dumps({"model": EMBED_MODEL, "input": texts,
                        "input_type": input_type, "encoding_format": "float",
                        "truncate": "END"}).encode()   # nv-embedqa caps input at 512 tok
@@ -138,11 +144,15 @@ from store_local import LocalStore  # noqa: E402
 
 
 def _norm(v: list[float]) -> list[float]:
+    """L2-normalise a vector so a dot product equals cosine similarity, which every store
+    assumes. An all-zero vector comes back unchanged rather than dividing by zero."""
     n = math.sqrt(sum(x * x for x in v)) or 1.0
     return [x / n for x in v]
 
 
 def _store() -> str:                       # kept for older callers
+    """The active store name (RAG_STORE, default 'local'). An alias of
+    store_base.store_name() kept for older callers such as napkin_packs.py."""
     return store_name()
 
 
@@ -226,11 +236,14 @@ def retag(corpus: Path, index_dir: Path, apply: bool = False) -> dict:
 
 
 def _now() -> str:
+    """Current UTC time as an ISO-8601 string with a Z suffix, for manifests."""
     import datetime as _dt
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def load_index(index_dir: Path) -> list[dict]:
+    """Every row, with vectors, in the local index at `index_dir`. Always reads the local
+    files whatever RAG_STORE says. Used by napkin_packs.py."""
     return list(LocalStore(index_dir).scroll())
 
 
@@ -314,6 +327,10 @@ def search_vec(store, qvec: list[float], q: str, k: int = 5, where: dict | None 
 
 
 def query(index_dir: Path, q: str, k: int = 5, where: dict | None = None):
+    """The `query` CLI: search, then print each hit's rank, score, citation and a
+    160-character snippet. Returns the scored rows, or [] after printing a message when
+    nothing matches the filter. The embed label it prints is worked out from the
+    environment, not reported by the search."""
     scored = search(index_dir, q, k=k, where=where)
     if not scored:
         print("No chunks match the metadata filter."); return []
@@ -368,6 +385,9 @@ def store_check(name: str, index_dir: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 def main():
+    """CLI entry point: build | query | push | migrate | retag | stores | store-check.
+    Relative paths resolve against the rag/ directory, not the working directory.
+    `query --where` takes a single key=value equality filter."""
     ap = argparse.ArgumentParser(description="Napkin planner/effectiveness RAG")
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build"); b.add_argument("--corpus", default="../reference/rag")
@@ -393,7 +413,9 @@ def main():
     sc.add_argument("name", nargs="?", default=None); sc.add_argument("--index", default="./_index_check")
     a = ap.parse_args()
     here = Path(__file__).resolve().parent
-    def _abs(x): return Path(x) if Path(x).is_absolute() else here / x
+    def _abs(x):
+        """Resolve a relative CLI path against the rag/ directory."""
+        return Path(x) if Path(x).is_absolute() else here / x
     idx = _abs(a.index)
     if a.cmd == "build":
         build(_abs(a.corpus).resolve(), idx, holdout=_abs(a.holdout) if a.holdout else None)

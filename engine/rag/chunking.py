@@ -93,6 +93,9 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def infer_source(path: Path, meta: dict) -> str | None:
+    """The corpus a file belongs to, lower-cased: frontmatter `source` if present, else
+    the first matching directory in DIR_SOURCE, else 'template' for any other .md file.
+    Returns None only for a non-.md file that matches neither."""
     if meta.get("source"):
         return str(meta["source"]).lower()
     parts = {p.lower() for p in path.parts}
@@ -103,6 +106,10 @@ def infer_source(path: Path, meta: dict) -> str | None:
 
 
 def strategy_for(source: str | None, meta: dict) -> str:
+    """The chunking strategy for a file. IPA and Effie files whose frontmatter `category`
+    does not end in `_case` are pattern-analysis documents, not cases, so they are chunked
+    as sections; everything else takes STRATEGY_BY_SOURCE, or DEFAULT_STRATEGY for an
+    unknown source."""
     cat = str(meta.get("category") or "").lower()
     if source in ("ipa", "effie") and not cat.endswith("_case"):
         return "sections"                   # IPA pattern-analysis docs, not cases
@@ -130,6 +137,8 @@ def split_sections(body: str) -> list[tuple[str, str]]:
 
 
 def _is_rq(heading: str) -> bool:
+    """True if a heading names a Retrieval Queries block, in any spelling the corpus uses
+    (space or underscore, any case)."""
     return bool(re.search(r"retrieval[_ ]queries", heading, re.I))
 
 
@@ -159,6 +168,9 @@ def extract_rq(body: str) -> tuple[str, str]:
 
 
 def _title(meta: dict, sections: list[tuple[str, str]], path: Path) -> str:
+    """The document's display title: frontmatter framework_name, title or name; else the
+    first real heading (a leading `# Title` line); else the file stem. Surrounding quotes
+    are stripped."""
     t = meta.get("framework_name") or meta.get("title") or meta.get("name")
     if not t:
         # a leading "# Title" becomes a section whose heading is the title with empty/short text
@@ -209,6 +221,10 @@ def _split_paragraphs(text: str, max_words: int) -> list[str]:
 
 
 def _windows(text: str, size: int, overlap: float) -> list[str]:
+    """Split text into windows of `size` words, each starting `size * (1 - overlap)` words
+    after the previous one, so neighbours share roughly `overlap` of their words. Text
+    that already fits comes back whole. The last windows can be short; callers drop those
+    under MIN_WORDS. Used only by the `windows` strategy."""
     words = text.split()
     if len(words) <= size:
         return [text]
@@ -264,6 +280,12 @@ def _finalise_md(md: dict, *, source: str | None, heading: str, level: str, path
 def _mk(path: Path, meta: dict, *, source: str | None, doc_id: str, strategy: str, level: str,
         header: str, heading: str, text: str, idx: int, parent_id: str | None = None,
         rq: str | None = "", role: str | None = None) -> dict:
+    """Build one chunk row for a per-file strategy.
+
+    The id is a 12-character sha1 of file name, strategy, level, index and heading, so an
+    unchanged file gets the same ids on every rebuild; retag() and idempotent upserts rely
+    on that. Metadata is the frontmatter plus the chunk's identity fields, passed through
+    _finalise_md() so it is contract-valid."""
     cid = hashlib.sha1(f"{path.name}:{strategy}:{level}:{idx}:{heading}".encode()).hexdigest()[:12]
     md = {**meta, "source": source, "doc_id": doc_id, "level": level,
           "parent_id": parent_id, "strategy": strategy}
@@ -273,6 +295,9 @@ def _mk(path: Path, meta: dict, *, source: str | None, doc_id: str, strategy: st
 
 
 def _read(path: Path) -> tuple[dict, str, str | None, str]:
+    """Read a corpus file and classify it: returns (frontmatter, body, source, strategy).
+    Undecodable bytes are replaced rather than raised, so one bad file cannot stop a
+    build."""
     meta, body = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
     source = infer_source(path, meta)
     return meta, body, source, strategy_for(source, meta)
@@ -360,12 +385,19 @@ _FIRST_SENTENCE = re.compile(r"^(.*?[.!?])(\s|$)", re.S)
 
 
 def _first_sentence(text: str, cap: int = 220) -> str:
+    """The first sentence of `text` (up to the first . ! or ?), capped at `cap`
+    characters. With no sentence end, the whole stripped text, capped."""
     m = _FIRST_SENTENCE.match(text.strip())
     s = (m.group(1) if m else text.strip())
     return s[:cap].strip()
 
 
 def _dandad_entry(path: Path) -> dict | None:
+    """Read one D&AD file into the fields chunk_dandad_groups() needs.
+
+    Returns None when the file is not D&AD or its Overview is under MIN_WORDS, so thin
+    entries never join a group. `discipline` (the grouping key) is the first
+    comma-separated part of `sector`; the full label is kept as `sector_full`."""
     meta, body, source, _ = _read(path)
     if source != "dandad":
         return None

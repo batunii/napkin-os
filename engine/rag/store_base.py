@@ -62,6 +62,7 @@ class VectorStore(ABC):
 
     @abstractmethod
     def count(self) -> int:
+        """Number of rows currently stored."""
         ...
 
     # -- introspection ------------------------------------------------------
@@ -70,6 +71,9 @@ class VectorStore(ABC):
         return {"store": self.name, "label": self.name}
 
     def delete_all(self) -> None:          # optional; migrate --replace uses it
+        """Remove every row. Optional: the default raises NotImplementedError, and only
+        `migrate --replace` calls it, so a backend without it just cannot be a --replace
+        destination."""
         raise NotImplementedError(f"{self.name} does not support delete_all")
 
 
@@ -87,10 +91,14 @@ REGISTRY: dict[str, str] = {
 
 
 def register(name: str, path: str) -> None:
+    """Add or replace a backend in REGISTRY at runtime. `path` is "module:ClassName",
+    imported lazily by get_store(); the name is lower-cased."""
     REGISTRY[name.lower()] = path
 
 
 def store_name(explicit: str | None = None) -> str:
+    """The backend to use: `explicit` if given, else $RAG_STORE, else 'local'. Lower-cased
+    and stripped."""
     return (explicit or os.environ.get("RAG_STORE") or "local").lower().strip()
 
 
@@ -108,4 +116,6 @@ def get_store(name: str | None = None, **kwargs) -> VectorStore:
 
 
 def list_stores() -> list[str]:
+    """Every registered backend name, sorted. Registered does not mean configured; rag.py
+    `stores` reports which are."""
     return sorted(REGISTRY)

@@ -42,6 +42,11 @@ GOLDEN = [
 
 
 def main() -> int:
+    """Run every GOLDEN case through retrieve.retrieve() and print PASS or FAIL with the
+    top three hits. Returns the exit code: 0 if all passed, 1 if any failed.
+
+    Uses retrieve()'s defaults (brief_safe filtering, default scopes and tenants), so it
+    checks the index as the brief sees it."""
     print(f"store: {retrieve.index_label()}  available={retrieve.index_available()}")
     failed = 0
     for g in GOLDEN:

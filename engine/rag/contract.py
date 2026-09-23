@@ -75,6 +75,9 @@ class Field:
 
 @dataclass(frozen=True)
 class Schema:
+    """The whole contract as loaded from rag_metadata.v1.json: its version, whether it is
+    locked, every Field by name, and the keys it excludes outright (re-identification
+    risk). Frozen; build one with load(), not by hand."""
     version: str
     locked: bool
     fields: dict[str, Field]
@@ -82,18 +85,26 @@ class Schema:
 
     @property
     def names(self) -> list[str]:
+        """Every contract field name, in file order."""
         return list(self.fields)
 
     def indexed(self) -> list[str]:
+        """Names of the fields that need a payload index, i.e. the ones filters may use."""
         return [f.name for f in self.fields.values() if f.indexed]
 
     def required(self) -> list[str]:
+        """Names of the fields a chunk must carry for validate() to pass."""
         return [f.name for f in self.fields.values() if f.required]
 
     def enum_values(self, name: str) -> tuple[str, ...]:
+        """The closed value list for field `name`. Raises KeyError for an unknown field;
+        returns () for a field that is not an enum."""
         return self.fields[name].values
 
     def defaults(self) -> dict[str, str]:
+        """Field -> default for every field that declares one, plus `schema_version` set
+        to this contract's version, which is how each written chunk records the contract
+        it was checked against."""
         d = {f.name: f.default for f in self.fields.values() if f.default is not None}
         d["schema_version"] = self.version
         return d
@@ -130,6 +141,9 @@ SCHEMA = load()
 
 # ---- convenience API (what the rest of the pipeline actually calls) --------
 def indexed_fields() -> list[str]:
+    """Names of the contract fields that need a payload index.
+    store_qdrant._index_fields() indexes the same set, and test_contract checks the two
+    agree."""
     return SCHEMA.indexed()
 
 
