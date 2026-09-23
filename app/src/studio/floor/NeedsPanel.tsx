@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { AgentAvatar } from '../AgentFigure'
 import { useStudio } from '../nav'
-import { OPEN_ITEM_ACTION, agentLabel } from '../model'
+import { OPEN_ITEM_ACTION, agentLabel, lockBlockers } from '../model'
 import type { ActivityEntry, DocProgress, OpenItem } from '../model'
 import type { RecentDoc } from '../../host'
 import { groupByDoc, pathFor, shortTime, stateIndex } from './derive'
@@ -105,7 +105,7 @@ export default function NeedsPanel({ items, docs, activity, recent, example, onP
           const path = pathFor(g.title, recent, g.items[0].doc.path)
           return (
             <div key={g.docId} className="fl-need-g">
-              <div className="fl-gl">{g.title}<span>{g.items.length} before lock</span></div>
+              <div className="fl-gl">{g.title}<span>{lockBlockers(g.items, g.docId).length} before lock</span></div>
               {g.items.map(i => (
                 <NeedCard key={`${i.doc.id}/${i.id}`} item={i} path={path} onPark={() => onPark(`${i.doc.id}/${i.id}`)} />
               ))}

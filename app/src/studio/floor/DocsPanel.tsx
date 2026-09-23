@@ -10,6 +10,7 @@ import { useStudio } from '../nav'
 import {
   AGENTS, AGENT_OF_LENS, DOC_STATES, DOC_STATE_LABEL, FLOW, LENS_IDS, agentLabel, flowStepOf,
 } from '../model'
+import { lockBlockers } from '../model'
 import type { DocProgress, OpenItem } from '../model'
 import type { RecentDoc } from '../../host'
 import { fanOutLabel, pathFor, shortTime, stateIndex } from './derive'
@@ -151,7 +152,7 @@ export default function DocsPanel({ docs, open, recent, example }: Props) {
             <DocCard
               key={d.doc.id}
               d={d}
-              openCount={open.filter(i => i.doc.id === d.doc.id).length}
+              openCount={lockBlockers(open, d.doc.id).length}
               path={pathFor(d.doc.title, recent, d.doc.path)}
             />
           ))}

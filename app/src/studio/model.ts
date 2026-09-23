@@ -341,9 +341,18 @@ export interface OpenItem {
   carried?: boolean
 }
 
-/** A document can lock only when nothing is open on it. */
+/**
+ * What stops a document locking. A proposed finding does not: the lock step
+ * shows the findings and verifies the ones the reviewer confirms (os-layer §7),
+ * so only the other open items must be settled first.
+ */
+export function lockBlockers(items: readonly OpenItem[], docId: string): OpenItem[] {
+  return items.filter(i => i.doc.id === docId && i.kind !== 'finding')
+}
+
+/** A document can lock when nothing but proposed findings is open on it. */
 export function canLock(items: readonly OpenItem[], docId: string): boolean {
-  return !items.some(i => i.doc.id === docId)
+  return lockBlockers(items, docId).length === 0
 }
 
 // ── a document in progress ──────────────────────────────────────────────────
