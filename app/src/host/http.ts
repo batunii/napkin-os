@@ -19,6 +19,7 @@ import type {
   HostEvents,
   InstalledApp,
   OpenResult,
+  RecentDoc,
   SpinoffTarget,
   Unlisten,
 } from './types'
@@ -226,6 +227,10 @@ export const httpHost: Host = {
   listApps: () => json<InstalledApp[]>('/apps'),
   installApp: srcPath =>
     json<InstalledApp>(`/apps/from/${encodeURIComponent(srcPath)}`, { method: 'POST' }),
+
+  // The tenant's own /recent (napkin-web api.rs), not the frame's clan://
+  // origin: that one needs an open document's token, and the Floor has none.
+  listRecent: () => json<RecentDoc[]>('/recent'),
 
   spinoffTargets: () => json<SpinoffTarget[]>(`/d/${requireDoc()}/spinoff-targets`),
   spinoffDocument: async (appId, title, map) =>

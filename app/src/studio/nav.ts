@@ -9,6 +9,7 @@
 // shell (App.tsx) owns the state; views only ask.
 
 import { createContext, useContext } from 'react'
+import type { RecentDoc } from '../host'
 import type { InstalledApp } from '../shell/types'
 
 /** The top-level views behind the tab control. Documents are not a view —
@@ -27,6 +28,8 @@ export interface Studio {
   go: (view: StudioView) => void
   /** Apps installed on this host, for views that want to offer one. */
   installed: InstalledApp[]
+  /** Documents in the store, newest first. Refreshed with the installed apps. */
+  recent: RecentDoc[]
   /** Start a new document in an installed app and open it. */
   launchApp: (appId: string) => void
   /** Open a .clan by path: templates prompt to install, documents open. */

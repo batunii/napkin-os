@@ -19,6 +19,7 @@ import type {
   HostEvents,
   InstalledApp,
   OpenResult,
+  RecentDoc,
   SpinoffTarget,
   Unlisten,
 } from './types'
@@ -305,6 +306,8 @@ export const wasmHost: Host = {
     const bytes = h.download()
     return h.installApp(bytes) as InstalledApp
   },
+
+  listRecent: async () => (await boot()).listRecent() as RecentDoc[],
 
   spinoffTargets: async () => (await boot()).spinoffTargets() as SpinoffTarget[],
   spinoffDocument: async (appId, title, map) =>

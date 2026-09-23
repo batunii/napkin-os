@@ -17,6 +17,7 @@ import type {
   HostEvents,
   InstalledApp,
   OpenResult,
+  RecentDoc,
   SpinoffTarget,
   Unlisten,
 } from './types'
@@ -56,6 +57,12 @@ export const tauriHost: Host = {
 
   listApps: () => invoke<InstalledApp[]>('list_apps'),
   installApp: srcPath => invoke<InstalledApp>('install_app', { srcPath }),
+  // No command for this; the clan:// route answers it (and allows any origin).
+  listRecent: async () => {
+    const resp = await fetch(`${clanScheme()}/recent`)
+    if (!resp.ok) throw new Error(`recent: ${resp.status}`)
+    return resp.json() as Promise<RecentDoc[]>
+  },
 
   spinoffTargets: () => invoke<SpinoffTarget[]>('spinoff_targets'),
   spinoffDocument: (appId, title, map) =>

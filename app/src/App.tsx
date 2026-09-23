@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { host } from './host'
-import type { InstalledApp, OpenResult } from './host'
+import type { InstalledApp, OpenResult, RecentDoc } from './host'
 import { askAppToExport } from './shell/appExport'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
@@ -47,6 +47,7 @@ export default function App() {
   // The home CLAN app, shown under the Apps tab.
   const [home, setHome] = useState<{ open: OpenResult; html: string } | null>(null)
   const [installed, setInstalled] = useState<InstalledApp[]>([])
+  const [recent, setRecent] = useState<RecentDoc[]>([])
   const [pendingLaunch, setPendingLaunch] = useState<OpenResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +56,7 @@ export default function App() {
 
   const refreshApps = useCallback(async () => {
     try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
+    try { setRecent(await host.listRecent()) } catch (e) { console.error(e) }
   }, [])
 
   // Open the home CLAN app as the current document and render it.
@@ -204,7 +206,7 @@ export default function App() {
   }, [pendingLaunch, runArtifact])
 
   const studio: Studio = {
-    view, go: setView, installed, launchApp, openPath, openFile: handleOpenFile,
+    view, go: setView, installed, recent, launchApp, openPath, openFile: handleOpenFile,
   }
 
   // Apps: the home CLAN app when the host has one (as home always was), the

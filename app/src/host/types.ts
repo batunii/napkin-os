@@ -151,6 +151,8 @@ export interface Host {
   // ── The app library ───────────────────────────────────────────────────────
   listApps(): Promise<InstalledApp[]>
   installApp(srcPath: string): Promise<InstalledApp>
+  /** Documents in the store, most recently updated first (the host keeps 12). */
+  listRecent(): Promise<RecentDoc[]>
 
   // ── Branching one document into another app ───────────────────────────────
   /**
