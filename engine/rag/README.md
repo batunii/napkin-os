@@ -81,8 +81,9 @@ RAG_INDEX=./_index_v3` for local work.
 
 **What it is.** The module's front door. Validates a middleware request against a JSON
 Schema contract, maps it onto `brief_context.build()`, and shapes the result as a
-contract response. Contract v1.0.0, `locked: false` until the middleware owner signs off
-the request shape.
+contract response. Contract **v1.2.0**, `locked: false` until the middleware owner (Shrey)
+signs off the request shape. Changes: 1.1.0 made validation, research, attachments,
+`memory.exclude_doc_ids` and `limits.recency_years` live; 1.2.0 added `relevance.kept: ordered`.
 
 **Interface.**
 
@@ -92,7 +93,7 @@ the request shape.
 | `validate(instance, definition="request")` | `list[str]` | `[]` when valid; `definition="response"` checks a response |
 | `to_build_args(request)` | `(kwargs, notes)` | The mapping onto `build()`, exposed for tests and debugging |
 | `response_from(ctx, run_id, notes)` | response dict | Shapes any `BriefContext` |
-| `version()` | `"1.0.0"` | The contract version this code speaks |
+| `version()` | `"1.2.0"` | The contract version this code speaks |
 
 **Request** (`$defs/request`). Required: `run_id`, `authority`, `campaign`.
 
@@ -106,14 +107,19 @@ the request shape.
 | `brand.markets` | live | Joins the query text |
 | `campaign.*` | live | Campaign-clan pairs. Unknown keys are accepted and join the query text |
 | `limits.token_budget` | live | Per-bucket token targets over the defaults |
-| `campaign.effectiveness_type`, `brand.parent`, `target`, `research`, `attachments`, `memory`, `limits.latency_ms / target_model / recency_years` | planned | Validated, not acted on yet |
+| `research[]`, `attachments[]` | live | Text joins the **validator's context only** (attachments are untrusted: never pairs, scope, tenant or brand) |
+| `memory.exclude_doc_ids` | live | Documents refused by the admission rules |
+| `limits.recency_years` | live | Recency cap on award cases (admission rule) |
+| `campaign.effectiveness_type`, `brand.parent`, `target`, `memory.used_cites`, `limits.latency_ms / target_model` | planned | Validated, not acted on yet |
 
 **Response** (`$defs/response`). `blocks` in prompt reading order (instructions, rules,
 craft, exemplars), each hit with `cite`, `doc_id`, `source`, `text`, `retrieval_score`,
 `scope`, `tenant`, `category`, `year`, `weight` (`constraint` = a reviewer rejected it,
-`advice` = textbook pitfall, `evidence` = everything else) and `relevance` (null until
-the validation stage exists). Plus `prompt_text`, `tokens`, `validation` (null for now),
-`notes` and `trace`.
+`advice` = textbook pitfall, `evidence` = everything else) and `relevance`: `{value, score,
+backend, kept}` when a validator ran (`kept`: `ordered` in the default order-only mode;
+`passed` / `floor` / `unjudged` / `exempt` in gate mode), null when validation is off.
+Plus `prompt_text`, `tokens`, `validation` (which backend judged, pool size, passed,
+rejected, fell back — null when off), `notes` and `trace`.
 
 **Guarantees.**
 - Scope, tenant and brand authorisation come from `authority` only. Brand names, campaign
@@ -493,6 +499,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
 | `BRIEF_FULLTEXT` | unset | `1` = A/B arm: the brief generator reads evidence spans (capped 1200 / 800 chars) instead of 220 / 160-char snippets |
 | `BRIEF_SYNTH_MODEL` | model chain default | model for the per-loop synthesis paragraphs (now one call per loop, in parallel) |
+| `RAG_VALIDATION_MODE` | `order` | `order` re-sorts by validator score and drops nothing; `gate` also drops what fails the threshold (measured unsafe for briefs: keeps 1/24 useful client exemplars) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
 | `RAG_VALIDATOR` | unset (off) | Validation chain in priority order, e.g. `nemotron,local`; `jev` first once `TYPESAFE_API_KEY` is set |
 | `RAG_VALIDATOR_DEADLINE_S` | `3.0` | Per-call deadline for backends that declare none |

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "napkin:rag_io.v1",
-  "$comment": "RAG module I/O contract, version 1: what the middleware sends the RAG module and what it gets back. JSON Schema (draft 2020-12) so any language validates the same bytes. Two extension keywords: `x-enum-from: <field>` means 'the closed enum of that field in rag_metadata.v1.json' — referenced, never copied, so the two contracts cannot drift; `x-status` is `live` (the RAG module reads it today) or `planned` (accepted and validated, not yet acted on). A field marked live that nothing reads is a test failure — a contract nothing honours is worse than none, because people trust it. Versioning follows rag_metadata: adding an optional field = minor bump; renaming, removing or tightening = major bump and a new file. `locked: false` until the middleware owner signs off the request shape. v1.1.0 (2026-09-23): the validation stage is live — relevance and validation are populated when RAG_VALIDATOR names a chain; relevance gains `kept` (passed | floor | unjudged | exempt); research, attachments, memory.exclude_doc_ids and limits.recency_years are live (context for the validator, admission rules). Additive, so a minor bump.",
-  "version": "1.1.0",
+  "$comment": "RAG module I/O contract, version 1: what the middleware sends the RAG module and what it gets back. JSON Schema (draft 2020-12) so any language validates the same bytes. Two extension keywords: `x-enum-from: <field>` means 'the closed enum of that field in rag_metadata.v1.json' — referenced, never copied, so the two contracts cannot drift; `x-status` is `live` (the RAG module reads it today) or `planned` (accepted and validated, not yet acted on). A field marked live that nothing reads is a test failure — a contract nothing honours is worse than none, because people trust it. Versioning follows rag_metadata: adding an optional field = minor bump; renaming, removing or tightening = major bump and a new file. `locked: false` until the middleware owner signs off the request shape. v1.1.0 (2026-09-23): the validation stage is live — relevance and validation are populated when RAG_VALIDATOR names a chain; relevance gains `kept` (passed | floor | unjudged | exempt); research, attachments, memory.exclude_doc_ids and limits.recency_years are live (context for the validator, admission rules). Additive, so a minor bump. v1.2.0 (2026-09-23): relevance.kept gains `ordered` — RAG_VALIDATION_MODE=order (the default) re-sorts by validator score and drops nothing; `gate` drops what fails. Additive enum value, so a minor bump.",
+  "version": "1.2.0",
   "locked": false,
   "$defs": {
     "request": {
@@ -580,9 +580,10 @@
             "passed",
             "floor",
             "unjudged",
-            "exempt"
+            "exempt",
+            "ordered"
           ],
-          "description": "Why the hit is in the response: passed the gate; kept by the floor because every chunk in its bucket failed (weak evidence, flagged in the prompt); not judged (beyond capacity or no backend answered); exempt (a reviewer rejection, never relevance-gated)."
+          "description": "Why the hit is in the response: passed the gate; kept by the floor because every chunk in its bucket failed (weak evidence, flagged in the prompt); not judged (beyond capacity or no backend answered); exempt (a reviewer rejection, never relevance-gated). ordered: judged in order-only mode (RAG_VALIDATION_MODE=order), sorted by score, never dropped."
         }
       }
     },

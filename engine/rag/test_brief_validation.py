@@ -11,6 +11,13 @@ import brief_context as bc  # noqa: E402
 import judge  # noqa: E402
 import judge_base as jb  # noqa: E402
 import rag_io  # noqa: E402
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _gate_mode(monkeypatch):
+    """These tests describe gate mode; order mode has its own test below."""
+    monkeypatch.setenv("RAG_VALIDATION_MODE", "gate")
 
 
 class FakeBackend:
@@ -141,3 +148,16 @@ def test_rejected_counts_only_hits_the_backend_actually_judged_and_dropped():
     rec = bc._apply_validation(buckets(), judge.Chain([FakeBackend(capacity=2, scores={"c1": 0.1})]), query="q")
     assert rec["per_bucket"]["craft"]["rejected"] == 1          # c1 judged and failed
     assert rec["per_bucket"]["exemplars"]["rejected"] == 0      # e2/e3 never sent
+
+
+def test_order_mode_sorts_by_score_and_drops_nothing(monkeypatch):
+    """The default mode: every hit kept, judged ones by score, failing ones included."""
+    monkeypatch.setenv("RAG_VALIDATION_MODE", "order")
+    hb = buckets()
+    rec = bc._apply_validation(hb, judge.Chain([FakeBackend(scores={"e1": 0.1, "e2": 0.3, "e3": 0.9})]), query="q")
+    assert [h.cite for h in hb["exemplars"]] == ["e3", "e2", "e1"]
+    assert {h.relevance["kept"] for h in hb["exemplars"]} == {"ordered"}
+    assert rec["mode"] == "order" and rec["per_bucket"]["exemplars"]["rejected"] == 0
+    blocks = {b: bc.Block(b, hs, budget=1000) for b, hs in hb.items()}
+    ctx = bc.BriefContext(blocks=blocks, query="q", keywords=[], filters={}, validation=rec)
+    assert rag_io.validate(rag_io.response_from(ctx, "r"), "response") == []

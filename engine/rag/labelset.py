@@ -253,10 +253,74 @@ def cmd_stats() -> None:
     print(json.dumps(out, indent=1))
 
 
+def cmd_confirm(path: str) -> None:
+    """Merge Sai's decisions from the label page's export into both sets' prelabels.jsonl:
+    `confirmed` becomes True/False (the human verdict); the model's `useful` is kept
+    unchanged beside it, so agreement between the two stays measurable."""
+    got = json.loads(Path(path).read_text())
+    for set_name, folder in (("ipa", HERE / "golden" / "labels"), ("client", HERE / "golden" / "labels" / "client")):
+        labels = _jsonl(folder / "prelabels.jsonl")
+        idx = {(g["brief_id"], g["cite"], g["bucket"]): g["useful"] for g in got if g["set"] == set_name}
+        n = 0
+        for l in labels:
+            k = (l["brief_id"], l["cite"], l["bucket"])
+            if k in idx:
+                l["confirmed"] = bool(idx[k]); n += 1
+        _write(folder / "prelabels.jsonl", labels)
+        agree = sum(1 for l in labels if l.get("confirmed") is not None and l["confirmed"] == l["useful"])
+        print(f"{set_name}: {n} confirmed; model agreed on {agree}/{n}")
+
+
+def cmd_evaluate(backend_name: str) -> None:
+    """Score every labelled pair with a validation backend (one call per brief, the brief
+    as the query) and report, per bucket, how its verdict agrees with the labels —
+    Sai's confirmed label where there is one, else the model's pre-label (flagged). This
+    is the step-6.2 evidence for whether to switch the relevance gate on, per bucket."""
+    import judge
+    from judge_base import Passage, Query
+    backend = judge.build_backend(backend_name)
+    rows = []
+    for set_name, folder in (("ipa", HERE / "golden" / "labels"), ("client", HERE / "golden" / "labels" / "client")):
+        briefs = {b["doc_id"]: b for b in _jsonl(folder / "briefs.jsonl")}
+        pairs = {(p["brief_id"], p["cite"], p["bucket"]): p for p in _jsonl(folder / "pairs.jsonl")}
+        by_brief: dict[str, list] = {}
+        for l in _jsonl(folder / "prelabels.jsonl"):
+            p = pairs.get((l["brief_id"], l["cite"], l["bucket"]))
+            if p:
+                by_brief.setdefault(l["brief_id"], []).append((p, l))
+        for bid, items in by_brief.items():
+            try:
+                vs = backend.score(Query(_brief_text(briefs[bid])), [Passage(p["cite"], p["text"]) for p, _ in items],
+                                   deadline_s=getattr(backend, "deadline_s", 5.0) or 5.0)
+            except Exception as e:                      # one failed brief does not end the run
+                print(f"  {bid}: {type(e).__name__}", file=sys.stderr); continue
+            for (p, l), v in zip(items, vs):
+                truth = l["confirmed"] if l.get("confirmed") is not None else l["useful"]
+                rows.append({"set": set_name, "bucket": p["bucket"], "truth": truth, "human": l.get("confirmed") is not None,
+                             "gate": bool(v.value), "raw": v.raw})
+    out = {"backend": backend_name, "pairs": len(rows),
+           "truth_from": "human" if all(r["human"] for r in rows) else "pre-labels (unconfirmed where not human)"}
+    for key in ("exemplars", "craft", "rules"):
+        for set_name in ("ipa", "client"):
+            rs = [r for r in rows if r["bucket"] == key and r["set"] == set_name]
+            if not rs:
+                continue
+            useful = [r for r in rs if r["truth"]]
+            kept = sum(r["gate"] for r in useful)
+            dropped_bad = sum(1 for r in rs if not r["truth"] and not r["gate"])
+            out[f"{key}/{set_name}"] = {"n": len(rs), "useful": len(useful),
+                                        "useful_kept_by_gate": f"{kept}/{len(useful)}",
+                                        "not_useful_dropped": f"{dropped_bad}/{len(rs) - len(useful)}",
+                                        "agreement": round(sum(r["gate"] == r["truth"] for r in rs) / len(rs), 3)}
+    print(json.dumps(out, indent=1))
+
+
 def main() -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("cmd", choices=("briefs", "pairs", "prelabel", "stats"))
+    ap.add_argument("cmd", choices=("briefs", "pairs", "prelabel", "stats", "confirm", "evaluate"))
+    ap.add_argument("--backend", default="nemotron", help="evaluate: validation backend to score with")
+    ap.add_argument("file", nargs="?", help="confirm: the confirmed_labels.json exported by labelpage")
     ap.add_argument("--set", dest="which", choices=("ipa", "client"), default="ipa",
                     help="ipa: reconstructed from public cases; client: real briefs (git-ignored)")
     ap.add_argument("--n", type=int, default=40)
@@ -264,6 +328,10 @@ def main() -> None:
     global OUT
     if a.which == "client":
         OUT = OUT / "client"
+    if a.cmd == "confirm":
+        return cmd_confirm(a.file)
+    if a.cmd == "evaluate":
+        return cmd_evaluate(a.backend)
     if a.cmd != "stats":
         _guard()
     briefs = cmd_client_briefs if a.which == "client" else (lambda: cmd_briefs(a.n))

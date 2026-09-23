@@ -784,6 +784,12 @@ def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, conte
 
     from judge import select
     from judge_base import Passage, Query
+    # RAG_VALIDATION_MODE: `order` (default) re-sorts each bucket by the validator's score
+    # and drops nothing; `gate` also drops what fails the threshold (floor per bucket).
+    # Order is the default because, on 392 labelled brief pairs, nemotron's gate kept
+    # only 1/24 useful client exemplars and 2/32 useful client craft chunks (step 6.2,
+    # labelset.py evaluate) — a QA reranker's threshold does not transfer to briefs.
+    mode = (os.environ.get("RAG_VALIDATION_MODE") or "order").strip().lower()
     exempt = lambda h: h.bucket == "rules" and h.metadata.get("verdict") == "rejected"
     # Judge only what can reach the prompt: each non-empty bucket gets an equal share of
     # the lead backend's capacity (at least JUDGE_MIN_SHARE), taken in rank order. A
@@ -810,6 +816,23 @@ def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, conte
             h.relevance = {"value": True, "score": None, "backend": "reviewer_rejection",
                            "kept": "exempt"}
         chosen = []
+        if mode != "gate":
+            live_hits = [h for h in hits if not exempt(h)]
+            def okey(i):
+                """Judged by score (else raw) desc, then unjudged in fused order."""
+                v = by_cite.get(live_hits[i].cite)
+                return (1, 0.0, i) if v is None else (0, -(v.score if v.score is not None else (v.raw or 0.0)), i)
+            for i in sorted(range(len(live_hits)), key=okey):
+                h, v = live_hits[i], by_cite.get(live_hits[i].cite)
+                h.relevance = ({**v.as_contract(), "kept": "ordered"} if v is not None
+                               else {"value": True, "score": None, "backend": "none", "kept": "unjudged"})
+                chosen.append(h)
+            counts = {"ordered": sum(1 for h in chosen if h.relevance["kept"] == "ordered"),
+                      "unjudged": sum(1 for h in chosen if h.relevance["kept"] == "unjudged"),
+                      "exempt": len(keep_first), "rejected": 0}
+            per_bucket[bucket] = counts
+            hits_by[bucket] = keep_first + chosen
+            continue
         for h, v, kept in select([(h, by_cite.get(h.cite)) for h in hits if not exempt(h)],
                                  floor=VALIDATION_FLOOR, default_width=share):
             h.relevance = ({**v.as_contract(), "kept": kept} if v is not None
@@ -831,6 +854,7 @@ def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, conte
     out["contract"] = result.as_contract()
     out["per_bucket"] = per_bucket
     out["calls"] = 1 if pool else 0
+    out["mode"] = mode
     if refused:
         out["admission_refused"] = refused
     return out
