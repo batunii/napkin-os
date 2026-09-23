@@ -148,14 +148,6 @@ def retrieve(query: str, k: int = 5, where: dict | None = None,
     return out
 
 
-# ---- the brief's retrieval entry point -------------------------------------------
-def brief_context(pairs: dict, index_dir: Path | str | None = None, **kw):
-    """Campaign-clan pairs -> four budgeted, citable blocks. See brief_context.py.
-    Re-exported here so the pipeline has ONE import surface for retrieval."""
-    import brief_context as _bc
-    return _bc.build(pairs, index_dir=Path(index_dir) if index_dir else DEFAULT_INDEX, **kw)
-
-
 _CITE = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9_:.\-]*(?:#[a-z_]+)?)\]")
 
 

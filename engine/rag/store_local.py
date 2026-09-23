@@ -229,6 +229,15 @@ class LocalStore(VectorStore):
         by_id = {rows[i]["id"]: rows[i] for i in idxs}
         return [(score, by_id[d]) for score, d in self.bm25().search(qtext, k=k, allowed=set(by_id))]
 
+    def get_many(self, chunk_ids: list[str]) -> dict[str, dict]:
+        """Several rows by chunk id: {id: row}, missing ids absent (dict lookups)."""
+        out = {}
+        for i in chunk_ids:
+            r = self.get(i) if i else None
+            if r:
+                out[i] = r
+        return out
+
     def get(self, chunk_id: str) -> dict | None:
         """One row by chunk id. Used to present a parent case after one of its sections
         matched — the index holds both, so this is a dict lookup, not a second search."""

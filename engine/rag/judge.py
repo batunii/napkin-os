@@ -570,22 +570,14 @@ PROBE_PASSAGES = [
 
 
 def _load_env_file() -> None:
-    """Load engine/.env into os.environ without overriding what is set, as rag.py does,
-    so `python3 judge.py check` sees the same keys the pipeline does. CLI only: importing
-    this module never touches the environment."""
-    env = HERE.parent / ".env"
-    if not env.exists():
-        return
-    for line in env.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        if line.startswith("export "):
-            line = line[7:]
-        k, v = line.split("=", 1)
-        k, v = k.strip(), v.strip().strip('"').strip("'")
-        if k and k not in os.environ:
-            os.environ[k] = v
+    """Load engine/.env into os.environ without overriding what is set, so `python3 judge.py
+    check` sees the same keys the pipeline does. Uses rag.py's loader (importing rag runs
+    it) rather than a second copy of the parsing. CLI only: importing this module never
+    touches the environment."""
+    try:
+        import rag  # noqa: F401  (imported for its _load_dotenv() side effect)
+    except ImportError:
+        pass
 
 
 def _ranked_relevant_higher(rel: Verdict, irr: Verdict) -> bool | None:

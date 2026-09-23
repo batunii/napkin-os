@@ -233,3 +233,24 @@ def test_build_multi_egress_drops_and_records_out_of_scope_hits(monkeypatch):
     mc = bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([]))
     assert [h.cite for h in mc.fields["f"]] == ["ok"]
     assert {(e["cite"], e["on"]) for e in mc.trace["egress"]} == {("leak_t", "tenant"), ("leak_s", "scope")}
+
+
+def test_collapse_fetches_all_parents_in_one_request():
+    """Refactor scan finding: one get() per parent was ~55 Qdrant round-trips per mix brief.
+    With get_many the parents arrive in one call; stores without it still work per id."""
+    rows = [(0.9, {"id": f"c{i}#s", "metadata": {"doc_id": f"c{i}", "parent_id": f"c{i}#p"}}) for i in range(4)]
+    class Many:
+        """Records how get_many was called."""
+        calls = []
+        def get_many(self, ids):
+            """Return a parent for every id, recording the batch."""
+            self.calls.append(list(ids)); return {i: {"id": i, "text": "parent"} for i in ids}
+    m = Many()
+    out = bc._collapse(rows, m)
+    assert len(m.calls) == 1 and len(m.calls[0]) == 4 and all(r["text"] == "parent" for _, r in out)
+    class One:
+        """Only per-id get(), the old interface."""
+        def get(self, i):
+            """Return a parent."""
+            return {"id": i, "text": "parent"}
+    assert all(r["text"] == "parent" for _, r in bc._collapse(rows, One()))

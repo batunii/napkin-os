@@ -258,6 +258,28 @@ def get(chunk_id: str) -> dict | None:
     return pts[0].get("payload") if pts else None
 
 
+def get_many(chunk_ids: list[str]) -> dict[str, dict]:
+    """Several chunk payloads by chunk id in ONE request: {id: payload}, missing ids
+    absent. _collapse() used to call get() once per parent case — measured ~55 Qdrant
+    round-trips per brief on the mix path, about half of all its Qdrant calls. A failed
+    request returns {} so callers present the section, exactly as get() returning None."""
+    ids = list(dict.fromkeys(i for i in chunk_ids if i))
+    if not ids:
+        return {}
+    flt = {"must": [{"key": "id", "match": {"any": ids}}]}
+    try:
+        r = _req("POST", f"/collections/{collection_name()}/points/scroll",
+                 {"filter": flt, "limit": len(ids), "with_payload": True})
+    except RuntimeError:
+        return {}
+    out = {}
+    for p in (r.get("result") or {}).get("points") or []:
+        pl = p.get("payload") or {}
+        if pl.get("id") in ids:
+            out[pl["id"]] = pl
+    return out
+
+
 def _filter(where: dict | None):
     """Map the shared filter language (filters.py) to Qdrant's filter JSON. Keys are
     metadata keys (e.g. 'source'), stored under payload.metadata.<key>."""
@@ -379,6 +401,10 @@ class QdrantStore(VectorStore):
     def get(self, chunk_id):
         """One chunk payload by chunk id, or None. See get()."""
         return get(chunk_id)
+
+    def get_many(self, chunk_ids):
+        """Several chunk payloads in one request. See get_many()."""
+        return get_many(chunk_ids)
 
     def search(self, qvec, k=5, where=None):
         """Dense top-k as [(score, payload)]. See search()."""

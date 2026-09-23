@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import base64
 import datetime as dt
+import functools
 import json
 import os
 import re
@@ -1977,6 +1978,17 @@ def _chain_order(query: str, hits: list) -> list | None:
     return [hits[i] for i in sorted(range(len(hits)), key=key)]
 
 
+@functools.lru_cache(maxsize=1)
+def _case_packs() -> tuple:
+    """Case packs from the corpus dirs (or packs.lock), discovered once per process —
+    never a hardcoded list, so adding or removing a pack needs no code change."""
+    try:
+        from packs import discover_packs
+        return tuple(p for p in discover_packs() if p.kind == "case")
+    except Exception:
+        return ()
+
+
 def _dedupe_by_source(hits: list) -> list:
     """First (best-ranked) hit per source, order kept."""
     seen, out = set(), []
@@ -2186,11 +2198,8 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
     # Case packs, discovered from the corpus dirs (or packs.lock at runtime) —
     # never a hardcoded list, so adding/removing a pack needs no code change
     # and a pack with no corpus simply cannot exist (the old `effie` bug).
-    try:
-        from packs import discover_packs
-        case_packs = [p for p in discover_packs() if p.kind == "case"]
-    except Exception:
-        case_packs = []
+    # Case packs are only read by the loops path (_one_loop); discovered lazily and once
+    # per process (_case_packs), so the mix path never pays the directory scan.
 
     def _one_loop(spec):
         """Retrieval + rerank + precedent pull for ONE loop — fully independent given
@@ -2227,7 +2236,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
         # Pull award-winning PRECEDENT cases from every case pack whose `loops`
         # gate includes this loop (default: insight + substantiation). Which packs
         # exist, their tag, and their per-pack k all come from the pack itself.
-        eligible = [p for p in case_packs if p.eligible(key)]
+        eligible = [p for p in _case_packs() if p.eligible(key)]
         if eligible:
             case_q = (f"award-winning precedent insight {gist['audience']} {gist['problem']}"
                       if key == "loop4_insight"
@@ -2345,7 +2354,11 @@ def render_loops37(L, brief):
     if not s.get("enabled"):
         L.append(f"_skipped — {s.get('reason', '')}_\n")
         return
-    L.append(f"_intent: {s['intent']} · retrieval: nv-embedqa-e5-v5 · synthesis: {s['synthesis_mode']}_\n")
+    # Provenance from the run itself, not a constant: which path retrieved and which tier
+    # embedded (a hardcoded model name here misreported every brief and hid fallbacks).
+    embed = (s.get("retrieval_trace") or {}).get("embed") or "hosted nemotron-3-embed-1b"
+    L.append(f"_intent: {s['intent']} · retrieval: {s.get('rag_path') or 'loops'} · embed: {embed} "
+             f"· synthesis: {s['synthesis_mode']}_\n")
     for d in s["loops"].values():
         L.append(f"### {d['title']}\n")
         if d.get("synthesis"):
