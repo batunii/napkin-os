@@ -1101,8 +1101,35 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   // dialogs
   // ════════════════════════════════════════════════════════════════════════
   var dlg=$('dlg'), form=$('dlg-form'), lastFocus=null;
+  // The host runs this view in a frame sandboxed without allow-forms, where a
+  // browser refuses to submit a form and never fires its submit event. So the
+  // dialog's submit button and Enter in a field raise the event themselves,
+  // after the same validation a real submit would run; nothing navigates.
+  function submitDialog(){
+    if(form.reportValidity && !form.reportValidity()) return;
+    form.dispatchEvent(new Event('submit', {cancelable:true}));
+  }
+  // Each dialog gets a fresh form. The builders attach input/change listeners
+  // to it; on a reused element those outlive their dialog and run inside the
+  // next one, writing a stale preview into it (or throwing on its missing
+  // nodes).
+  function freshForm(){
+    var n=form.cloneNode(false);
+    form.parentNode.replaceChild(n, form);
+    form=n;
+    form.addEventListener('click', function(e){
+      var b=e.target.closest('button[type=submit],input[type=submit]');
+      if(!b || b.disabled) return;
+      e.preventDefault(); submitDialog();
+    });
+    form.addEventListener('keydown', function(e){
+      if(e.key!=='Enter' || e.target.tagName!=='INPUT' || /^(checkbox|radio|button|submit)$/.test(e.target.type)) return;
+      e.preventDefault(); submitDialog();
+    });
+  }
   function openDialog(html, onReady){
     lastFocus=document.activeElement;
+    freshForm();
     form.innerHTML=html;
     if(typeof dlg.showModal==='function') dlg.showModal(); else dlg.setAttribute('open','');
     var c=form.querySelector('[data-close]'); if(c) c.addEventListener('click',function(e){ e.preventDefault(); closeDialog(); });
