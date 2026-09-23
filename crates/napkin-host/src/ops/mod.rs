@@ -5,8 +5,9 @@
 //! The operations of the OS layer, as functions.
 //!
 //! `(Ctx, Document@version, input) → Outcome` for everything that changes a
-//! document ([`edit`]), and `Document → answer` for everything that only reads
-//! one ([`read`]). Nothing here holds state or writes: an [`Outcome`] carries
+//! document ([`edit`], and [`middleware`] for applying what the middleware
+//! computed), and `Document → answer` for everything that only reads one
+//! ([`read`]). Nothing here holds state or writes: an [`Outcome`] carries
 //! the [`Change`]s a caller may apply through
 //! [`PartStore::apply`](crate::store::PartStore::apply), inside whatever
 //! transaction it owns. That is what lets the desktop apply a change as a file
@@ -15,6 +16,7 @@
 
 pub mod edit;
 pub mod members;
+pub mod middleware;
 pub mod read;
 
 use serde_json::Value;

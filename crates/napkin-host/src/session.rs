@@ -24,7 +24,7 @@ use crate::ctx::Ctx;
 use crate::document::{Change, Document, Version};
 use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
-use crate::ops::{edit, read, Outcome};
+use crate::ops::{edit, middleware, read, Outcome};
 use crate::store::{DocId, DocStore};
 
 pub use crate::ops::{attribute, content_type_for, sanitize_asset_name};
@@ -98,6 +98,9 @@ pub struct Applied {
     /// Nothing needed writing (an unchanged edit). The caller still gets its
     /// reply; the shell may still want telling.
     pub noop: bool,
+    /// The version the open document is at once the changes are in — the one
+    /// the store reported, not one the operation guessed.
+    pub version: Option<Version>,
 }
 
 /// What one shell is looking at: the snapshot it has open and how it is
@@ -189,6 +192,7 @@ impl Session {
             reply: outcome.reply,
             events,
             noop,
+            version: view.open.as_ref().map(|d| d.version().clone()),
         })
     }
 
@@ -446,6 +450,61 @@ impl Session {
 
     pub fn set_context_as(&self, ctx: &Ctx, markdown: &str, append: bool) -> HostResult<Applied> {
         self.perform(ctx, |c, d| edit::set_context(c, d, markdown, append))
+    }
+
+    /// Apply the `change` a `napkin.middleware/1` reply carries to the open
+    /// document, as `process:middleware` (see [`middleware::apply`]).
+    pub fn apply_middleware_as(&self, ctx: &Ctx, reply: &Value) -> HostResult<Applied> {
+        self.perform(ctx, |c, d| middleware::apply(c, d, reply))
+    }
+
+    /// Settle what the proxy brought back for `request_kind: "middleware"`:
+    /// `envelope` is the proxy's `{ok, status, endpoint, data, error}`.
+    ///
+    /// A reply that is not `napkin.middleware/1` becomes an error the app sees
+    /// (M4 — see [`middleware::check_api`]). A reply with a `change` has it
+    /// applied here, by the host, and the app gets the envelope back with
+    /// `change` replaced by `{applied: true, version, base_stale}` or
+    /// `{applied: false, reason}`. The app never writes middleware output
+    /// itself; what it is handed is informational. Returns the events the
+    /// apply fans out.
+    pub fn settle_middleware(&self, ctx: &Ctx, mut envelope: Value) -> (Value, Vec<HostEvent>) {
+        // The upstream call itself failed: already an error, nothing to settle.
+        if envelope.get("ok").and_then(Value::as_bool) != Some(true) {
+            return (envelope, Vec::new());
+        }
+        let data = envelope.get("data").cloned().unwrap_or(Value::Null);
+        if let Err(e) = middleware::check_api(&data) {
+            return (
+                serde_json::json!({
+                    "ok": false,
+                    "status": envelope.get("status").cloned().unwrap_or(Value::Null),
+                    "endpoint": envelope.get("endpoint").cloned().unwrap_or(Value::Null),
+                    // Whatever answered is not the middleware; its body is not
+                    // passed on as if it were.
+                    "data": Value::Null,
+                    "error": e.message,
+                }),
+                Vec::new(),
+            );
+        }
+        if data.get("change").map_or(true, Value::is_null) {
+            return (envelope, Vec::new());
+        }
+        let (settled, events) = match self.apply_middleware_as(ctx, &data) {
+            Ok(done) => {
+                let mut reply = done.reply;
+                if reply.get("applied").and_then(Value::as_bool) == Some(true) {
+                    if let (Some(obj), Some(v)) = (reply.as_object_mut(), done.version) {
+                        obj.insert("version".into(), Value::String(v.to_string()));
+                    }
+                }
+                (reply, done.events)
+            }
+            Err(e) => (middleware::refused(e.message), Vec::new()),
+        };
+        envelope["data"]["change"] = settled;
+        (envelope, events)
     }
 }
 

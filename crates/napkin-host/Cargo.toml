@@ -13,6 +13,8 @@ clan-sdk = { path = "../clan-sdk" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
+# Timestamps on the decisions and projection a middleware change writes.
+chrono = { workspace = true }
 
 # Everything below is native-only. A browser build drops all of it: there is no
 # filesystem to write a temp file to, no process to spawn a renderer in, and the
