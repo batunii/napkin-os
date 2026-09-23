@@ -73,7 +73,17 @@ export const STRUCTURED_EDIT_BRIDGE = `
     return fetch(clanScheme + '/api-proxy', {
       method: 'POST',
       body: JSON.stringify({ request_kind: kind || 'agent', payload: payload })
-    }).then(function(r) { return r.json(); });
+    }).then(function(r) { return r.json(); })
+      .then(function(res) {
+        // When the host applied a middleware change it hands back the document
+        // as it now stands. Refresh from the host's copy, the way patchData
+        // refreshes from its own merge, so the view re-renders.
+        if (res && res.clan && res.clan.data) {
+          window.__CLAN__.data = res.clan.data;
+          window.dispatchEvent(new CustomEvent('clan:dataupdated', { detail: { source: 'middleware', version: res.clan.version } }));
+        }
+        return res;
+      });
   }
 
   function uploadAsset(name, bytes, agent) {
