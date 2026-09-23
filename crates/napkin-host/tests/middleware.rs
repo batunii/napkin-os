@@ -1020,3 +1020,131 @@ fn messages_added_by_both_parties_do_not_contest() {
     let data = yaml(&on_disk(&f), "shared/data.yaml");
     assert_eq!(data["intake"]["messages"].as_object().unwrap().len(), 3);
 }
+
+// ── Addresses into maps: the key in brackets ────────────────────────────────
+
+/// One staged entry of a map, `<top>.<key>` in the patch, delivered with a
+/// decision whose only target is `target` (the bracketed address, as the
+/// middleware writes it). Delivered, touched by a person, then delivered again
+/// by a later poll over the same base: whether the repeat is recognised as
+/// already delivered. Returns the second settle's `change` reply and the open
+/// contests afterwards.
+fn repeat_after_a_person_touched(
+    patch: Value,
+    read_key: &str,
+    target: &str,
+    person: &str,
+) -> (Value, usize) {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    let doc_id = clan["id"].as_str().unwrap().to_string();
+    let change = json!({
+        "doc": doc_id, "base_version": clan["version"],
+        "read": { read_key: null },
+        "data_patch": patch,
+        "decisions": [{ "id": "d_01JB0STAGE1", "kind": "edit", "agent": "start_campaign@1.0",
+                        "action": "staged", "rationale": "the stage's entry",
+                        "targets": [target.replace("<doc>", &doc_id)] }],
+    });
+    let (out, _) = settle(&f, campaign_poll("running", "extract", change.clone()));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+
+    // A person adds a message of their own and changes the delivered entry.
+    f.session
+        .patch_data(r#"{"patch":{"intake":{"messages":{"msg_u3":{"role":"user","text":"and Spain","at":"2026-09-24T10:00:09Z"}}}},"agent":"human","action":"sent a message"}"#)
+        .unwrap();
+    f.session.patch_data(person).unwrap();
+
+    let (out, _) = settle(&f, campaign_poll("running", "identify", change));
+    let contests = chain(&on_disk(&f))
+        .decisions
+        .iter()
+        .filter(|d| d.kind.as_deref() == Some("contest"))
+        .count();
+    (out["data"]["change"].clone(), contests)
+}
+
+fn staged_message() -> Value {
+    json!({ "intake": { "messages": { "msg_a1": {
+        "role": "agent", "text": "Reading the brief", "at": "2026-09-24T10:00:04Z",
+        "job_id": "job_intake1", "stage": "extract" } } } })
+}
+
+const PERSON_MARKS_MESSAGE: &str = r#"{"patch":{"intake":{"messages":{"msg_a1":{"pinned":true}}}},"agent":"human","action":"pinned a message"}"#;
+
+#[test]
+fn a_bracketed_message_target_delivered_twice_is_skipped_the_second_time() {
+    let (reply, contests) = repeat_after_a_person_touched(
+        staged_message(),
+        "intake.messages.msg_a1",
+        "<doc>#intake.messages[msg_a1]",
+        PERSON_MARKS_MESSAGE,
+    );
+    assert_eq!(
+        reply,
+        json!({ "applied": false, "reason": "already applied" }),
+        "recognised as delivered, not contested"
+    );
+    assert_eq!(contests, 0);
+}
+
+#[test]
+fn a_bracketed_material_target_is_matched() {
+    let (reply, contests) = repeat_after_a_person_touched(
+        json!({ "materials": { "mat_email01": {
+            "kind": "email", "label": "The client's email", "added_at": "2026-09-24T10:00:01Z" } } }),
+        "materials.mat_email01",
+        "<doc>#materials[mat_email01]",
+        r#"{"patch":{"materials":{"mat_email01":{"label":"Client email (renamed)"}}},"agent":"human","action":"renamed a material"}"#,
+    );
+    assert_eq!(
+        reply,
+        json!({ "applied": false, "reason": "already applied" })
+    );
+    assert_eq!(contests, 0);
+}
+
+// Neither a target on another document nor a malformed address speaks for the
+// field, so the repeat is judged as usual — and the person's change contests
+// it. (The host does not guess what such a target meant.)
+#[test]
+fn a_target_elsewhere_or_malformed_does_not_count_as_delivered() {
+    for target in [
+        "d_01OTHERDOC#intake.messages[msg_a1]",
+        "d_01OTHERDOC#intake.messages.msg_a1",
+        "intake.messages[msg_a1]",
+        "<doc>#intake.messages[msg_a1",
+        "<doc>#intake.messages[msg.a1]",
+        "<doc>#intake.messages[]",
+        "<doc>#intake.messages[msg_a1]x",
+        "<doc>#[msg_a1]",
+        "<doc>#intake..messages.msg_a1",
+    ] {
+        let (reply, contests) = repeat_after_a_person_touched(
+            staged_message(),
+            "intake.messages.msg_a1",
+            target,
+            PERSON_MARKS_MESSAGE,
+        );
+        assert_eq!(reply["applied"], true, "{target}: {reply}");
+        assert_eq!(
+            reply["contested_fields"],
+            json!(["intake.messages.msg_a1"]),
+            "{target}"
+        );
+        assert_eq!(contests, 1, "{target}");
+    }
+}
+
+// The dotted form of an address still matches, as before.
+#[test]
+fn a_dotted_target_on_this_document_still_counts() {
+    let (reply, contests) = repeat_after_a_person_touched(
+        staged_message(),
+        "intake.messages.msg_a1",
+        "<doc>#intake.messages.msg_a1",
+        PERSON_MARKS_MESSAGE,
+    );
+    assert_eq!(reply["reason"], "already applied", "{reply}");
+    assert_eq!(contests, 0);
+}

@@ -205,7 +205,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         DecisionChain::default()
     };
     let known = known_decision_ids(&chain_before);
-    let delivered = |field: &str| delivered_before(&decisions, &known, field);
+    let delivered = |field: &str| delivered_before(&decisions, open_id, &known, field);
     let split = split_patch(&leaves, read, &current, stale, &delivered)?;
 
     // 4. What is already in the document is not added again: a pin or finding
@@ -240,7 +240,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
                 .and_then(Value::as_str)
                 .map_or(true, |id| !known.contains(id))
         })
-        .partition(|d| only_about(d, &contested_paths));
+        .partition(|d| only_about(d, open_id, &contested_paths));
 
     let mut data = current.clone();
     json_merge(&mut data, &split.patch);
@@ -303,7 +303,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         let held: Vec<&Value> = withheld
             .iter()
             .copied()
-            .filter(|d| touches(d, &c.path))
+            .filter(|d| touches(d, open_id, &c.path))
             .collect();
         let d = contest_decision(ctx, open_id, &handler, base, doc, c, &held, &now)?;
         contest_ids.push(d.id.clone().unwrap_or_default());
@@ -457,10 +457,14 @@ fn covering<'a>(read: &'a serde_json::Map<String, Value>, leaf: &[String]) -> Op
 /// it is a no-op there because the document already holds what it writes).
 fn delivered_before(
     decisions: &[Value],
+    doc_id: &str,
     known: &std::collections::BTreeSet<String>,
     field: &str,
 ) -> bool {
-    let mut about = decisions.iter().filter(|d| touches(d, field)).peekable();
+    let mut about = decisions
+        .iter()
+        .filter(|d| touches(d, doc_id, field))
+        .peekable();
     about.peek().is_some()
         && about.all(|d| {
             d.get("id")
@@ -593,26 +597,73 @@ fn already_contested(chain: &DecisionChain, doc_id: &str, c: &Contest) -> bool {
     })
 }
 
-/// The paths a job decision targets, without their `<doc-id>#` prefix.
-fn target_paths(d: &Value) -> Vec<&str> {
+/// The paths a job decision targets on the open document, in the dotted form
+/// read-set keys and patch paths use (see [`normalise_target`]). A target that
+/// is on another document, or that does not parse, names nothing here.
+fn target_paths(d: &Value, doc_id: &str) -> Vec<String> {
     d.get("targets")
         .and_then(Value::as_array)
         .map(|a| {
             a.iter()
                 .filter_map(Value::as_str)
-                .map(|t| t.rsplit_once('#').map_or(t, |(_, p)| p))
+                .filter_map(|t| normalise_target(t, doc_id))
                 .collect()
         })
         .unwrap_or_default()
 }
 
+/// An address `<doc-id>#<entity-keyed path>` (Contract 3 §2.4) as the dotted
+/// path it names on `doc_id`: `<doc-id>#intake.messages[msg_X]` is
+/// `intake.messages.msg_X`, `<doc-id>#report` is `report`.
+///
+/// `None` — matching nothing — for an address on another document, one with no
+/// `#`, and one whose path is malformed: an empty segment, an unclosed or stray
+/// bracket, a bracket not following a segment, or a key that is empty or holds
+/// `.`, `[`, `]` or `#`. Map keys in this schema are id-like, so anything else
+/// is not guessed at.
+fn normalise_target(target: &str, doc_id: &str) -> Option<String> {
+    let (doc, path) = target.split_once('#')?;
+    if doc != doc_id || path.is_empty() {
+        return None;
+    }
+    let bad = |c: char| matches!(c, '.' | '[' | ']' | '#');
+    let mut out: Vec<&str> = Vec::new();
+    let mut rest = path;
+    // At the start of a segment: a name up to the next `.` or `[`.
+    loop {
+        let end = rest.find(['.', '[']).unwrap_or(rest.len());
+        let name = &rest[..end];
+        if name.is_empty() || name.contains(bad) {
+            return None;
+        }
+        out.push(name);
+        rest = &rest[end..];
+        // Any number of `[key]` after it.
+        while let Some(after) = rest.strip_prefix('[') {
+            let close = after.find(']')?;
+            let key = &after[..close];
+            if key.is_empty() || key.contains(bad) {
+                return None;
+            }
+            out.push(key);
+            rest = &after[close + 1..];
+        }
+        match rest.strip_prefix('.') {
+            Some(next) => rest = next,
+            None if rest.is_empty() => return Some(out.join(".")),
+            None => return None,
+        }
+    }
+}
+
+/// True when dotted `path` is `field` or lies under it.
 fn under(path: &str, field: &str) -> bool {
     path == field || path.starts_with(&format!("{field}."))
 }
 
 /// True when every target of a job decision is at or under one of `paths`.
-fn only_about(d: &Value, paths: &[&str]) -> bool {
-    let targets = target_paths(d);
+fn only_about(d: &Value, doc_id: &str, paths: &[&str]) -> bool {
+    let targets = target_paths(d, doc_id);
     !targets.is_empty()
         && targets
             .iter()
@@ -620,8 +671,8 @@ fn only_about(d: &Value, paths: &[&str]) -> bool {
 }
 
 /// True when some target of a job decision is at or under `field`.
-fn touches(d: &Value, field: &str) -> bool {
-    target_paths(d).iter().any(|t| under(t, field))
+fn touches(d: &Value, doc_id: &str, field: &str) -> bool {
+    target_paths(d, doc_id).iter().any(|t| under(t, field))
 }
 
 /// The `contest` decision a stale write over a changed field opens: both
