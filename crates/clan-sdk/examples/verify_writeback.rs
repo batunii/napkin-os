@@ -71,6 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         rationale,
         pinned: false,
         fields_changed: Some(keys.clone()),
+        typed: None,
     };
 
     let out = patch_data_with(

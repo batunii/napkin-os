@@ -102,7 +102,9 @@ pub fn assemble(clan: &ClanFile, opts: &InjectOptions) -> Result<AgentContext> {
                          These keys were contested when parallel branches merged; the listed winner \
                          was picked by policy and currently sits in the data. To adjudicate a key: \
                          `clan patch-data` with your chosen value, then `clan patch-decision` \
-                         recording why."
+                         recording why. A `decisions[<id>]` key is different: branches judged that \
+                         decision differently, nothing was picked, and it is settled by a `resolve` \
+                         decision that targets the id."
                     ),
                 ));
             }

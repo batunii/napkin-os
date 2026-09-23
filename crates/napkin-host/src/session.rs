@@ -456,6 +456,7 @@ impl Session {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
                 fields_changed: Some(keys.clone()),
+                typed: None,
             });
 
         let mut guard = self.current.lock().unwrap();
@@ -539,6 +540,7 @@ impl Session {
             rationale: format!("added asset {name}"),
             pinned: false,
             fields_changed: None,
+            typed: None,
         });
         // Extract text BEFORE the bytes are moved into the repack.
         let extracted = extract_text(&name, &body);

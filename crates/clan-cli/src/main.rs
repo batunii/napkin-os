@@ -1610,6 +1610,7 @@ fn cmd_pack_html(
             rationale: rationale.unwrap_or_default(),
             pinned,
             fields_changed: Some(vec!["human/index.html".to_string()]),
+            typed: None,
         }),
         (Some(_), None) | (None, Some(_)) => {
             anyhow::bail!("--agent and --action must be provided together");
@@ -1741,6 +1742,7 @@ fn cmd_patch_html(
             rationale: rationale.unwrap_or_default(),
             pinned,
             fields_changed: None,
+            typed: None,
         }),
         _ if no_decision || clan_sdk::pack::frontmatter_has_decision(&raw_html) => None,
         _ => anyhow::bail!(
@@ -2037,6 +2039,7 @@ fn decision_for_patch(
                     .map(|o| o.keys().cloned().collect())
                     .unwrap_or_default(),
             ),
+            typed: None,
         })),
         _ => anyhow::bail!(
             "this change needs attribution: pass --agent <name> --action \"<what changed>\" \
@@ -2161,6 +2164,7 @@ fn cmd_patch_decision(
         rationale,
         pinned,
         fields_changed: None,
+        typed: None,
     };
 
     let bytes = patch_decision(&clan, entry, None)?;

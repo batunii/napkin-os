@@ -5,6 +5,7 @@
 //! Structural and content validation (spec §17).
 
 use crate::container::ClanFile;
+use crate::decision::{DecisionChain, DECISION_KINDS};
 use crate::error::{Error, Result};
 use crate::hash;
 
@@ -171,9 +172,24 @@ fn content_checks(clan: &ClanFile, report: &mut ValidationReport) {
                         mr.conflicts.len()
                     ));
                 }
+                let chain = clan
+                    .read_entry("agent/decision-chain.yaml")
+                    .ok()
+                    .and_then(|b| DecisionChain::from_yaml(&b).ok())
+                    .unwrap_or_default();
+                let ids = chain.ids();
+                for conflict in &mr.conflicts {
+                    if let Some(id) = &conflict.decision {
+                        if !ids.contains(id.as_str()) {
+                            report.content.push(format!(
+                                "merge-report.yaml references decision {id:?} that is absent from agent/decision-chain.yaml"
+                            ));
+                        }
+                    }
+                }
                 if let Ok(bytes) = clan.read_entry("shared/data.yaml") {
                     if let Ok(data) = serde_yaml::from_slice::<serde_yaml::Value>(&bytes) {
-                        for conflict in &mr.conflicts {
+                        for conflict in mr.conflicts.iter().filter(|c| c.decision.is_none()) {
                             if data.get(conflict.key.as_str()).is_none() {
                                 report.content.push(format!(
                                     "merge-report.yaml references key {:?} that is absent from shared/data.yaml",
@@ -238,6 +254,44 @@ fn content_checks(clan: &ClanFile, report: &mut ValidationReport) {
                     }
                 }
             }
+        }
+        match DecisionChain::from_yaml(&bytes) {
+            Ok(chain) => decision_checks(&chain, report),
+            Err(e) => report
+                .content
+                .push(format!("decision-chain.yaml does not parse: {e}")),
+        }
+    }
+}
+
+/// The typed-decision rules (OS-layer contract §3): ids are unique, `kind` is
+/// one the layer defines, and the kinds that must say why do.
+fn decision_checks(chain: &DecisionChain, report: &mut ValidationReport) {
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, d) in chain.decisions.iter().enumerate() {
+        if let Some(id) = &d.id {
+            if id.trim().is_empty() {
+                report
+                    .content
+                    .push(format!("decision-chain.yaml entry {i} has an empty id"));
+            } else if !seen.insert(id.as_str()) {
+                report.content.push(format!(
+                    "decision-chain.yaml entry {i} reuses decision id {id:?}"
+                ));
+            }
+        }
+        if !d.kind_is_known() {
+            report.content.push(format!(
+                "decision-chain.yaml entry {i} has kind {:?}, which is not one of: {}",
+                d.kind.as_deref().unwrap_or_default(),
+                DECISION_KINDS.join(", ")
+            ));
+        }
+        if d.requires_rationale() && d.rationale.trim().is_empty() {
+            report.content.push(format!(
+                "decision-chain.yaml entry {i} ({}) needs a rationale",
+                d.kind.as_deref().unwrap_or("verdict")
+            ));
         }
     }
 }

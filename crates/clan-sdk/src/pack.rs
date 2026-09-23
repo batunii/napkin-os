@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::compress::{compress_chain, CompressionConfig, Compressor};
 use crate::container::{ClanBuilder, ClanFile};
-use crate::decision::{Decision, DecisionChain};
+use crate::decision::{new_decision_id, Decision, DecisionChain};
 use crate::error::{Error, Result};
 use crate::manifest::{FileEntry, Lineage, CLAN_VERSION, CLAN_VERSION_MINOR};
 
@@ -41,7 +41,7 @@ pub struct HumanPayload {
     pub patch_action: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DecisionEntry {
     pub agent_name: String,
     pub action: String,
@@ -51,6 +51,56 @@ pub struct DecisionEntry {
     /// the merge-patch keys); `None` lets `pack` derive them from the
     /// structured payload (used by `pack_html`, whose payload IS the delta).
     pub fields_changed: Option<Vec<String>>,
+    /// The structured part of the decision — `id`, `kind`, `targets`,
+    /// `cites`, `actor`, `claimed_agent`, `handler`, `backend`, `scope`, the
+    /// verdict fields, `licence`, and any field this SDK does not know. The
+    /// five fields above override its `agent`, `action`, `rationale`,
+    /// `pinned` and `fields_changed`, and the write path stamps `timestamp`.
+    /// An id is generated if it has none. `None` records a plain decision
+    /// (which still gets an id).
+    pub typed: Option<Decision>,
+}
+
+impl DecisionEntry {
+    /// The decision this entry records, stamped at `timestamp`.
+    pub fn into_decision(self, timestamp: String, fields_changed: Vec<String>) -> Decision {
+        let mut d = self.typed.unwrap_or_default();
+        if d.id.as_deref().map_or(true, |id| id.trim().is_empty()) {
+            d.id = Some(new_decision_id());
+        }
+        d.agent = self.agent_name;
+        d.action = self.action;
+        d.rationale = self.rationale;
+        d.timestamp = timestamp;
+        d.fields_changed = fields_changed;
+        d.pinned = self.pinned || d.pinned;
+        d
+    }
+
+    /// Read the structured fields of an agent-supplied decision object.
+    ///
+    /// Attribution — `actor`, `handler`, `backend`, `scope` — comes from the
+    /// request context and never from the body, so any the body carries are
+    /// dropped here; the caller that knows the context sets them.
+    fn typed_from_body(body: &Value) -> Option<Decision> {
+        let mut obj = body.as_object()?.clone();
+        for (key, fallback) in [
+            ("agent", Value::String(String::new())),
+            ("action", Value::String(String::new())),
+            ("rationale", Value::String(String::new())),
+            ("timestamp", Value::String(String::new())),
+        ] {
+            obj.insert(key.to_string(), fallback);
+        }
+        obj.remove("pinned");
+        obj.remove("fields_changed");
+        let mut d: Decision = serde_json::from_value(Value::Object(obj)).ok()?;
+        d.actor = None;
+        d.handler = None;
+        d.backend = None;
+        d.scope = None;
+        (d != Decision::default()).then_some(d)
+    }
 }
 
 impl AgentOutput {
@@ -119,6 +169,7 @@ impl AgentOutput {
                     .to_string(),
                 pinned: v["decision"]["pinned"].as_bool().unwrap_or(false),
                 fields_changed: None,
+                typed: DecisionEntry::typed_from_body(&v["decision"]),
             })
         } else {
             None
@@ -238,23 +289,14 @@ pub fn pack(
         // F15: honour an explicit fields_changed (the exact merge-patch keys);
         // otherwise derive from the structured payload, which for pack_html is
         // itself the delta.
-        let fields_changed = d.fields_changed.unwrap_or_else(|| {
+        let fields_changed = d.fields_changed.clone().unwrap_or_else(|| {
             output
                 .structured
                 .as_object()
                 .map(|o| o.keys().cloned().collect())
                 .unwrap_or_default()
         });
-        chain.prepend(Decision {
-            agent: d.agent_name,
-            version: None,
-            action: d.action,
-            rationale: d.rationale,
-            timestamp: now.clone(),
-            fields_changed,
-            pinned: d.pinned,
-            trace_ref: None,
-        });
+        chain.prepend(d.into_decision(now.clone(), fields_changed));
     }
 
     // Fold any superseded human edits into the chain before they are dropped
@@ -271,19 +313,18 @@ pub fn pack(
                         .map(|p| format!("{}: {}", p.id, p.content.trim()))
                         .collect::<Vec<_>>()
                         .join(" | ");
-                    chain.prepend(Decision {
-                        agent: "human".into(),
-                        version: None,
-                        action: format!(
+                    let mut folded = Decision::new(
+                        "human",
+                        format!(
                             "{} human edit(s) superseded by full-html replacement",
                             patches.patches.len()
                         ),
-                        rationale: summary,
-                        timestamp: now.clone(),
-                        fields_changed: Vec::new(),
-                        pinned: true,
-                        trace_ref: None,
-                    });
+                        summary,
+                        now.clone(),
+                    );
+                    folded.kind = Some("edit".into());
+                    folded.pinned = true;
+                    chain.prepend(folded);
                 }
             }
         }
@@ -701,14 +742,15 @@ fn parse_html_frontmatter(
         .and_then(|v| serde_json::to_value(v).ok())
         .unwrap_or_else(|| Value::Object(Default::default()));
 
-    let decision_entry = val.get("decision").and_then(|d| {
-        Some(DecisionEntry {
-            agent_name: d["agent"].as_str().unwrap_or("unknown").to_string(),
-            action: d["action"].as_str().unwrap_or("").to_string(),
-            rationale: d["rationale"].as_str().unwrap_or("").to_string(),
-            pinned: d["pinned"].as_bool().unwrap_or(false),
-            fields_changed: None,
-        })
+    let decision_entry = val.get("decision").map(|d| DecisionEntry {
+        agent_name: d["agent"].as_str().unwrap_or("unknown").to_string(),
+        action: d["action"].as_str().unwrap_or("").to_string(),
+        rationale: d["rationale"].as_str().unwrap_or("").to_string(),
+        pinned: d["pinned"].as_bool().unwrap_or(false),
+        fields_changed: None,
+        typed: serde_json::to_value(d)
+            .ok()
+            .and_then(|d| DecisionEntry::typed_from_body(&d)),
     });
 
     (
@@ -1095,20 +1137,68 @@ pub fn patch_decision(
     };
 
     let delta = format!("appended decision by {}", entry.agent_name);
-    chain.prepend(Decision {
-        agent: entry.agent_name,
-        version: None,
-        action: entry.action,
-        rationale: entry.rationale,
-        timestamp: now,
-        fields_changed: Vec::new(),
-        pinned: entry.pinned,
-        trace_ref: None,
-    });
+    let fields_changed = entry.fields_changed.clone().unwrap_or_default();
+    let decision = entry.into_decision(now, fields_changed);
+    let settled = settle_decision_conflicts(parent, &chain, &decision)?;
+    chain.prepend(decision);
     compress_chain(&mut chain, &CompressionConfig::default(), compressor);
     let new_chain_yaml = chain.to_yaml()?;
 
-    repack_with_entry(parent, &chain_path, new_chain_yaml, Some(delta))
+    let bytes = repack_with_entry(parent, &chain_path, new_chain_yaml, Some(delta))?;
+    match settled {
+        None => Ok(bytes),
+        // Same revision, with the settled conflicts gone from the report.
+        Some(report) => {
+            let next = ClanFile::from_bytes(bytes)?;
+            let mut builder = ClanBuilder::new(next.manifest().clone());
+            for (path, bytes) in next.read_all_entries()? {
+                if path != crate::container::MANIFEST_PATH
+                    && path != crate::merge::MERGE_REPORT_PATH
+                {
+                    builder.add_entry(path, bytes);
+                }
+            }
+            builder.add_entry(crate::merge::MERGE_REPORT_PATH, report);
+            builder.build()
+        }
+    }
+}
+
+/// A `resolve` decision settles the merge conflicts over the decisions it
+/// targets (verdict conflicts, spec §24.4). Returns the rewritten report when
+/// it settled any.
+fn settle_decision_conflicts(
+    parent: &ClanFile,
+    chain: &DecisionChain,
+    decision: &Decision,
+) -> Result<Option<Vec<u8>>> {
+    if decision.kind.as_deref() != Some("resolve")
+        || !parent.has_entry(crate::merge::MERGE_REPORT_PATH)
+    {
+        return Ok(None);
+    }
+    let Ok(mut report) =
+        crate::merge::MergeReport::from_yaml(&parent.read_entry(crate::merge::MERGE_REPORT_PATH)?)
+    else {
+        return Ok(None);
+    };
+    let known = chain.ids();
+    let targets: std::collections::BTreeSet<&str> = decision
+        .targets
+        .iter()
+        .filter_map(|t| crate::decision::referenced_decision(t, &known))
+        .collect();
+    let before = report.conflicts.len();
+    report.conflicts.retain(|c| {
+        c.decision
+            .as_deref()
+            .map_or(true, |id| !targets.contains(id))
+    });
+    if report.conflicts.len() == before {
+        return Ok(None);
+    }
+    report.unresolved = report.conflicts.len();
+    Ok(Some(report.to_yaml()?))
 }
 
 /// Merge-patch the branch namespace `agents/<agent_id>/data.yaml` of a forked
@@ -1202,7 +1292,7 @@ fn repack_with_entry_decision(
     let now = chrono::Utc::now().to_rfc3339();
     let parent_manifest = parent.manifest();
     let mut new_manifest = parent_manifest.clone();
-    new_manifest.id = uuid::Uuid::new_v4().to_string();
+    new_manifest.id = Uuid::new_v4().to_string();
     new_manifest.updated_at = now.clone();
     new_manifest.lineage = Some(Lineage {
         parent_id: parent_manifest.id.clone(),
@@ -1246,16 +1336,8 @@ fn repack_with_entry_decision(
     let chain_override: Option<Vec<u8>> = match decision {
         Some(d) => {
             let mut chain = DecisionChain::from_yaml(&parent.read_entry(CHAIN_PATH)?)?;
-            chain.prepend(Decision {
-                agent: d.agent_name,
-                version: None,
-                action: d.action,
-                rationale: d.rationale,
-                timestamp: now.clone(),
-                fields_changed: d.fields_changed.unwrap_or_default(),
-                pinned: d.pinned,
-                trace_ref: None,
-            });
+            let fields_changed = d.fields_changed.clone().unwrap_or_default();
+            chain.prepend(d.into_decision(now.clone(), fields_changed));
             Some(chain.to_yaml()?)
         }
         None => None,
@@ -1472,6 +1554,7 @@ mod tests {
                 rationale: "looks good".into(),
                 pinned: true,
                 fields_changed: None,
+                typed: None,
             },
             None,
         )
@@ -1765,6 +1848,7 @@ mod tests {
                 rationale: "from invoice".into(),
                 pinned: false,
                 fields_changed: None,
+                typed: None,
             }),
         };
         let next = ClanFile::from_bytes(pack(&parent, out, PackOptions::default(), None).unwrap())
@@ -1850,6 +1934,7 @@ mod tests {
             rationale: String::new(),
             pinned: false,
             fields_changed: Some(vec!["total".into()]),
+            typed: None,
         });
         let opts = PatchDataOptions {
             append_keys: vec![],

@@ -20,7 +20,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::container::{ClanBuilder, ClanFile};
-use crate::decision::{Decision, DecisionChain};
+use crate::decision::{referenced_decision, Decision, DecisionChain};
 use crate::error::{Error, Result};
 use crate::manifest::{FileEntry, ForkInfo, Lineage, MergePolicies, ParentRef};
 
@@ -51,6 +51,12 @@ pub struct MergeConflict {
     /// complementary, not contradictory, and `append` keeps them all (F6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+    /// Set when the contested thing is a decision rather than a data key:
+    /// the id of the decision two branches judged differently. `key` is then
+    /// `decisions[<id>]`, nothing was applied, and every verdict stays in the
+    /// chain. Settled by a `resolve` decision that targets the id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
 }
 
 /// A value one branch wrote for a contested key.
@@ -405,6 +411,7 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
                         })
                         .collect(),
                     suggestion,
+                    decision: None,
                 });
             }
         }
@@ -414,42 +421,49 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
             .insert(key.clone(), merged);
     }
 
+    // Fold branch decision logs into the shared chain: branch entries land
+    // newest-first above the (identical) base chain, ordered by timestamp.
+    let mut branch_decisions: Vec<(String, Decision)> = Vec::new();
+    for (branch, fork) in branches.iter().zip(&forks) {
+        let path = format!("{}decisions.yaml", fork.namespace);
+        if branch.has_entry(&path) {
+            if let Ok(chain) = DecisionChain::from_yaml(&branch.read_entry(&path)?) {
+                branch_decisions.extend(
+                    chain
+                        .decisions
+                        .into_iter()
+                        .map(|d| (fork.agent_id.clone(), d)),
+                );
+            }
+        }
+    }
+    let mut chain = DecisionChain::from_yaml(&base.read_entry("agent/decision-chain.yaml")?)?;
+    // Verdicts are judgements, not values: two branches judging one decision
+    // differently is a conflict to adjudicate, never a fold.
+    conflicts.extend(verdict_conflicts(&chain, &branch_decisions));
+
     let report = MergeReport {
         generated_by: format!("clan merge v{}", env!("CARGO_PKG_VERSION")),
         unresolved: conflicts.len(),
         conflicts,
     };
 
-    // Fold branch decision logs into the shared chain: branch entries land
-    // newest-first above the (identical) base chain, ordered by timestamp.
-    let mut branch_decisions: Vec<Decision> = Vec::new();
-    for (branch, fork) in branches.iter().zip(&forks) {
-        let path = format!("{}decisions.yaml", fork.namespace);
-        if branch.has_entry(&path) {
-            if let Ok(chain) = DecisionChain::from_yaml(&branch.read_entry(&path)?) {
-                branch_decisions.extend(chain.decisions);
-            }
-        }
-    }
-    branch_decisions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-    let mut chain = DecisionChain::from_yaml(&base.read_entry("agent/decision-chain.yaml")?)?;
-    for decision in branch_decisions.into_iter().rev() {
+    branch_decisions.sort_by(|a, b| b.1.timestamp.cmp(&a.1.timestamp));
+    for (_, decision) in branch_decisions.into_iter().rev() {
         chain.prepend(decision);
     }
     let agents: Vec<String> = forks.iter().map(|f| f.agent_id.clone()).collect();
-    chain.prepend(Decision {
-        agent: "clan-merge".into(),
-        version: None,
-        action: format!("merged {} branches: {}", branches.len(), agents.join(", ")),
-        rationale: format!(
+    let mut merged = Decision::new(
+        "clan-merge",
+        format!("merged {} branches: {}", branches.len(), agents.join(", ")),
+        format!(
             "deterministic per-key fold; {} contested key(s) recorded in {MERGE_REPORT_PATH}",
             report.unresolved
         ),
-        timestamp: now.clone(),
-        fields_changed: writes.keys().cloned().collect(),
-        pinned: false,
-        trace_ref: None,
-    });
+        now.clone(),
+    );
+    merged.fields_changed = writes.keys().cloned().collect();
+    chain.prepend(merged);
 
     // --- Merged manifest ---
     let mut manifest = base_manifest.clone();
@@ -547,6 +561,82 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
         bytes: builder.build()?,
         report,
     })
+}
+
+/// Conflicts for decisions that verdicts from two or more branches judge
+/// differently (different `polarity` or `reason_code`).
+///
+/// A verdict judges the decisions its `targets` name, and — when it is a
+/// polarity written straight onto a decision — the decision it is. Agreeing
+/// verdicts are not a conflict; they are two reviewers saying the same thing,
+/// and both stay in the chain.
+fn verdict_conflicts(base: &DecisionChain, branch: &[(String, Decision)]) -> Vec<MergeConflict> {
+    let mut known = base.ids();
+    known.extend(branch.iter().filter_map(|(_, d)| d.id.as_deref()));
+
+    let mut judged: std::collections::BTreeMap<&str, Vec<(&str, &Decision)>> = Default::default();
+    for (agent, d) in branch {
+        if !d.is_verdict() {
+            continue;
+        }
+        let mut ids: std::collections::BTreeSet<&str> = d
+            .targets
+            .iter()
+            .filter_map(|t| referenced_decision(t, &known))
+            .collect();
+        ids.extend(d.id.as_deref());
+        for id in ids {
+            judged.entry(id).or_default().push((agent.as_str(), d));
+        }
+    }
+
+    let verdict_value = |d: &Decision| -> Value {
+        serde_json::json!({
+            "id": d.id,
+            "polarity": d.polarity,
+            "reason_code": d.reason_code,
+            "rationale": d.rationale,
+        })
+    };
+    let judgement = |d: &Decision| (d.polarity.clone(), d.reason_code.clone());
+
+    let mut conflicts = Vec::new();
+    for (id, verdicts) in judged {
+        let mut agents: Vec<&str> = verdicts.iter().map(|(a, _)| *a).collect();
+        agents.dedup();
+        if agents.len() < 2 {
+            continue; // one branch revising its own verdict is not a conflict
+        }
+        let (first_agent, first) = verdicts[0];
+        let losers: Vec<ConflictValue> = verdicts[1..]
+            .iter()
+            .filter(|(a, d)| *a != first_agent && judgement(d) != judgement(first))
+            .map(|(a, d)| ConflictValue {
+                value: verdict_value(d),
+                agent: a.to_string(),
+                policy: None,
+            })
+            .collect();
+        if losers.is_empty() {
+            continue;
+        }
+        conflicts.push(MergeConflict {
+            key: format!("decisions[{id}]"),
+            winner: ConflictValue {
+                value: verdict_value(first),
+                agent: first_agent.to_string(),
+                policy: Some("ask".into()),
+            },
+            losers,
+            suggestion: Some(format!(
+                "{} branches judged decision {id} differently; every verdict is kept in the \
+                 chain and none was applied — record a `resolve` decision targeting {id} to settle it",
+                agents.len()
+            )),
+            decision: Some(id.to_string()),
+        });
+    }
+    conflicts
 }
 
 #[cfg(test)]
@@ -661,6 +751,7 @@ mod tests {
                 rationale: "found things".into(),
                 pinned: false,
                 fields_changed: None,
+                typed: None,
             },
             None,
         )
@@ -773,6 +864,7 @@ mod tests {
             rationale: "r".into(),
             pinned: false,
             fields_changed: None,
+            typed: None,
         };
         let a = ClanFile::from_bytes(
             crate::pack::patch_decision(&a, entry("alpha", "researched"), None).unwrap(),

@@ -14,8 +14,16 @@
 //! numeric lock → identifier preservation → pick-until-budget. Applications
 //! may override it with a [`Compressor`] callback (e.g. a small local model).
 //!
+//! Compression only ever rewrites `rationale`. Every structured field —
+//! `id`, `kind`, `targets`, `cites`, `superseded_by`, `actor`, the verdict
+//! fields, `licence`, and any field the SDK does not know — is carried through
+//! untouched, whatever the entry's age.
+//!
 //! Short-circuits:
 //!   * `pinned: true` entries are never compressed, regardless of age.
+//!   * entries another entry points at (by `superseded_by`, `cites` or
+//!     `targets`) are never compressed: a verdict, a resolution or a
+//!     supersession rests on what that decision said.
 //!   * entries whose rationale is already within `char_budget` are left as-is.
 
 use crate::decision::{Decision, DecisionChain};
@@ -51,7 +59,15 @@ pub fn compress_chain(
     config: &CompressionConfig,
     compressor: Option<&Compressor>,
 ) {
+    let referenced = chain.referenced_ids();
     for decision in chain.decisions.iter_mut().skip(config.window) {
+        if decision
+            .id
+            .as_deref()
+            .is_some_and(|id| referenced.contains(id))
+        {
+            continue;
+        }
         compress_decision(decision, config, compressor);
     }
 }
@@ -365,6 +381,55 @@ mod tests {
         assert!(chain.decisions[5].rationale.chars().count() < 500);
         // entry 0 (within window) → untouched
         assert_eq!(chain.decisions[0].rationale.chars().count(), 500);
+    }
+
+    #[test]
+    fn structured_fields_survive_compression_and_referenced_entries_are_kept_whole() {
+        let long = "The reviewer read the whole draft. It said two things at once and the brief \
+            needs one of them. The planner should ask the client which objective leads before \
+            anything else is written. Nothing here is about tone, only about focus and about \
+            what the campaign is actually for, which the email never settles either way.";
+        assert!(long.chars().count() > 280);
+        let mut chain = DecisionChain::default();
+        let mut judged_id = String::new();
+        for i in 0..12 {
+            let mut d = Decision::new("human", "verdict", long, "2026-09-22T17:20:00Z");
+            d.kind = Some("verdict".into());
+            d.polarity = Some("bad".into());
+            d.reason_code = Some("other".into());
+            d.taxonomy_version = Some("1".into());
+            d.reviewer_role = Some("planner".into());
+            d.actor = Some("human:u_ciaran".into());
+            d.targets = vec![format!("doc#campaign.field_{i}")];
+            d.cites = vec!["f_01JA0B3P4Q".into()];
+            d.superseded_by = Some("d_later".into());
+            d.licence = Some(crate::decision::Licence {
+                model: Some(true),
+                export: Some(false),
+                corpus: Some(false),
+                ..Default::default()
+            });
+            d.extra
+                .insert("flags".into(), serde_yaml::Value::from("doc#campaign.x"));
+            if i == 11 {
+                judged_id = d.id.clone().unwrap();
+            }
+            chain.decisions.push(d);
+        }
+        // A newer entry (inside the window) resolves the oldest one.
+        chain.decisions[0].cites.push(judged_id.clone());
+        let before = chain.clone();
+        compress_chain(&mut chain, &CompressionConfig::default(), None);
+
+        for (was, now) in before.decisions.iter().zip(&chain.decisions) {
+            let mut was = was.clone();
+            was.rationale = now.rationale.clone();
+            assert_eq!(&was, now, "only the rationale may change");
+        }
+        // Tail entries past the window were compressed...
+        assert!(chain.decisions[6].rationale.chars().count() < long.chars().count());
+        // ...except the one another decision cites.
+        assert_eq!(chain.decisions[11].rationale, long);
     }
 
     #[test]
