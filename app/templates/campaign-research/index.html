@@ -1316,15 +1316,21 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   // ════════════════════════════════════════════════════════════════════════
   var MW_API='napkin.middleware/1';
   var JOBS=[]; // {key, task, state, handler, progress, summary, scope, applied, version, error, jobId}
+  // clan.apiProxy resolves to the host's envelope, {ok, status, endpoint, data,
+  // error} (plus `clan` when a change landed); the middleware's own reply is
+  // its `data`. Read the reply there, and the host's refusals from the envelope.
+  function mwBody(res){ return (res && typeof res==='object' && 'ok' in res && 'data' in res)?res.data:res; }
   function mwError(res){
     if(!res) return 'Empty reply from the host.';
     if(res.error){
-      var e=res.error;
-      if(typeof e==='string') return e;
-      return (e.type?e.type+(e.status?' ('+e.status+')':'')+': ':'')+(e.message||JSON.stringify(e));
+      var e=res.error, st=res.status&&res.status!==200?' ('+res.status+')':'';
+      if(typeof e==='string') return e+st;
+      return (e.type?e.type+st+': ':'')+(e.message||JSON.stringify(e));
     }
-    if(res.api!==MW_API) return 'Not a '+MW_API+' reply'+(res.api?' (got '+res.api+')':'')+'. Nothing was applied.';
-    if(res.job && res.job.state==='failed') return 'Job failed: '+(res.job.error && (res.job.error.message||res.job.error) || 'no reason given');
+    if(res.ok===false) return 'The host could not complete the call'+(res.status?' (status '+res.status+')':'')+'. Nothing was applied.';
+    var b=mwBody(res);
+    if(!b || typeof b!=='object' || b.api!==MW_API) return 'Not a '+MW_API+' reply'+(b&&b.api?' (got '+b.api+')':'')+'. Nothing was applied.';
+    if(b.job && b.job.state==='failed') return 'Job failed: '+(b.job.error && (b.job.error.message||b.job.error) || 'no reason given');
     return null;
   }
   function jobFrom(j, res){
@@ -1365,7 +1371,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
       window.clan.apiProxy('middleware', {task:'job_status', input:{job_id:j.jobId}}).then(function(res){
         var err=mwError(res);
         if(err){ j.error=err; renderJobs(); return; }
-        jobFrom(j, res); renderJobs();
+        res=mwBody(res); jobFrom(j, res); renderJobs();
         if(res.job && (res.job.state==='queued'||res.job.state==='running')) poll(j, Math.min(delay*1.5, 10000));
         else afterApplied(j);
       }).catch(function(e){ j.error='The middleware could not be reached: '+(e&&e.message||e); renderJobs(); });
@@ -1378,7 +1384,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
     window.clan.apiProxy('middleware', {task:task, input:input}).then(function(res){
       var err=mwError(res);
       if(err){ j.error=err; renderJobs(); return; }
-      jobFrom(j, res); renderJobs();
+      res=mwBody(res); jobFrom(j, res); renderJobs();
       if(res.job && (res.job.state==='queued'||res.job.state==='running') && j.jobId) poll(j, 1200);
       else afterApplied(j);
     }).catch(function(e){ j.error='The middleware could not be reached: '+(e&&e.message||e); renderJobs(); });
