@@ -190,9 +190,12 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 
   if (!hasHumanView) {
     return (
-      <div style={{ padding: 40, color: 'var(--muted)', maxWidth: 600, margin: '0 auto' }}>
-        <h2 style={{ color: 'var(--text)', marginBottom: 12 }}>{manifest.title}</h2>
-        <p>This .clan file has no view yet — awaiting first agent pass.</p>
+      <div style={{ padding: '72px 24px', color: 'var(--ink2)', maxWidth: 640, width: '100%', margin: '0 auto' }}>
+        <div className="eyebrow">No view yet</div>
+        <h2 style={{ color: 'var(--ink)', margin: '10px 0 12px', fontSize: 32, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05 }}>
+          {manifest.title}
+        </h2>
+        <p style={{ fontSize: 16, lineHeight: 1.55 }}>This .clan file has no view yet — awaiting first agent pass.</p>
       </div>
     )
   }
@@ -201,7 +204,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
     <iframe
       ref={iframeRef}
       {...(host.frameLoad === 'srcdoc' ? { srcDoc: prepared } : { src: iframeSrc })}
-      style={{ width: '100%', flex: 1, border: 'none', background: 'var(--bg)' }}
+      style={{ width: '100%', flex: 1, border: 'none', background: 'var(--paper)' }}
       sandbox="allow-scripts allow-popups"
       title={manifest.title}
       onLoad={() => {

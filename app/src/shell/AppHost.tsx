@@ -10,6 +10,7 @@ import AppRuntime from './AppRuntime'
 import WorkspaceView from './WorkspaceView'
 import { PoweredByClan } from '../brand/PoweredByClan'
 import type { RunningApp } from './types'
+import '../components/chrome.css'
 
 interface Props {
   running: RunningApp
@@ -30,7 +31,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onExport,
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* Accent strip — recolors with a trusted app's theme (clan://set-theme). */}
-      <div style={{ height: 3, background: 'var(--accent)', flexShrink: 0 }} />
+      <div className="ch-strip" />
       <Toolbar
         title={open.manifest.title}
         isTemplate={open.is_template}
@@ -51,7 +52,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onExport,
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {sidebarOpen && <Sidebar manifest={open.manifest} path={open.path} />}
-        <main style={{ flex: 1, overflow: 'hidden', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+        <main style={{ flex: 1, overflow: 'hidden', background: 'var(--paper)', display: 'flex', flexDirection: 'column' }}>
           <AppRuntime
             htmlContent={running.htmlContent}
             hasHumanView={open.has_human_view}
@@ -62,10 +63,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onExport,
         </main>
         {agentPanelOpen && <AgentPanel onClose={() => setAgentPanelOpen(false)} />}
       </div>
-      <footer style={{
-        flexShrink: 0, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        borderTop: '1px solid var(--border)', background: 'var(--bg)',
-      }}>
+      <footer className="ch-footer">
         <PoweredByClan />
       </footer>
       {workspaceOpen && <WorkspaceView manifest={open.manifest} onClose={() => setWorkspaceOpen(false)} />}

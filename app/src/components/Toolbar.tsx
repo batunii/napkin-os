@@ -6,6 +6,7 @@ import { StudioLogo } from '../brand/StudioMark'
 import ApiKeyButton from './ApiKeyButton'
 import ContinueIn from './ContinueIn'
 import ThemeToggle from './ThemeToggle'
+import './chrome.css'
 
 interface Props {
   title?: string
@@ -27,80 +28,59 @@ interface Props {
   validation?: string
 }
 
-const s: Record<string, React.CSSProperties> = {
-  bar: {
-    height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border)',
-    display: 'flex', alignItems: 'center', padding: '0 12px', gap: 10, flexShrink: 0,
-    userSelect: 'none',
-  },
-  home: {
-    display: 'flex', alignItems: 'center', gap: 6, marginRight: 2, cursor: 'pointer',
-    background: 'none', border: 'none', padding: '4px 6px', borderRadius: 6,
-  },
-  title: { flex: 1, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  badge: { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--ok-bg)', color: 'var(--ok-fg)', border: '1px solid var(--ok-border)', letterSpacing: '0.05em' },
-  badgeWarn: { background: 'var(--warn-bg)', color: 'var(--warn)', border: '1px solid var(--warn-border)' },
-  templateBadge: { fontSize: 10, padding: '2px 8px', borderRadius: 999, background: 'var(--chip-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', letterSpacing: '0.05em' },
-  btn: {
-    height: 30, padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)',
-    background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer', fontSize: 12,
-    display: 'flex', alignItems: 'center', gap: 6,
-  },
-  btnActive: { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' },
-  btnEdit: { background: 'var(--ok-bg)', borderColor: 'var(--ok-border)', color: 'var(--ok-fg)' },
-  editBadge: {
-    fontSize: 10, padding: '2px 8px', borderRadius: 999,
-    background: 'var(--ok-bg)', color: 'var(--ok-fg)',
-    border: '1px solid var(--ok-border)', letterSpacing: '0.05em',
-    animation: 'pulse 2s infinite',
-  },
+/** Two stacked panes: the details sidebar toggle. */
+function SidebarGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      <rect x="1.5" y="2" width="11" height="10" rx="2.2" />
+      <line x1="5.5" y1="2" x2="5.5" y2="12" />
+    </svg>
+  )
 }
 
+/** The document bar: studio home, title and status, file actions, panels. */
 export default function Toolbar({
   title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onExport,
   docPath, onSpinoff, agentPanelOpen, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
   return (
-    <div style={s.bar}>
+    <div className="ch-bar">
       <button
-        style={{ ...s.btn, ...(sidebarOpen ? s.btnActive : {}), padding: '0 9px' }}
+        className="ch-btn ch-btn-icon"
+        aria-pressed={sidebarOpen}
         onClick={onToggleSidebar}
         title={sidebarOpen ? 'Hide details' : 'Show details'}
+        aria-label={sidebarOpen ? 'Hide details' : 'Show details'}
       >
-        ☰
+        <SidebarGlyph />
       </button>
-      <button style={s.home} onClick={onHome} title="Back to the studio">
+      <button className="ch-bar-home" onClick={onHome} title="Back to the studio">
         <StudioLogo size={15} compact />
       </button>
-      <span style={s.title}>{loading ? 'Loading…' : (title ?? 'No file open')}</span>
-      {isTemplate && <span style={s.templateBadge}>TEMPLATE</span>}
+      <span className="ch-bar-title">{loading ? 'Loading…' : (title ?? 'No file open')}</span>
+      {isTemplate && <span className="ch-chip ch-chip-accent">Template</span>}
       {trusted && (
-        <span
-          style={{ ...s.templateBadge, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)' }}
-          title="Signed by Napkin — scoped host capabilities enabled"
-        >
-          🛡 trusted
+        <span className="ch-chip ch-chip-ok" title="Signed by Napkin — scoped host capabilities enabled">
+          Trusted
         </span>
       )}
       {validation && (
         <span
-          style={{ ...s.badge, ...(valid ? {} : s.badgeWarn), cursor: valid ? 'default' : 'help' }}
+          className={`ch-chip ${valid ? 'ch-chip-ok' : 'ch-chip-warn'}`}
           title={valid ? 'No validation issues' : validation}
         >
-          {valid ? '✓ valid' : '⚠ issues'}
+          <span className="ch-chip-dot" />{valid ? 'Valid' : 'Issues'}
         </span>
       )}
-      <button style={s.btn} onClick={onOpenFile}>📂 Open</button>
-      <button style={s.btn} onClick={onSave} title="Save a copy of this .clan to share">💾 Save As</button>
-      <button style={s.btn} onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">⬇ Export</button>
-      <button style={s.btn} onClick={onWorkspace} title="Lineage & provenance">🧬 Lineage</button>
+      <span className="ch-bar-sep" />
+      <button className="ch-btn" onClick={onOpenFile}>Open</button>
+      <button className="ch-btn" onClick={onSave} title="Save a copy of this .clan to share">Save as</button>
+      <button className="ch-btn" onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">Export</button>
+      <button className="ch-btn" onClick={onWorkspace} title="Lineage & provenance">Lineage</button>
       <ContinueIn key={docPath} docPath={docPath} onSpinoff={onSpinoff} />
-      <button
-        style={{ ...s.btn, ...(agentPanelOpen ? s.btnActive : {}) }}
-        onClick={onToggleAgent}
-      >
-        🤖 Agent
+      <button className="ch-btn" aria-pressed={agentPanelOpen} onClick={onToggleAgent}>
+        Agent
       </button>
       <ApiKeyButton />
       <ThemeToggle />

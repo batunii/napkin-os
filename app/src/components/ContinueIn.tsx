@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 
 import { host } from '../host'
 import type { SpinoffTarget } from '../host'
+import './chrome.css'
 
 interface Props {
   /**
@@ -15,25 +16,6 @@ interface Props {
    */
   docPath: string
   onSpinoff: (appId: string) => void
-}
-
-const s: Record<string, React.CSSProperties> = {
-  btn: {
-    height: 30, padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)',
-    background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer', fontSize: 12,
-    display: 'flex', alignItems: 'center', gap: 6,
-  },
-  backdrop: { position: 'fixed', inset: 0, zIndex: 40 },
-  menu: {
-    position: 'absolute', top: 36, right: 0, zIndex: 41, minWidth: 220,
-    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
-    padding: 4, boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
-  },
-  item: {
-    display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6,
-    background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 12,
-  },
-  where: { display: 'block', fontSize: 10, color: 'var(--muted)', marginTop: 2 },
 }
 
 /**
@@ -61,29 +43,31 @@ export default function ContinueIn({ docPath, onSpinoff }: Props) {
   if (targets.length === 0) return null
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="ch-menu-anchor">
       <button
-        style={s.btn}
+        className="ch-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         title="Branch this document into another app, keeping its data and decisions"
       >
-        ↗ Continue in
+        Continue in <span aria-hidden>↗</span>
       </button>
       {open && (
         <>
-          <div style={s.backdrop} onClick={() => setOpen(false)} />
-          <div style={s.menu} role="menu">
+          <div className="ch-menu-backdrop" onClick={() => setOpen(false)} />
+          <div className="ch-menu" role="menu">
             {targets.map(t => (
               <button
                 key={t.app_id}
-                style={s.item}
+                className="ch-menu-item"
                 role="menuitem"
                 onClick={() => { setOpen(false); onSpinoff(t.app_id) }}
               >
                 {t.name}
-                <span style={s.where}>
+                <small>
                   {t.map ? `this document lands at ${t.map}` : 'carries data and decisions'}
-                </span>
+                </small>
               </button>
             ))}
           </div>

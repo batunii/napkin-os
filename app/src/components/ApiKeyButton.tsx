@@ -7,6 +7,16 @@ import { useState } from 'react'
 import { useHasKey } from '../agent/key'
 import { host } from '../host'
 import ApiKeyDialog from './ApiKeyDialog'
+import './chrome.css'
+
+function KeyGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden>
+      <circle cx="4.6" cy="7" r="2.6" />
+      <path d="M7.2 7h5.3M10.6 7v2M12.5 7v1.6" />
+    </svg>
+  )
+}
 
 /**
  * Only shown when this page is the one making the inference call. A desktop
@@ -17,25 +27,20 @@ export default function ApiKeyButton({ variant = 'toolbar' }: { variant?: 'toolb
   const present = useHasKey()
   if (host.inference !== 'page') return null
 
-  const base: React.CSSProperties = {
-    height: 30, padding: '0 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text)',
-    border: `1px solid ${present ? 'var(--border)' : 'var(--warn)'}`,
-    background: 'var(--surface)',
-  }
-  const floating: React.CSSProperties = {
-    ...base, position: 'fixed', top: 14, right: 56, zIndex: 50, borderRadius: 999, opacity: 0.85,
-  }
+  const cls = ['ch-btn', present ? 'ch-btn-icon' : 'ch-btn-attn', variant === 'floating' && 'ch-btn-floating']
+    .filter(Boolean).join(' ')
 
   return (
     <>
       <button
-        style={variant === 'floating' ? floating : base}
+        className={cls}
+        style={variant === 'floating' ? { right: 56 } : undefined}
         onClick={() => setOpen(true)}
         title={present ? 'Your Anthropic key is set — click to change or remove it'
                        : 'Add an Anthropic API key to generate briefs'}
+        aria-label={present ? 'Change or remove your Anthropic key' : undefined}
       >
-        {present ? '🔑' : '🔑 Add key'}
+        <KeyGlyph />{!present && 'Add key'}
       </button>
       {open && <ApiKeyDialog onClose={() => setOpen(false)} />}
     </>

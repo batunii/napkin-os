@@ -7,79 +7,14 @@ import { host } from '../host'
 import { StudioMark } from '../brand/StudioMark'
 import { PoweredByClan } from '../brand/PoweredByClan'
 import type { InstalledApp } from './types'
+import '../components/chrome.css'
+import './Launcher.css'
 
 interface Props {
   installed: InstalledApp[]
   loading: boolean
   onLaunchApp: (appId: string) => void
   onOpenFile: () => void
-}
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    flex: 1, background: 'var(--paper)', overflowY: 'auto', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', padding: '0 32px', gap: 8,
-  },
-  hero: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, marginTop: '12vh', marginBottom: 26 },
-  banner: {
-    fontFamily: 'var(--f-display)', fontWeight: 800,
-    fontSize: 44, letterSpacing: '-0.045em', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 14,
-  },
-  bannerOs: { color: 'var(--ink2)', fontWeight: 500 },
-  sub: { color: 'var(--muted)', fontSize: 14 },
-
-  composer: {
-    width: '100%', maxWidth: 720, background: 'var(--surface)', border: '1px solid var(--border)',
-    borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
-    boxShadow: 'var(--shadow-soft)',
-  },
-  textarea: {
-    width: '100%', minHeight: 56, maxHeight: 220, resize: 'none', border: 'none', outline: 'none',
-    background: 'transparent', color: 'var(--text)', fontSize: 16, lineHeight: 1.5,
-    fontFamily: 'inherit',
-  },
-  composerRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  endpoint: { fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' },
-  send: {
-    width: 36, height: 36, borderRadius: 10, border: 'none', cursor: 'pointer',
-    background: 'var(--create)', color: 'var(--create-fg)', fontSize: 16,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-  sendDisabled: { opacity: 0.4, cursor: 'default' },
-  result: {
-    width: '100%', maxWidth: 720, marginTop: 4, padding: '12px 14px', borderRadius: 12,
-    background: 'var(--surface)', border: '1px solid var(--border)', fontSize: 13,
-    color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflowY: 'auto',
-  },
-  resultErr: { borderColor: '#92400e', color: 'var(--warn)' },
-
-  divider: {
-    width: '100%', maxWidth: 720, display: 'flex', alignItems: 'center', gap: 12,
-    color: 'var(--muted)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '30px 0 4px',
-  },
-  line: { flex: 1, height: 1, background: 'var(--border)' },
-
-  grid: {
-    width: '100%', maxWidth: 720,
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 14,
-  },
-  card: {
-    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
-    padding: 16, display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer',
-  },
-  openCard: {
-    background: 'transparent', border: '1px dashed var(--border)', borderRadius: 12,
-    padding: 16, display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer',
-    justifyContent: 'center', alignItems: 'center', color: 'var(--muted)', minHeight: 96,
-  },
-  iconWrap: {
-    width: 40, height: 40, borderRadius: 10,
-    background: 'var(--ink)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: 'var(--paper)', fontWeight: 700,
-  },
-  cardName: { fontSize: 13, fontWeight: 600, color: 'var(--text)' },
-  cardVer: { fontSize: 11, color: 'var(--muted)' },
-  footer: { marginTop: 'auto', padding: '32px 0 24px' },
 }
 
 export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }: Props) {
@@ -126,32 +61,32 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
   const canSend = !!prompt.trim() && !sending
 
   return (
-    <div style={s.root}>
-      <div style={s.hero}>
-        <div style={s.banner}>
+    <div className="ln">
+      <div className="ln-hero">
+        <div className="ln-banner">
           <StudioMark size={40} />
-          Napkin <span style={s.bannerOs}>Studio OS</span>
+          <div>Napkin <span>Studio OS</span></div>
         </div>
-        <div style={s.sub}>Let's start here.</div>
+        <div className="ln-sub">Let's start here.</div>
       </div>
 
-      <div style={s.composer}>
+      <div className="ln-composer">
         <textarea
           ref={taRef}
-          style={s.textarea}
           placeholder="Describe what you want to make…"
           value={prompt}
           onChange={e => { setPrompt(e.target.value); autoGrow() }}
           onKeyDown={onKeyDown}
           rows={2}
         />
-        <div style={s.composerRow}>
-          <span style={s.endpoint}>{endpoint ? `→ ${endpoint}` : ''}</span>
+        <div className="ln-row">
+          <span className="ln-endpoint">{endpoint ? `→ ${endpoint}` : ''}</span>
           <button
-            style={{ ...s.send, ...(canSend ? {} : s.sendDisabled) }}
+            className="ln-send"
             onClick={send}
             disabled={!canSend}
             title="Send to agent (Enter)"
+            aria-label="Send to agent"
           >
             {sending ? '…' : '↑'}
           </button>
@@ -159,40 +94,34 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
       </div>
 
       {result && (
-        <div style={{ ...s.result, ...(result.error ? s.resultErr : {}) }}>{result.text}</div>
+        <div className="ln-result" data-error={result.error || undefined}>{result.text}</div>
       )}
 
-      <div style={s.divider}>
-        <div style={s.line} /> or start from <div style={s.line} />
+      <div className="ln-divider eyebrow">
+        <i /> or start from <i />
       </div>
 
-      <div style={s.grid}>
+      <div className="ln-grid">
         {installed.map(app => (
-          <div
-            key={app.app_id}
-            style={s.card}
-            onClick={() => onLaunchApp(app.app_id)}
-            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)' }}
-          >
-            <div style={s.iconWrap}>{app.name.slice(0, 1).toUpperCase()}</div>
-            <div style={s.cardName}>{app.name}</div>
-            <div style={s.cardVer}>v{app.version} · new document</div>
-          </div>
+          <button key={app.app_id} className="ln-card" onClick={() => onLaunchApp(app.app_id)}>
+            <div className="ch-monogram">{app.name.slice(0, 1).toUpperCase()}</div>
+            <b>{app.name}</b>
+            <small>v{app.version} · new document</small>
+          </button>
         ))}
-        <div style={s.openCard} onClick={onOpenFile}>
-          <div style={{ fontSize: 22 }}>📂</div>
-          <div style={{ fontSize: 12 }}>Open a .clan file</div>
-        </div>
+        <button className="ln-card ln-card-open" onClick={onOpenFile}>
+          <span aria-hidden>+</span>
+          Open a .clan file
+        </button>
       </div>
 
       {installed.length === 0 && !loading && (
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 12 }}>
+        <div className="ln-note">
           No template apps installed yet — open a <code>.clan</code> template or run <code>clan app init</code>.
         </div>
       )}
 
-      <div style={s.footer}><PoweredByClan /></div>
+      <div className="ln-footer"><PoweredByClan /></div>
     </div>
   )
 }

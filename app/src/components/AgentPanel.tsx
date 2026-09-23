@@ -4,28 +4,11 @@
 
 import { useEffect, useState } from 'react'
 import { host } from '../host'
+import './chrome.css'
 
 interface Props { onClose: () => void }
 
 type Tab = 'chain' | 'state' | 'context'
-
-const s: Record<string, React.CSSProperties> = {
-  panel: {
-    width: 360, background: 'var(--surface)', borderLeft: '1px solid var(--border)',
-    display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0,
-  },
-  header: {
-    padding: '10px 14px', borderBottom: '1px solid var(--border)',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  },
-  title: { fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--muted)', textTransform: 'uppercase' },
-  tabs: { display: 'flex', borderBottom: '1px solid var(--border)' },
-  tab: { flex: 1, padding: '8px 0', fontSize: 12, textAlign: 'center' as const, cursor: 'pointer', color: 'var(--muted)', background: 'transparent', border: 'none' },
-  tabActive: { color: 'var(--accent)', borderBottom: '2px solid var(--accent)' },
-  content: { flex: 1, overflow: 'auto', padding: 14 },
-  pre: { fontSize: 11, fontFamily: 'monospace', color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 },
-  close: { background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16, padding: 4 },
-}
 
 export default function AgentPanel({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>('chain')
@@ -57,27 +40,28 @@ export default function AgentPanel({ onClose }: Props) {
   ]
 
   return (
-    <div style={s.panel}>
-      <div style={s.header}>
-        <span style={s.title}>🤖 Agent Panel</span>
-        <button style={s.close} onClick={onClose}>✕</button>
+    <div className="ch-side ch-side-right">
+      <div className="ch-side-head">
+        <span className="eyebrow">Agent</span>
+        <button className="ch-btn ch-btn-icon ch-btn-quiet" onClick={onClose} aria-label="Close the agent panel">✕</button>
       </div>
-      <div style={s.tabs}>
+      <div className="ch-seg" role="tablist" aria-label="Agent panel">
         {tabs.map(t => (
           <button
             key={t.id}
-            style={{ ...s.tab, ...(tab === t.id ? s.tabActive : {}) }}
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
           >
             {t.label}
           </button>
         ))}
       </div>
-      <div style={s.content}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '4px 16px 16px' }}>
         {loading ? (
-          <span style={{ color: 'var(--muted)', fontSize: 12 }}>Loading…</span>
+          <span className="ch-key">Loading…</span>
         ) : (
-          <pre style={s.pre}>{content || '(empty)'}</pre>
+          <pre className="ch-pre">{content || '(empty)'}</pre>
         )}
       </div>
     </div>

@@ -17,13 +17,14 @@ export function PoweredByClan({ style }: { style?: CSSProperties }) {
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        fontSize: 11,
-        color: "var(--muted)",
+        fontFamily: "var(--f-mono)",
+        fontSize: 10.5,
+        color: "var(--ink3)",
         letterSpacing: "0.04em",
         ...style,
       }}
     >
-      powered by <ClanMark size={13} tone="mono" style={{ color: "var(--muted)" }} />
+      powered by <ClanMark size={13} tone="mono" style={{ color: "var(--ink3)" }} />
       <span style={{ fontWeight: 600 }}>CLAN</span>
     </span>
   );

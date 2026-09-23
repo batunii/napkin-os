@@ -1,0 +1,371 @@
+/* Shell chrome: the document toolbar, side panels, menus and dialogs, in the
+   studio's design language — pill buttons, mono eyebrows, frosted bars, soft
+   blue-tinted shadows. Colours come only from the tokens in index.css, so
+   every piece follows light, dark and an app's clan://set-theme.
+
+   Ink is the "do it" colour (filled buttons, the on state of a toggle);
+   --accent (Create unless an app recolours it) is kept for the one thing
+   that should catch the eye. */
+
+/* ── buttons ─────────────────────────────────────────────────────────────── */
+
+.ch-btn {
+  height: 30px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.ch-btn:hover { background: var(--soft); }
+.ch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ch-btn svg { flex-shrink: 0; }
+
+/* Primary action: filled ink, like the design's "yes". */
+.ch-btn-primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.ch-btn-primary:hover:not(:disabled) { background: var(--ink2); border-color: var(--ink2); }
+
+/* A toggle that is on: the segmented control's selected look — raised card,
+   ink outline — so an open panel reads as "on" without shouting. */
+.ch-btn[aria-pressed='true'] {
+  background: var(--soft-2);
+  border-color: var(--ink);
+  box-shadow: var(--shadow-pill);
+}
+
+/* Square-ish icon button. */
+.ch-btn-icon { width: 30px; padding: 0; }
+
+/* Borderless, for close buttons and quiet actions. */
+.ch-btn-quiet { border-color: transparent; background: transparent; color: var(--ink2); }
+.ch-btn-quiet:hover { background: var(--soft); color: var(--ink); }
+
+.ch-btn-danger { color: var(--danger); }
+
+/* Needs attention (no API key yet). */
+.ch-btn-attn { border-color: var(--accent); }
+
+/* Floating over a view with no chrome of its own. */
+.ch-btn-floating {
+  position: fixed;
+  top: 14px;
+  z-index: 50;
+  height: 32px;
+  background: var(--frost);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-pill);
+}
+
+/* ── chips (status pills) ────────────────────────────────────────────────── */
+
+.ch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--ink2);
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ch-chip-ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.ch-chip-warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); cursor: help; }
+.ch-chip-accent {
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--card));
+  color: var(--accent);
+}
+.ch-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* ── the document toolbar ────────────────────────────────────────────────── */
+
+.ch-bar {
+  position: relative;
+  z-index: 30;
+  flex-shrink: 0;
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: var(--frost);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-bottom: 1px solid var(--line-soft);
+  user-select: none;
+}
+.ch-bar-home {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  margin-right: 2px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+.ch-bar-home:hover { background: var(--soft); }
+.ch-bar-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-bar-sep { width: 1px; height: 18px; background: var(--line-soft); margin: 0 2px; }
+
+/* A document's thin accent strip, recoloured by the app's theme. */
+.ch-strip { height: 3px; flex-shrink: 0; background: var(--accent); }
+
+.ch-footer {
+  flex-shrink: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--line-soft);
+  background: var(--paper);
+}
+
+/* ── side panels (details, agent) ────────────────────────────────────────── */
+
+.ch-side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+}
+.ch-side-left { width: 260px; border-right: 1px solid var(--line-soft); }
+.ch-side-right { width: 360px; border-left: 1px solid var(--line-soft); }
+.ch-side-scroll { overflow-y: auto; }
+
+.ch-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.ch-section { padding: 16px; border-bottom: 1px solid var(--line-soft); }
+.ch-section > .eyebrow { margin-bottom: 10px; }
+
+.ch-row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.ch-row:last-child { margin-bottom: 0; }
+.ch-key { font-size: 11.5px; color: var(--ink3); }
+.ch-val { font-size: 12.5px; color: var(--ink); word-break: break-all; }
+.ch-mono { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink2); word-break: break-all; }
+.ch-empty { padding: 20px 16px; color: var(--ink2); font-size: 12.5px; line-height: 1.5; }
+
+/* Segmented control, as in the studio's top bar. */
+.ch-seg {
+  display: flex;
+  gap: 2px;
+  margin: 10px 12px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: var(--soft-2);
+}
+.ch-seg button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  opacity: 0.55;
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.ch-seg button:hover { opacity: 0.8; }
+.ch-seg button[aria-selected='true'] { opacity: 1; background: var(--card); box-shadow: var(--shadow-pill); }
+
+.ch-pre {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--ink2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── menus ───────────────────────────────────────────────────────────────── */
+
+.ch-menu-anchor { position: relative; }
+.ch-menu-backdrop { position: fixed; inset: 0; z-index: 40; }
+.ch-menu {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 41;
+  min-width: 240px;
+  padding: 6px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--line-soft);
+  background: var(--frost);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-soft);
+}
+.ch-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ch-menu-item:hover { background: var(--soft); }
+.ch-menu-item small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; color: var(--ink2); }
+
+/* ── dialogs and drawers ─────────────────────────────────────────────────── */
+
+.ch-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ink-fixed) 32%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.ch-scrim-right { justify-content: flex-end; align-items: stretch; padding: 0; }
+
+.ch-dialog {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--line-soft);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+.ch-dialog h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; }
+.ch-dialog p { font-size: 13.5px; line-height: 1.55; color: var(--ink2); }
+.ch-dialog code { font-family: var(--f-mono); font-size: 0.92em; }
+.ch-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.ch-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--dur) var(--ease);
+}
+.ch-input:focus { border-color: var(--ink); }
+.ch-warn { font-size: 12px; line-height: 1.5; color: var(--warn); }
+
+/* A large choice button: title and a hint underneath. */
+.ch-choice {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.ch-choice:hover { background: var(--soft); }
+.ch-choice small { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; color: var(--ink2); }
+.ch-choice-primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.ch-choice-primary:hover { background: var(--ink2); border-color: var(--ink2); }
+.ch-choice-primary small { color: inherit; opacity: 0.72; }
+
+/* App tile / monogram. */
+.ch-monogram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* Lineage drawer. */
+.ch-drawer {
+  width: 380px;
+  max-width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  background: var(--paper);
+  border-left: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-soft);
+}
+.ch-node {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+.ch-node-current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+}
+.ch-connector { align-self: center; width: 1px; height: 18px; background: var(--line); }
