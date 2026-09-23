@@ -37,6 +37,8 @@ each one is a constraint rather than a preference:
 """
 from __future__ import annotations
 
+import functools
+import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -123,11 +125,17 @@ class Hit:
     text: str
     score: float
     metadata: dict = field(default_factory=dict)
+    # The validation stage's verdict, in the rag_io $defs/relevance shape plus `kept`
+    # (passed | floor | unjudged | exempt). None when validation is off.
+    relevance: dict | None = None
 
     def render(self) -> str:
         """The hit as it appears in the prompt: `[cite] header` on one line, then the
-        body. Falls back to the title when the chunk has no context header."""
+        body. Falls back to the title when the chunk has no context header. A hit kept
+        only by the floor says so, so the model does not weigh it like real evidence."""
         head = self.header or self.title
+        if (self.relevance or {}).get("kept") == "floor":
+            head += "  [weak match: below the relevance threshold]"
         body = self.text.strip()
         return f"[{self.cite}] {head}\n{body}"
 
@@ -184,6 +192,9 @@ class BriefContext:
     # `widened` reads fine and cannot be queried, and this is the field you would grep
     # across every brief ever generated if a boundary were ever found wrong.
     egress: list[dict] = field(default_factory=list)
+    # The validation stage's run record (judge.ValidationResult.as_dict() plus per-bucket
+    # counts and admission refusals), or None when validation is off.
+    validation: dict | None = None
 
     @property
     def tokens(self) -> int:
@@ -296,6 +307,7 @@ class BriefContext:
             "tenants": list(self.tenants),          # whose material it was allowed to read
             "tenants_served": self.tenants_served(),
             "egress": list(self.egress),            # what was refused on the way out
+            "validation": self.validation,          # which backend judged, what it kept
             "blocks": {
                 b.bucket: {"hits": len(b.hits), "tokens": b.tokens, "budget": b.budget,
                            "dropped": b.dropped, "over_target": b.over_target,
@@ -305,7 +317,8 @@ class BriefContext:
                            "scope_of": {h.cite: str(h.metadata.get("scope") or "global")
                                         for h in b.hits},
                            "tenant_of": {h.cite: str(h.metadata.get("tenant") or "house")
-                                         for h in b.hits}}
+                                         for h in b.hits},
+                           "relevance_of": {h.cite: h.relevance for h in b.hits if h.relevance}}
                 for b in self.blocks.values()
             },
         }
@@ -597,7 +610,8 @@ def _fill(hits: list[Hit], budget: int, max_hit: int | None = None,
 
 def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
           candidates: int = CANDIDATES, brand: str | None = None,
-          tenant: str | None = None) -> BriefContext:
+          tenant: str | None = None, context: str = "", admission: dict | None = None,
+          chain=None) -> BriefContext:
     """The entry point. Campaign pairs in, four budgeted citable blocks out.
 
     `brand` is the authorised brand for this run and the only way to unlock brand-scoped
@@ -619,6 +633,14 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     blocks: dict[str, Block] = {}
     widened: list[str] = list(notes)
     used_filters: dict = {}
+
+    # Validation (plan steps 3-4). `chain` None means the process-wide chain from
+    # RAG_VALIDATOR; unset there means validation off and build() behaves exactly as
+    # before. Retrieval widens only when a validator is live, never narrows.
+    chain = default_chain() if chain is None else chain
+    if not chain.empty:
+        candidates = chain.pool_width(candidates)
+    hits_by: dict[str, list[Hit]] = {}
 
     for bucket in ("exemplars", "craft", "rules", "instructions"):
         where = bucket_filters(bucket, filters, scopes, tenants)
@@ -644,8 +666,20 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
         hits = [_to_hit(s, r, bucket) for s, r in rows]
         if bucket == "rules":
             hits.sort(key=lambda h: (-_scope_rank(h.metadata), -h.score))
+        hits_by[bucket] = hits
+
+    validation = _apply_validation(hits_by, chain, query=search_text, context=context,
+                                   admission=admission)
+    order = (os.environ.get("RAG_ORDER") or "score").strip().lower()
+    for bucket, hits in hits_by.items():
         blocks[bucket] = _fill(hits, budget[bucket], MAX_HIT_TOKENS.get(bucket),
                                one_per_client=(bucket == "exemplars"))
+        # Edge ordering is applied AFTER the budget, to what the reader will see, and only
+        # to the similarity-ranked blocks; rules keep constraints first by design.
+        if order == "edge" and bucket in EDGE_ORDER_BUCKETS:
+            blocks[bucket].hits = edge_order(blocks[bucket].hits)
+    if validation is not None:
+        validation["order"] = order
 
     # Egress check. Every filter above constrains what we ASK for; nothing until now
     # checked what came BACK. A hit outside the allowed scopes is a confidentiality
@@ -677,7 +711,124 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
 
     return BriefContext(blocks=blocks, query=query, keywords=keywords,
                         filters=used_filters, widened=widened, scopes=list(scopes),
-                        tenants=list(tenants), egress=egress)
+                        tenants=list(tenants), egress=egress, validation=validation)
+
+
+# ---- validation and ordering (plan steps 3-4) ------------------------------------
+EDGE_ORDER_BUCKETS = ("exemplars", "craft")
+VALIDATION_FLOOR = 2          # Sai: when every chunk fails, the top-scoring come back flagged
+JUDGE_MIN_SHARE = 5           # hits judged per bucket at least; ~a bucket's budget holds 5-9
+CONTEXT_MAX_CHARS = 4000      # brief context handed to the validator, clipped
+
+
+def edge_order(items: list) -> list:
+    """Strongest at both ends, weakest in the middle: [1,2,3,4,5,6] -> [1,3,5,6,4,2].
+
+    Models attend most to the start and end of a context block ('lost in the middle'),
+    so the best item goes first, the second-best last, and so on inwards. Pure and
+    stable; off unless RAG_ORDER=edge, pending the golden_critic A/B (plan step 6)."""
+    front, back = [], []
+    for i, x in enumerate(items):
+        (front if i % 2 == 0 else back).append(x)
+    return front + back[::-1]
+
+
+@functools.lru_cache(maxsize=1)
+def default_chain():
+    """The process-wide validation chain from RAG_VALIDATOR, built once so its breaker
+    state survives across briefs. Raises BackendNotConfigured if a named backend cannot
+    be built — a configuration error is a hard error (judgement invariant M4)."""
+    import judge
+    return judge.chain_from_env()
+
+
+def _passage_text(h: Hit) -> str:
+    """What a validator reads for a hit: header then body, as calibration was fitted on."""
+    return f"{h.header}\n{h.text}" if h.header else h.text
+
+
+def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, context: str = "",
+                      admission: dict | None = None) -> dict | None:
+    """Admit, judge and select every bucket's hits in place. Returns the run record, or
+    None when validation is off (empty chain) and there were no admission rules.
+
+    One validator call per brief: every bucket's candidates are combined, deduplicated by
+    cite and interleaved by rank, so a capacity-limited backend (local judges 20 per
+    call) sees the best of every bucket rather than only exemplars. The verdicts are
+    split back per bucket, and judge.select() applies the floor per bucket, so a bucket
+    is emptied only by admission rules, never by the relevance gate.
+
+    Reviewer rejections (rules with verdict=rejected) are exempt from the relevance gate:
+    a human's never-do-this applies whether or not it resembles the query. Admission
+    rules (judge_code.admit: excluded ids, oversized chunks, recency) run first on every
+    hit, exempt or not."""
+    import judge_code
+    adm = admission or {}
+    refused: list[dict] = []
+    if adm:
+        excl = frozenset(str(x) for x in adm.get("exclude_doc_ids") or ())
+        for bucket, hits in hits_by.items():
+            kept = []
+            for h in hits:
+                md = h.metadata if h.metadata.get("doc_id") else {**h.metadata, "doc_id": h.doc_id}
+                why = judge_code.admit(md, h.text, exclude_doc_ids=excl,
+                                       recency_years=adm.get("recency_years"))
+                if why:
+                    refused.append({"cite": h.cite, "bucket": bucket, "reason": why})
+                else:
+                    kept.append(h)
+            hits_by[bucket] = kept
+    if chain.empty:
+        return {"admission_refused": refused} if refused else None
+
+    from judge import select
+    from judge_base import Passage, Query
+    exempt = lambda h: h.bucket == "rules" and h.metadata.get("verdict") == "rejected"
+    # Judge only what can reach the prompt: each non-empty bucket gets an equal share of
+    # the lead backend's capacity (at least JUDGE_MIN_SHARE), taken in rank order. A
+    # bucket's budget holds ~5-9 hits, so its tail past the share cannot reach the prompt
+    # anyway — and keeping an unjudged tail while its judged top was rejected would invert
+    # the ranking (measured on a live brief: 19 unjudged low-ranked hits survived).
+    live = [hs for hs in hits_by.values() if any(not exempt(h) for h in hs)]
+    share = max(JUDGE_MIN_SHARE, chain.pool_width(0) // max(1, len(live)))
+    # Round-robin by rank across buckets, deduplicated, so truncation at capacity is fair.
+    pool: list[Hit] = []
+    seen: set[str] = set()
+    queues = [[h for h in hits if not exempt(h)][:share] for hits in hits_by.values()]
+    for rank in range(max((len(q) for q in queues), default=0)):
+        for q in queues:
+            if rank < len(q) and q[rank].cite not in seen:
+                seen.add(q[rank].cite); pool.append(q[rank])
+    result = chain.judge(Query(text=query, context=(context or "")[:CONTEXT_MAX_CHARS]),
+                         [Passage(h.cite, _passage_text(h)) for h in pool])
+    by_cite = dict(zip((h.cite for h in pool), result.aligned()))
+    per_bucket: dict[str, dict] = {}
+    for bucket, hits in hits_by.items():
+        keep_first = [h for h in hits if exempt(h)]
+        for h in keep_first:
+            h.relevance = {"value": True, "score": None, "backend": "reviewer_rejection",
+                           "kept": "exempt"}
+        chosen = []
+        for h, v, kept in select([(h, by_cite.get(h.cite)) for h in hits if not exempt(h)],
+                                 floor=VALIDATION_FLOOR, default_width=share):
+            h.relevance = ({**v.as_contract(), "kept": kept} if v is not None
+                           else {"value": True, "score": None, "backend": "none", "kept": kept})
+            chosen.append(h)
+        counts: dict[str, int] = {}
+        for h in keep_first + chosen:
+            counts[h.relevance["kept"]] = counts.get(h.relevance["kept"], 0) + 1
+        judged_here = min(share, sum(1 for h in hits if not exempt(h)))
+        counts["rejected"] = judged_here - sum(1 for h in chosen if h.relevance["kept"] != "unjudged")
+        counts["beyond_share"] = max(0, sum(1 for h in hits if not exempt(h)) - share)
+        per_bucket[bucket] = counts
+        hits_by[bucket] = keep_first + chosen
+    out = result.as_dict()
+    out["contract"] = result.as_contract()
+    out["per_bucket"] = per_bucket
+    out["calls"] = 1 if pool else 0
+    if refused:
+        out["admission_refused"] = refused
+    return out
 
 
 if __name__ == "__main__":                       # manual check

@@ -1,237 +1,624 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "napkin:rag_io.v1",
-  "$comment": "RAG module I/O contract, version 1: what the middleware sends the RAG module and what it gets back. JSON Schema (draft 2020-12) so any language validates the same bytes. Two extension keywords: `x-enum-from: <field>` means 'the closed enum of that field in rag_metadata.v1.json' — referenced, never copied, so the two contracts cannot drift; `x-status` is `live` (the RAG module reads it today) or `planned` (accepted and validated, not yet acted on). A field marked live that nothing reads is a test failure — a contract nothing honours is worse than none, because people trust it. Versioning follows rag_metadata: adding an optional field = minor bump; renaming, removing or tightening = major bump and a new file. `locked: false` until the middleware owner signs off the request shape.",
-  "version": "1.0.0",
+  "$comment": "RAG module I/O contract, version 1: what the middleware sends the RAG module and what it gets back. JSON Schema (draft 2020-12) so any language validates the same bytes. Two extension keywords: `x-enum-from: <field>` means 'the closed enum of that field in rag_metadata.v1.json' — referenced, never copied, so the two contracts cannot drift; `x-status` is `live` (the RAG module reads it today) or `planned` (accepted and validated, not yet acted on). A field marked live that nothing reads is a test failure — a contract nothing honours is worse than none, because people trust it. Versioning follows rag_metadata: adding an optional field = minor bump; renaming, removing or tightening = major bump and a new file. `locked: false` until the middleware owner signs off the request shape. v1.1.0 (2026-09-23): the validation stage is live — relevance and validation are populated when RAG_VALIDATOR names a chain; relevance gains `kept` (passed | floor | unjudged | exempt); research, attachments, memory.exclude_doc_ids and limits.recency_years are live (context for the validator, admission rules). Additive, so a minor bump.",
+  "version": "1.1.0",
   "locked": false,
   "$defs": {
     "request": {
       "type": "object",
       "description": "One retrieval request. Sent once per brief — the result is frozen into the prompt prefix the draft, judge and revise calls share.",
-      "required": ["run_id", "authority", "campaign"],
+      "required": [
+        "run_id",
+        "authority",
+        "campaign"
+      ],
       "additionalProperties": false,
       "properties": {
-        "contract_version": {"type": "string", "x-status": "live", "description": "The version of this file the caller built the request against."},
-        "run_id": {"type": "string", "minLength": 1, "x-status": "live", "description": "Correlates this request with the brief run, its trace and the CLAN file."},
-        "authority": {"$ref": "#/$defs/authority"},
-        "brand": {"$ref": "#/$defs/brand"},
-        "campaign": {"$ref": "#/$defs/campaign"},
-        "target": {"$ref": "#/$defs/target"},
+        "contract_version": {
+          "type": "string",
+          "x-status": "live",
+          "description": "The version of this file the caller built the request against."
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-status": "live",
+          "description": "Correlates this request with the brief run, its trace and the CLAN file."
+        },
+        "authority": {
+          "$ref": "#/$defs/authority"
+        },
+        "brand": {
+          "$ref": "#/$defs/brand"
+        },
+        "campaign": {
+          "$ref": "#/$defs/campaign"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
         "research": {
-          "type": "array", "maxItems": 50, "x-status": "planned",
-          "description": "Findings already selected from category / brand research (Postgres), with their ids — not raw documents. Used by the validation stage as extra query context and to avoid returning what the model already has.",
-          "items": {"$ref": "#/$defs/research_finding"}
+          "type": "array",
+          "maxItems": 50,
+          "x-status": "live",
+          "description": "Findings already selected from category / brand research (Postgres), with their ids — not raw documents. Their text joins the validator's brief context.",
+          "items": {
+            "$ref": "#/$defs/research_finding"
+          }
         },
         "attachments": {
-          "type": "array", "maxItems": 10, "x-status": "planned",
-          "description": "Text of documents the user added. UNTRUSTED: may shape the validation query, may never set scope, tenant or brand.",
-          "items": {"$ref": "#/$defs/attachment"}
+          "type": "array",
+          "maxItems": 10,
+          "x-status": "live",
+          "description": "Text of documents the user added. UNTRUSTED: joins the validator's brief context only; may never set scope, tenant or brand.",
+          "items": {
+            "$ref": "#/$defs/attachment"
+          }
         },
-        "memory": {"$ref": "#/$defs/memory"},
-        "limits": {"$ref": "#/$defs/limits"}
+        "memory": {
+          "$ref": "#/$defs/memory"
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        }
       }
     },
-
     "authority": {
       "type": "object",
       "x-status": "live",
       "description": "Who this run is FOR. Injected by the middleware from the session and the campaign record — never computed by the RAG module, never taken from document text (foundation-spec M3). This object is the confidentiality boundary.",
       "additionalProperties": false,
       "properties": {
-        "tenant": {"type": ["string", "null"], "pattern": "^[a-z0-9_]+$", "x-status": "live", "description": "The agency. Unlocks that agency's own material; null = licensed house corpus only."},
-        "brand": {"type": ["string", "null"], "pattern": "^[a-z0-9_]+$", "x-status": "live", "description": "The authorised SUBJECT brand, snake_case. The only thing that unlocks brand-scoped material. null = category and global material only."},
+        "tenant": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9_]+$",
+          "x-status": "live",
+          "description": "The agency. Unlocks that agency's own material; null = licensed house corpus only."
+        },
+        "brand": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9_]+$",
+          "x-status": "live",
+          "description": "The authorised SUBJECT brand, snake_case. The only thing that unlocks brand-scoped material. null = category and global material only."
+        },
         "references": {
-          "type": "array", "maxItems": 10, "x-status": "live",
+          "type": "array",
+          "maxItems": 10,
+          "x-status": "live",
           "description": "Other brands named in the brief. Every role here is PUBLIC MATERIAL ONLY, even when the brand is also a client — role decides data scope, and only authority.brand is a subject.",
           "items": {
-            "type": "object", "required": ["name", "role"], "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "name",
+              "role"
+            ],
+            "additionalProperties": false,
             "properties": {
-              "name": {"type": "string", "minLength": 1},
-              "role": {"enum": ["comparator", "competitor", "parent"]}
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "enum": [
+                  "comparator",
+                  "competitor",
+                  "parent"
+                ]
+              }
             }
           }
         }
       }
     },
-
     "brand": {
       "type": "object",
       "x-status": "live",
       "description": "The brand record for authority.brand, from Brand Research. Descriptive, not authorising.",
       "additionalProperties": false,
       "properties": {
-        "name": {"type": "string", "x-status": "live", "description": "Display name, used as an exact lexical term."},
-        "aliases": {"type": "array", "maxItems": 10, "items": {"type": "string"}, "x-status": "live", "description": "Other spellings and product names, used as exact lexical terms."},
-        "parent": {"type": ["string", "null"], "x-status": "planned", "description": "Owning company (Unilever for Dove). Recorded so the parent is never mistaken for the subject."},
-        "categories": {
-          "type": "array", "maxItems": 2, "x-status": "live",
-          "description": "Ranked, most applicable first. The first is the retrieval filter; the second is planned as a widening step. Leave empty rather than guess — the widening ladder handles a missing filter, it cannot un-guess a wrong one.",
-          "items": {"type": "string", "x-enum-from": "category"}
+        "name": {
+          "type": "string",
+          "x-status": "live",
+          "description": "Display name, used as an exact lexical term."
         },
-        "markets": {"type": "array", "maxItems": 20, "items": {"type": "string"}, "x-status": "live", "description": "Markets the brand operates in; joins the query text."}
+        "aliases": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string"
+          },
+          "x-status": "live",
+          "description": "Other spellings and product names, used as exact lexical terms."
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "x-status": "planned",
+          "description": "Owning company (Unilever for Dove). Recorded so the parent is never mistaken for the subject."
+        },
+        "categories": {
+          "type": "array",
+          "maxItems": 2,
+          "x-status": "live",
+          "description": "Ranked, most applicable first. The first is the retrieval filter; the second is planned as a widening step. Leave empty rather than guess — the widening ladder handles a missing filter, it cannot un-guess a wrong one.",
+          "items": {
+            "type": "string",
+            "x-enum-from": "category"
+          }
+        },
+        "markets": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string"
+          },
+          "x-status": "live",
+          "description": "Markets the brand operates in; joins the query text."
+        }
       }
     },
-
     "campaign": {
       "type": "object",
       "x-status": "live",
       "description": "The campaign clan as key-value pairs. Keys not listed here are ACCEPTED and join the query text, so a campaign clan that grows a field degrades to 'still searchable' rather than 'rejected'.",
-      "additionalProperties": {"type": "string"},
+      "additionalProperties": {
+        "type": "string"
+      },
       "properties": {
-        "problem": {"type": "string", "x-status": "live"},
-        "objective": {"type": "string", "x-status": "live"},
-        "audience": {"type": "string", "x-status": "live"},
-        "key_message": {"type": "string", "x-status": "live"},
-        "insight": {"type": "string", "x-status": "live"},
-        "product": {"type": "string", "x-status": "live"},
-        "market": {"type": "string", "x-status": "live"},
-        "campaign_type": {"type": "string", "x-status": "live", "description": "Free text; mapped to effectiveness_type where the taxonomies share a concept, otherwise query text."},
-        "effectiveness_type": {"type": "string", "x-enum-from": "effectiveness_type", "x-status": "planned"},
-        "channels": {"type": "string", "x-status": "live"},
-        "timeframe": {"type": "string", "x-status": "live"}
+        "problem": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "objective": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "audience": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "key_message": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "insight": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "product": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "market": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "campaign_type": {
+          "type": "string",
+          "x-status": "live",
+          "description": "Free text; mapped to effectiveness_type where the taxonomies share a concept, otherwise query text."
+        },
+        "effectiveness_type": {
+          "type": "string",
+          "x-enum-from": "effectiveness_type",
+          "x-status": "planned"
+        },
+        "channels": {
+          "type": "string",
+          "x-status": "live"
+        },
+        "timeframe": {
+          "type": "string",
+          "x-status": "live"
+        }
       }
     },
-
     "target": {
       "type": "object",
       "x-status": "planned",
       "description": "What is being generated with this context. The best evidence for an insight is not the best evidence for proof.",
       "additionalProperties": false,
       "properties": {
-        "stage": {"enum": ["brief"], "description": "Pipeline stage. Only the brief is served today."},
-        "field": {"type": ["string", "null"], "description": "The brief field being generated, when retrieval is per field."}
+        "stage": {
+          "enum": [
+            "brief"
+          ],
+          "description": "Pipeline stage. Only the brief is served today."
+        },
+        "field": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The brief field being generated, when retrieval is per field."
+        }
       }
     },
-
     "research_finding": {
-      "type": "object", "required": ["id", "text"], "additionalProperties": false,
-      "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "text": {"type": "string", "maxLength": 4000},
-        "source": {"type": ["string", "null"]},
-        "as_of": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
-      }
-    },
-
-    "attachment": {
-      "type": "object", "required": ["id", "text"], "additionalProperties": false,
-      "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "name": {"type": ["string", "null"]},
-        "text": {"type": "string", "maxLength": 20000, "description": "Extracted text. Capped: this shapes a query, it is not the document store."}
-      }
-    },
-
-    "memory": {
       "type": "object",
-      "x-status": "planned",
+      "required": [
+        "id",
+        "text"
+      ],
       "additionalProperties": false,
       "properties": {
-        "exclude_doc_ids": {"type": "array", "maxItems": 500, "items": {"type": "string"}, "description": "Documents that must not be returned for this run."},
-        "used_cites": {"type": "array", "maxItems": 500, "items": {"type": "string"}, "description": "Citations the model already has from an earlier call."}
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "as_of": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
       }
     },
-
+    "attachment": {
+      "type": "object",
+      "required": [
+        "id",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 20000,
+          "description": "Extracted text. Capped: this shapes a query, it is not the document store."
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "x-status": "live",
+      "additionalProperties": false,
+      "properties": {
+        "exclude_doc_ids": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "string"
+          },
+          "description": "Documents that must not be returned for this run.",
+          "x-status": "live"
+        },
+        "used_cites": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "string"
+          },
+          "description": "Citations the model already has from an earlier call.",
+          "x-status": "planned"
+        }
+      }
+    },
     "limits": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "token_budget": {
-          "type": "object", "x-status": "live",
+          "type": "object",
+          "x-status": "live",
           "description": "Per-bucket token TARGETS, merged over the defaults. A target, not a wall — the top hit in a bucket is always kept.",
           "additionalProperties": false,
           "properties": {
-            "exemplars": {"type": "integer", "minimum": 0, "maximum": 20000},
-            "craft": {"type": "integer", "minimum": 0, "maximum": 20000},
-            "rules": {"type": "integer", "minimum": 0, "maximum": 20000},
-            "instructions": {"type": "integer", "minimum": 0, "maximum": 20000}
+            "exemplars": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20000
+            },
+            "craft": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20000
+            },
+            "rules": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20000
+            },
+            "instructions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20000
+            }
           }
         },
-        "latency_ms": {"type": "integer", "minimum": 0, "x-status": "planned", "description": "Overall deadline for the RAG call."},
-        "target_model": {"type": ["string", "null"], "x-status": "planned", "description": "The model that will read the context; caching minimums depend on it."},
-        "recency_years": {"type": ["integer", "null"], "minimum": 1, "x-status": "planned", "description": "Exclude material older than this."}
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "x-status": "planned",
+          "description": "Overall deadline for the RAG call."
+        },
+        "target_model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "x-status": "planned",
+          "description": "The model that will read the context; caching minimums depend on it."
+        },
+        "recency_years": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "x-status": "live",
+          "description": "Exclude material older than this."
+        }
       }
     },
-
     "response": {
       "type": "object",
       "description": "Structured, citable evidence — not a summary. The brief model synthesises; the RAG module selects, validates, orders and renders.",
-      "required": ["contract_version", "run_id", "blocks", "prompt_text", "tokens", "trace"],
+      "required": [
+        "contract_version",
+        "run_id",
+        "blocks",
+        "prompt_text",
+        "tokens",
+        "trace"
+      ],
       "additionalProperties": false,
       "properties": {
-        "contract_version": {"type": "string"},
-        "run_id": {"type": "string"},
-        "blocks": {"type": "array", "items": {"$ref": "#/$defs/block"}, "description": "In prompt reading order. Hits within a block are in DELIVERED order, which may differ from score order once edge ordering is on."},
-        "prompt_text": {"type": "string", "description": "The blocks rendered for a prompt, for callers that do not render their own."},
-        "tokens": {"type": "integer", "minimum": 0},
-        "validation": {"$ref": "#/$defs/validation"},
-        "notes": {"type": "array", "items": {"type": "string"}, "description": "Plain-language warnings: unresolved filters, widening, fallbacks."},
-        "trace": {"type": "object", "description": "brief_context.BriefContext.trace() — authorised vs served scopes and tenants, egress drops, per-hit scope. Log it per brief."}
+        "contract_version": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          },
+          "description": "In prompt reading order. Hits within a block are in DELIVERED order, which may differ from score order once edge ordering is on."
+        },
+        "prompt_text": {
+          "type": "string",
+          "description": "The blocks rendered for a prompt, for callers that do not render their own."
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validation": {
+          "$ref": "#/$defs/validation"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Plain-language warnings: unresolved filters, widening, fallbacks."
+        },
+        "trace": {
+          "type": "object",
+          "description": "brief_context.BriefContext.trace() — authorised vs served scopes and tenants, egress drops, per-hit scope. Log it per brief."
+        }
       }
     },
-
     "block": {
       "type": "object",
-      "required": ["bucket", "hits", "tokens", "budget"],
+      "required": [
+        "bucket",
+        "hits",
+        "tokens",
+        "budget"
+      ],
       "additionalProperties": false,
       "properties": {
-        "bucket": {"type": "string", "x-enum-from": "bucket"},
-        "hits": {"type": "array", "items": {"$ref": "#/$defs/hit"}},
-        "tokens": {"type": "integer", "minimum": 0},
-        "budget": {"type": "integer", "minimum": 0},
-        "dropped": {"type": "integer", "minimum": 0},
-        "over_target": {"type": "boolean"},
-        "truncated": {"type": "integer", "minimum": 0}
+        "bucket": {
+          "type": "string",
+          "x-enum-from": "bucket"
+        },
+        "hits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hit"
+          }
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "budget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dropped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "over_target": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-
     "hit": {
       "type": "object",
-      "required": ["cite", "doc_id", "source", "text", "retrieval_score", "scope", "tenant", "weight"],
+      "required": [
+        "cite",
+        "doc_id",
+        "source",
+        "text",
+        "retrieval_score",
+        "scope",
+        "tenant",
+        "weight"
+      ],
       "additionalProperties": false,
       "properties": {
-        "cite": {"type": "string", "description": "Stable short id the model cites and check_grounding() verifies."},
-        "doc_id": {"type": "string"},
-        "source": {"type": "string"},
-        "title": {"type": "string"},
-        "section": {"type": "string"},
-        "text": {"type": "string"},
-        "tokens": {"type": "integer", "minimum": 0},
-        "retrieval_score": {"type": "number", "description": "Fused retrieval score. Rank-derived (RRF) — comparable within one query only, never a relevance probability."},
-        "relevance": {"$ref": "#/$defs/relevance"},
-        "scope": {"type": "string"},
-        "tenant": {"type": "string"},
-        "category": {"type": ["string", "null"]},
-        "year": {"type": ["string", "integer", "null"]},
-        "weight": {"enum": ["constraint", "advice", "evidence"], "description": "How much weight the model should give it. constraint = a human reviewer rejected this before; advice = textbook pitfalls; evidence = precedent, craft, standards."}
+        "cite": {
+          "type": "string",
+          "description": "Stable short id the model cites and check_grounding() verifies."
+        },
+        "doc_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retrieval_score": {
+          "type": "number",
+          "description": "Fused retrieval score. Rank-derived (RRF) — comparable within one query only, never a relevance probability."
+        },
+        "relevance": {
+          "$ref": "#/$defs/relevance"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "tenant": {
+          "type": "string"
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "year": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "weight": {
+          "enum": [
+            "constraint",
+            "advice",
+            "evidence"
+          ],
+          "description": "How much weight the model should give it. constraint = a human reviewer rejected this before; advice = textbook pitfalls; evidence = precedent, craft, standards."
+        }
       }
     },
-
     "relevance": {
-      "type": ["object", "null"],
-      "x-status": "planned",
+      "type": [
+        "object",
+        "null"
+      ],
+      "x-status": "live",
       "description": "The validation stage's verdict on this hit. null until that stage runs.",
       "additionalProperties": false,
-      "required": ["value", "backend"],
+      "required": [
+        "value",
+        "backend"
+      ],
       "properties": {
-        "value": {"type": "boolean", "description": "Passed the relevance gate."},
-        "score": {"type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "Calibrated backends only. A threshold is only ever compared against a non-null score."},
-        "backend": {"type": "string", "description": "Which backend decided — recorded so a backend swap can be diffed rather than trusted."}
+        "value": {
+          "type": "boolean",
+          "description": "Passed the relevance gate."
+        },
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Calibrated backends only. A threshold is only ever compared against a non-null score."
+        },
+        "backend": {
+          "type": "string",
+          "description": "Which backend decided — recorded so a swap can be diffed. 'reviewer_rejection' for exempt hits, 'none' for unjudged."
+        },
+        "kept": {
+          "enum": [
+            "passed",
+            "floor",
+            "unjudged",
+            "exempt"
+          ],
+          "description": "Why the hit is in the response: passed the gate; kept by the floor because every chunk in its bucket failed (weak evidence, flagged in the prompt); not judged (beyond capacity or no backend answered); exempt (a reviewer rejection, never relevance-gated)."
+        }
       }
     },
-
     "validation": {
-      "type": ["object", "null"],
-      "x-status": "planned",
+      "type": [
+        "object",
+        "null"
+      ],
+      "x-status": "live",
       "description": "Run-level record of the validation stage. null until that stage runs.",
       "additionalProperties": false,
       "properties": {
-        "backend_requested": {"type": "string"},
-        "backend_used": {"type": ["string", "null"]},
-        "pool_size": {"type": "integer", "minimum": 0},
-        "passed": {"type": "integer", "minimum": 0},
-        "rejected": {"type": "integer", "minimum": 0},
-        "fell_back": {"type": "boolean"}
+        "backend_requested": {
+          "type": "string"
+        },
+        "backend_used": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pool_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fell_back": {
+          "type": "boolean"
+        }
       }
     }
   }

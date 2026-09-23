@@ -31,10 +31,10 @@ middleware ◀─response── rag_io.response_from()
 | Input contract | **live** | `rag_io.py`, `../schema/rag_io.v1.json` |
 | Extraction (hybrid BM25 + dense, filters, widening) | **live** | `brief_context.py`, `rag.py`, `lexical.py`, `filters.py` |
 | Confidentiality boundary (scope, tenant, egress) | **live** | `brief_context.scopes_for / tenants_for / build` |
-| Validation (relevance gate, jev → nemotron → local switch) | **built, not wired** | `judge.py`, `judge_*.py`, `calibrate.py` |
-| Pool width set by the live validator | **built, not wired** | `judge.Chain.pool_width` |
+| Validation (relevance gate, jev → nemotron → local switch) | **wired, off by default** (ADR 0003) | `judge.py`, `judge_*.py`, `calibrate.py` |
+| Pool width set by the live validator | **wired** | `judge.Chain.pool_width` |
 | Rerank | today: LLM rerank in `parse_brief.loops_3_7`; to be replaced by sorting on the validator's score (step 4) | `parse_brief._rerank_hits` |
-| Edge ordering (strongest at both ends) | planned | — |
+| Edge ordering (strongest at both ends) | **built**, `RAG_ORDER=edge`, default off pending A/B | `brief_context.edge_order` |
 | Output: structured chunks + rendered prompt text | **live** | `rag_io.response_from`, `BriefContext.prompt_text` |
 
 Two retrieval paths exist today: `brief_context.build()` (behind `rag_io`) and
@@ -195,7 +195,7 @@ reading. Read the misses, not just the number.
 
 ## Validation stage — `judge*.py`, `calibrate.py`
 
-Checks each retrieved chunk against the query plus brief context and keeps what is directly useful. A switch over interchangeable backends, each the failsafe for the one before: **jev** (TypeSafe; ready, no access yet) → **nemotron** (hosted NVIDIA reranker) → **local** (cross-encoder on this machine). Admission rules in code run first. Status: components built and tested; **not yet wired into `brief_context` or `loops_3_7`** (plan steps 3–5). Decisions: [ADR 0003](docs/adr/0003-validation-stage.md).
+Checks each retrieved chunk against the query plus brief context and keeps what is directly useful. A switch over interchangeable backends, each the failsafe for the one before: **jev** (TypeSafe; ready, no access yet) → **nemotron** (hosted NVIDIA reranker) → **local** (cross-encoder on this machine). Admission rules in code run first. Status: wired into `brief_context.build` and `rag_io` v1.1.0 (steps 3–4; `loops_3_7` is step 5). **Off by default and not yet safe to enable for briefs**: a live brief showed nemotron, a QA reranker, rejects award-case precedent whatever the query phrasing — see ADR 0003, *Live finding*. Decisions: [ADR 0003](docs/adr/0003-validation-stage.md).
 
 Turn it on with `RAG_VALIDATOR=nemotron,local` in `engine/.env` (jev first once `TYPESAFE_API_KEY` exists). Check what is alive with `python3 judge.py check`. Unset means validation off.
 
@@ -491,6 +491,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `NVIDIA_API_KEY` | — | embeddings |
 | `QDRANT_CLUSTER_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | — | Qdrant backend |
 | `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
+| `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
 | `RAG_VALIDATOR` | unset (off) | Validation chain in priority order, e.g. `nemotron,local`; `jev` first once `TYPESAFE_API_KEY` is set |
 | `RAG_VALIDATOR_DEADLINE_S` | `3.0` | Per-call deadline for backends that declare none |
 | `RAG_LOCAL_RERANKER`, `RAG_LOCAL_DEVICE` | `BAAI/bge-reranker-v2-m3`, mps/cpu | Local cross-encoder |

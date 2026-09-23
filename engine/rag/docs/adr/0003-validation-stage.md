@@ -1,6 +1,6 @@
 # 0003 — Validation stage: a chain of relevance backends
 
-- **Status:** accepted; components built and tested, not yet wired into retrieval (plan steps 3–5)
+- **Status:** accepted; wired into `brief_context.build` and `rag_io` v1.1.0 (steps 3–4), **off by default — do not enable for briefs yet** (see *Live finding*)
 - **Date:** 2026-09-23
 - **Owner:** Sai
 - **Files:** `judge_base.py`, `judge.py`, `judge_code.py`, `judge_llm.py`, `judge_nemotron.py`,
@@ -83,7 +83,7 @@ Measurements that shaped it (2026-09-23):
 
 ## Consequences and open items
 
-- **Not wired yet.** Integration (steps 3–5) must: call the chain once per brief with all buckets'
+- **Integration requirements (done in steps 3–4 for `brief_context`; `loops_3_7` is step 5; per-brief deadline still open).** Integration had to: call the chain once per brief with all buckets'
   candidates combined and deduplicated; split the result back per bucket; apply the floor per bucket;
   map retrieval width (chunks, before collapse) onto judged width (documents, after); pass a per-brief
   deadline; hold one chain per process so the breaker survives across briefs; and bump the rag_io
@@ -97,3 +97,29 @@ Measurements that shaped it (2026-09-23):
   `judge_jev.py`'s module docstring.
 - The DGX Spark ([plan](../dgx-spark-plan.md)) should make local a GPU peer of nemotron; its cuda
   capacity is unmeasured and set to 6 until then.
+
+## Live finding after integration (2026-09-23) — why it stays off
+
+One real brief (BMW, automotive) through `rag_io.handle` with `RAG_VALIDATOR=nemotron`: one
+validator call, 557 ms, 40 passages judged. Nemotron rejected every judged passage except the floor.
+The two automotive IPA precedents scored raw logits of about −8.6, **both with the brief text as
+the query and rephrased as a question** ("Which past campaign or planning evidence would help a brief
+where: …?"). A QA cross-encoder judges whether a passage *answers a question*; an award case never
+answers a brief, so for the exemplars bucket it measures the wrong thing. This is a tool mismatch,
+not a threshold problem, and the golden calibration (question-shaped queries) could not have shown it.
+
+Consequences:
+- Validation stays **off** (`RAG_VALIDATOR` unset) for brief generation until step 6 proves it helps.
+- Step 6 must test, on brief-shaped labelled pairs: role-specific queries per bucket; jev's Noul
+  (instruction-following — it can be asked "is this comparable precedent for this brief?"); and
+  applying rerankers only to craft/rules, where playbook text does answer "how to" questions.
+- Fixed in integration from the same run: judging every candidate (82) at capacity 40 left craft and
+  rules with 19–23 low-ranked *unjudged* hits while their judged top was rejected — an inverted
+  ranking. Now each bucket gets an equal share of capacity (at least 5, what a budget can hold) and
+  the unjudged tail is dropped when a validator answered.
+
+Integration as built: one validator call per brief, candidates interleaved by rank and deduplicated;
+reviewer rejections exempt; admission rules first; per-bucket floor; passing hits sorted by score (the
+rerank); `edge_order()` after the budget behind `RAG_ORDER=edge` (default `score`); one chain per
+process; floor hits marked "weak match" in the prompt; `rag_io` 1.1.0 carries per-hit `relevance`
+(with `kept`) and the run's `validation` record.

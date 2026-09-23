@@ -234,6 +234,22 @@ def to_build_args(request: dict) -> tuple[dict, list[str]]:
         pairs["competitors"] = _join(others)
 
     kwargs = {"pairs": pairs, "brand": auth.get("brand"), "tenant": auth.get("tenant")}
+    # Brief context for the validator: research findings then attachments, each labelled.
+    # Attachments are untrusted, which is exactly why they only ever reach this string —
+    # a relevance judgement — and never pairs, scope or tenant.
+    ctx = [f"[research {f['id']}] {f['text']}" for f in request.get("research") or []]
+    ctx += [f"[attachment {a['id']}] {a['text']}" for a in request.get("attachments") or []]
+    if ctx:
+        kwargs["context"] = "\n".join(ctx)
+    admission = {}
+    excl = (request.get("memory") or {}).get("exclude_doc_ids")
+    if excl:
+        admission["exclude_doc_ids"] = list(excl)
+    rec = (request.get("limits") or {}).get("recency_years")
+    if rec:
+        admission["recency_years"] = int(rec)
+    if admission:
+        kwargs["admission"] = admission
     budget = (request.get("limits") or {}).get("token_budget")
     if budget:
         kwargs["budget"] = dict(budget)
@@ -256,7 +272,7 @@ def _hit_out(h) -> dict:
         "cite": h.cite, "doc_id": h.doc_id, "source": h.source,
         "title": h.title, "section": h.section, "text": h.text,
         "tokens": h.tokens, "retrieval_score": float(h.score),
-        "relevance": None,
+        "relevance": h.relevance,
         "scope": str(md.get("scope") or "global"),
         "tenant": str(md.get("tenant") or "house"),
         "category": md.get("category"),
@@ -281,7 +297,7 @@ def response_from(ctx, run_id: str, notes: list[str] | None = None) -> dict:
         "blocks": blocks,
         "prompt_text": ctx.prompt_text(),
         "tokens": ctx.tokens,
-        "validation": None,
+        "validation": (ctx.validation or {}).get("contract"),
         "notes": list(notes or []) + list(ctx.widened),
         "trace": ctx.trace(),
     }
