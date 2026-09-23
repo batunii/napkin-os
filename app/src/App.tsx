@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { host } from './host'
-import type { InstalledApp, OpenResult, RecentDoc } from './host'
+import type { InstalledApp, OpenResult } from './host'
 import { askAppToExport } from './shell/appExport'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
@@ -12,10 +12,6 @@ import AppRuntime from './shell/AppRuntime'
 import InstallPrompt from './shell/InstallPrompt'
 import type { RunningApp, Screen } from './shell/types'
 import StudioShell from './studio/StudioShell'
-import FloorView from './studio/floor/FloorView'
-import DecisionsView from './studio/decisions/DecisionsView'
-import { StudioContext } from './studio/nav'
-import type { Studio, StudioView } from './studio/nav'
 import './index.css'
 
 // Theme keys an immersive app may recolor → CSS variables on the shell root.
@@ -41,13 +37,10 @@ function resetTheme() {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
-  // Which studio tab home shows. Survives a trip into a document and back.
-  const [view, setView] = useState<StudioView>('floor')
   const [running, setRunning] = useState<RunningApp | null>(null)
   // The home CLAN app, shown under the Apps tab.
   const [home, setHome] = useState<{ open: OpenResult; html: string } | null>(null)
   const [installed, setInstalled] = useState<InstalledApp[]>([])
-  const [recent, setRecent] = useState<RecentDoc[]>([])
   const [pendingLaunch, setPendingLaunch] = useState<OpenResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +49,6 @@ export default function App() {
 
   const refreshApps = useCallback(async () => {
     try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
-    try { setRecent(await host.listRecent()) } catch (e) { console.error(e) }
   }, [])
 
   // Open the home CLAN app as the current document and render it.
@@ -205,10 +197,6 @@ export default function App() {
     await runArtifact(result)
   }, [pendingLaunch, runArtifact])
 
-  const studio: Studio = {
-    view, go: setView, installed, recent, launchApp, openPath, openFile: handleOpenFile,
-  }
-
   // Apps: the home CLAN app when the host has one (as home always was), the
   // native launcher when it couldn't load.
   const apps = home ? (
@@ -235,17 +223,9 @@ export default function App() {
       {screen === 'app' && running ? (
         <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} onExport={exportCurrent} onSpinoff={spinOff} />
       ) : (
-        <StudioContext value={studio}>
-          <StudioShell view={view} onView={setView}>
-            {view === 'floor' && <FloorView />}
-            {view === 'decisions' && <DecisionsView />}
-            {/* Kept mounted while hidden, so going back to Apps doesn't reload
-                the home app's frame. */}
-            <div style={{ display: view === 'apps' ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
-              {apps}
-            </div>
-          </StudioShell>
-        </StudioContext>
+        <StudioShell>
+          {apps}
+        </StudioShell>
       )}
 
       {pendingLaunch && (
