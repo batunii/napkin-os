@@ -218,6 +218,17 @@ class LocalStore(VectorStore):
         lex = [d for _, d in self.bm25().search(qtext, k=n, allowed=set(by_id))]
         return [(score, by_id[d]) for score, d in rrf([dense, lex], k=rrf_k, weights=weights)[:k]]
 
+    def search_lexical(self, qtext: str, k: int = 5, where: dict | None = None
+                       ) -> list[tuple[float, dict]]:
+        """BM25 only, over the same filtered rows: the keyword-only fallback used when no
+        query vector could be produced (rag.embed_query returned None)."""
+        idxs = self._filtered(where)
+        if not idxs:
+            return []
+        rows = self._rows()
+        by_id = {rows[i]["id"]: rows[i] for i in idxs}
+        return [(score, by_id[d]) for score, d in self.bm25().search(qtext, k=k, allowed=set(by_id))]
+
     def get(self, chunk_id: str) -> dict | None:
         """One row by chunk id. Used to present a parent case after one of its sections
         matched — the index holds both, so this is a dict lookup, not a second search."""

@@ -611,7 +611,7 @@ def _fill(hits: list[Hit], budget: int, max_hit: int | None = None,
 def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
           candidates: int = CANDIDATES, brand: str | None = None,
           tenant: str | None = None, context: str = "", admission: dict | None = None,
-          chain=None) -> BriefContext:
+          chain=None, query_override: str | None = None) -> BriefContext:
     """The entry point. Campaign pairs in, four budgeted citable blocks out.
 
     `brand` is the authorised brand for this run and the only way to unlock brand-scoped
@@ -626,12 +626,19 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     tenants = tenants_for(tenant)
 
     store = rag.open_store(index_dir)
+    # `query_override` replaces only the search text: filters, scope,
+    # tenant, admission, budgets and validation still come from the pairs. This is how a
+    # per-field query (loops_3_7's insight / proposition / proof) runs through this
+    # pipeline — the "mix" path.
+    if query_override:
+        query = query_override
     search_text = " ".join([query] + keywords).strip() or "advertising strategy"
-    qvec, _ = rag.embed([search_text], "query")
-    qvec = rag._norm(qvec[0])
+    qvec = rag.embed_query(search_text)          # None: no embedding answered -> keyword-only
 
     blocks: dict[str, Block] = {}
     widened: list[str] = list(notes)
+    if qvec is None:
+        widened.append("embedding unavailable — keyword-only (BM25) search for this brief")
     used_filters: dict = {}
 
     # Validation (plan steps 3-4). `chain` None means the process-wide chain from

@@ -92,7 +92,7 @@ def _offline_embed(texts: list[str], dim: int = OFFLINE_DIM) -> list[list[float]
     return out
 
 
-def _nim_embed(texts: list[str], input_type: str, key: str) -> list[list[float]]:
+def _nim_embed(texts: list[str], input_type: str, key: str, attempts: int = 5) -> list[list[float]]:
     """Embed one batch through NVIDIA NIM's OpenAI-compatible /embeddings endpoint.
 
     `input_type` is 'passage' or 'query'; the model embeds the two differently. Over-long
@@ -108,30 +108,74 @@ def _nim_embed(texts: list[str], input_type: str, key: str) -> list[list[float]]
     # Retry transient failures (502/503/504, timeouts) with backoff — a single blip
     # shouldn't abort a large multi-batch build.
     import time as _t
-    for attempt in range(5):
+    for attempt in range(attempts):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 data = json.loads(r.read())
             return [d["embedding"] for d in data["data"]]
         except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503, 504) and attempt < 4:
+            if e.code in (429, 500, 502, 503, 504) and attempt < attempts - 1:
                 _t.sleep(2 * (attempt + 1)); continue
             raise
         except (urllib.error.URLError, TimeoutError):
-            if attempt < 4:
+            if attempt < attempts - 1:
                 _t.sleep(2 * (attempt + 1)); continue
             raise
 
 
+class EmbedUnavailable(RuntimeError):
+    """No embedding endpoint could answer: hosted failed and no fallback succeeded."""
+
+
+# Query-time fallbacks, in order, after the hosted endpoint (RAG_EMBED_FALLBACK):
+#   local    the SAME model on this machine (embed_local.py; weights fetched once)
+#   keyword  no vector at all: search falls back to BM25 (see embed_query / search_vec)
+# Queries only: an index build never falls back, so a vector-parity miss cannot leak
+# into stored vectors. Measured need: every brief embeds its queries through one hosted
+# trial endpoint, a single point of failure.
+EMBED_FALLBACK = [x.strip() for x in os.environ.get("RAG_EMBED_FALLBACK", "local,keyword").split(",") if x.strip()]
+
+
 def embed(texts: list[str], input_type: str = "passage") -> tuple[list[list[float]], str]:
-    """Returns (vectors, mode). input_type: 'passage' for docs, 'query' for queries."""
+    """Returns (vectors, mode). input_type: 'passage' for docs, 'query' for queries.
+
+    For queries, a hosted failure falls back to the local copy of the same model when
+    RAG_EMBED_FALLBACK includes `local` (fewer hosted retries first, so failover is quick);
+    if that also fails, EmbedUnavailable. Passages never fall back."""
     key = os.environ.get("NVIDIA_API_KEY")
     if not key or os.environ.get("RAG_EMBED") == "offline":
         return _offline_embed(texts), "offline"
-    vecs: list[list[float]] = []
-    for i in range(0, len(texts), BATCH):
-        vecs.extend(_nim_embed(texts[i:i + BATCH], input_type, key))
-    return vecs, f"nim:{EMBED_MODEL}"
+    use_local = input_type == "query" and "local" in EMBED_FALLBACK
+    try:
+        vecs: list[list[float]] = []
+        for i in range(0, len(texts), BATCH):
+            vecs.extend(_nim_embed(texts[i:i + BATCH], input_type, key, attempts=2 if use_local else 5))
+        return vecs, f"nim:{EMBED_MODEL}"
+    except Exception as e:
+        if not use_local:
+            if input_type == "query":
+                raise EmbedUnavailable(f"hosted embedding failed: {type(e).__name__}: {e}") from e
+            raise
+        print(f"[!] hosted embedding failed ({type(e).__name__}); trying the local model", file=sys.stderr)
+        try:
+            import embed_local
+            return embed_local.embed(texts, input_type), f"local:{embed_local.MODEL}"
+        except Exception as e2:
+            raise EmbedUnavailable(f"hosted and local embedding both failed: {e}; {e2}") from e2
+
+
+def embed_query(text: str) -> list[float] | None:
+    """One normalised query vector, or None when no endpoint answered and
+    RAG_EMBED_FALLBACK allows `keyword` — the caller then searches lexically. Retrieval
+    degrades, it does not fail."""
+    try:
+        vecs, _ = embed([text], "query")
+        return _norm(vecs[0])
+    except EmbedUnavailable as e:
+        if "keyword" not in EMBED_FALLBACK:
+            raise
+        print(f"[!] {e} — keyword-only search for this query", file=sys.stderr)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -313,13 +357,16 @@ def search(index_dir: Path, q: str, k: int = 5, where: dict | None = None, mode:
     mode: 'hybrid' (dense + BM25 fused by RRF; default) or 'dense'. Stores without a
     search_hybrid() (Qdrant today) fall back to dense."""
     store = open_store(index_dir)
-    qv, _ = embed([q], "query")
-    return search_vec(store, _norm(qv[0]), q, k=k, where=where, mode=mode)
+    return search_vec(store, embed_query(q), q, k=k, where=where, mode=mode)
 
 
 def search_vec(store, qvec: list[float], q: str, k: int = 5, where: dict | None = None, mode: str | None = None
                ) -> list[tuple[float, dict]]:
-    """search() with a pre-computed query vector (the golden eval embeds in batches)."""
+    """search() with a pre-computed query vector (the golden eval embeds in batches).
+    `qvec` None means no embedding was available: keyword-only search (BM25), or [] if
+    the store cannot search lexically."""
+    if qvec is None:
+        return store.search_lexical(q, k=k, where=where) if hasattr(store, "search_lexical") else []
     mode = (mode or SEARCH_MODE).lower()
     if mode == "hybrid" and hasattr(store, "search_hybrid"):
         return store.search_hybrid(qvec, q, k=k, where=where)

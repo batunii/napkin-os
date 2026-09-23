@@ -311,6 +311,14 @@ def search_hybrid(qvec: list[float], qtext: str, k: int = 5, where: dict | None 
     return [(score, by_id[d]) for score, d in fused[:k] if d in by_id]
 
 
+def search_lexical(qtext: str, k: int = 5, where: dict | None = None) -> list[tuple[float, dict]]:
+    """Keyword-only search via the sparse BM25 vector: the fallback when no query vector
+    could be produced. Scores are rank-derived (1/rank), comparable within one query only."""
+    if not has_sparse():
+        return []
+    return [(1.0 / (i + 1), p) for i, p in enumerate(_search_sparse(qtext, k=k, where=where))]
+
+
 def count() -> int:
     """Number of points in the collection, or 0 when it is missing or unreachable."""
     try:
@@ -375,6 +383,10 @@ class QdrantStore(VectorStore):
     def search(self, qvec, k=5, where=None):
         """Dense top-k as [(score, payload)]. See search()."""
         return search(qvec, k=k, where=where)
+
+    def search_lexical(self, qtext, k=5, where=None):
+        """Keyword-only fallback. See search_lexical()."""
+        return search_lexical(qtext, k=k, where=where)
 
     def search_hybrid(self, qvec, qtext, k=5, where=None, n=50, rrf_k=10, weights=(1.0, 1.0)):
         """Dense + BM25 fused by RRF, with the same defaults as the local store. See
