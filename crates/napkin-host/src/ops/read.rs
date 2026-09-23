@@ -189,13 +189,23 @@ pub fn compose_export(
 }
 
 /// For each attachment carrying a `name`, read its cached extracted-text
-/// sidecar and splice it in as `extracted_text`. Read at call time so the text
-/// never has to live in the data layer or be re-extracted.
+/// sidecar and splice it in. Read at call time so the text never has to live
+/// in the data layer or be re-extracted.
+///
+/// Two payload shapes carry attachments. An agent payload lists them at the
+/// top level and reads the text as `extracted_text`. A `napkin.middleware/1`
+/// task lists them under `input` and reads it as `text` (middleware-api §1);
+/// an attachment there without it is recorded as unread and grounds nothing.
 pub fn attach_extracted_text(doc: &Document, payload: &mut Value) {
-    let Some(atts) = payload
-        .get_mut("attachments")
-        .and_then(|v| v.as_array_mut())
-    else {
+    splice_text(doc, payload.get_mut("attachments"), "extracted_text");
+    let under_input = payload
+        .get_mut("input")
+        .and_then(|i| i.get_mut("attachments"));
+    splice_text(doc, under_input, "text");
+}
+
+fn splice_text(doc: &Document, attachments: Option<&mut Value>, key: &str) {
+    let Some(atts) = attachments.and_then(|v| v.as_array_mut()) else {
         return;
     };
     for a in atts.iter_mut() {
@@ -205,7 +215,7 @@ pub fn attach_extracted_text(doc: &Document, payload: &mut Value) {
         let sidecar = format!("human/assets/.extracted/{name}.txt");
         if let Ok(text) = doc.clan().read_entry_string(&sidecar) {
             if let Some(obj) = a.as_object_mut() {
-                obj.insert("extracted_text".into(), Value::String(text));
+                obj.insert(key.into(), Value::String(text));
             }
         }
     }

@@ -163,6 +163,29 @@ fn the_agent_context_names_the_document_and_carries_the_members() {
 }
 
 #[test]
+fn an_uploaded_attachment_reaches_a_middleware_task_as_text() {
+    let f = fixture();
+    let email = "The problem, in a sentence: people are drinking less midweek.";
+    f.session
+        .upload_asset("client-email.txt", Some("human"), email.as_bytes().to_vec())
+        .unwrap();
+
+    // The app sends `{task, input: {attachments}}`; §1 has the host fill in
+    // `text`, and an attachment without it grounds nothing.
+    let mut payload = json!({ "task": "extract_ask", "input": {
+        "prompt": "pull the ask out of the email",
+        "attachments": [{ "name": "client-email.txt", "sha256": "sha256:00" }] } });
+    f.session.attach_extracted_text(&mut payload);
+    assert_eq!(payload["input"]["attachments"][0]["text"], email);
+
+    // The agent's shape is unchanged: top-level attachments, `extracted_text`.
+    let mut agent = json!({ "attachments": [{ "name": "client-email.txt" }] });
+    f.session.attach_extracted_text(&mut agent);
+    assert_eq!(agent["attachments"][0]["extracted_text"], email);
+    assert!(agent["attachments"][0].get("text").is_none());
+}
+
+#[test]
 fn a_change_lands_once_as_the_middleware_with_members_and_projection() {
     let f = fixture();
     let before = on_disk(&f);
