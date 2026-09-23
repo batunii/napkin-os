@@ -211,10 +211,18 @@ export const httpHost: Host = {
     });
   }
 
+  // Middleware tasks are the exception: the server holds that endpoint and
+  // its secret, and applies the change it returns, so they go to the host
+  // like any other route rather than to the page's own model call.
+  function isMiddleware(body){
+    try{ return typeof body==='string'&&JSON.parse(body).request_kind==='middleware'; }
+    catch(e){ return false; }
+  }
+
   window.fetch=function(input,init){
     if(typeof input==='string'){
       input=input.replace(/^clan:\\/\\/localhost/,BASE).replace(/^http:\\/\\/clan\\.localhost/,BASE);
-      if(input===BASE+'/api-proxy') return rpc('api-proxy',(init&&init.body)||'{}');
+      if(input===BASE+'/api-proxy'&&!isMiddleware(init&&init.body)) return rpc('api-proxy',(init&&init.body)||'{}');
     }
     return f.call(this,input,init);
   };
