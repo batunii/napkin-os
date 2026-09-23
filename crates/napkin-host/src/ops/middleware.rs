@@ -104,8 +104,11 @@ pub fn refused(reason: impl Into<String>) -> Value {
 /// `applied: false` and why, because the app asked for work and must be told
 /// what became of it.
 ///
-/// The reply on success is `{ applied: true, base_stale }`; the version it
-/// landed at is known only once a store has applied it, so the caller adds it.
+/// The reply on success is `{ applied: true, base_stale, applied_fields,
+/// contested_fields, contests }`; the version it landed at is known only once
+/// a store has applied it, so the caller adds it. A stale base is judged field
+/// by field against the change's read-set (`split_patch`); a change of
+/// which nothing is new is refused as `already applied`.
 pub fn apply(outer: &Ctx, doc: &Document, reply: &Value) -> HostResult<Outcome> {
     check_api(reply)?;
     let change = match reply.get("change") {
@@ -139,19 +142,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         None => return Err(HostError::bad_request("change names no `doc`")),
     }
 
-    // 2. The base version. W2-A4 HOOK: the expected-version check is not
-    //    implemented anywhere yet, so a change computed from an older version
-    //    is still applied — over whatever the document holds now — and the
-    //    reply says so (`base_stale`). When W2-A4 lands, this is where a stale
-    //    base becomes a refusal (or a rebase), and `Change::base` below is what
-    //    the store compares at apply.
-    let base_stale = change
-        .get("base_version")
-        .and_then(Value::as_str)
-        .map(|b| b != doc.version().as_str())
-        .unwrap_or(true);
-
-    // 3. What it asks for, validated before anything is built.
+    // 2. What it asks for, validated before anything is built.
     let data_patch = match change.get("data_patch") {
         None | Some(Value::Null) => None,
         Some(p @ Value::Object(o)) => {
@@ -164,6 +155,11 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         }
         Some(_) => return Err(HostError::bad_request("data_patch is not an object")),
     };
+    let read = match change.get("read") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(r)) => Some(r),
+        Some(_) => return Err(HostError::bad_request("`read` is not an object")),
+    };
     let facts_append = entries(change, "facts_append")?;
     let findings_append = entries(change, "findings_append")?;
     let decisions = entries(change, "decisions")?;
@@ -174,31 +170,86 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         && decisions.is_empty()
     {
         return Ok(Outcome::unchanged(serde_json::json!({
-            "applied": true, "noop": true, "base_stale": base_stale,
+            "applied": true, "noop": true, "base_stale": base_stale(change, doc),
         })));
     }
 
-    // 4. The members, with their appends. Both are written — and registered —
-    //    on every apply, so the projection always has two hashes to name.
+    // 3. The base version. A change computed from the version the host holds
+    //    applies whole. One computed from an older version is judged field by
+    //    field against what the job read (N2): a field nobody touched since
+    //    applies, a field someone changed becomes a contest, and the appends
+    //    apply regardless. Without a read-set there is nothing to judge by.
+    //
+    //    W2-A4 HOOK: this is the host's per-field rule for a base that is
+    //    already stale when the reply arrives. The store-level expected-version
+    //    check — the document moving between this snapshot and the write — is
+    //    still W2-A4's; `Change::base` below is what the store compares.
+    let stale = base_stale(change, doc);
+    let current = data_json(clan)?;
+    let leaves = data_patch.map(patch_leaves).unwrap_or_default();
+    if stale && read.is_none() && !leaves.is_empty() {
+        return Err(HostError::conflict("stale base and no read-set; rerun"));
+    }
+    let split = split_patch(&leaves, read, &current, stale)?;
+
+    // 4. What is already in the document is not added again: a pin or finding
+    //    with the same id and content, a decision with the same id, a contest
+    //    already open over the same value.
+    let chain_before = if clan.has_entry(CHAIN) {
+        DecisionChain::from_yaml(&clan.read_entry(CHAIN)?)?
+    } else {
+        DecisionChain::default()
+    };
+    let known = known_decision_ids(&chain_before);
+    let handler = ctx.handler.clone().unwrap_or_else(|| JOB.to_string());
+    let base = change
+        .get("base_version")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let contests: Vec<&Contest> = split
+        .contested
+        .iter()
+        .filter(|c| !already_contested(&chain_before, open_id, c))
+        .collect();
+
     let facts_doc = members::read_doc(clan, FACTS)?;
     let mut facts = members::list_of(&facts_doc, FACTS)?;
-    append(&mut facts, &facts_append, FACTS)?;
+    let new_facts = append(&mut facts, &facts_append, FACTS)?;
     let findings_doc = members::read_doc(clan, FINDINGS)?;
     let mut findings = members::list_of(&findings_doc, FINDINGS)?;
-    append(&mut findings, &findings_append, FINDINGS)?;
-    check_findings(&findings_append, &facts)?;
+    let new_findings = append(&mut findings, &findings_append, FINDINGS)?;
+    check_findings(&new_findings, &facts)?;
+
+    // A job decision about nothing but contested fields describes a write
+    // that did not happen; it is kept inside the contest instead.
+    let contested_paths: Vec<&str> = split.contested.iter().map(|c| c.path.as_str()).collect();
+    let (withheld, recorded): (Vec<&Value>, Vec<&Value>) = decisions
+        .iter()
+        .filter(|d| {
+            d.get("id")
+                .and_then(Value::as_str)
+                .map_or(true, |id| !known.contains(id))
+        })
+        .partition(|d| only_about(d, &contested_paths));
+
+    let mut data = current.clone();
+    json_merge(&mut data, &split.patch);
+    if new_facts.is_empty()
+        && new_findings.is_empty()
+        && recorded.is_empty()
+        && contests.is_empty()
+        && data == current
+    {
+        return Err(HostError::conflict("already applied"));
+    }
 
     let facts_bytes = members::write_doc(facts_doc, FACTS, facts.clone())?;
     let findings_bytes = members::write_doc(findings_doc, FINDINGS, findings.clone())?;
 
-    // 5. The data: the patch merged over what is there, then the projection
-    //    rebuilt from the member bytes just written. `pack` validates the
-    //    whole result against the document's schema.
+    // 5. The data: the applicable part of the patch merged over what is
+    //    there, then the projection rebuilt from the member bytes just
+    //    written. `pack` validates the whole result against the schema.
     let now = now();
-    let mut data = data_json(clan)?;
-    if let Some(p) = data_patch {
-        json_merge(&mut data, p);
-    }
     if let Some(obj) = data.as_object_mut() {
         obj.insert(
             PROJECTION_KEY.into(),
@@ -206,7 +257,6 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         );
     }
 
-    let handler = ctx.handler.clone().unwrap_or_else(|| JOB.to_string());
     let packed = pack(
         clan,
         AgentOutput {
@@ -235,8 +285,19 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     } else {
         DecisionChain::default()
     };
-    for d in &decisions {
+    for d in &recorded {
         chain.prepend(decision(ctx, reply, d, &now)?);
+    }
+    let mut contest_ids = Vec::new();
+    for c in &contests {
+        let held: Vec<&Value> = withheld
+            .iter()
+            .copied()
+            .filter(|d| touches(d, &c.path))
+            .collect();
+        let d = contest_decision(ctx, open_id, &handler, base, doc, c, &held, &now)?;
+        contest_ids.push(d.id.clone().unwrap_or_default());
+        chain.prepend(d);
     }
     compress_chain(&mut chain, &CompressionConfig::default(), None);
 
@@ -252,8 +313,9 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     builder.add_entry(CHAIN, chain.to_yaml()?);
     let bytes = builder.build()?;
 
-    let keys: Vec<String> = data_patch
-        .and_then(Value::as_object)
+    let keys: Vec<String> = split
+        .patch
+        .as_object()
         .map(|o| o.keys().cloned().collect())
         .unwrap_or_default();
     let notice = serde_json::json!({
@@ -261,17 +323,311 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         "keys": keys,
         "source": REQUEST_KIND,
         "handler": ctx.handler,
-        "facts_appended": facts_append.len(),
-        "findings_appended": findings_append.len(),
-        "decisions_appended": decisions.len(),
+        "facts_appended": new_facts.len(),
+        "findings_appended": new_findings.len(),
+        "decisions_appended": recorded.len() + contests.len(),
     });
     let change: Change = doc
         .change(bytes)?
         .with_event(HostEvent::DataChanged(notice));
+    let contested_fields: Vec<&str> = split.contested.iter().map(|c| c.path.as_str()).collect();
     Ok(Outcome::changed(
-        serde_json::json!({ "applied": true, "base_stale": base_stale }),
+        serde_json::json!({
+            "applied": true,
+            "base_stale": stale,
+            "applied_fields": split.applied,
+            "contested_fields": contested_fields,
+            "contests": contest_ids,
+        }),
         change,
     ))
+}
+
+/// True unless the change names the version the host holds. A change that
+/// names none is treated as stale: nothing says what it read.
+fn base_stale(change: &Value, doc: &Document) -> bool {
+    change
+        .get("base_version")
+        .and_then(Value::as_str)
+        .map(|b| b != doc.version().as_str())
+        .unwrap_or(true)
+}
+
+/// A field the job read and someone changed before its change arrived.
+struct Contest {
+    /// The read-set path, dotted (`campaign.problem`).
+    path: String,
+    /// What the document holds there now.
+    current: Value,
+    /// What the job read there.
+    read: Value,
+    /// What the job would have written: its patch merged over what it read.
+    proposed: Value,
+}
+
+/// The data patch sorted into what applies and what is contested.
+struct Split {
+    /// A merge patch of only the leaves that apply.
+    patch: Value,
+    /// The field paths that applied, as the read-set names them (or, without
+    /// one, the patch's fields to two levels).
+    applied: Vec<String>,
+    contested: Vec<Contest>,
+}
+
+/// A path a merge patch sets, and the value it sets there.
+type Leaf = (Vec<String>, Value);
+
+/// Every path a merge patch sets: its leaves (a non-object, `null` included,
+/// or an empty object), each with the value it sets.
+fn patch_leaves(patch: &Value) -> Vec<Leaf> {
+    fn walk(v: &Value, at: &mut Vec<String>, out: &mut Vec<Leaf>) {
+        match v {
+            Value::Object(o) if !o.is_empty() => {
+                for (k, child) in o {
+                    at.push(k.clone());
+                    walk(child, at, out);
+                    at.pop();
+                }
+            }
+            _ if !at.is_empty() => out.push((at.clone(), v.clone())),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(patch, &mut Vec::new(), &mut out);
+    out
+}
+
+fn get_path<'a>(v: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    path.iter().try_fold(v, |v, k| v.get(*k))
+}
+
+fn set_path(v: &mut Value, path: &[String], leaf: Value) {
+    let mut at = v;
+    for k in &path[..path.len() - 1] {
+        if !at.is_object() {
+            *at = Value::Object(Default::default());
+        }
+        at = at
+            .as_object_mut()
+            .unwrap()
+            .entry(k.clone())
+            .or_insert_with(|| Value::Object(Default::default()));
+    }
+    if !at.is_object() {
+        *at = Value::Object(Default::default());
+    }
+    at.as_object_mut()
+        .unwrap()
+        .insert(path[path.len() - 1].clone(), leaf);
+}
+
+/// The read-set key a patched path is judged by: the longest one at or above
+/// it.
+fn covering<'a>(read: &'a serde_json::Map<String, Value>, leaf: &[String]) -> Option<&'a str> {
+    let dotted = leaf.join(".");
+    read.keys()
+        .filter(|k| under(&dotted, k))
+        .max_by_key(|k| k.len())
+        .map(String::as_str)
+}
+
+/// Sort the patch's leaves by the stale-base rule. On a current base every
+/// leaf applies. On a stale one each leaf is judged by the read-set key that
+/// covers it, all of a key's leaves together: if the document still holds
+/// there what the job read — or already holds what the job would write — they
+/// apply; if not, that key becomes one contest and none of its leaves is
+/// written. A leaf no key covers cannot be judged, and refuses the change.
+fn split_patch(
+    leaves: &[Leaf],
+    read: Option<&serde_json::Map<String, Value>>,
+    current: &Value,
+    stale: bool,
+) -> HostResult<Split> {
+    let mut patch = Value::Object(Default::default());
+    let mut applied: Vec<String> = Vec::new();
+    let mut contested: Vec<Contest> = Vec::new();
+
+    // Leaves grouped by the field they are judged as, in patch order.
+    let mut groups: Vec<(String, Vec<&Leaf>)> = Vec::new();
+    for leaf in leaves {
+        let key = match read.and_then(|r| covering(r, &leaf.0)) {
+            Some(k) => k.to_string(),
+            None if stale => {
+                return Err(HostError::conflict(format!(
+                    "stale base and the read-set does not cover {}; rerun",
+                    leaf.0.join(".")
+                )))
+            }
+            None => leaf.0.iter().take(2).cloned().collect::<Vec<_>>().join("."),
+        };
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, g)) => g.push(leaf),
+            None => groups.push((key, vec![leaf])),
+        }
+    }
+
+    for (key, group) in groups {
+        let apply_group = |patch: &mut Value| {
+            for (path, value) in &group {
+                set_path(patch, path, value.clone());
+            }
+        };
+        if !stale {
+            apply_group(&mut patch);
+            applied.push(key);
+            continue;
+        }
+        let segs: Vec<&str> = key.split('.').collect();
+        let now = get_path(current, &segs).cloned().unwrap_or(Value::Null);
+        let was = read
+            .and_then(|r| r.get(&key))
+            .cloned()
+            .unwrap_or(Value::Null);
+        // What the job would leave there: its leaves merged over what it read.
+        let mut sub = Value::Object(Default::default());
+        let mut whole = None;
+        for (path, value) in &group {
+            let rest = &path[segs.len()..];
+            if rest.is_empty() {
+                whole = Some(value.clone());
+            } else {
+                set_path(&mut sub, rest, value.clone());
+            }
+        }
+        let mut proposed = was.clone();
+        if let Some(w) = whole {
+            json_merge(&mut proposed, &w);
+        }
+        json_merge(&mut proposed, &sub);
+
+        if now == was || now == proposed {
+            apply_group(&mut patch);
+            applied.push(key);
+        } else {
+            contested.push(Contest {
+                path: key,
+                current: now,
+                read: was,
+                proposed,
+            });
+        }
+    }
+    Ok(Split {
+        patch,
+        applied,
+        contested,
+    })
+}
+
+/// Every decision id the chain holds, including the job decisions a contest
+/// withheld — those were received, and a second delivery is not new.
+fn known_decision_ids(chain: &DecisionChain) -> std::collections::BTreeSet<String> {
+    let mut ids: std::collections::BTreeSet<String> =
+        chain.ids().into_iter().map(String::from).collect();
+    for d in &chain.decisions {
+        if let Some(serde_yaml::Value::Sequence(held)) = d.extra.get("withheld") {
+            ids.extend(
+                held.iter()
+                    .filter_map(|h| h.get("id").and_then(|v| v.as_str()))
+                    .map(String::from),
+            );
+        }
+    }
+    ids
+}
+
+/// A contest over the same field and the same proposed value is already open.
+fn already_contested(chain: &DecisionChain, doc_id: &str, c: &Contest) -> bool {
+    let target = format!("{doc_id}#{}", c.path);
+    let Ok(proposed) = serde_yaml::to_value(&c.proposed) else {
+        return false;
+    };
+    chain.decisions.iter().any(|d| {
+        d.kind.as_deref() == Some("contest")
+            && d.targets.contains(&target)
+            && matches!(d.extra.get("values"), Some(serde_yaml::Value::Sequence(vs))
+                if vs.iter().any(|v| v.get("value") == Some(&proposed)))
+    })
+}
+
+/// The paths a job decision targets, without their `<doc-id>#` prefix.
+fn target_paths(d: &Value) -> Vec<&str> {
+    d.get("targets")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(|t| t.rsplit_once('#').map_or(t, |(_, p)| p))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn under(path: &str, field: &str) -> bool {
+    path == field || path.starts_with(&format!("{field}."))
+}
+
+/// True when every target of a job decision is at or under one of `paths`.
+fn only_about(d: &Value, paths: &[&str]) -> bool {
+    let targets = target_paths(d);
+    !targets.is_empty()
+        && targets
+            .iter()
+            .all(|t| paths.iter().any(|field| under(t, field)))
+}
+
+/// True when some target of a job decision is at or under `field`.
+fn touches(d: &Value, field: &str) -> bool {
+    target_paths(d).iter().any(|t| under(t, field))
+}
+
+/// The `contest` decision a stale write over a changed field opens: both
+/// values, nothing picked (Contract 4 §4, N2). The document keeps what it
+/// holds; the job's value waits in the contest with the decisions that
+/// justified it.
+#[allow(clippy::too_many_arguments)]
+fn contest_decision(
+    ctx: &Ctx,
+    doc_id: &str,
+    handler: &str,
+    base: &str,
+    doc: &Document,
+    c: &Contest,
+    held: &[&Value],
+    now: &str,
+) -> HostResult<Decision> {
+    let yaml = |v: &Value| {
+        serde_yaml::to_value(v).map_err(|e| HostError::internal(format!("contest value: {e}")))
+    };
+    let mut d = attributed(ctx, handler, "contest");
+    d.id = Some(clan_sdk::decision::new_decision_id());
+    d.agent = handler.to_string();
+    d.action = "contested a stale write".into();
+    d.rationale = format!(
+        "{handler} read {} at {base}, but the document changed it before the job's \
+         change arrived; the job's value was not written over it.",
+        c.path
+    );
+    d.timestamp = now.to_string();
+    d.targets = vec![format!("{doc_id}#{}", c.path)];
+    d.cites = held
+        .iter()
+        .filter_map(|h| h.get("id").and_then(Value::as_str).map(String::from))
+        .collect();
+    d.extra.insert("status".into(), "open".into());
+    let values = serde_json::json!([
+        { "value": c.current, "from": "document", "version": doc.version().as_str() },
+        { "value": c.proposed, "from": handler, "base_version": base, "read": c.read },
+    ]);
+    d.extra.insert("values".into(), yaml(&values)?);
+    if !held.is_empty() {
+        let held: Vec<Value> = held.iter().map(|v| (*v).clone()).collect();
+        d.extra
+            .insert("withheld".into(), yaml(&Value::Array(held))?);
+    }
+    Ok(d)
 }
 
 /// A list the change may carry; absent and `null` are both empty.
@@ -290,28 +646,35 @@ fn entries(change: &Value, key: &str) -> HostResult<Vec<Value>> {
     }
 }
 
-/// Append `new` to a member's entries. Every entry needs an id — the
-/// projection and every address key on it — and an id already present is
-/// refused rather than duplicated or overwritten: a pin is frozen, and the
-/// merge that decides "same identity, one pin" is the middleware's to do.
-fn append(items: &mut Vec<serde_yaml::Value>, new: &[Value], m: Member) -> HostResult<()> {
+/// Append `new` to a member's entries and return the ones that were new.
+/// Every entry needs an id — the projection and every address key on it. An
+/// entry already present with the same content is skipped (a second delivery
+/// of the same change); one present with different content is refused rather
+/// than overwritten: a pin is frozen, and the merge that decides "same
+/// identity, one pin" is the middleware's to do.
+fn append(items: &mut Vec<serde_yaml::Value>, new: &[Value], m: Member) -> HostResult<Vec<Value>> {
+    let mut added = Vec::new();
     for entry in new {
         let id = entry
             .get("id")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| HostError::bad_request(format!("an entry for {} has no id", m.path)))?;
-        if items.iter().any(|e| members::entry_id(e) == Some(id)) {
+        let y = serde_yaml::to_value(entry)
+            .map_err(|e| HostError::bad_request(format!("{id} is not representable: {e}")))?;
+        if let Some(held) = items.iter().find(|e| members::entry_id(e) == Some(id)) {
+            if *held == y {
+                continue;
+            }
             return Err(HostError::conflict(format!(
-                "{} already holds {id}",
+                "{} already holds {id} with different content",
                 m.path
             )));
         }
-        let y = serde_yaml::to_value(entry)
-            .map_err(|e| HostError::bad_request(format!("{id} is not representable: {e}")))?;
         items.push(y);
+        added.push(entry.clone());
     }
-    Ok(())
+    Ok(added)
 }
 
 /// What the host holds the middleware to about findings (Contract 3 §6, D1

@@ -464,9 +464,10 @@ impl Session {
     /// A reply that is not `napkin.middleware/1` becomes an error the app sees
     /// (M4 — see [`middleware::check_api`]). A reply with a `change` has it
     /// applied here, by the host, and the app gets the envelope back with
-    /// `change` replaced by `{applied: true, version, base_stale}` or
+    /// `change` replaced by `{applied: true, version, base_stale, applied_fields,
+    /// contested_fields, contests}` or
     /// `{applied: false, reason}`. When a change landed, the envelope also
-    /// carries `clan: {id, version, data}` — the document as it now stands —
+    /// carries `clan: {id, revision, version, data}` — the document as it now stands —
     /// so the view can refresh without writing anything. The app never writes
     /// middleware output itself; what it is handed is informational. Returns
     /// the events the apply fans out: the same `clan-data-changed` a

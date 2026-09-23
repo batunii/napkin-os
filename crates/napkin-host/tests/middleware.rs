@@ -73,7 +73,8 @@ fn fact(id: &str, value: f64, stale: bool) -> Value {
 }
 
 /// What the middleware answers `extract_ask` with, computed for `clan` as the
-/// host sent it: its `id` and `version`.
+/// host sent it: its `id` and `version`, and what it read of the one field it
+/// patches.
 fn reply_for(clan: &Value) -> Value {
     json!({
         "api": "napkin.middleware/1",
@@ -85,6 +86,7 @@ fn reply_for(clan: &Value) -> Value {
         "change": {
             "doc": clan["id"],
             "base_version": clan["version"],
+            "read": { "campaign.problem": clan["data"]["campaign"]["problem"] },
             "data_patch": { "campaign": { "problem": {
                 "value": "people who love Lúnasa are drinking less of it midweek",
                 "origin": "extracted", "gate": "brief",
@@ -389,14 +391,167 @@ fn a_reply_without_a_change_passes_through() {
     assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
 }
 
+const HUMAN_PROBLEM: &str = r#"{"patch":{"campaign":{"problem":{"value":"midweek is not the problem","origin":"stated","gate":"brief","by":"human:local","decision":"d_01JA0D09HUM"}}},"agent":"human","action":"set problem"}"#;
+const HUMAN_OBJECTIVE: &str = r#"{"patch":{"campaign":{"objective":{"value":"win midweek","origin":"stated","gate":"brief","by":"human:local","decision":"d_01JA0D09HUM"}}},"agent":"human","action":"set objective"}"#;
+
+// N2: a person edited a different field while the job ran. Nothing conflicts:
+// the job's field applies, and so does the person's.
 #[test]
-fn a_stale_base_is_applied_and_said_so() {
+fn a_stale_base_applies_a_field_nobody_touched() {
     let f = fixture();
-    let mut clan = f.session.clan_context_for_agent();
-    clan["version"] = json!("sha256:0000");
+    let clan = f.session.clan_context_for_agent();
+    f.session.patch_data(HUMAN_OBJECTIVE).unwrap();
+
     let (out, _) = settle(&f, reply_for(&clan));
-    assert_eq!(out["data"]["change"]["applied"], true);
-    assert_eq!(out["data"]["change"]["base_stale"], true);
+    let settled = &out["data"]["change"];
+    assert_eq!(settled["applied"], true, "{out}");
+    assert_eq!(settled["base_stale"], true);
+    assert_eq!(settled["applied_fields"], json!(["campaign.problem"]));
+    assert_eq!(settled["contested_fields"], json!([]));
+
+    let after = on_disk(&f);
+    let data = yaml(&after, "shared/data.yaml");
+    assert_eq!(
+        data["campaign"]["problem"]["value"],
+        "people who love Lúnasa are drinking less of it midweek"
+    );
+    assert_eq!(data["campaign"]["objective"]["value"], "win midweek");
+    let c = chain(&after);
+    assert!(c
+        .decisions
+        .iter()
+        .all(|d| d.kind.as_deref() != Some("contest")));
+    assert!(c.ids().contains("d_01JA0D02EXT"));
+}
+
+// N2: a person edited the same field. The job's write does not land over
+// theirs; it becomes a contest holding both values, and the rest applies.
+#[test]
+fn a_stale_base_contests_a_field_a_person_changed() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    f.session.patch_data(HUMAN_PROBLEM).unwrap();
+
+    let (out, events) = settle(&f, reply_for(&clan));
+    let settled = &out["data"]["change"];
+    assert_eq!(settled["applied"], true, "{out}");
+    assert_eq!(settled["base_stale"], true);
+    assert_eq!(settled["applied_fields"], json!([]));
+    assert_eq!(settled["contested_fields"], json!(["campaign.problem"]));
+    assert_eq!(settled["contests"].as_array().unwrap().len(), 1);
+    assert_eq!(events.len(), 1);
+
+    let after = on_disk(&f);
+    let data = yaml(&after, "shared/data.yaml");
+    assert_eq!(
+        data["campaign"]["problem"]["value"], "midweek is not the problem",
+        "the person's value stands"
+    );
+    // The appends applied regardless.
+    assert_eq!(
+        yaml(&after, FACTS_PATH)["facts"].as_array().unwrap().len(),
+        2
+    );
+    assert_eq!(
+        yaml(&after, FINDINGS_PATH)["findings"][0]["id"],
+        "fi_01JA0F2B"
+    );
+
+    let c = chain(&after);
+    let contest = &c.decisions[0];
+    assert_eq!(contest.kind.as_deref(), Some("contest"));
+    assert_eq!(
+        contest.id.as_deref(),
+        settled["contests"][0].as_str(),
+        "the reply names the contest it opened"
+    );
+    assert_eq!(contest.actor.as_deref(), Some("process:middleware"));
+    assert_eq!(contest.handler.as_deref(), Some("extract_ask@1.0.0"));
+    let doc_id = clan["id"].as_str().unwrap();
+    assert_eq!(contest.targets, vec![format!("{doc_id}#campaign.problem")]);
+    assert_eq!(contest.cites, vec!["d_01JA0D02EXT".to_string()]);
+    assert_eq!(contest.extra["status"], serde_yaml::Value::from("open"));
+    let values = serde_json::to_value(&contest.extra["values"]).unwrap();
+    assert_eq!(values[0]["from"], "document");
+    assert_eq!(values[0]["value"]["value"], "midweek is not the problem");
+    assert_eq!(values[1]["from"], "extract_ask@1.0.0");
+    assert_eq!(
+        values[1]["value"]["value"],
+        "people who love Lúnasa are drinking less of it midweek"
+    );
+    assert_eq!(values[1]["base_version"], clan["version"]);
+    // The job's edit decision describes a write that did not happen: it waits
+    // inside the contest, not in the chain. The finding's decision applied.
+    let ids = c.ids();
+    assert!(!ids.contains("d_01JA0D02EXT"));
+    assert!(ids.contains("d_01JA0D06SYN"));
+    let withheld = serde_json::to_value(&contest.extra["withheld"]).unwrap();
+    assert_eq!(withheld[0]["id"], "d_01JA0D02EXT");
+    assert!(clan_sdk::validate(&after).is_valid());
+
+    // Delivered again (a re-poll of the done job): nothing new.
+    let before = std::fs::read(f.id.as_str()).unwrap();
+    let (out, _) = settle(&f, reply_for(&clan));
+    assert_eq!(out["data"]["change"]["applied"], false);
+    assert_eq!(out["data"]["change"]["reason"], "already applied");
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
+}
+
+#[test]
+fn a_stale_base_without_a_read_set_is_refused() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    f.session.patch_data(HUMAN_OBJECTIVE).unwrap();
+    let before = std::fs::read(f.id.as_str()).unwrap();
+
+    let mut r = reply_for(&clan);
+    r["change"].as_object_mut().unwrap().remove("read");
+    let (out, events) = settle(&f, r);
+    assert_eq!(
+        out["data"]["change"],
+        json!({ "applied": false, "reason": "stale base and no read-set; rerun" })
+    );
+    assert!(events.is_empty());
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
+
+    // A read-set that does not cover what the patch writes cannot be judged
+    // either.
+    let mut r = reply_for(&clan);
+    r["change"]["read"] = json!({ "campaign.objective": null });
+    let (out, _) = settle(&f, r);
+    assert_eq!(out["data"]["change"]["applied"], false);
+    assert!(out["data"]["change"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("does not cover campaign.problem"));
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
+
+    // On a current base the read-set is not needed.
+    let clan = f.session.clan_context_for_agent();
+    let mut r = reply_for(&clan);
+    r["change"].as_object_mut().unwrap().remove("read");
+    let (out, _) = settle(&f, r);
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    assert_eq!(out["data"]["change"]["base_stale"], false);
+}
+
+// The middleware's own error body reaches the app — type and message — while
+// the generic agent's stays hidden.
+#[test]
+fn a_middleware_error_is_passed_through_to_the_app() {
+    let f = fixture();
+    let env = napkin_host::proxy::reply_envelope(
+        "middleware",
+        "http://middleware.test/v1/tasks",
+        400,
+        r#"{"error":{"type":"invalid_input","message":"research needs markets"}}"#.into(),
+    );
+    let (out, events) = f.session.settle_middleware(f.session.ctx(), env);
+    assert_eq!(out["ok"], false);
+    assert_eq!(out["status"], 400);
+    assert_eq!(out["error"]["type"], "invalid_input");
+    assert_eq!(out["error"]["message"], "research needs markets");
+    assert!(events.is_empty());
 }
 
 #[test]
@@ -440,17 +595,71 @@ fn the_middleware_cannot_write_the_projection_or_verify_a_finding() {
 }
 
 #[test]
-fn a_repeated_change_does_not_pin_twice() {
+fn a_change_applied_twice_is_refused_the_second_time() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(&f, reply_for(&clan));
+    assert_eq!(out["data"]["change"]["applied"], true);
+    let before = std::fs::read(f.id.as_str()).unwrap();
+    let chain_len = chain(&on_disk(&f)).decisions.len();
+
+    // The same reply again, as a re-poll of a done job would bring it: its
+    // base is now stale, its read-set still matches for nothing it changed.
+    let (out, events) = settle(&f, reply_for(&clan));
+    assert_eq!(
+        out["data"]["change"],
+        json!({ "applied": false, "reason": "already applied" })
+    );
+    assert!(events.is_empty());
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
+
+    // And computed afresh against the new version: still nothing new.
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(&f, reply_for(&clan));
+    assert_eq!(out["data"]["change"]["reason"], "already applied");
+    assert_eq!(chain(&on_disk(&f)).decisions.len(), chain_len);
+}
+
+#[test]
+fn decisions_already_in_the_chain_are_not_appended_again() {
     let f = fixture();
     let clan = f.session.clan_context_for_agent();
     settle(&f, reply_for(&clan));
     let clan = f.session.clan_context_for_agent();
-    let (out, _) = settle(&f, reply_for(&clan));
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"].as_array_mut().unwrap().push(
+        json!({ "id": "d_01JA0D07NEW", "kind": "edit", "action": "noted",
+                      "targets": [format!("{}#campaign.problem", clan["id"].as_str().unwrap())] }),
+    );
+    let (out, _) = settle(&f, r);
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    let c = chain(&on_disk(&f));
+    for id in ["d_01JA0D02EXT", "d_01JA0D06SYN", "d_01JA0D07NEW"] {
+        assert_eq!(
+            c.decisions
+                .iter()
+                .filter(|d| d.id.as_deref() == Some(id))
+                .count(),
+            1,
+            "{id} once"
+        );
+    }
+}
+
+#[test]
+fn a_pin_id_with_different_content_is_refused() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    settle(&f, reply_for(&clan));
+    let clan = f.session.clan_context_for_agent();
+    let mut r = reply_for(&clan);
+    r["change"]["facts_append"][0]["value"] = json!(0.99);
+    let (out, _) = settle(&f, r);
     assert_eq!(out["data"]["change"]["applied"], false);
     assert!(out["data"]["change"]["reason"]
         .as_str()
         .unwrap()
-        .contains("already holds"));
+        .contains("already holds f_01JA0B3P4Q with different content"));
 }
 
 // D2: a data-update pack replaces shared/data.yaml whole. The members live

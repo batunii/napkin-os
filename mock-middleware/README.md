@@ -131,7 +131,9 @@ confidence per Contract 3 §6.1, one `finding` decision each. No pins is
 
 **Stale base** — a job reads the document when it starts; its `done` change
 names that version in `base_version` even if later polls carry a newer
-`clan.version`. The host decides. The stand-in never answers 409: it does not
+`clan.version`, and carries `read` — what it read of every field its
+`data_patch` writes (`campaign.<field>`, `materials.<id>`, `selection.<key>`).
+The host decides field by field. The stand-in never answers 409: it does not
 hold the document.
 
 ## What it deliberately does not do

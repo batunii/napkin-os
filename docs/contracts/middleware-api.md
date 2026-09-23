@@ -117,8 +117,8 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
 - `progress.total` is the number of units of work: for `research_lens`, one per
   lens × market. `progress.done` never goes backwards.
 - A `job_status` response describes the job: its `task` and `handler` are the
-  job's (`research_lens`, `research_lens@1.0`), because the host copies the
-  handler onto the decisions it applies.
+  job's own (`research_lens`, `research_lens@1.0`) — never `job_status` —
+  because the host copies the handler onto the decisions it applies.
 - A job belongs to the tenant (from auth) and the document it was started on.
   Polling it from another tenant or another `clan.id` is `404`, the same as an
   id that never existed.
@@ -130,6 +130,8 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
 {
   "doc": "<the clan.id it was computed for — the document_id>",
   "base_version": "<the clan.version it read>",
+  "read": { "campaign.problem": { "value": "...", "origin": "stated", "...": "..." },
+            "materials.mat_email01": null },
   "data_patch": { "campaign": { "<field>": { "value": "...", "origin": "extracted", "gate": "...",
                                               "source": {}, "decision": "d_..." } },
                   "selection": {}, "materials": {} },
@@ -145,6 +147,14 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
 Every change must leave the document valid against the campaign schemas
 (`app/templates/campaign-research/{schema,facts.schema,findings.schema}.json`):
 
+- **`read`** is the read-set: for each field the `data_patch` writes, the value
+  the job read there, keyed by dotted path into `shared/data.yaml`
+  (`campaign.<field>`, `materials.<id>`, `selection.<key>`); a field that was
+  absent was read as `null`. Every path the patch sets (every leaf of the
+  merge patch — a non-object, `null` included, or an empty object) must lie at
+  or under one of its keys. It is what the host judges a stale base by (§4);
+  required whenever `data_patch` sets anything, `{}` or absent when it sets
+  nothing.
 - **`data_patch`** is a JSON merge patch (RFC 7396) over `shared/data.yaml`. It
   never touches `projection` (host-owned). Because a merge patch replaces arrays
   whole, a patch to an array (`selection.lenses_run`, `gaps`, `contested`, a
@@ -198,14 +208,40 @@ Every change must leave the document valid against the campaign schemas
 | 409 | `{"error":{"type":"version_conflict","message"}}` | `base_version` is stale — only an implementation that holds the document (the web product) can know this |
 | 500 | `{"error":{"type":"internal","message"}}` | anything else. The message never carries request content |
 
-Never a 200 with a fallback. The desktop host strips upstream error bodies
-before they reach the app; the status survives.
+Never a 200 with a fallback. For `request_kind: middleware` the host passes
+the body's `error` through to the app as the proxy envelope's `error` —
+`{ "type", "message" }`, those two strings and nothing else — with `data:
+null` and the status. (For every other request kind it strips upstream error
+bodies and says only `upstream returned <status>`.) That is why a message
+never carries request content. `401 unauthenticated` reaches the app the same
+way: the host's configured secret is missing or wrong, which the app can
+report but not fix.
 
 **Stale base.** A job reads the document once, when it starts. If the document
 moved on before the job finished, the `done` change still names the version it
-read in `base_version`. An implementation that does not hold the document
-(the desktop case) returns it anyway and the **host** decides — apply, merge
-under the field policies, or refuse. One that does hold it may answer `409`.
+read in `base_version`, and `read` says what it read. An implementation that
+does not hold the document (the desktop case) returns it anyway and the
+**host** decides, field by field (N2: "if a human edited a different fact
+meanwhile, nothing conflicts; if they edited the same one, the job's write
+becomes a contested value"):
+
+- each `read` key the patch writes under is judged as one field: if the
+  document still holds there what the job read — or already holds what the job
+  would write — the patch applies there;
+- if it holds something else, nothing is written there. The host records an
+  open `contest` decision targeting `<doc-id>#<path>`, with `values`: the
+  document's current value (`from: document`) and the job's (`from: <handler>`,
+  with `base_version` and what it read). Job decisions that target only
+  contested fields are held inside the contest (`withheld`, cited by id), not
+  appended — they describe a write that did not happen;
+- `facts_append` and `findings_append` are append-only and always apply;
+- a stale base with a `data_patch` and no `read` is refused:
+  `{ "applied": false, "reason": "stale base and no read-set; rerun" }`, and
+  so is a `read` that does not cover every path the patch sets.
+
+The store's own expected-version check (the document moving between the
+host's read and its write) is separate and not yet implemented (W2-A4). One
+that does hold the document may answer `409`.
 
 ## 5. Who applies a change — the host, never the app
 
@@ -223,8 +259,25 @@ The template never writes middleware output. When a `clan://api-proxy` reply for
 3. rebuilds `projection` (pins by fact id, findings by id, `built_from` hashes)
    per Contract 3 §5;
 4. emits the usual patch event so the view re-renders, and returns the envelope
-   to the app with `change` replaced by `{ "applied": true, "version": "<new>" }`
-   or `{ "applied": false, "reason": "..." }`.
+   to the app with `change` replaced by
+
+   ```json
+   { "applied": true, "version": "<new>", "base_stale": false,
+     "applied_fields": ["campaign.problem"], "contested_fields": [], "contests": [] }
+   ```
+
+   (`contests` the ids of the `contest` decisions it opened), or
+   `{ "applied": false, "reason": "..." }`. When a change landed the envelope
+   also carries `clan: { id, revision, version, data }` — the document as it
+   now stands — beside `data`.
+
+Applying is idempotent. Entries already present are skipped: a fact or finding
+with the same id and the same content (the same id with different content is
+refused — a pin is frozen), a decision whose `id` is already in the chain
+(or held in a contest), a contest already open over the same field and value.
+A change of which nothing is new — every fact, finding and decision present,
+the patch a no-op — is `{ "applied": false, "reason": "already applied" }`, so
+a re-poll of a `done` job changes nothing.
 
 In the web product the same apply runs server-side in-process (P2); the envelope
 does not change.
@@ -248,8 +301,12 @@ proxies:
     secret_ref: middleware_api                  # key in secrets.yaml
 ```
 
-Configure `proxies.middleware` explicitly: an unconfigured kind falls back to
-`agent_url`, which is the briefing agent and does not speak this contract.
+**Configure `proxies.middleware` explicitly.** An unconfigured request kind
+falls back to `agent_url`, which is the briefing agent and does not speak this
+contract. The host refuses any `request_kind: middleware` reply that does not
+carry `"api": "napkin.middleware/1"` — the app sees an error naming the API,
+not the agent's answer, and nothing is applied — but every task will fail
+until the endpoint is set.
 
 - Stand-in: `python3 mock-middleware/server.py` (stdlib only), `:8790`,
   `POST /v1/tasks`, `GET /healthz`. See `mock-middleware/README.md`.

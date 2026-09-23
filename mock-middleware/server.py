@@ -42,6 +42,7 @@ Python 3.11+, standard library only.
 from __future__ import annotations
 
 import base64
+import copy
 import datetime as _dt
 import hashlib
 import itertools
@@ -653,6 +654,26 @@ def item_key(fname, item):
     return item["ref"] if fname == "competitor_set" else item["id"] if isinstance(item, dict) else item
 
 
+def read_set(data: dict, patch: dict) -> dict:
+    """What the job read of every field its data_patch writes, by dotted path.
+
+    The host judges a stale base by it (middleware-api.md §3): a field that
+    still holds what was read takes the patch; one a person changed meanwhile
+    becomes a contest. Fields are `<top>.<key>` under an object (a campaign
+    field, a selection key, a material id), `<top>` otherwise. A field that
+    was absent was read as null.
+    """
+    out = {}
+    for top, sub in patch.items():
+        held = data.get(top)
+        if isinstance(sub, dict) and sub:
+            for key in sub:
+                out[f"{top}.{key}"] = copy.deepcopy(held.get(key)) if isinstance(held, dict) else None
+        else:
+            out[top] = copy.deepcopy(held)
+    return out
+
+
 def run_extract(doc, base, clan, inp, handler):
     data = ctx_data(clan)
     facts = ctx_facts(clan)
@@ -739,8 +760,8 @@ def run_extract(doc, base, clan, inp, handler):
                    material_read=[m.id for m in mats], abstained=abstained)
     if unread:
         dec["material_unread"] = unread
-    change = {"doc": doc, "base_version": base, "data_patch": patch, "facts_append": [],
-              "findings_append": [], "decisions": [dec]}
+    change = {"doc": doc, "base_version": base, "data_patch": patch, "read": read_set(data, patch),
+              "facts_append": [], "findings_append": [], "decisions": [dec]}
     fact_by_id = {f.get("id"): f for f in facts}
     hits = [{"id": fid, "scope": fact_by_id[fid].get("layer", "brand"), "source": fact_by_id[fid].get("origin", "")}
             for p in proposed.values() for fid in p["fact_ids"] if fid in fact_by_id]
@@ -1051,6 +1072,7 @@ def run_research(doc, base, clan, inp, handler):
         [f["id"] for f in facts_append] + [s for f in facts_append for s in f["sources"]],
         fields_changed=["selection.coverage"])
     change = {"doc": doc, "base_version": base, "data_patch": {"selection": sel_patch},
+              "read": read_set(ctx_data(clan), {"selection": sel_patch}),
               "facts_append": facts_append, "findings_append": [],
               "decisions": run_decs + [merge_dec] + contest_decs}
     hits = [{"id": s["id"], "scope": layer, "source": s["uri"]} for s, layer in sources_seen.values()]
@@ -1135,7 +1157,7 @@ def run_synthesis(doc, base, clan, inp, handler):
                              f"Derived from {len(cites)} pin(s); confidence {fi['confidence']} is the lowest cited, "
                              f"stepped down for a single or stale citation. Proposed until a human verifies it.",
                              [f"findings[{fid}]"], cites))
-    change = {"doc": doc, "base_version": base, "data_patch": {}, "facts_append": [],
+    change = {"doc": doc, "base_version": base, "data_patch": {}, "read": {}, "facts_append": [],
               "findings_append": findings, "decisions": decs}
     hits = [{"id": c, "scope": next((f.get("layer", "") for f in facts if f["id"] == c), ""),
              "source": next((f.get("origin", "") for f in facts if f["id"] == c), "")}

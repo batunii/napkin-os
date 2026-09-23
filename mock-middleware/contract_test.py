@@ -154,6 +154,27 @@ def merge_patch(target, patch):
     return out
 
 
+def patch_leaves(patch, at=""):
+    """Every dotted path a merge patch sets: non-objects (null included) and empty objects."""
+    out = []
+    for k, v in patch.items():
+        p = f"{at}.{k}" if at else k
+        if isinstance(v, dict) and v:
+            out += patch_leaves(v, p)
+        else:
+            out.append(p)
+    return out
+
+
+def get_path(data, dotted):
+    """The value at a dotted path, None when absent."""
+    for k in dotted.split("."):
+        if not isinstance(data, dict) or k not in data:
+            return None
+        data = data[k]
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Harness
 # ---------------------------------------------------------------------------
@@ -274,6 +295,20 @@ class Suite:
         dp = ch["data_patch"]
         check(isinstance(dp, dict), "data_patch must be an object")
         check("projection" not in dp, "data_patch touches projection (host-owned)")
+        # The read-set: what the job read of every field it patches, so the host
+        # can judge a stale base field by field (§3).
+        rs = ch.get("read")
+        leaves = patch_leaves(dp)
+        if leaves:
+            check(isinstance(rs, dict), "change.read missing: a data_patch carries the read-set it was computed from")
+        if rs is not None:
+            check(isinstance(rs, dict), "change.read must be an object")
+            for leaf in leaves:
+                check(any(leaf == k or leaf.startswith(k + ".") for k in rs),
+                      f"change.read does not cover {leaf}")
+            for k, v in rs.items():
+                check(get_path(clan.get("data") or {}, k) == v,
+                      f"change.read[{k!r}] is not what the document held when the job read it")
         for lst in ("facts_append", "findings_append", "decisions"):
             check(isinstance(ch[lst], list), f"{lst} must be a list")
 

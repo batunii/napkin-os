@@ -32,23 +32,53 @@ pub async fn proxy_call(cfg: &dyn HostConfig, request_kind: &str, payload: Value
     }
     match rb.send().await {
         Ok(resp) => {
-            let status = resp.status();
+            let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
-            let data: Value = serde_json::from_str(&body).unwrap_or(Value::String(body));
-            serde_json::json!({
-                "ok": status.is_success(),
-                "status": status.as_u16(),
-                "endpoint": url,
-                // Don't surface upstream error bodies verbatim to the sandbox.
-                "data": if status.is_success() { data } else { Value::Null },
-                "error": if status.is_success() { Value::Null } else { Value::String(format!("upstream returned {}", status.as_u16())) },
-            })
+            reply_envelope(request_kind, &url, status, body)
         }
         Err(e) => serde_json::json!({
             "ok": false, "status": 0, "endpoint": url,
             "error": format!("could not reach {url}: {e}"),
         }),
     }
+}
+
+/// The envelope the app gets for an upstream answer with `status` and `body`.
+///
+/// Upstream error bodies are not surfaced verbatim to the sandbox: on a
+/// non-2xx the app sees the status and `upstream returned <status>`. The one
+/// exception is `request_kind: "middleware"`, whose error bodies are part of
+/// `napkin.middleware/1` (§4) and carry no request content: its
+/// `{error: {type, message}}` is passed through as the envelope's `error`,
+/// those two strings and nothing else, so the app can tell `invalid_input`
+/// from `unknown_job`. A middleware error body that is not that shape falls
+/// back to the generic message.
+pub fn reply_envelope(request_kind: &str, url: &str, status: u16, body: String) -> Value {
+    let ok = (200..300).contains(&status);
+    let data: Value = serde_json::from_str(&body).unwrap_or(Value::String(body));
+    let error = if ok {
+        Value::Null
+    } else {
+        (request_kind == middleware::REQUEST_KIND)
+            .then(|| middleware_error(&data))
+            .flatten()
+            .unwrap_or_else(|| Value::String(format!("upstream returned {status}")))
+    };
+    serde_json::json!({
+        "ok": ok,
+        "status": status,
+        "endpoint": url,
+        "data": if ok { data } else { Value::Null },
+        "error": error,
+    })
+}
+
+/// `{type, message}` out of a middleware error body, when it is one.
+fn middleware_error(body: &Value) -> Option<Value> {
+    let e = body.get("error")?;
+    let kind = e.get("type")?.as_str()?;
+    let message = e.get("message").and_then(Value::as_str).unwrap_or("");
+    Some(serde_json::json!({ "type": kind, "message": message }))
 }
 
 /// `POST /api-proxy {request_kind, payload}` — the single, uniform network
@@ -89,4 +119,39 @@ pub async fn api_proxy(
 /// Home-screen prompt → the unified proxy with `request_kind = "agent"`.
 pub async fn agent_prompt(cfg: &dyn HostConfig, text: &str) -> Value {
     proxy_call(cfg, "agent", serde_json::json!({ "input": text })).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_middleware_error_body_reaches_the_app() {
+        let body = r#"{"error":{"type":"unknown_job","message":"no such job","detail":"x"}}"#;
+        let env = reply_envelope("middleware", "http://m/v1/tasks", 404, body.into());
+        assert_eq!(env["ok"], false);
+        assert_eq!(env["status"], 404);
+        assert_eq!(
+            env["error"],
+            serde_json::json!({ "type": "unknown_job", "message": "no such job" }),
+            "type and message only"
+        );
+        assert_eq!(env["data"], Value::Null);
+    }
+
+    #[test]
+    fn other_kinds_and_other_bodies_stay_hidden() {
+        let body = r#"{"error":{"type":"invalid_input","message":"secret prompt text"}}"#;
+        let env = reply_envelope("agent", "http://a", 400, body.into());
+        assert_eq!(env["error"], "upstream returned 400");
+        assert_eq!(env["data"], Value::Null);
+
+        let env = reply_envelope("middleware", "http://m", 502, "<html>bad gateway".into());
+        assert_eq!(env["error"], "upstream returned 502");
+
+        let ok = reply_envelope("middleware", "http://m", 200, r#"{"api":"x"}"#.into());
+        assert_eq!(ok["ok"], true);
+        assert_eq!(ok["error"], Value::Null);
+        assert_eq!(ok["data"]["api"], "x");
+    }
 }
