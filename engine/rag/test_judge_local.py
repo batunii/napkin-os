@@ -110,7 +110,7 @@ def test_the_model_sees_pairs_shortest_first_and_raw_logits_not_a_sigmoid():
     _backend(m).score(jb.Query("q"), _passages("x" * 9, "y", "z" * 4), deadline_s=5)
     pairs, kw = m.calls[0]
     assert [len(p) for _, p in pairs] == [1, 4, 9]
-    assert kw["activation_fct"](7.5) == 7.5
+    assert kw["activation_fn"](7.5) == 7.5
     assert kw["show_progress_bar"] is False and kw["batch_size"] == jl.BATCH_SIZE
 
 

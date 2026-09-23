@@ -168,14 +168,21 @@ def embed_query(text: str) -> list[float] | None:
     """One normalised query vector, or None when no endpoint answered and
     RAG_EMBED_FALLBACK allows `keyword` — the caller then searches lexically. Retrieval
     degrades, it does not fail."""
+    global LAST_QUERY_EMBED
     try:
-        vecs, _ = embed([text], "query")
+        vecs, LAST_QUERY_EMBED = embed([text], "query")
         return _norm(vecs[0])
     except EmbedUnavailable as e:
         if "keyword" not in EMBED_FALLBACK:
             raise
         print(f"[!] {e} — keyword-only search for this query", file=sys.stderr)
+        LAST_QUERY_EMBED = "keyword-only"
         return None
+
+
+# Which tier embedded the most recent query (nim:… | local:… | keyword-only | offline),
+# so a caller can record it in its trace. Process-global: read it right after the call.
+LAST_QUERY_EMBED = ""
 
 
 # ---------------------------------------------------------------------------

@@ -639,6 +639,9 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     widened: list[str] = list(notes)
     if qvec is None:
         widened.append("embedding unavailable — keyword-only (BM25) search for this brief")
+    elif rag.LAST_QUERY_EMBED.startswith("local:"):
+        widened.append(f"embedding: hosted unavailable — used the local copy of the same model "
+                       f"({rag.LAST_QUERY_EMBED})")
     used_filters: dict = {}
 
     # Validation (plan steps 3-4). `chain` None means the process-wide chain from

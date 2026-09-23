@@ -275,7 +275,7 @@ def _load_cross_encoder(path: Path, device: str, max_length: int):
             "local: sentence-transformers is not installed (pip install sentence-transformers)") from e
     try:
         model = CrossEncoder(str(path), device=device, max_length=max_length, local_files_only=True)
-        model.predict([("warm up", "warm up")], activation_fct=_identity,
+        model.predict([("warm up", "warm up")], activation_fn=_identity,
                       show_progress_bar=False, convert_to_numpy=True)
     except Exception as e:
         raise BackendNotConfigured(f"local: could not load {path} on {device}: "
@@ -412,7 +412,7 @@ class LocalCrossEncoderBackend:
                                     loader=self._loader)
         order = sorted(range(len(pairs)), key=lambda i: len(pairs[i][0]) + len(pairs[i][1]))
         out = self._model.predict([pairs[i] for i in order], batch_size=self.batch_size,
-                                  activation_fct=_identity, show_progress_bar=False,
+                                  activation_fn=_identity, show_progress_bar=False,
                                   convert_to_numpy=True)
         out = list(out)
         if len(out) != len(pairs):                # checked again in score(); guard the unsort
