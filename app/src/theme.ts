@@ -85,3 +85,23 @@ export function useTheme(): Theme {
   useEffect(() => onThemeChange(setLocal), [])
   return theme
 }
+
+// The design tokens, by name. The values live in index.css (one place, both
+// themes); this is only so TS code can refer to them without stringly typos.
+export type Token =
+  | 'paper' | 'card' | 'soft' | 'soft-2' | 'frost' | 'line' | 'line-soft'
+  | 'ink' | 'ink2' | 'ink3' | 'ink-fixed'
+  | 'plan' | 'create' | 'produce' | 'learn' | 'desk'
+  | 'plan-fg' | 'create-fg' | 'produce-fg' | 'learn-fg' | 'desk-fg'
+  | 'plan-eye' | 'create-eye' | 'produce-eye' | 'learn-eye' | 'desk-eye'
+  | 'status-green' | 'status-amber' | 'status-red'
+  | 'shadow-soft' | 'shadow-pill'
+  | 'f-display' | 'f-mono' | 'r-pill' | 'r-card' | 'r-panel' | 'blur' | 'ease' | 'dur' | 'dur-slow'
+
+/** `var(--name)` for inline styles and SVG fills. */
+export function tokenVar(name: Token): string {
+  return `var(--${name})`
+}
+
+/** The studio's one easing curve, for code that animates outside CSS. */
+export const EASE = 'cubic-bezier(.2,.8,.2,1)'

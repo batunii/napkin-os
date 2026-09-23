@@ -1,33 +1,57 @@
-/* Dark is the default palette; `data-theme` on <html> swaps it. Anything a
-   component colours must come from here, or it will only be right in one. */
-:root {
-  --bg: #0f1117;
-  --surface: #141922;
-  --border: #1e2d45;
-  --text: #e2e8f0;
-  --muted: #64748b;
-  --accent: #6366f1;
-  --success: #4ade80;
-  --warn: #f59e0b;
-  --danger: #f87171;
-  /* Chips and badges — dark-only literals used to live in the components. */
-  --ok-bg: #1e3a2f;
-  --ok-fg: #4ade80;
-  --ok-border: #166534;
-  --warn-bg: #3a2a1e;
-  --warn-border: #92400e;
-  --chip-bg: #1e2d45;
-  --sidebar-w: 280px;
-  --toolbar-h: 48px;
-}
+/* The studio palette. `data-theme` on <html> (set by theme.ts before first
+   paint) picks light or dark; light doubles as the no-attribute default.
+   Anything a component colours must come from here, or it will only be right
+   in one of them.
 
+   Two layers:
+   - Design tokens (--paper, --ink, --plan, --create …) — the Napkin Studio OS
+     language. New code uses these.
+   - Legacy names (--bg, --surface, --text, --accent …) — aliases onto the
+     design tokens, so every component written before the redesign keeps
+     working and follows both themes and clan://set-theme. */
+:root,
 :root[data-theme='light'] {
-  --bg: #f7f8fb;
-  --surface: #ffffff;
-  --border: #dfe3ec;
-  --text: #171c2b;
-  --muted: #5c6478;
-  --accent: #4f46e5;
+  /* Surfaces */
+  --paper: #FFFFFF;
+  --card: #FFFFFF;
+  --soft: #F5F6F8;          /* callouts, open rows, hover */
+  --soft-2: #F2F3F6;        /* segmented-control track */
+  --frost: rgba(255, 255, 255, 0.82);
+  --line: #D6DAE2;
+  --line-soft: #E7E9EE;     /* hairlines under frosted bars, list rules */
+
+  /* Ink. One near-black for everything: text, Plan, Desk, gate cards. */
+  --ink: #14161B;
+  --ink2: #4A4F5C;          /* secondary text */
+  --ink3: #737987;          /* tertiary / meta text */
+  --ink-fixed: #14161B;     /* ink that never inverts (text on coloured fills) */
+
+  /* Departments. --create is also the one accent. `-fg` is text/marks on the
+     department colour; `-eye` is an agent figure's eyes on that body. */
+  --plan: #14161B;    --plan-fg: #FFFFFF;    --plan-eye: #FFFFFF;
+  --create: #FF4F2E;  --create-fg: #FFFFFF;  --create-eye: #14161B;
+  --produce: #8B919E; --produce-fg: #FFFFFF; --produce-eye: #14161B;
+  --learn: #DADDE3;   --learn-fg: #14161B;   --learn-eye: #14161B;
+  --desk: #14161B;    --desk-fg: #FFFFFF;    --desk-eye: #FFFFFF;
+
+  /* Status. Red is the accent itself: "stop / needs you" is one colour. */
+  --status-green: #22C55E;
+  --status-amber: #F5A524;
+  --status-red: #FF4F2E;
+
+  --shadow-soft: 0 10px 30px rgba(20, 30, 60, 0.08);
+  --shadow-pill: 0 1px 3px rgba(20, 22, 27, 0.1);
+
+  /* Legacy names → design tokens. */
+  --bg: var(--paper);
+  --surface: var(--card);
+  --border: var(--line);
+  --text: var(--ink);
+  --muted: var(--ink2);
+  --accent: var(--create);
+  --chip-bg: var(--soft);
+  /* Text-legible status colours and chip fills (the design's status colours
+     are for dots and bars, too light for text on white). */
   --success: #15803d;
   --warn: #b45309;
   --danger: #b91c1c;
@@ -36,13 +60,59 @@
   --ok-border: #a7d8ba;
   --warn-bg: #fdf3e3;
   --warn-border: #e0b473;
-  --chip-bg: #eceffa;
+}
+
+/* Dark inverts the ink/paper axis: Plan and Desk (which are ink) go light,
+   Learn (which is mist, just off paper) goes to just off dark paper. Create
+   and Produce keep their colour; Create stays the accent. */
+:root[data-theme='dark'] {
+  --paper: #0F1114;
+  --card: #161A1F;
+  --soft: #1B1F25;
+  --soft-2: #22262D;
+  --frost: rgba(15, 17, 20, 0.8);
+  --line: #2A2F38;
+  --line-soft: #22262D;
+
+  --ink: #F2F3F5;
+  --ink2: #A6ACB8;
+  --ink3: #7A808C;
+
+  --plan: #F2F3F5;    --plan-fg: #0F1114;    --plan-eye: #0F1114;
+  --learn: #3A3F48;   --learn-fg: #F2F3F5;   --learn-eye: #F2F3F5;
+  --desk: #F2F3F5;    --desk-fg: #0F1114;    --desk-eye: #0F1114;
+
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  --success: #4ade80;
+  --warn: #f59e0b;
+  --danger: #f87171;
+  --ok-bg: #1e3a2f;
+  --ok-fg: #4ade80;
+  --ok-border: #166534;
+  --warn-bg: #3a2a1e;
+  --warn-border: #92400e;
+}
+
+:root {
+  --f-display: 'Geist', 'Helvetica Neue', Arial, sans-serif;
+  --f-mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+  --r-pill: 999px;
+  --r-card: 12px;
+  --r-panel: 18px;
+  --blur: saturate(1.4) blur(14px);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur: 0.35s;
+  --dur-slow: 0.45s;
+  --sidebar-w: 280px;
+  --toolbar-h: 48px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--f-display);
   background: var(--bg);
   color: var(--text);
   height: 100vh;
@@ -51,8 +121,25 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+button { font-family: inherit; }
+button:focus-visible,
+[tabindex]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Mono eyebrow / label: the design's small uppercase caption. */
+.eyebrow {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink2);
+}
+
 #root { height: 100vh; display: flex; flex-direction: column; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
