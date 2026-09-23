@@ -14,6 +14,7 @@
 //! operation knowing which.
 
 pub mod edit;
+pub mod members;
 pub mod read;
 
 use serde_json::Value;

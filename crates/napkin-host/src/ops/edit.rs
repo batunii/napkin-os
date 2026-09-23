@@ -24,6 +24,7 @@ use crate::html::strip_scripts;
 use crate::log::log;
 use crate::store::DocStore;
 
+use super::members::{self, PROJECTION_KEY};
 use super::{extract_text, json_merge, sanitize_asset_name, Outcome};
 
 /// The decision an attributed write records.
@@ -167,6 +168,14 @@ impl PatchData {
 /// decision chain when the body names an agent (the provenance-native human/AI
 /// co-author write path).
 pub fn patch_data(ctx: &Ctx, doc: &Document, input: PatchData) -> HostResult<Outcome> {
+    // A document with facts or findings members has a host-owned projection
+    // of them in its data (Contract 3 §5). No agent or human patch writes it —
+    // it is rebuilt from the members, never edited.
+    if members::carries_members(doc.clan()) && input.keys.iter().any(|k| k == PROJECTION_KEY) {
+        return Err(HostError::bad_request(
+            "`projection` is written by the host from the facts and findings members; patch those instead",
+        ));
+    }
     // No-op guard: if applying the patch changes nothing, skip entirely — no
     // rewrite, no decision-chain entry. Stops redundant "edits" (e.g. opening
     // a field and saving without changing it) from polluting the provenance.

@@ -17,7 +17,7 @@ use crate::html::{
 use crate::log::log;
 use crate::session::{AppMeta, LineageInfo, ManifestInfo, OpenResult};
 
-use super::content_type_for;
+use super::{content_type_for, members};
 
 /// What a shell is told about a document it has just opened.
 pub fn describe(doc: &Document) -> OpenResult {
@@ -203,6 +203,13 @@ pub fn attach_extracted_text(doc: &Document, payload: &mut Value) {
 /// The provenance bundle an agent needs to fill the boxes coherently: the
 /// schema (what boxes exist), current data (the brief so far), the decision
 /// chain (what's been decided + by whom), the agent context, and lineage.
+///
+/// It also says which document and which version it was read from (`id`, the
+/// manifest id, and `version`, the snapshot's) — what a middleware change must
+/// name to be applied — and carries the facts and findings members (empty
+/// lists when the document has none) and the parsed `app/pipeline.yaml` (null
+/// when it has none), which the middleware resolves tasks against. Every key
+/// an existing agent reads is unchanged.
 pub fn clan_context_for_agent(doc: &Document) -> Value {
     let clan = doc.clan();
     let yaml_to_json = |p: &str| -> Value {
@@ -226,6 +233,11 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "decision_chain": yaml_to_json("agent/decision-chain.yaml"),
         "context": clan.read_entry_string("agent/context.md").unwrap_or_default(),
         "lineage": m.lineage.as_ref().map(|l| serde_json::json!({ "parent_id": l.parent_id, "delta": l.delta })),
+        "id": m.id,
+        "version": doc.version().as_str(),
+        "facts": members::list_for_agent(clan, members::FACTS),
+        "findings": members::list_for_agent(clan, members::FINDINGS),
+        "pipeline": yaml_to_json("app/pipeline.yaml"),
     })
 }
 
