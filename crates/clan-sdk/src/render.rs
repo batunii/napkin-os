@@ -12,7 +12,6 @@
 //! so the viewer keeps resolving live data.
 
 use chrono::Utc;
-use uuid::Uuid;
 
 use crate::container::{ClanBuilder, ClanFile};
 use crate::decision::DecisionChain;
@@ -52,7 +51,7 @@ pub fn render(clan: &ClanFile) -> Result<Vec<u8>> {
     let txt = plain_text(&manifest.title, &data);
 
     let mut new_manifest = manifest.clone();
-    new_manifest.id = Uuid::new_v4().to_string();
+    new_manifest.next_revision();
     new_manifest.updated_at = now.clone();
     new_manifest.lineage = Some(Lineage {
         parent_id: manifest.id.clone(),

@@ -51,6 +51,13 @@ impl ClanFile {
         &self.manifest
     }
 
+    /// The document's identity across revisions: `manifest.document_id`, or
+    /// `manifest.id` on a file written before it existed. This is the prefix
+    /// of every address into the document.
+    pub fn document_id(&self) -> &str {
+        self.manifest.document_id()
+    }
+
     /// Read and decompress a single entry by archive path. Lazy: only the
     /// requested entry is decompressed.
     pub fn read_entry(&self, path: &str) -> Result<Vec<u8>> {
@@ -238,6 +245,7 @@ mod tests {
             clan_version: 1,
             clan_version_minor: 0,
             id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            document_id: None,
             title: "Test".into(),
             created_at: "2026-05-31T10:00:00Z".into(),
             updated_at: "2026-05-31T10:00:00Z".into(),

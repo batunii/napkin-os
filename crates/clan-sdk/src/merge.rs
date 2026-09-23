@@ -17,7 +17,6 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::container::{ClanBuilder, ClanFile};
 use crate::decision::{referenced_decision, Decision, DecisionChain};
@@ -171,7 +170,8 @@ pub fn fork_with_contexts(
         );
 
         let mut manifest = parent_manifest.clone();
-        manifest.id = Uuid::new_v4().to_string();
+        // A branch is the same document, one revision on.
+        manifest.next_revision();
         manifest.updated_at = now.clone();
         manifest.lineage = Some(Lineage {
             parent_id: parent_manifest.id.clone(),
@@ -467,7 +467,7 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
 
     // --- Merged manifest ---
     let mut manifest = base_manifest.clone();
-    manifest.id = Uuid::new_v4().to_string();
+    manifest.next_revision();
     manifest.updated_at = now.clone();
     manifest.fork = None;
     manifest.lineage = Some(Lineage {

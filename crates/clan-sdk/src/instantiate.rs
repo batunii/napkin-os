@@ -113,7 +113,7 @@ pub fn instantiate(template: &ClanFile, opts: InstantiateOptions) -> Result<Vec<
     let parent_sha = template.sha256();
 
     let mut manifest = tpl_manifest.clone();
-    manifest.id = id;
+    manifest.born_as(id);
     manifest.title = title;
     manifest.created_at = now.clone();
     manifest.updated_at = now.clone();
@@ -176,6 +176,9 @@ pub fn make_template(clan: &ClanFile, app: AppInfo, opts: MakeTemplateOptions) -
 
     manifest.document_type = Some("template".into());
     manifest.updated_at = now;
+    // An app is not the document it was built from: it gets an identity of
+    // its own, so addresses into the source never resolve against the app.
+    manifest.document_id = Some(Uuid::new_v4().to_string());
     manifest.view = Some(ViewState {
         present: clan.has_entry(&app.entry),
         renderable: true,
@@ -385,7 +388,7 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
 
     // ── the manifest: two parents, because there were two ─────────────────
     let mut manifest = tpl_manifest.clone();
-    manifest.id = id;
+    manifest.born_as(id);
     manifest.title = title;
     manifest.created_at = now.clone();
     manifest.updated_at = now;
@@ -719,6 +722,61 @@ mod tests {
                 .collect(),
             pin_source_decisions: true,
         }
+    }
+
+    #[test]
+    fn new_documents_get_an_identity_of_their_own() {
+        let tpl = make_test_template();
+        let tpl_doc = tpl.manifest().document_id().to_string();
+        let born = create(CreateOptions {
+            title: "x".into(),
+            brief: "y".into(),
+            document_type: None,
+            no_render: true,
+            schema: None,
+        })
+        .unwrap();
+        let born = ClanFile::from_bytes(born).unwrap();
+        assert_eq!(
+            born.manifest().document_id.as_deref(),
+            Some(born.manifest().id.as_str()),
+            "create: identity is the first revision's id"
+        );
+
+        let inst = ClanFile::from_bytes(instantiate(&tpl, InstantiateOptions::default()).unwrap())
+            .unwrap();
+        let m = inst.manifest();
+        assert_eq!(m.document_id.as_deref(), Some(m.id.as_str()));
+        assert_ne!(m.document_id(), tpl_doc, "an instance is not its template");
+
+        let source = filled_source("ie.napkin.brief");
+        let template = film_template(Some(spec_for_film()));
+        let spun =
+            ClanFile::from_bytes(spinoff(&template, &source, SpinoffOptions::default()).unwrap())
+                .unwrap();
+        let m = spun.manifest();
+        assert_eq!(m.document_id.as_deref(), Some(m.id.as_str()));
+        assert_ne!(m.document_id(), source.manifest().document_id());
+        assert_ne!(m.document_id(), template.manifest().document_id());
+
+        // make_template: the app is not the document it was built from.
+        let src = ClanFile::from_bytes(
+            create(CreateOptions {
+                title: "src".into(),
+                brief: "b".into(),
+                document_type: None,
+                no_render: false,
+                schema: None,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let app = tpl.manifest().app.clone().unwrap();
+        let made =
+            ClanFile::from_bytes(make_template(&src, app, MakeTemplateOptions::default()).unwrap())
+                .unwrap();
+        assert_ne!(made.manifest().document_id(), src.manifest().document_id());
+        assert!(crate::validate::validate(&made).is_valid());
     }
 
     #[test]

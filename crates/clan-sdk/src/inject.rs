@@ -221,6 +221,7 @@ mod tests {
             clan_version: CLAN_VERSION,
             clan_version_minor: CLAN_VERSION_MINOR,
             id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+            document_id: None,
             title: "Inject Test".into(),
             created_at: "2026-06-01T10:00:00Z".into(),
             updated_at: "2026-06-01T10:00:00Z".into(),

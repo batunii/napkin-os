@@ -45,6 +45,7 @@ pub fn create(opts: CreateOptions) -> Result<Vec<u8>> {
         clan_version: CLAN_VERSION,
         clan_version_minor: CLAN_VERSION_MINOR,
         id: id.clone(),
+        document_id: Some(id.clone()),
         title: opts.title.clone(),
         created_at: now.clone(),
         updated_at: now.clone(),

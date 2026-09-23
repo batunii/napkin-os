@@ -10,7 +10,6 @@
 use chrono::Utc;
 use serde_json::Value;
 use std::collections::HashMap;
-use uuid::Uuid;
 
 use crate::compress::{compress_chain, CompressionConfig, Compressor};
 use crate::container::{ClanBuilder, ClanFile};
@@ -348,7 +347,7 @@ pub fn pack(
     });
 
     let mut new_manifest = parent_manifest.clone();
-    new_manifest.id = Uuid::new_v4().to_string();
+    new_manifest.next_revision();
     new_manifest.updated_at = now.clone();
     new_manifest.clan_version = CLAN_VERSION;
     new_manifest.clan_version_minor = CLAN_VERSION_MINOR;
@@ -1292,7 +1291,7 @@ fn repack_with_entry_decision(
     let now = chrono::Utc::now().to_rfc3339();
     let parent_manifest = parent.manifest();
     let mut new_manifest = parent_manifest.clone();
-    new_manifest.id = Uuid::new_v4().to_string();
+    new_manifest.next_revision();
     new_manifest.updated_at = now.clone();
     new_manifest.lineage = Some(Lineage {
         parent_id: parent_manifest.id.clone(),
@@ -1469,6 +1468,7 @@ mod tests {
             clan_version: CLAN_VERSION,
             clan_version_minor: CLAN_VERSION_MINOR,
             id: "11111111-2222-3333-4444-555555555555".into(),
+            document_id: None,
             title: "Test".into(),
             created_at: "2026-06-01T10:00:00Z".into(),
             updated_at: "2026-06-01T10:00:00Z".into(),

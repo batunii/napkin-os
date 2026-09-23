@@ -2,13 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Typed decisions survive every write path, and merges refuse to fold
-//! disagreeing verdicts.
+//! Typed decisions survive every write path, merges refuse to fold
+//! disagreeing verdicts, and a document keeps its identity across revisions.
 
 use clan_sdk::{
-    create, fork, merge, pack, patch_data_with, patch_decision, patch_state, validate, AgentOutput,
-    ClanBuilder, ClanFile, CreateOptions, Decision, DecisionChain, DecisionEntry, Manifest,
-    MergeOptions, MergeReport, PackOptions, PatchDataOptions, MANIFEST_PATH, MERGE_REPORT_PATH,
+    create, fork, merge, pack, patch_data_with, patch_decision, patch_state, render, validate,
+    AgentOutput, ClanBuilder, ClanFile, CreateOptions, Decision, DecisionChain, DecisionEntry,
+    HumanPayload, Manifest, MergeOptions, MergeReport, PackOptions, PatchDataOptions,
+    MANIFEST_PATH, MERGE_REPORT_PATH,
 };
 use serde_json::json;
 
@@ -265,4 +266,110 @@ fn agreeing_verdicts_fold() {
     let (merged, _) = judged_merge(("good", "client_words"), ("good", "client_words"));
     let report = MergeReport::from_yaml(&merged.read_entry(MERGE_REPORT_PATH).unwrap()).unwrap();
     assert_eq!(report.unresolved, 0);
+}
+
+// ── document identity ────────────────────────────────────────────────────
+
+#[test]
+fn document_id_survives_every_write_path() {
+    let clan = doc();
+    let identity = clan.manifest().document_id().to_string();
+    assert_eq!(
+        clan.manifest().document_id.as_deref(),
+        Some(identity.as_str())
+    );
+
+    let check = |next: &ClanFile, what: &str| {
+        assert_eq!(next.manifest().document_id(), identity, "{what}");
+        assert_eq!(
+            next.manifest().document_id.as_deref(),
+            Some(identity.as_str()),
+            "{what}: declared, not just derived"
+        );
+        assert_ne!(
+            next.manifest().id,
+            clan.manifest().id,
+            "{what}: new revision"
+        );
+        assert!(validate(next).is_valid(), "{what}");
+    };
+
+    let patched =
+        open(patch_data_with(&clan, &json!({"a": 1}), PatchDataOptions::default(), None).unwrap());
+    check(&patched, "patch-data");
+
+    for mode in ["data-update", "designed", "full-html", "patch-html"] {
+        let human = mode.ends_with("html").then(|| HumanPayload {
+            html: "<p>hello</p>".into(),
+            css: None,
+            assets: Default::default(),
+            patch_selector: Some("section".into()),
+            patch_action: Some("append".into()),
+        });
+        let out = AgentOutput {
+            mode: mode.into(),
+            structured: json!({"b": 2}),
+            design: (mode == "designed").then(|| json!({})),
+            human,
+            decision: None,
+        };
+        let next = open(pack(&clan, out, PackOptions::default(), None).unwrap());
+        check(&next, mode);
+    }
+
+    let decided = open(
+        patch_decision(
+            &patched,
+            DecisionEntry {
+                agent_name: "a".into(),
+                action: "b".into(),
+                rationale: "c".into(),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap(),
+    );
+    check(&decided, "patch-decision");
+    check(
+        &open(patch_state(&decided, &json!({"s": 1})).unwrap()),
+        "patch-state",
+    );
+    check(&open(render(&decided).unwrap()), "render");
+
+    let branches = fork(&clan, &["alpha".into(), "beta".into()]).unwrap();
+    let branches: Vec<ClanFile> = branches.into_iter().map(|(_, b)| open(b)).collect();
+    for b in &branches {
+        check(b, "fork: a branch is the same document");
+    }
+    let merged = open(merge(&branches, MergeOptions::default()).unwrap().bytes);
+    check(&merged, "merge");
+}
+
+#[test]
+fn an_older_file_adopts_its_id_on_the_first_write() {
+    // A manifest written before document_id existed.
+    let clan = doc();
+    let old_id = clan.manifest().id.clone();
+    let state = clan.read_entry("agent/state.yaml").unwrap();
+    let legacy = rebuilt(&clan, "agent/state.yaml", &state, |m| m.document_id = None);
+    assert_eq!(legacy.manifest().document_id, None);
+    assert_eq!(legacy.document_id(), old_id, "falls back to id");
+    strict_ok(&legacy);
+    // Round-trips without growing a field it did not have.
+    assert!(!String::from_utf8(legacy.manifest().to_yaml().unwrap())
+        .unwrap()
+        .contains("document_id"));
+
+    let next = open(
+        patch_data_with(&legacy, &json!({"a": 1}), PatchDataOptions::default(), None).unwrap(),
+    );
+    assert_eq!(
+        next.manifest().document_id.as_deref(),
+        Some(old_id.as_str())
+    );
+    assert_ne!(next.manifest().id, old_id);
+    let after =
+        open(patch_data_with(&next, &json!({"a": 2}), PatchDataOptions::default(), None).unwrap());
+    assert_eq!(after.document_id(), old_id);
 }

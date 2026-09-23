@@ -22,7 +22,16 @@ pub const CLAN_VERSION_MINOR: u32 = 2;
 pub struct Manifest {
     pub clan_version: u32,
     pub clan_version_minor: u32,
+    /// The revision id: a fresh UUID v4 on every write.
     pub id: String,
+    /// The document's identity across revisions: set once when a document is
+    /// born and carried verbatim by every write, so an address
+    /// (`<document_id>#<path>`) stays valid after the first edit. Absent on
+    /// files written before it existed — read it through
+    /// [`Manifest::document_id`], which falls back to `id`, and the first
+    /// write adopts that `id` (see [`Manifest::next_revision`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_id: Option<String>,
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
@@ -284,6 +293,30 @@ impl Manifest {
         Ok(serde_yaml::to_string(self)?.into_bytes())
     }
 
+    /// The document's identity: `document_id`, or `id` on a file that
+    /// predates it (whose first write will adopt that `id`).
+    pub fn document_id(&self) -> &str {
+        self.document_id.as_deref().unwrap_or(&self.id)
+    }
+
+    /// Turn this (cloned) manifest into the next revision of the same
+    /// document: mint a fresh revision `id` and keep `document_id`. A file
+    /// without one first adopts its current `id`, so the address prefix it
+    /// already used stays valid.
+    pub fn next_revision(&mut self) {
+        if self.document_id.is_none() {
+            self.document_id = Some(self.id.clone());
+        }
+        self.id = uuid::Uuid::new_v4().to_string();
+    }
+
+    /// Make this manifest a new document born with revision `id`: its
+    /// identity is that id, unrelated to whatever it was cloned from.
+    pub fn born_as(&mut self, id: String) {
+        self.document_id = Some(id.clone());
+        self.id = id;
+    }
+
     /// Look up a file entry by its stable `id`.
     pub fn file_by_id(&self, id: &str) -> Option<&FileEntry> {
         self.files.iter().find(|f| f.id == id)
@@ -308,6 +341,13 @@ impl Manifest {
             problems.push("manifest.id is empty".into());
         } else if !is_uuid_v4(&self.id) {
             problems.push(format!("manifest.id is not a valid UUID v4: {}", self.id));
+        }
+        if let Some(doc) = &self.document_id {
+            if !is_uuid_v4(doc) {
+                problems.push(format!(
+                    "manifest.document_id is not a valid UUID v4: {doc}"
+                ));
+            }
         }
         if self.title.trim().is_empty() {
             problems.push("manifest.title is empty".into());
@@ -477,6 +517,7 @@ mod tests {
             clan_version: 1,
             clan_version_minor: 0,
             id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            document_id: None,
             title: "Test".into(),
             created_at: "2026-05-31T10:00:00Z".into(),
             updated_at: "2026-05-31T10:00:00Z".into(),
