@@ -1,0 +1,1645 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://napkin.ie/schemas/campaign-research/data.schema.json",
+  "title": "Campaign Research — shared/data.yaml",
+  "description": "Contract 3 (docs/contracts/campaign-clan.md). Region A (campaign.*), Region C (selection.*), the supplied-material index and the host's read-only projection of the facts and findings members. Nothing here has a default and no campaign field is required: a field's gate says which state the document cannot reach without it (D4). Every present field is an envelope {value, origin, gate, decision, ...}.",
+  "type": "object",
+  "additionalProperties": true,
+  "definitions": {
+    "origin": {
+      "type": "string",
+      "enum": [
+        "extracted",
+        "proposed",
+        "confirmed",
+        "stated"
+      ],
+      "description": "extracted: read from supplied material, cites a span. proposed: derived from layer facts, cites fact ids. confirmed: a human accepted or corrected it; re-extraction never overwrites it without asking. stated: a human supplied it directly."
+    },
+    "gate": {
+      "type": "string",
+      "enum": [
+        "created",
+        "research",
+        "brief",
+        "none"
+      ]
+    },
+    "fact_id": {
+      "type": "string",
+      "pattern": "^f_[0-9A-Z]{6,}$",
+      "description": "Opaque fact id. Survives spin-off. Never a path."
+    },
+    "finding_id": {
+      "type": "string",
+      "pattern": "^fi_[0-9A-Z]{6,}$",
+      "description": "Opaque finding id."
+    },
+    "decision_id": {
+      "type": "string",
+      "pattern": "^d_[0-9A-Z]{6,}$",
+      "description": "Id of a decision in agent/decision-chain.yaml."
+    },
+    "material_id": {
+      "type": "string",
+      "pattern": "^mat_[0-9A-Za-z]{4,}$"
+    },
+    "actor": {
+      "type": "string",
+      "pattern": "^(human:.+|process:.+|[a-z0-9_.-]+/[0-9A-Za-z.]+)$",
+      "description": "An actor as the OS layer's Ctx writes it: human:<user-id>, process:<job-id> or <producer>/<version>."
+    },
+    "market": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 (the UK is GB)."
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+      "description": "A sub-vertical leaf code, <vertical>.<leaf>, from the Planner Research Taxonomy (18 verticals, 108 leaves). The closed enum is taxonomy-versioned and is swapped in for this pattern when the taxonomy file lands; until then the category layer rejects an unknown leaf."
+    },
+    "item_key": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Stable key for an item in a list of prose. Addresses use it: campaign.constraints[<id>]. Never positional."
+    },
+    "lens": {
+      "type": "string",
+      "enum": [
+        "market_structure",
+        "brands_positioning",
+        "consumer_culture",
+        "category_codes",
+        "rhythm_moments",
+        "media_spend",
+        "regulation_clearance",
+        "effectiveness_evidence"
+      ],
+      "description": "The eight lenses of the Planner Research Taxonomy, in taxonomy order."
+    },
+    "span": {
+      "type": "object",
+      "description": "Where in the supplied material an extracted value was read.",
+      "additionalProperties": false,
+      "required": [
+        "material_id",
+        "locator"
+      ],
+      "properties": {
+        "material_id": {
+          "$ref": "#/definitions/material_id"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable position: 'p.2 ¶3', 'subject line', 'chars 412-590'."
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The span, verbatim. Omitted for budget_band, whose span holds the figure."
+        }
+      }
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "name"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^(brand|org)/[a-z0-9][a-z0-9-]*$",
+          "description": "Entity id, scoped to this agency's database. There is no global brand identity."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name. The handoff mapping sends this, not the ref."
+        }
+      }
+    },
+    "brand_ref": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/entity_ref"
+        },
+        {
+          "properties": {
+            "ref": {
+              "pattern": "^brand/"
+            }
+          }
+        }
+      ]
+    },
+    "org_ref": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/entity_ref"
+        },
+        {
+          "properties": {
+            "ref": {
+              "pattern": "^org/"
+            }
+          }
+        }
+      ]
+    },
+    "item_provenance": {
+      "type": "object",
+      "description": "Provenance of one list item when a list field's items came from different origins. Keyed by the item's address key.",
+      "additionalProperties": false,
+      "required": [
+        "origin"
+      ],
+      "properties": {
+        "origin": {
+          "$ref": "#/definitions/origin"
+        },
+        "source": {
+          "$ref": "#/definitions/span"
+        },
+        "fact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/fact_id"
+          }
+        },
+        "finding_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/finding_id"
+          }
+        },
+        "by": {
+          "$ref": "#/definitions/actor"
+        },
+        "confirmed_from": {
+          "type": "string",
+          "enum": [
+            "extracted",
+            "proposed",
+            "stated"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/origin_rules"
+        }
+      ]
+    },
+    "origin_rules": {
+      "description": "What each origin must carry. Applied to every field envelope and every item_provenance entry.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "extracted"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "proposed"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "fact_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "by",
+              "confirmed_from"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "stated"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "by"
+            ]
+          }
+        }
+      ]
+    },
+    "prose_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/item_key"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fact_backed_statement": {
+      "type": "object",
+      "description": "A statement about the audience that rests on pins. The statement never restates a pinned figure — the view renders the figure from the pin.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "statement",
+        "fact_ids"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/item_key"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/fact_id"
+          }
+        },
+        "finding_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/finding_id"
+          }
+        }
+      }
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "datetime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "envelope": {
+      "type": "object",
+      "description": "The shape of every present campaign field. value is typed per field; everything else is provenance. decision is the chain entry that set the current value (GET /history?address= lists the rest).",
+      "required": [
+        "value",
+        "origin",
+        "gate",
+        "decision"
+      ],
+      "properties": {
+        "origin": {
+          "$ref": "#/definitions/origin"
+        },
+        "gate": {
+          "$ref": "#/definitions/gate"
+        },
+        "source": {
+          "$ref": "#/definitions/span"
+        },
+        "fact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/fact_id"
+          }
+        },
+        "finding_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/finding_id"
+          }
+        },
+        "by": {
+          "$ref": "#/definitions/actor"
+        },
+        "confirmed_from": {
+          "type": "string",
+          "enum": [
+            "extracted",
+            "proposed",
+            "stated"
+          ]
+        },
+        "decision": {
+          "$ref": "#/definitions/decision_id"
+        },
+        "item_provenance": {
+          "type": "object",
+          "description": "List fields only. Per-item provenance when items came from different origins, keyed by the item's address key (the item itself for codes, slugs and refs; its id for prose). Absent: every item shares the field's origin.",
+          "additionalProperties": {
+            "$ref": "#/definitions/item_provenance"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/origin_rules"
+        }
+      ]
+    }
+  },
+  "properties": {
+    "campaign": {
+      "type": "object",
+      "description": "Region A: the ask.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "[gate: created] Stable campaign id. Survives spin-off. Not the manifest id.",
+          "x-gate": "created",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "pattern": "^cmp_[0-9A-Z]{8,}$"
+            },
+            "gate": {
+              "const": "created"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "name": {
+          "description": "[gate: created] Working name of the campaign.",
+          "x-gate": "created",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gate": {
+              "const": "created"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "brand": {
+          "description": "[gate: created] The SUBJECT brand. Never a comparator. Ambiguity blocks; it never defaults.",
+          "x-gate": "created",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "$ref": "#/definitions/brand_ref"
+            },
+            "gate": {
+              "const": "created"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "client_org": {
+          "description": "[gate: created] The agency's client. One client can hold several brands.",
+          "x-gate": "created",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "$ref": "#/definitions/org_ref"
+            },
+            "gate": {
+              "const": "created"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "categories": {
+          "description": "[gate: research] Category leaves, ranked. A campaign spanning two leaves pins facts from both. Contract values from the brand roster row; left out rather than guessed. Retrieval: one category pair per entry.",
+          "x-gate": "research",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/category"
+              }
+            },
+            "gate": {
+              "const": "research"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "markets": {
+          "description": "[gate: research] Markets. Research runs once per market and merges by entity+key+market. Retrieval: one market pair per entry.",
+          "x-gate": "research",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/market"
+              }
+            },
+            "gate": {
+              "const": "research"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "campaign_type": {
+          "description": "[gate: none] Retrieval.",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "enum": [
+                "launch",
+                "always_on",
+                "seasonal",
+                "rebrand"
+              ]
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "problem": {
+          "description": "[gate: brief] The client's problem in the client's words, verbatim. Retrieval.",
+          "x-gate": "brief",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gate": {
+              "const": "brief"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "objective": {
+          "description": "[gate: brief] The business outcome. Retrieval.",
+          "x-gate": "brief",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gate": {
+              "const": "brief"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "audience_stated": {
+          "description": "[gate: brief] Who the client says it is for. Retrieval (as audience).",
+          "x-gate": "brief",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gate": {
+              "const": "brief"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "audience": {
+          "description": "[gate: brief] The researched audience. A field backed by pinned facts, origin proposed or confirmed only.",
+          "x-gate": "brief",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "definition"
+              ],
+              "properties": {
+                "definition": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Who the research says the audience is, in one or two sentences."
+                },
+                "size": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "fact_ids"
+                  ],
+                  "properties": {
+                    "fact_ids": {
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": {
+                        "$ref": "#/definitions/fact_id"
+                      }
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  },
+                  "description": "Size is never a number here — it is the pins that measure it."
+                },
+                "behaviours": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/definitions/fact_backed_statement"
+                  }
+                },
+                "attitudes": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/definitions/fact_backed_statement"
+                  }
+                },
+                "synthesis_finding_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/definitions/finding_id"
+                  },
+                  "description": "Audience syntheses. Findings until verified; the view labels an unverified one 'derived by the agent'."
+                }
+              }
+            },
+            "gate": {
+              "const": "brief"
+            },
+            "origin": {
+              "enum": [
+                "proposed",
+                "confirmed"
+              ]
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "competitor_set": {
+          "description": "[gate: none] Comparator brands. Every one is a comparator — public material only. Retrieval: competitors = the names.",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/brand_ref"
+              }
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "success_measures": {
+          "description": "[gate: none] How the client will judge success.",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/prose_item"
+              }
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "budget_band": {
+          "description": "[gate: brief] Working media + production budget as a band in EUR. A band, never the figure.",
+          "x-gate": "brief",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "string",
+              "enum": [
+                "under_50k",
+                "50k_250k",
+                "250k_1m",
+                "1m_5m",
+                "over_5m"
+              ]
+            },
+            "gate": {
+              "const": "brief"
+            },
+            "source": {
+              "not": {
+                "required": [
+                  "quote"
+                ]
+              },
+              "description": "Locator only. The quote would carry the figure."
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "in_market": {
+          "description": "[gate: none] In-market window. Drives the rhythm-and-moments lens.",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "from",
+                "to"
+              ],
+              "properties": {
+                "from": {
+                  "$ref": "#/definitions/date"
+                },
+                "to": {
+                  "$ref": "#/definitions/date"
+                }
+              }
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        },
+        "channels_mandated": {
+          "description": "[gate: none] Channels the client requires, as slugs (tv, bvod, ooh, social_meta, audio, in_store...).",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$"
+              }
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "deliverables": {
+          "description": "[gate: none] What the agency must hand over, as slugs (tvc_30, social_cutdowns, ooh_48sheet...).",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$"
+              }
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "constraints": {
+          "description": "[gate: none] Legal, brand and mandatory constraints.",
+          "x-gate": "none",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "kind",
+                  "text"
+                ],
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/item_key"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "legal",
+                      "brand",
+                      "mandatory"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "gate": {
+              "const": "none"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision",
+              "item_provenance"
+            ]
+          }
+        },
+        "ask_source": {
+          "description": "[gate: created] The client's own brief or email, by hash. The source of record for every extracted field.",
+          "x-gate": "created",
+          "allOf": [
+            {
+              "$ref": "#/definitions/envelope"
+            }
+          ],
+          "properties": {
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "material_id",
+                "sha256"
+              ],
+              "properties": {
+                "material_id": {
+                  "$ref": "#/definitions/material_id"
+                },
+                "sha256": {
+                  "$ref": "#/definitions/sha256"
+                }
+              }
+            },
+            "gate": {
+              "const": "created"
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "value",
+              "origin",
+              "gate",
+              "source",
+              "fact_ids",
+              "finding_ids",
+              "by",
+              "confirmed_from",
+              "decision"
+            ]
+          }
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "description": "Region C: what research drew on, what it looked for and did not find, and what clashed.",
+      "additionalProperties": false,
+      "properties": {
+        "lenses_run": {
+          "type": "array",
+          "description": "One entry per lens x market run. Address key: <lens>/<market>.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "lens",
+              "market",
+              "ran_at",
+              "handler"
+            ],
+            "properties": {
+              "lens": {
+                "$ref": "#/definitions/lens"
+              },
+              "market": {
+                "$ref": "#/definitions/market"
+              },
+              "ran_at": {
+                "$ref": "#/definitions/datetime"
+              },
+              "handler": {
+                "type": "string",
+                "pattern": "^[a-z_]+@\\d+(\\.\\d+)?$"
+              },
+              "decision": {
+                "$ref": "#/definitions/decision_id"
+              }
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "description": "Merged coverage per lens across markets. filled = corroborated, thin = single-source, empty = nothing found. Merged: filled only if filled in every market, empty only if empty in every market, otherwise thin.",
+          "propertyNames": {
+            "enum": [
+              "market_structure",
+              "brands_positioning",
+              "consumer_culture",
+              "category_codes",
+              "rhythm_moments",
+              "media_spend",
+              "regulation_clearance",
+              "effectiveness_evidence"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "filled",
+              "thin",
+              "empty"
+            ]
+          }
+        },
+        "coverage_by_market": {
+          "type": "object",
+          "description": "The per-market coverage the merged map was computed from.",
+          "propertyNames": {
+            "pattern": "^[A-Z]{2}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {
+              "enum": [
+                "market_structure",
+                "brands_positioning",
+                "consumer_culture",
+                "category_codes",
+                "rhythm_moments",
+                "media_spend",
+                "regulation_clearance",
+                "effectiveness_evidence"
+              ]
+            },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "filled",
+                "thin",
+                "empty"
+              ]
+            }
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "description": "What was looked for and not found. Address key: id.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "key",
+              "searched",
+              "sources_tried"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/item_key"
+              },
+              "key": {
+                "type": "string",
+                "description": "<entity>:<fact key>, the fact that was wanted."
+              },
+              "lens": {
+                "$ref": "#/definitions/lens"
+              },
+              "market": {
+                "$ref": "#/definitions/market"
+              },
+              "searched": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What was looked for, in words."
+              },
+              "sources_tried": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "contested": {
+          "type": "array",
+          "description": "Two writers, one fact identity, different values. Resolved entries stay; the losing values stay with the written reason. Must hold no open entry at lock. Address key: id.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "key",
+              "status",
+              "values"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/item_key"
+              },
+              "key": {
+                "type": "string",
+                "description": "<entity>:<fact key>[@<market>]"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "resolved"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "value",
+                    "fact_id",
+                    "from"
+                  ],
+                  "properties": {
+                    "value": {
+                      "type": [
+                        "number",
+                        "string",
+                        "boolean"
+                      ]
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "fact_id": {
+                      "$ref": "#/definitions/fact_id"
+                    },
+                    "from": {
+                      "type": "string",
+                      "description": "Which writer produced it: <lens>/<market>, a source id, or an actor."
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "chosen": {
+                "$ref": "#/definitions/fact_id"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "decided_by": {
+                "$ref": "#/definitions/decision_id"
+              },
+              "opened_by": {
+                "$ref": "#/definitions/decision_id"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "resolved"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "chosen",
+                    "reason",
+                    "decided_by"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "chosen"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "decided_by"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "excluded": {
+          "type": "array",
+          "description": "Facts research found and deliberately did not pin. Address key: fact_id.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fact_id",
+              "reason"
+            ],
+            "properties": {
+              "fact_id": {
+                "$ref": "#/definitions/fact_id"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "decision": {
+                "$ref": "#/definitions/decision_id"
+              }
+            }
+          }
+        }
+      }
+    },
+    "materials": {
+      "type": "object",
+      "description": "Supplied material, keyed by material id: the prompt and every attachment. Bytes live as assets by hash; this is the index spans cite.",
+      "propertyNames": {
+        "pattern": "^mat_[0-9A-Za-z]{4,}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "name",
+          "sha256",
+          "received_at",
+          "licence"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "prompt",
+              "client_brief",
+              "email",
+              "deck",
+              "research",
+              "other"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "#/definitions/sha256"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string",
+            "description": "Asset path inside the document, when the bytes travel in it."
+          },
+          "received_at": {
+            "$ref": "#/definitions/datetime"
+          },
+          "licence": {
+            "type": "string",
+            "enum": [
+              "open",
+              "licensed-internal",
+              "client-confidential"
+            ],
+            "description": "Facts derived from client-confidential material carry the brand licence class and never promote (C3)."
+          }
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "description": "HOST-WRITTEN, READ-ONLY (decision D2). A scalar projection of shared/facts.yaml and shared/findings.yaml so view bindings resolve against shared/data.yaml alone. Rebuilt by the host after every change to either member; no agent or human patch may write it; the members are the authority. If built_from does not match the members' hashes the view says so instead of rendering the projection as current.",
+      "additionalProperties": false,
+      "required": [
+        "built_from",
+        "pins",
+        "findings"
+      ],
+      "properties": {
+        "built_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "facts_sha256",
+            "findings_sha256",
+            "built_at"
+          ],
+          "properties": {
+            "facts_sha256": {
+              "$ref": "#/definitions/sha256"
+            },
+            "findings_sha256": {
+              "$ref": "#/definitions/sha256"
+            },
+            "built_at": {
+              "$ref": "#/definitions/datetime"
+            }
+          }
+        },
+        "pins": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^f_[0-9A-Z]{6,}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "layer",
+              "entity",
+              "key",
+              "value",
+              "unit",
+              "as_of",
+              "confidence",
+              "licence",
+              "stale"
+            ],
+            "properties": {
+              "layer": {
+                "type": "string",
+                "enum": [
+                  "brand",
+                  "category"
+                ]
+              },
+              "entity": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "market": {
+                "$ref": "#/definitions/market"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "string",
+                  "boolean"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "as_of": {
+                "$ref": "#/definitions/date"
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "licence": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "licensed-internal",
+                  "client-confidential"
+                ]
+              },
+              "method": {
+                "type": "string"
+              },
+              "stale": {
+                "type": "boolean"
+              },
+              "current_version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "findings": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^fi_[0-9A-Z]{6,}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "statement",
+              "status",
+              "confidence",
+              "cites"
+            ],
+            "properties": {
+              "statement": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "proposed",
+                  "verified",
+                  "rejected"
+                ]
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "cites": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/fact_id"
+                }
+              },
+              "fact_id": {
+                "$ref": "#/definitions/fact_id"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

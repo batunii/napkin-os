@@ -1,0 +1,234 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://napkin.ie/schemas/campaign-research/findings.schema.json",
+  "title": "Campaign Research — shared/findings.yaml (agent synthesis)",
+  "description": "Derived by the agent. Status proposed until a human verifies or rejects it. Nothing unverified enters the knowledge layers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "findings"
+  ],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "statement",
+          "cites",
+          "method",
+          "status",
+          "derived_by",
+          "confidence",
+          "derived_at",
+          "decision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^fi_[0-9A-Z]{6,}$",
+            "description": "Opaque finding id."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cites": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^f_[0-9A-Z]{6,}$",
+              "description": "Opaque fact id. Survives spin-off. Never a path."
+            },
+            "description": "The pins it rests on. Every id must be in shared/facts.yaml."
+          },
+          "method": {
+            "const": "synthesis"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "verified",
+              "rejected"
+            ]
+          },
+          "derived_by": {
+            "type": "string",
+            "pattern": "^[a-z_]+@\\d+(\\.\\d+)?$",
+            "description": "handler@version that derived it."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Derived, never asserted: the lowest confidence among cited pins, one level lower if it cites a single pin or any stale pin."
+          },
+          "derived_at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+          },
+          "decision": {
+            "type": "string",
+            "pattern": "^d_[0-9A-Z]{6,}$",
+            "description": "Id of a decision in agent/decision-chain.yaml."
+          },
+          "lens": {
+            "type": "string",
+            "enum": [
+              "market_structure",
+              "brands_positioning",
+              "consumer_culture",
+              "category_codes",
+              "rhythm_moments",
+              "media_spend",
+              "regulation_clearance",
+              "effectiveness_evidence"
+            ]
+          },
+          "markets": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$",
+              "description": "ISO 3166-1 alpha-2 (the UK is GB)."
+            }
+          },
+          "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "decision",
+              "by",
+              "at",
+              "fact_id"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "pattern": "^d_[0-9A-Z]{6,}$",
+                "description": "Id of a decision in agent/decision-chain.yaml."
+              },
+              "by": {
+                "type": "string",
+                "pattern": "^human:.+$"
+              },
+              "at": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+              },
+              "fact_id": {
+                "type": "string",
+                "pattern": "^f_[0-9A-Z]{6,}$",
+                "description": "The layer fact (method: synthesis) it became, pinned in shared/facts.yaml."
+              }
+            }
+          },
+          "rejection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "decision",
+              "by",
+              "at",
+              "reason"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "pattern": "^d_[0-9A-Z]{6,}$",
+                "description": "Id of a decision in agent/decision-chain.yaml."
+              },
+              "by": {
+                "type": "string",
+                "pattern": "^human:.+$"
+              },
+              "at": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "verified"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "verification"
+              ],
+              "not": {
+                "required": [
+                  "rejection"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "rejected"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "rejection"
+              ],
+              "not": {
+                "required": [
+                  "verification"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "proposed"
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "verification"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "rejection"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

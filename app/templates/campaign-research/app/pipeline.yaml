@@ -1,0 +1,84 @@
+# Campaign Research pipeline contract.
+# Travels verbatim into every instance (CLAN instantiation copies all members),
+# so any agent or backend continuing a Campaign Research .clan knows the pipeline
+# it must speak. This is a DECLARATION (decision M2): each task names a handler,
+# name@major, which the middleware resolves against its registry. An unknown
+# handler, task or version is a hard error, never a fall-through (M4).
+# No handler code exists for these yet. Contract: docs/contracts/campaign-clan.md.
+pipeline: napkin-campaign-research
+version: 1
+request_kind: agent
+contract: campaign-clan/1          # docs/contracts/campaign-clan.md
+
+tasks:
+  extract_ask:
+    handler: extract_ask@1
+    reads:
+      - the user's prompt
+      - materials, with host-extracted text (the client's brief, deck or email is the source of record)
+      - brand layer — the roster row (category array, markets, client), performance facts
+      - category layer — the competitor set for the leaf, codes, rhythm
+    order:
+      - deterministic layer lookups; each value found is written origin proposed, citing the fact ids it pinned
+      - ONE enum-constrained structured-output call over the prompt and the materials; abstain where nothing supports a value
+      - confirm a short list only — category pick, market, subject vs comparator brands
+      - write back roster corrections to the brand layer
+    writes: campaign.* envelopes (origin extracted or proposed), shared/facts.yaml pins, materials
+    never:
+      - writes a field whose current origin is confirmed or stated, or that carries an unanswered bad verdict — it proposes instead, and a human decides
+      - defaults a field; an unsupported field is left out
+      - gates on the model's self-reported confidence
+    decision: one chain entry recording handler, backend, the materials read and every field it abstained on
+
+  research_lens:
+    handler: research_lens@1
+    fan_out: lens x market         # one run per (selection lens, campaign.markets[i]), in parallel
+    lenses: [market_structure, brands_positioning, consumer_culture, category_codes, rhythm_moments, media_spend, regulation_clearance, effectiveness_evidence]
+    branch: "agents/<user>.research_lens.<lens>-<market>/"   # user comes from Ctx, never the request
+    reads: retrieval pairs (below) for ONE market, plus the lens
+    writes:
+      - fact rows to the brand or category layer (needs no lease)
+      - on its branch: proposed pins, selection.lenses_run / coverage_by_market / gaps entries
+    merge: >
+      by entity + key + market. Same identity, same value: one pin, sources unioned.
+      Different market: two facts, two pins. Same identity, different values (including
+      a market-independent key two market runs disagree on): a contest in
+      selection.contested, status open, nothing picked. Merged coverage per lens:
+      filled only if filled in every market, empty only if empty in every market,
+      otherwise thin.
+
+  synthesise_findings:
+    handler: synthesise_findings@1
+    reads: shared/facts.yaml (pins only — never the raw layer)
+    writes: shared/findings.yaml entries, status proposed, method synthesis; may propose campaign.audience and campaign.in_market citing them
+    confidence: derived from the cited pins, never produced by the model
+
+# Campaign -> retrieval pairs. The handoff mapping is stored here so it travels
+# with every document. Scope (tenant, brand) is NEVER in this mapping: the
+# middleware injects it from Ctx.
+retrieval_pairs:
+  brand: campaign.brand.value.name
+  client: campaign.client_org.value.name
+  category: campaign.categories.value[*]          # one pair per category
+  campaign_type: campaign.campaign_type.value
+  problem: campaign.problem.value
+  objective: campaign.objective.value
+  audience: campaign.audience_stated.value
+  competitors: campaign.competitor_set.value[*].name
+  market: campaign.markets.value[*]               # one pair per market: one research run each
+
+# Per-field merge policy for branch merges (Contract 4 §4). ask is the default;
+# an undeclared field is ask; an unknown policy name is a hard error.
+merge_policies:
+  campaign.*: ask
+  selection.lenses_run: append
+  selection.gaps: append
+  selection.excluded: append
+  selection.contested: ask
+  selection.coverage: ask
+  # `projection` is deliberately absent: it is never merged, the host rebuilds it
+  # from shared/facts.yaml and shared/findings.yaml after the merge commits.
+
+errors: non-2xx status; the host strips error bodies. A 200 body must never
+  contain an `error` key. Extraction output is untrusted until validated against
+  agent/output-schema.json field by field (W1-C3 caution, until W2-M5).
