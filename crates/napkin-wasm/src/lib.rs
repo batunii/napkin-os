@@ -103,6 +103,33 @@ impl NapkinHost {
         self.session.open(id).map(|o| to_js(&o)).map_err(err)
     }
 
+    /// Which installed apps will take the open document as a spin-off source.
+    #[wasm_bindgen(js_name = spinoffTargets)]
+    pub fn spinoff_targets(&self) -> JsValue {
+        to_js(&library::spinoff_targets(
+            &*self.store,
+            self.session.app_id().as_deref(),
+        ))
+    }
+
+    /// Branch the open document into another app, carrying its data and its
+    /// decisions, and open the result.
+    #[wasm_bindgen(js_name = spinoffDocument)]
+    pub fn spinoff_document(
+        &self,
+        app_id: &str,
+        title: Option<String>,
+        map: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let source = self
+            .session
+            .current_id()
+            .ok_or_else(|| err("no file open"))?;
+        let id =
+            library::spinoff_document(&*self.store, &source, app_id, title, map).map_err(err)?;
+        self.session.open(id).map(|o| to_js(&o)).map_err(err)
+    }
+
     /// The launcher, which is itself a CLAN app. Built here on first use — the
     /// SDK needs nothing but bytes, so there is nothing to download.
     #[wasm_bindgen(js_name = openHome)]

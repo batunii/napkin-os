@@ -1,0 +1,30 @@
+# Capability requirements (CLAN spec §22) for the Advertising Studio application.
+# This file travels verbatim into every app instantiated from this template, so
+# any orchestrator opening one can check capability fit before promising work.
+# Orchestrators SHOULD warn, not fail: without the optional tools the app is
+# still a complete production record — it plans, versions, approves and exports
+# the package. It just cannot generate or render.
+requires:
+  tools:
+    - name: llm_inference
+      why: "concepts, script beats, shot breakdown, blocking proposals, edit proposals"
+    - name: durable_jobs
+      optional: true
+      why: "picture and sound generation, Blender renders, format renders — work that outlives a browser session. Without it the app is import-and-assemble only."
+    - name: asset_store
+      optional: true
+      why: "content-addressed storage for masters and takes. Without it only in-container proxies (frames, boards, scratch audio) are available."
+    - name: video_generation
+      optional: true
+      why: "generated picture. The adapter MUST declare which blocking controls it can accept; undeclared control is treated as unavailable, never as granted."
+    - name: voice_generation
+      optional: true
+      why: "voiceover and dialogue takes"
+    - name: media_render
+      optional: true
+      why: "FFmpeg-class encode and measurement for exports and loudness/peak reporting"
+    - name: retrieval
+      optional: true
+      why: "grounding concepts and critique in award-corpora precedent, shared with the briefing engine"
+  model_hints:
+    min_context_tokens: 32000

@@ -189,6 +189,7 @@ mod tests {
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
             data_seed: None,
+            spinoff: None,
         };
         ClanFile::from_bytes(make_template(&clan, app, MakeTemplateOptions::default()).unwrap())
             .unwrap()

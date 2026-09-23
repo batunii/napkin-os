@@ -4,6 +4,8 @@
 
 //! `manifest.yaml` model — the root index of every CLAN file (spec §5).
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
@@ -107,6 +109,52 @@ pub struct AppInfo {
     /// Archive path to seed data applied to a new instance (sample-data mode).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_seed: Option<String>,
+    /// How this app accepts a spin-off from another document's data and
+    /// decisions. Declared by the *target* app, because the target is what
+    /// knows its own schema — a caller should not have to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spinoff: Option<SpinoffSpec>,
+}
+
+/// Declares what a template app accepts as a spin-off source and where the
+/// source's data lands in the new document (Napkin Studio OS extension).
+///
+/// A spin-off is a document-to-document branch: the new file is an instance of
+/// *this* app, but its facts and its reasoning came from another document. Both
+/// are recorded as parents, so an approved decision stays traceable across the
+/// app boundary it was carried over.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpinoffSpec {
+    /// Source `app_id`s this app accepts. Empty accepts any source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepts: Vec<String>,
+    /// Dotted key in the new document's data layer where the source's whole
+    /// data layer is grafted, e.g. `brief`. Absent grafts at the root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<String>,
+    /// Individual `source dotted key -> target dotted key` moves applied after
+    /// the graft, for the few fields that belong somewhere else in the target
+    /// schema (e.g. `project_name` -> `project.name`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lift: BTreeMap<String, String>,
+    /// Pin the carried-over decisions so chain compression never eats the
+    /// reasoning behind facts this document is now built on.
+    #[serde(default = "default_true")]
+    pub pin_source_decisions: bool,
+}
+
+// Hand-written so an absent `spinoff:` block and a declared one that omits
+// `pin_source_decisions` agree: carried reasoning is pinned unless someone
+// says otherwise.
+impl Default for SpinoffSpec {
+    fn default() -> Self {
+        Self {
+            accepts: Vec::new(),
+            map: None,
+            lift: BTreeMap::new(),
+            pin_source_decisions: true,
+        }
+    }
 }
 
 fn default_entry() -> String {

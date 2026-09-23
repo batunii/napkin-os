@@ -476,6 +476,7 @@ fn a_template(app_id: &str, name: &str) -> Vec<u8> {
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
             data_seed: None,
+            spinoff: None,
         },
         clan_sdk::MakeTemplateOptions::default(),
     )

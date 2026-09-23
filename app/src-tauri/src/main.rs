@@ -166,6 +166,32 @@ fn new_document_from_app(
     ctx.session.open(id).map_err(String::from)
 }
 
+/// Which installed apps will take the open document as a spin-off source.
+#[tauri::command]
+fn spinoff_targets(app: tauri::AppHandle) -> Vec<library::SpinoffTarget> {
+    let ctx = host(&app);
+    library::spinoff_targets(&**ctx.session.store(), ctx.session.app_id().as_deref())
+}
+
+/// Branch the open document into another app, carrying its data and decisions,
+/// and open the result.
+#[tauri::command]
+fn spinoff_document(
+    app: tauri::AppHandle,
+    app_id: String,
+    title: Option<String>,
+    map: Option<String>,
+) -> Result<OpenResult, String> {
+    let ctx = host(&app);
+    let source = ctx
+        .session
+        .current_id()
+        .ok_or_else(|| "no file open".to_string())?;
+    let id = library::spinoff_document(&**ctx.session.store(), &source, &app_id, title, map)
+        .map_err(String::from)?;
+    ctx.session.open(id).map_err(String::from)
+}
+
 /// Open the home CLAN app as the current document (the React shell then pulls
 /// its rendered HTML via `get_human_html`).
 #[tauri::command]
@@ -321,6 +347,8 @@ fn main() {
             list_apps,
             install_app,
             new_document_from_app,
+            spinoff_targets,
+            spinoff_document,
             agent_prompt,
             agent_endpoint,
             open_home,

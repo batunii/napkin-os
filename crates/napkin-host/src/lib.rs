@@ -35,7 +35,8 @@ pub use config::{agent_base_url, resolve_proxy, HostConfig, NoConfig, WorkspaceC
 pub use error::{HostError, HostResult};
 pub use event::HostEvent;
 pub use library::{
-    create_instance, ensure_home, install_app, scan_apps, scan_recent, InstalledApp, RecentDoc,
+    create_instance, ensure_home, install_app, scan_apps, scan_recent, spinoff_document,
+    spinoff_targets, InstalledApp, RecentDoc, SpinoffTarget,
 };
 pub use prompt::{build as build_prompt, AgentPrompt};
 pub use routes::{handle, handle_async, is_async, HostRequest, HostResponse};

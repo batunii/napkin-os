@@ -12,7 +12,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 
-import type { Host, HostEvents, InstalledApp, OpenResult, Unlisten } from './types'
+import type {
+  Host,
+  HostEvents,
+  InstalledApp,
+  OpenResult,
+  SpinoffTarget,
+  Unlisten,
+} from './types'
 
 /**
  * Windows has no custom-scheme support in WebView2, so Tauri maps `clan://` to
@@ -49,6 +56,10 @@ export const tauriHost: Host = {
 
   listApps: () => invoke<InstalledApp[]>('list_apps'),
   installApp: srcPath => invoke<InstalledApp>('install_app', { srcPath }),
+
+  spinoffTargets: () => invoke<SpinoffTarget[]>('spinoff_targets'),
+  spinoffDocument: (appId, title, map) =>
+    invoke<OpenResult>('spinoff_document', { appId, title, map }),
 
   saveClanTo: path => invoke('save_clan_to', { path }),
   exportCurrent: (kind, provenance, noBrand) =>

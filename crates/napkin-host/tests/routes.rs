@@ -102,6 +102,7 @@ fn every_reachable_route_answers_with_cors_open() {
         "/apps",
         "/recent",
         "/capabilities",
+        "/spinoff-targets",
     ] {
         let resp = get(&f, path);
         assert_eq!(resp.status, 200, "{path}");
@@ -260,4 +261,129 @@ fn the_host_hands_out_a_cache_split_prompt() {
         r#"{"payload":{"task":"draft_brief","input":"different"}}"#,
     );
     assert_eq!(json(&again)["system"].as_str().unwrap(), system);
+}
+
+// A document with nothing installed to receive it offers nothing — and says so
+// with an empty list rather than an error, because "no next step" is a normal
+// state, not a failure.
+#[test]
+fn spinoff_targets_is_an_empty_list_when_no_app_accepts_the_document() {
+    let f = fixture();
+    let resp = get(&f, "/spinoff-targets");
+    assert_eq!(resp.status, 200);
+    assert_eq!(json(&resp), serde_json::json!([]));
+}
+
+#[test]
+fn spinoff_validates_its_body_and_reports_an_unknown_app() {
+    let f = fixture();
+
+    let resp = post(&f, "/spinoff", "{}");
+    assert_eq!(resp.status, 400);
+    assert!(resp.events.is_empty(), "a rejected request opens nothing");
+
+    // Well-formed, but naming an app that is not installed: a clean status,
+    // not a panic, and still nothing opened.
+    let resp = post(&f, "/spinoff", r#"{"app_id":"ie.napkin.absent"}"#);
+    assert_eq!(resp.status, 404);
+    assert!(json(&resp)["error"]
+        .as_str()
+        .unwrap()
+        .contains("app not installed"));
+    assert!(resp.events.is_empty());
+}
+
+/// The whole path a "Continue in…" click takes: the document is listed as a
+/// spin-off source, the branch is made, and the shell is told to open it.
+#[test]
+fn spinoff_offers_a_target_then_branches_into_it() {
+    // FsStore resolves its app library from NAPKIN_APPS_DIR when that is set,
+    // and installing a fixture app into a developer's real library would be
+    // rude. Setting env vars from a test races every other test in the binary,
+    // so skip instead.
+    if std::env::var_os("NAPKIN_APPS_DIR").is_some() {
+        eprintln!("skipped: NAPKIN_APPS_DIR points the library outside the temp dir");
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(FsStore::new(dir.path().to_path_buf()));
+
+    // An installed app that takes anything as a source.
+    let base = clan_sdk::ClanFile::from_bytes(
+        clan_sdk::create(clan_sdk::CreateOptions {
+            title: "Advertising Studio".into(),
+            brief: "fixture".into(),
+            document_type: None,
+            no_render: false,
+            schema: None,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let template = clan_sdk::make_template(
+        &base,
+        clan_sdk::AppInfo {
+            name: "Advertising Studio".into(),
+            app_id: "ie.napkin.film".into(),
+            version: "0.1.0".into(),
+            icon: None,
+            entry: "human/index.html".into(),
+            schema: Some("agent/output-schema.json".into()),
+            prompt_templates: vec![],
+            data_seed: None,
+            spinoff: Some(clan_sdk::SpinoffSpec {
+                map: Some("brief".into()),
+                ..Default::default()
+            }),
+        },
+        clan_sdk::MakeTemplateOptions::default(),
+    )
+    .unwrap();
+    napkin_host::install_app(&*store, template).unwrap();
+
+    // A source document with something worth carrying.
+    let src = DocId::from(dir.path().join("source.clan"));
+    std::fs::write(
+        src.as_str(),
+        clan_sdk::create(clan_sdk::CreateOptions {
+            title: "Acme Brief".into(),
+            brief: "test brief".into(),
+            document_type: None,
+            no_render: false,
+            schema: None,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let session = Session::new(store.clone());
+    session.open(src).unwrap();
+    let f = Fixture { _dir: dir, session };
+
+    // Offered…
+    let targets = json(&get(&f, "/spinoff-targets"));
+    assert_eq!(targets[0]["app_id"], "ie.napkin.film");
+    assert_eq!(targets[0]["map"], "brief");
+
+    // …and taken. The shell is handed the new document to open.
+    let resp = post(
+        &f,
+        "/spinoff",
+        r#"{"app_id":"ie.napkin.film","title":"FORM"}"#,
+    );
+    assert_eq!(resp.status, 200, "{}", String::from_utf8_lossy(&resp.body));
+    let path = json(&resp)["path"].as_str().unwrap().to_string();
+    match resp.events.as_slice() {
+        [HostEvent::OpenDocument(opened)] => assert_eq!(*opened, path),
+        other => panic!("expected exactly one OpenDocument event, got {other:?}"),
+    }
+
+    // The branch is a real, separate file that knows both its parents.
+    let made = clan_sdk::ClanFile::open(&path).unwrap();
+    assert_eq!(made.manifest().title, "FORM");
+    assert_eq!(
+        made.manifest().app.as_ref().unwrap().app_id,
+        "ie.napkin.film"
+    );
+    assert_eq!(made.manifest().lineage.as_ref().unwrap().parents.len(), 2);
 }

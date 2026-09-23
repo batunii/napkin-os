@@ -50,6 +50,15 @@ export class NapkinHost {
     open(doc: string): any;
     setEditMode(active: boolean): void;
     setPreviewHtml(html: string): void;
+    /**
+     * Branch the open document into another app, carrying its data and its
+     * decisions, and open the result.
+     */
+    spinoffDocument(app_id: string, title?: string | null, map?: string | null): any;
+    /**
+     * Which installed apps will take the open document as a spin-off source.
+     */
+    spinoffTargets(): any;
     title(): string;
     /**
      * Take an uploaded `.clan` into the store and open it.
@@ -76,6 +85,8 @@ export interface InitOutput {
     readonly napkinhost_openHome: (a: number) => [number, number, number];
     readonly napkinhost_setEditMode: (a: number, b: number) => void;
     readonly napkinhost_setPreviewHtml: (a: number, b: number, c: number) => void;
+    readonly napkinhost_spinoffDocument: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number];
+    readonly napkinhost_spinoffTargets: (a: number) => any;
     readonly napkinhost_title: (a: number) => [number, number, number, number];
     readonly napkinhost_upload: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

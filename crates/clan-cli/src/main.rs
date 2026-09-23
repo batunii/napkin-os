@@ -24,10 +24,10 @@ use anyhow::{Context, Result};
 use clan_sdk::{
     assemble, create, export_html, export_static, fork_with_contexts, generate_keypair,
     instantiate, make_template, merge, pack, pack_html, patch_context, patch_data_namespaced,
-    patch_decision, patch_requirements, patch_state, render, sign_app, validate, AgentOutput,
-    AppInfo, ClanFile, CreateOptions, DecisionEntry, ExportOptions, InjectOptions,
+    patch_decision, patch_requirements, patch_state, render, sign_app, spinoff, validate,
+    AgentOutput, AppInfo, ClanFile, CreateOptions, DecisionEntry, ExportOptions, InjectOptions,
     InstantiateOptions, MakeTemplateOptions, MergeOptions, MergePolicies, PackOptions,
-    MERGE_REPORT_PATH,
+    SpinoffOptions, SpinoffSpec, MERGE_REPORT_PATH,
 };
 use clap::{Parser, Subcommand};
 
@@ -114,6 +114,27 @@ enum Commands {
         /// empty data layer.
         #[arg(long)]
         with_sample_data: bool,
+    },
+    /// Branch a finished document into a new document of another app, carrying
+    /// its data and its decisions across. A brief becomes a production; the
+    /// reasoning that produced the strategy stays legible and attributed.
+    Spinoff {
+        /// The source .clan — a working document, not a template.
+        #[arg(long = "from", value_name = "PATH")]
+        from: PathBuf,
+        /// The target template app .clan the new document is an instance of.
+        #[arg(long = "app", value_name = "PATH")]
+        app: PathBuf,
+        /// Output path for the new document.
+        #[arg(long, value_name = "PATH")]
+        output: PathBuf,
+        /// Title for the new document (defaults to the source's title).
+        #[arg(long)]
+        title: Option<String>,
+        /// Dotted key the source data is grafted under, overriding whatever the
+        /// target app declares in `app.spinoff.map`.
+        #[arg(long)]
+        map: Option<String>,
     },
     /// Manage template apps (Napkin Studio OS): scaffold, inspect, and list.
     App {
@@ -440,6 +461,16 @@ enum AppCommands {
         /// Output path for the template .clan file.
         #[arg(long, value_name = "PATH")]
         output: PathBuf,
+        /// Source app_id this app accepts a spin-off from. Repeatable; omit to
+        /// accept any source.
+        #[arg(long = "spinoff-accepts", value_name = "APP_ID")]
+        spinoff_accepts: Vec<String>,
+        /// Dotted key a spun-off source's data is grafted under, e.g. `brief`.
+        #[arg(long = "spinoff-map", value_name = "KEY")]
+        spinoff_map: Option<String>,
+        /// A `source.key=target.key` move applied after the graft. Repeatable.
+        #[arg(long = "spinoff-lift", value_name = "FROM=TO")]
+        spinoff_lift: Vec<String>,
     },
     /// Sign an app's code with a publisher private key, producing a trusted
     /// .clan the viewer will grant scoped host access.
@@ -588,6 +619,13 @@ fn main() -> Result<()> {
             doc_type,
             with_sample_data,
         } => cmd_new(template, output, title, doc_type, with_sample_data, &hints),
+        Commands::Spinoff {
+            from,
+            app,
+            output,
+            title,
+            map,
+        } => cmd_spinoff(from, app, output, title, map, &hints),
         Commands::App { command } => cmd_app(command, &hints),
         Commands::Keygen { key_id } => cmd_keygen(key_id),
         Commands::Merge {
@@ -1009,6 +1047,52 @@ fn cmd_new(
     Ok(())
 }
 
+fn cmd_spinoff(
+    from: PathBuf,
+    app_path: PathBuf,
+    output: PathBuf,
+    title: Option<String>,
+    map: Option<String>,
+    hints: &Hints,
+) -> Result<()> {
+    let source = open(&from)?;
+    let template = open(&app_path)?;
+    let carried = source
+        .read_entry("agent/decision-chain.yaml")
+        .ok()
+        .and_then(|b| clan_sdk::DecisionChain::from_yaml(&b).ok())
+        .map(|c| c.decisions.len())
+        .unwrap_or(0);
+
+    let bytes = spinoff(
+        &template,
+        &source,
+        SpinoffOptions {
+            title: title.unwrap_or_default(),
+            map,
+            instance_id: None,
+            source_uri: std::fs::canonicalize(&from)
+                .ok()
+                .map(|p| format!("file://{}", p.display())),
+        },
+    )
+    .context("failed to spin off")?;
+    std::fs::write(&output, &bytes)
+        .with_context(|| format!("could not write {}", output.display()))?;
+
+    let clan = ClanFile::from_bytes(bytes.clone())?;
+    eprintln!(
+        "created {} ({} bytes)  id={}  carried {carried} decision(s)",
+        output.display(),
+        bytes.len(),
+        clan.manifest().id
+    );
+    let mut lines = vec![format!("clan read agent {}", output.display())];
+    lines.extend(file_state_hints(&clan, &output, None));
+    hints.emit(&lines);
+    Ok(())
+}
+
 fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
     match command {
         AppCommands::Init {
@@ -1019,6 +1103,9 @@ fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
             icon,
             entry,
             output,
+            spinoff_accepts,
+            spinoff_map,
+            spinoff_lift,
         } => {
             // Source the file to promote: an existing authored .clan, or a
             // freshly scaffolded blank document.
@@ -1036,6 +1123,15 @@ fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
                     ClanFile::from_bytes(bytes)?
                 }
             };
+            let mut lift = std::collections::BTreeMap::new();
+            for rule in &spinoff_lift {
+                let (from, to) = rule.split_once('=').ok_or_else(|| {
+                    anyhow::anyhow!("--spinoff-lift expects FROM=TO, got {rule:?}")
+                })?;
+                lift.insert(from.trim().to_string(), to.trim().to_string());
+            }
+            let declares_spinoff =
+                !spinoff_accepts.is_empty() || spinoff_map.is_some() || !lift.is_empty();
             let app = AppInfo {
                 name: name.clone(),
                 app_id,
@@ -1045,6 +1141,12 @@ fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
                 schema: Some("agent/output-schema.json".into()),
                 prompt_templates: vec![],
                 data_seed: None,
+                spinoff: declares_spinoff.then(|| SpinoffSpec {
+                    accepts: spinoff_accepts,
+                    map: spinoff_map,
+                    lift,
+                    ..Default::default()
+                }),
             };
             let bytes = make_template(&source, app, MakeTemplateOptions::default())
                 .context("failed to make template")?;

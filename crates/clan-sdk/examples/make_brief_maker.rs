@@ -89,6 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
             data_seed: None,
+            spinoff: None,
         },
         MakeTemplateOptions::default(),
     )?;

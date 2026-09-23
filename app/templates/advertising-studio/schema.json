@@ -1,0 +1,742 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Advertising Studio Production Record",
+  "description": "The shared project and timeline contract. One project = one .clan. Decisions, revisions, approvals and receipts live here; media bytes live outside, addressed by sha256 in assets[].",
+  "type": "object",
+  "additionalProperties": true,
+
+  "definitions": {
+    "revision_ref": {
+      "type": "object",
+      "description": "Points at an exact revision of another record. What approvals and dependencies bind to.",
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "type": "string", "enum": ["script", "shot", "blocking", "take", "cue", "timeline", "format"] },
+        "id": { "type": "string" },
+        "revision": { "type": "string" },
+        "content_hash": { "type": "string", "description": "sha256 of the canonicalised record at that revision" }
+      },
+      "required": ["kind", "id", "revision"]
+    },
+
+    "media_properties": {
+      "type": "object",
+      "description": "Measured, never declared. Populated from the file itself.",
+      "additionalProperties": true,
+      "properties": {
+        "container": { "type": "string" },
+        "video_codec": { "type": "string" },
+        "audio_codec": { "type": "string" },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "frame_rate": { "type": "number" },
+        "duration_frames": { "type": "integer" },
+        "duration_s": { "type": "number" },
+        "sample_rate": { "type": "integer" },
+        "channels": { "type": "integer" },
+        "loudness_lufs": { "type": "number" },
+        "true_peak_db": { "type": "number" },
+        "streams": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "cost": {
+      "type": "object",
+      "description": "Three separate numbers. An unknown confirmed charge stays unknown — never inferred from the estimate.",
+      "additionalProperties": true,
+      "properties": {
+        "estimate": { "type": "number" },
+        "reserved": { "type": "number" },
+        "confirmed": { "type": "number" },
+        "currency": { "type": "string", "default": "EUR" },
+        "unknown": { "type": "boolean", "default": true }
+      }
+    },
+
+    "point": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "rotation_deg": { "type": "number" }
+      },
+      "required": ["x", "y"]
+    }
+  },
+
+  "properties": {
+    "project": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "client": { "type": "string" },
+        "brand": { "type": "string" },
+        "product": { "type": "string" },
+        "duration_s": { "type": "number", "default": 15 },
+        "frame_rate": { "type": "number", "default": 25, "description": "Declared once. All picture timing is frames at this rate; audio converts to samples from it." },
+        "channels": { "type": "array", "items": { "type": "string" } },
+        "budget_limit": { "type": "number" },
+        "currency": { "type": "string", "default": "EUR" },
+        "spent_confirmed": { "type": "number" },
+        "spent_reserved": { "type": "number" }
+      }
+    },
+
+    "stage": {
+      "type": "object",
+      "description": "Drives the project desk. next_action is one plain sentence naming one thing to do.",
+      "additionalProperties": true,
+      "properties": {
+        "current": { "type": "string", "enum": ["brief", "script", "storyboard", "blocking", "picture", "sound", "edit", "formats", "deliver"] },
+        "next_action": { "type": "string" },
+        "final_ready": { "type": "boolean", "default": false },
+        "blocked_by": { "type": "array", "items": { "type": "string" }, "description": "Human-readable reasons final_ready is false: mock assets, missing files, stale approvals." }
+      }
+    },
+
+    "brief": {
+      "type": "object",
+      "description": "Shape-compatible with the Brief Maker studio so a brief .clan can be forked into a production.",
+      "additionalProperties": true,
+      "properties": {
+        "source_clan": { "type": "string", "description": "Lineage: the Brief Maker document this came from, if any." },
+        "background": { "type": "string" },
+        "objectives": {
+          "type": "object", "additionalProperties": true,
+          "properties": {
+            "commercial": { "type": "string" },
+            "behavioural": { "type": "string" },
+            "attitudinal": { "type": "string" }
+          }
+        },
+        "audience": { "type": "string" },
+        "insight": { "type": "string" },
+        "single_minded_proposition": { "type": "string" },
+        "reasons_to_believe": { "type": "array", "items": { "type": "string" } },
+        "desired_response": {
+          "type": "object", "additionalProperties": true,
+          "properties": { "think": { "type": "string" }, "feel": { "type": "string" }, "do": { "type": "string" } }
+        },
+        "tone_and_world": { "type": "array", "items": { "type": "string" } },
+        "mandatories": { "type": "array", "items": { "type": "string" } },
+        "required_copy": { "type": "array", "items": { "type": "string" } },
+        "claims": { "type": "array", "items": { "type": "string" } },
+        "supplied_facts": { "type": "array", "items": { "type": "string" }, "description": "What the client actually gave us." },
+        "assumptions": { "type": "array", "items": { "type": "string" }, "description": "What we inferred. Kept separate from supplied facts on purpose." },
+        "missing": { "type": "array", "items": { "type": "string" } },
+        "revision": { "type": "string" }
+      }
+    },
+
+    "concepts": {
+      "type": "array",
+      "description": "Distinct routes. Rejected ones are kept with their reason — the record of why this film and not another.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "premise": { "type": "string" },
+          "hook": { "type": "string" },
+          "brand_role": { "type": "string" },
+          "intended_response": { "type": "string" },
+          "production_approach": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "description": "Only for research-based claims. Shown to the planner, never asserted without a source.",
+            "items": {
+              "type": "object", "additionalProperties": true,
+              "properties": { "claim": { "type": "string" }, "source": { "type": "string" } }
+            }
+          },
+          "status": { "type": "string", "enum": ["proposed", "selected", "rejected"] },
+          "rejected_reason": { "type": "string" },
+          "origin": { "type": "string", "enum": ["generated", "human"], "description": "Teams can enter their own idea without generating alternatives." }
+        },
+        "required": ["id"]
+      }
+    },
+    "selected_concept": { "type": "string" },
+
+    "script": {
+      "type": "object",
+      "description": "Append-only revisions. Beat IDs are stable across revisions — every shot, cue and approval hangs off them.",
+      "additionalProperties": true,
+      "properties": {
+        "current": { "type": "string" },
+        "revisions": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "parent": { "type": "string" },
+              "created_at": { "type": "string" },
+              "created_by": { "type": "string" },
+              "status": { "type": "string", "enum": ["draft", "in_review", "approved", "superseded"] },
+              "imported_text": { "type": "string", "description": "The client's own words, preserved verbatim. Proposed edits are marked, never applied over this." },
+              "beats": {
+                "type": "array",
+                "items": {
+                  "type": "object", "additionalProperties": true,
+                  "properties": {
+                    "id": { "type": "string", "description": "Stable across revisions." },
+                    "visual_action": { "type": "string" },
+                    "dialogue": { "type": "string" },
+                    "voiceover": { "type": "string" },
+                    "on_screen_text": { "type": "string" },
+                    "sound_intention": { "type": "string", "description": "Sound planning starts here so performance and timing shape the picture." },
+                    "duration_s": { "type": "number" },
+                    "roles": { "type": "array", "items": { "type": "string" }, "description": "reveal | demonstration | cta | mandatory | end_card" },
+                    "proposed_edit": { "type": "string", "description": "An agent's suggested rewrite, pending acceptance. Never overwrites the beat." }
+                  },
+                  "required": ["id"]
+                }
+              }
+            },
+            "required": ["id"]
+          }
+        }
+      }
+    },
+
+    "shots": {
+      "type": "array",
+      "description": "The editable shot board. Arbitrary count — there is no three-shot restriction.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "revision": { "type": "string" },
+          "order": { "type": "integer" },
+          "source_beat": { "type": "string" },
+          "script_revision": { "type": "string" },
+          "purpose": { "type": "string" },
+          "duration_s": { "type": "number" },
+          "subject": { "type": "string" },
+          "cast_assets": { "type": "array", "items": { "type": "string" }, "description": "sha256 refs into assets[]" },
+          "product_assets": { "type": "array", "items": { "type": "string" } },
+          "location": { "type": "string" },
+          "composition": { "type": "string" },
+          "lens": { "type": "string" },
+          "camera_move": { "type": "string" },
+          "action": { "type": "string" },
+          "performance": { "type": "string" },
+          "dialogue": { "type": "string" },
+          "sound_cues": { "type": "array", "items": { "type": "string" } },
+          "continuity": { "type": "array", "items": { "type": "string" } },
+          "method": {
+            "type": "string",
+            "enum": ["uploaded", "generated", "blender", "stills", "composite"],
+            "description": "How this shot will be made. The decision is recorded, not implied."
+          },
+          "method_reason": { "type": "string" },
+          "storyboard_frame": { "type": "string", "description": "sha256 of the board frame — travels in the container as a proxy." },
+          "selected_take": { "type": "string" },
+          "status": { "type": "string", "enum": ["planned", "blocked", "shooting", "needs_review", "locked"] }
+        },
+        "required": ["id"]
+      }
+    },
+
+    "blocking": {
+      "type": "array",
+      "description": "Where subjects, props and camera start, how they move, what they touch, where they end. More than a storyboard and more than a prompt. Versioned and editable; bound to a shot revision.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "shot_id": { "type": "string" },
+          "shot_revision": { "type": "string" },
+          "revision": { "type": "string" },
+          "required": { "type": "boolean", "default": true },
+          "not_required_reason": { "type": "string", "description": "A deliberate decision for existing footage or simple graphics. The stage stays visible." },
+          "floor_plan": {
+            "type": "object",
+            "description": "Top-down set ground plan. Units are metres. Origin is the upstage-left corner, so subject and camera positions lie within 0..set_width_m by 0..set_depth_m; y increases toward the camera side. Positions outside that box are off-set and will not draw.",
+            "additionalProperties": true,
+            "properties": {
+              "set_width_m": { "type": "number" },
+              "set_depth_m": { "type": "number" },
+              "subjects": {
+                "type": "array",
+                "items": {
+                  "type": "object", "additionalProperties": true,
+                  "properties": {
+                    "id": { "type": "string" },
+                    "label": { "type": "string" },
+                    "kind": { "type": "string", "enum": ["performer", "product", "prop", "set_piece"] },
+                    "start": { "$ref": "#/definitions/point" },
+                    "end": { "$ref": "#/definitions/point" },
+                    "path": { "type": "array", "items": { "$ref": "#/definitions/point" } }
+                  },
+                  "required": ["id"]
+                }
+              },
+              "camera": {
+                "type": "object", "additionalProperties": true,
+                "properties": {
+                  "start": { "$ref": "#/definitions/point" },
+                  "end": { "$ref": "#/definitions/point" },
+                  "path": { "type": "array", "items": { "$ref": "#/definitions/point" } },
+                  "height_m": { "type": "number" },
+                  "lens_mm": { "type": "number" },
+                  "move": { "type": "string" }
+                }
+              }
+            }
+          },
+          "eyelines": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "screen_direction": { "type": "string" },
+          "contact_points": {
+            "type": "array",
+            "description": "What touches what, and when. The thing generated video most often gets wrong.",
+            "items": {
+              "type": "object", "additionalProperties": true,
+              "properties": { "a": { "type": "string" }, "b": { "type": "string" }, "at_s": { "type": "number" }, "note": { "type": "string" } }
+            }
+          },
+          "forbidden_intersections": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": true,
+              "properties": { "a": { "type": "string" }, "b": { "type": "string" }, "note": { "type": "string" } }
+            }
+          },
+          "timing": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": true,
+              "properties": { "at_s": { "type": "number" }, "event": { "type": "string" } }
+            }
+          },
+          "frames": {
+            "type": "object", "additionalProperties": true,
+            "properties": { "start_asset": { "type": "string" }, "end_asset": { "type": "string" } }
+          },
+          "motion_preview": { "type": "string", "description": "sha256 of a low-cost preview — an animatic sweep is enough." },
+          "guidance_pack": { "type": "array", "items": { "type": "string" }, "description": "Depth, masks, camera track — exported when useful and supported." },
+          "provider_capabilities": {
+            "type": "object",
+            "description": "What the chosen adapter can ACTUALLY accept. Shown before submission. A prompt is never treated as a guarantee of physical control.",
+            "additionalProperties": true,
+            "properties": {
+              "provider": { "type": "string" },
+              "declared_at": { "type": "string" },
+              "accepted": { "type": "array", "items": { "type": "string" } },
+              "rejected": { "type": "array", "items": { "type": "string" }, "description": "Constraints the provider cannot enforce. Retained for review anyway." }
+            }
+          },
+          "status": { "type": "string", "enum": ["draft", "in_review", "approved", "superseded"] }
+        },
+        "required": ["id", "shot_id"]
+      }
+    },
+
+    "takes": {
+      "type": "array",
+      "description": "Every result, kept. Comparison and selection happen here; a take is never deleted to make room.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "shot_id": { "type": "string" },
+          "shot_revision": { "type": "string" },
+          "blocking_revision": { "type": "string" },
+          "kind": { "type": "string", "enum": ["uploaded", "rendered", "generated", "mock", "scratch"], "description": "Labelled everywhere it appears. mock and scratch block final-ready." },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "settings": { "type": "object", "additionalProperties": true },
+          "job_id": { "type": "string" },
+          "asset": { "type": "string", "description": "sha256 ref into assets[]" },
+          "media": { "$ref": "#/definitions/media_properties" },
+          "proxy": {
+            "type": "object", "additionalProperties": true,
+            "properties": { "poster": { "type": "string" }, "thumb_strip": { "type": "string" } }
+          },
+          "cost": { "$ref": "#/definitions/cost" },
+          "checks": {
+            "type": "object",
+            "description": "Technical and creative are separate. Decoding is not passing.",
+            "additionalProperties": true,
+            "properties": {
+              "decodes": { "type": "boolean" },
+              "duration_matches": { "type": "boolean" },
+              "identity": { "type": "string", "enum": ["pass", "fail", "unreviewed"] },
+              "product_shape": { "type": "string", "enum": ["pass", "fail", "unreviewed"] },
+              "action": { "type": "string", "enum": ["pass", "fail", "unreviewed"] },
+              "staging": { "type": "string", "enum": ["pass", "fail", "unreviewed"] },
+              "contact": { "type": "string", "enum": ["pass", "fail", "unreviewed"] },
+              "camera_intent": { "type": "string", "enum": ["pass", "fail", "unreviewed"] },
+              "continuity": { "type": "string", "enum": ["pass", "fail", "unreviewed"] }
+            }
+          },
+          "notes": { "type": "string" },
+          "selected": { "type": "boolean", "default": false },
+          "created_at": { "type": "string" }
+        },
+        "required": ["id", "shot_id"]
+      }
+    },
+
+    "audio": {
+      "type": "object",
+      "description": "Editable tracks and cues. Sources stay separate from any mixed output — changing a line regenerates that line only.",
+      "additionalProperties": true,
+      "properties": {
+        "casting": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": true,
+            "properties": {
+              "role": { "type": "string" },
+              "voice_id": { "type": "string" },
+              "provider": { "type": "string" },
+              "pronunciations": {
+                "type": "array",
+                "items": {
+                  "type": "object", "additionalProperties": true,
+                  "properties": { "word": { "type": "string" }, "say": { "type": "string" } }
+                }
+              },
+              "direction": { "type": "string" }
+            }
+          }
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "type": "string", "enum": ["dialogue", "voiceover", "music", "ambience", "fx"] },
+              "cues": {
+                "type": "array",
+                "items": {
+                  "type": "object", "additionalProperties": true,
+                  "properties": {
+                    "id": { "type": "string" },
+                    "beat_id": { "type": "string" },
+                    "shot_id": { "type": "string" },
+                    "text": { "type": "string", "description": "For voice cues: the exact line. Changing it invalidates this cue's audio and nothing else." },
+                    "asset": { "type": "string" },
+                    "alternates": { "type": "array", "items": { "type": "string" }, "description": "Other takes of this line, kept available." },
+                    "source_in_s": { "type": "number" },
+                    "source_out_s": { "type": "number" },
+                    "place_at_s": { "type": "number", "description": "Timeline placement. Deliberately separate from source in/out." },
+                    "gain_db": { "type": "number", "default": 0 },
+                    "fade_in_s": { "type": "number", "default": 0 },
+                    "fade_out_s": { "type": "number", "default": 0 },
+                    "duck_against": { "type": "array", "items": { "type": "string" } },
+                    "kind": { "type": "string", "enum": ["generated", "recorded", "library", "scratch"] },
+                    "rights": { "type": "string" },
+                    "status": { "type": "string", "enum": ["planned", "generated", "approved", "stale"] }
+                  },
+                  "required": ["id"]
+                }
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "targets": {
+          "type": "object", "additionalProperties": true,
+          "properties": { "loudness_lufs": { "type": "number", "default": -16 }, "true_peak_db": { "type": "number", "default": -1 } }
+        },
+        "measured": { "$ref": "#/definitions/media_properties" },
+        "listened_through": { "type": "boolean", "default": false, "description": "A human played it end to end. Required — measurement is not review." }
+      }
+    },
+
+    "timeline": {
+      "type": "object",
+      "description": "One timeline for picture, voice, music, effects, titles and captions. Preview and final render use the same specification.",
+      "additionalProperties": true,
+      "properties": {
+        "current": { "type": "string" },
+        "revisions": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "parent": { "type": "string" },
+              "created_at": { "type": "string" },
+              "created_by": { "type": "string" },
+              "from_proposal": { "type": "string", "description": "The natural-language instruction this revision came from, if any. Proposals are reviewed before they apply." },
+              "frame_rate": { "type": "number" },
+              "duration_frames": { "type": "integer" },
+              "tracks": {
+                "type": "array",
+                "items": {
+                  "type": "object", "additionalProperties": true,
+                  "properties": {
+                    "id": { "type": "string" },
+                    "kind": { "type": "string", "enum": ["picture", "dialogue", "voiceover", "music", "ambience", "fx", "titles", "captions"] },
+                    "clips": {
+                      "type": "array",
+                      "items": {
+                        "type": "object", "additionalProperties": true,
+                        "properties": {
+                          "id": { "type": "string" },
+                          "source_take": { "type": "string" },
+                          "source_cue": { "type": "string" },
+                          "source_in_frames": { "type": "integer" },
+                          "source_out_frames": { "type": "integer" },
+                          "at_frames": { "type": "integer" },
+                          "gain_db": { "type": "number" },
+                          "fade_in_frames": { "type": "integer" },
+                          "fade_out_frames": { "type": "integer" },
+                          "transition_in": { "type": "string" },
+                          "text": { "type": "string" },
+                          "style": { "type": "object", "additionalProperties": true }
+                        },
+                        "required": ["id"]
+                      }
+                    }
+                  },
+                  "required": ["id", "kind"]
+                }
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "proposals": {
+          "type": "array",
+          "description": "Natural-language edits awaiting review. Show affected clips and time range before applying; a rejected or stale proposal changes nothing.",
+          "items": {
+            "type": "object", "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "instruction": { "type": "string" },
+              "base_revision": { "type": "string" },
+              "affected_clips": { "type": "array", "items": { "type": "string" } },
+              "range_frames": { "type": "array", "items": { "type": "integer" } },
+              "status": { "type": "string", "enum": ["pending", "applied", "rejected", "stale"] }
+            }
+          }
+        }
+      }
+    },
+
+    "formats": {
+      "type": "array",
+      "description": "Separate delivery versions. Changing the canvas alone is not a version — framing and text placement are explicit per format.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "aspect": { "type": "string", "enum": ["16:9", "9:16", "1:1", "4:5", "2.39:1"] },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "timeline_revision": { "type": "string" },
+          "framing": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": true,
+              "properties": {
+                "clip_id": { "type": "string" },
+                "crop": { "type": "object", "additionalProperties": true, "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number" }, "h": { "type": "number" } } },
+                "scale": { "type": "number" }
+              }
+            }
+          },
+          "text_placement": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "caption_layout": { "type": "object", "additionalProperties": true },
+          "safe_areas": { "type": "object", "additionalProperties": true },
+          "checks": {
+            "type": "object", "additionalProperties": true,
+            "properties": {
+              "important_action_visible": { "type": "boolean" },
+              "cta_fits": { "type": "boolean" },
+              "required_copy_fits": { "type": "boolean" }
+            }
+          },
+          "status": { "type": "string", "enum": ["draft", "in_review", "approved", "superseded"] }
+        },
+        "required": ["id", "aspect"]
+      }
+    },
+
+    "jobs": {
+      "type": "array",
+      "description": "Durable background work. Survives reload and worker restart. `uncertain` is a real state and must be reconciled before another paid submission.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "op": { "type": "string" },
+          "input_hashes": { "type": "array", "items": { "type": "string" }, "description": "Also the duplicate-submission key." },
+          "provider": { "type": "string" },
+          "remote_id": { "type": "string", "description": "Saved on acceptance so the job can be resumed rather than resubmitted." },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "submitting", "submitted", "fetching", "validating", "completed", "failed", "cancelled", "uncertain"]
+          },
+          "uncertain_reason": { "type": "string", "description": "A request that may have been accepted with no ID recorded. Never auto-retried as a paid call." },
+          "cost": { "$ref": "#/definitions/cost" },
+          "outputs": { "type": "array", "items": { "type": "string" } },
+          "error": { "type": "string" },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" }
+        },
+        "required": ["id", "state"]
+      }
+    },
+
+    "assets": {
+      "type": "array",
+      "description": "The inventory. Every asset lives in some CLAN container; `container` names which tier holds the bytes, and `sha256` is how it is found on restore.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "sha256": { "type": "string" },
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["video", "audio", "image", "scene", "caption", "document"] },
+          "uri": { "type": "string", "description": "Resolution hint only. The sha256 is authoritative." },
+          "container": {
+            "type": "string",
+            "description": "Which container holds the bytes: `project` (this file), a vault id such as `shot-03.takes`, or `campaign`.",
+            "default": "project"
+          },
+          "stored": { "type": "boolean", "default": false, "description": "Written uncompressed, so the entry is byte-addressable and can be served by Range." },
+          "bytes": { "type": "integer" },
+          "media": { "$ref": "#/definitions/media_properties" },
+          "origin": { "type": "string", "enum": ["uploaded", "generated", "rendered", "library"] },
+          "job_id": { "type": "string" },
+          "rights": {
+            "type": "object", "additionalProperties": true,
+            "properties": { "owner": { "type": "string" }, "usage": { "type": "string" }, "expires": { "type": "string" } }
+          }
+        },
+        "required": ["sha256"]
+      }
+    },
+
+    "approvals": {
+      "type": "array",
+      "description": "Bound to an exact revision and content hash. A new revision requires the review again; old approvals stay as history.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "target": { "$ref": "#/definitions/revision_ref" },
+          "decision": { "type": "string", "enum": ["approved", "rejected", "changes_requested"] },
+          "reviewer": { "type": "string" },
+          "role": { "type": "string", "enum": ["creative_lead", "director", "producer", "editor", "sound", "reviewer"] },
+          "reasons": { "type": "string" },
+          "automated": { "type": "boolean", "default": false, "description": "An automated review advises. It never counts as human approval." },
+          "at": { "type": "string" }
+        },
+        "required": ["id", "target", "decision"]
+      }
+    },
+
+    "reviews": {
+      "type": "array",
+      "description": "Timecoded comments against an exact revision.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "target": { "$ref": "#/definitions/revision_ref" },
+          "at_frames": { "type": "integer" },
+          "comment": { "type": "string" },
+          "author": { "type": "string" },
+          "resolved": { "type": "boolean", "default": false },
+          "created_at": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+
+    "stale": {
+      "type": "array",
+      "description": "The dependency graph made visible. A rewritten line invalidates that line's audio and the edits that used it — and nothing else.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "target": { "$ref": "#/definitions/revision_ref" },
+          "caused_by": { "$ref": "#/definitions/revision_ref" },
+          "reason": { "type": "string" },
+          "marked_at": { "type": "string" }
+        }
+      }
+    },
+
+    "exports": {
+      "type": "array",
+      "description": "A progress bar completes only when the file exists, validates, and plays. Every export records exactly what made it.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "format_id": { "type": "string" },
+          "timeline_revision": { "type": "string" },
+          "profile": { "type": "string", "default": "review-h264" },
+          "settings": { "type": "object", "additionalProperties": true },
+          "source_hashes": { "type": "array", "items": { "type": "string" } },
+          "asset": { "type": "string" },
+          "measured": { "$ref": "#/definitions/media_properties" },
+          "validated": { "type": "boolean", "default": false },
+          "downloadable": { "type": "boolean", "default": false },
+          "created_at": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+
+    "brand": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "logo_asset": { "type": "string" },
+        "palette": { "type": "array", "items": { "type": "string" } },
+        "fonts": { "type": "array", "items": { "type": "string" } },
+        "end_card": { "type": "object", "additionalProperties": true },
+        "legal": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "containers": {
+      "type": "array",
+      "description": "The containers this production spans. Mirrors manifest.external[] and is what a restore resolves against.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "tier": { "type": "string", "enum": ["project", "takes", "campaign"] },
+          "shot_id": { "type": "string", "description": "For takes vaults: the shot whose media this holds." },
+          "uri": { "type": "string" },
+          "sha256": { "type": "string" },
+          "bytes": { "type": "integer" },
+          "asset_count": { "type": "integer" },
+          "present": { "type": "boolean", "default": true, "description": "False when a vault has not been resolved in this workspace. The project still opens; affected takes show as unavailable rather than missing." }
+        },
+        "required": ["id", "tier"]
+      }
+    },
+
+    "delivery_profiles": {
+      "type": "array",
+      "description": "The pilot ships one review profile. Broadcast, cinema, ProRes and platform masters are separately configured and verified — never assumed.",
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "container": { "type": "string", "default": "mp4" },
+          "video_codec": { "type": "string", "default": "h264" },
+          "audio_codec": { "type": "string", "default": "aac" },
+          "frame_rate": { "type": "number" },
+          "loudness_lufs": { "type": "number" },
+          "true_peak_db": { "type": "number" },
+          "verified": { "type": "boolean", "default": false }
+        }
+      }
+    }
+  }
+}

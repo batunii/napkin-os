@@ -166,6 +166,16 @@ impl Session {
         self.with(|l| Ok(l.clan.manifest().title.clone()))
     }
 
+    /// The open document's app id, when it is an instance of one. What decides
+    /// which apps will accept it as a spin-off source.
+    pub fn app_id(&self) -> Option<String> {
+        self.current
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|c| c.clan.manifest().app.as_ref().map(|a| a.app_id.clone()))
+    }
+
     // ── Opening ─────────────────────────────────────────────────────────────
 
     pub fn open(&self, id: DocId) -> HostResult<OpenResult> {

@@ -93,6 +93,16 @@ export default function App() {
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
 
+  // Branch the open document into another app. The source is untouched — this
+  // opens a new document that carries its data and its decisions.
+  const spinOff = useCallback(async (appId: string) => {
+    setLoading(true); setError(null)
+    try {
+      const result = await host.spinoffDocument(appId, null, null)
+      await runArtifact(result)
+    } catch (e) { setError(String(e)) } finally { setLoading(false) }
+  }, [runArtifact])
+
   // Save/export the open .clan. Shared by the toolbar Save As button and the
   // in-app "lock also saves" request. Reads the latest running app via a ref so
   // the once-registered event listener never goes stale.
@@ -193,7 +203,7 @@ export default function App() {
       )}
 
       {screen === 'app' && running ? (
-        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} onExport={exportCurrent} />
+        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} onExport={exportCurrent} onSpinoff={spinOff} />
       ) : home ? (
         // The home page is a CLAN file, rendered full-bleed with no doc chrome.
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>

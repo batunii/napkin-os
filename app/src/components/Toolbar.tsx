@@ -4,6 +4,7 @@
 
 import { NapkinLogo } from '../brand/NapkinMark'
 import ApiKeyButton from './ApiKeyButton'
+import ContinueIn from './ContinueIn'
 import ThemeToggle from './ThemeToggle'
 
 interface Props {
@@ -17,6 +18,9 @@ interface Props {
   onWorkspace: () => void
   onSave: () => void
   onExport: (kind: 'html' | 'pdf') => void
+  /** Identifies the open document, so "Continue in…" refetches when it changes. */
+  docPath: string
+  onSpinoff: (appId: string) => void
   agentPanelOpen: boolean
   sidebarOpen: boolean
   loading: boolean
@@ -54,7 +58,7 @@ const s: Record<string, React.CSSProperties> = {
 
 export default function Toolbar({
   title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onExport,
-  agentPanelOpen, sidebarOpen, loading, validation,
+  docPath, onSpinoff, agentPanelOpen, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
   return (
@@ -91,6 +95,7 @@ export default function Toolbar({
       <button style={s.btn} onClick={onSave} title="Save a copy of this .clan to share">💾 Save As</button>
       <button style={s.btn} onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">⬇ Export</button>
       <button style={s.btn} onClick={onWorkspace} title="Lineage & provenance">🧬 Lineage</button>
+      <ContinueIn key={docPath} docPath={docPath} onSpinoff={onSpinoff} />
       <button
         style={{ ...s.btn, ...(agentPanelOpen ? s.btnActive : {}) }}
         onClick={onToggleAgent}

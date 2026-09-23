@@ -1,0 +1,73 @@
+# Advertising Studio pipeline contract.
+# Travels verbatim into every instance (CLAN instantiation copies all members),
+# so any agent or backend continuing an Advertising Studio .clan knows the
+# pipeline it must speak.
+pipeline: napkin-production
+version: 1
+request_kind: agent            # short, synchronous work (text)
+job_kind: production           # long, durable work (picture, sound, render) — see `jobs` below
+endpoint_default: http://localhost:8787
+
+tasks:
+  develop_concepts:
+    sends: { brief: object, count: integer }
+    returns: 'bare JSON { "concepts": [...] } per schema.json; evidence[] required for any research-based claim'
+  draft_script:
+    sends: { brief: object, concept: object, duration_s: number }
+    returns: 'a script revision — beats with stable IDs, timed to duration_s'
+  break_down_shots:
+    sends: { script_revision: object, approved_beats: [string] }
+    returns: 'shots[] with source_beat set on every shot; method left unset for the director to decide'
+  propose_blocking:
+    sends: { shot: object, set_dimensions: object }
+    returns: 'a blocking recipe — floor_plan, contact_points, forbidden_intersections, timing'
+  propose_edit:
+    sends: { instruction: string, timeline_revision: object }
+    returns: >
+      a timeline PROPOSAL, never an applied revision: affected_clips, range_frames
+      and the resulting tracks. The app shows the diff; a human applies it.
+
+# Long work never runs inside a browser session or a short web request.
+jobs:
+  operations: [generate_video, render_blender, generate_voice, render_audio, render_format, measure_media]
+  states: [queued, submitting, submitted, fetching, validating, completed, failed, cancelled, uncertain]
+  contract:
+    submit: >
+      POST returns { job_id, remote_id? } BEFORE any provider work is awaited.
+      The remote_id is persisted on acceptance so a restarted worker resumes the
+      same job rather than paying for a second one.
+    dedupe_key: input_hashes — a repeated submission with the same key is refused, not queued
+    budget: >
+      reserve before submission, release on terminal state. estimate, reserved and
+      confirmed stay three separate numbers; an unknown charge stays unknown.
+    uncertain: >
+      a request that may have been accepted with no ID recorded. Reconciled by
+      querying the provider — never resolved by resubmitting.
+    poll: GET job state; the interface subscribes and reconnects after reload
+
+# Media lives in CLAN containers, tiered by write frequency rather than by size.
+# A container that is rewritten on every keystroke stays small; one that is
+# appended to a few times an hour can hold gigabytes.
+media:
+  tiers:
+    project:  # hot — rewritten on every patch-data
+      holds: [ledger, storyboard frames, floor plans, start/end frames, thumb strips, scratch audio, brand pack]
+      budget: keep under ~20 MB so a full rewrite stays imperceptible
+    takes:    # warm — one vault per shot, appended when a take lands
+      holds: [picture takes, voice takes, Blender scenes, guidance packs]
+      compression: stored, not deflated
+      why: >
+        media does not compress, and an uncompressed ZIP entry is byte-addressable:
+        clan://asset/<sha256> with a Range header maps to an offset in the container
+        and streams in place, with no extraction step.
+    campaign: # cold — written once per release
+      holds: [approved masters, caption files, timeline manifest, quality report, approval history]
+      note: three 15-second H.264 masters are ~15-25 MB total — this file plays on its own
+  addressing: sha256 everywhere; assets[].container names the tier holding the bytes
+  linking: manifest.external[] by id + sha256; lineage.parent_id back to the project
+  invariant: >
+    a take is never deleted to make room, and a render never silently substitutes
+    a different clip to succeed. Missing media is an error the human sees.
+
+errors: non-2xx status; the host strips error bodies. A 200 body must never
+  contain an `error` key. A provider failure must never become a mock success.

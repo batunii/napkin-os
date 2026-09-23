@@ -14,7 +14,14 @@
 //    rewrites that base to the frame's own token URL, so app HTML runs
 //    unmodified.
 
-import type { Host, HostEvents, InstalledApp, OpenResult, Unlisten } from './types'
+import type {
+  Host,
+  HostEvents,
+  InstalledApp,
+  OpenResult,
+  SpinoffTarget,
+  Unlisten,
+} from './types'
 
 interface SessionInfo {
   tenant: string
@@ -219,6 +226,15 @@ export const httpHost: Host = {
   listApps: () => json<InstalledApp[]>('/apps'),
   installApp: srcPath =>
     json<InstalledApp>(`/apps/from/${encodeURIComponent(srcPath)}`, { method: 'POST' }),
+
+  spinoffTargets: () => json<SpinoffTarget[]>(`/d/${requireDoc()}/spinoff-targets`),
+  spinoffDocument: async (appId, title, map) =>
+    adopt(
+      await json<OpenView>(
+        `/d/${requireDoc()}/spinoff`,
+        postJson({ app_id: appId, title, map }),
+      ),
+    ),
 
   saveClanTo: async () => {
     download(`${await base()}/d/${requireDoc()}/download`)

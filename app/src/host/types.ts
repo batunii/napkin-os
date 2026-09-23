@@ -57,6 +57,19 @@ export interface InstalledApp {
   icon?: string | null
 }
 
+/**
+ * An installed app that will take the open document as a spin-off source —
+ * what "Continue in…" offers. `map` is the dotted key the document's data will
+ * be grafted under, when the target app declares one.
+ */
+export interface SpinoffTarget {
+  app_id: string
+  name: string
+  version: string
+  icon?: string | null
+  map?: string | null
+}
+
 export interface RecentDoc {
   title: string
   path: string
@@ -138,6 +151,23 @@ export interface Host {
   // ── The app library ───────────────────────────────────────────────────────
   listApps(): Promise<InstalledApp[]>
   installApp(srcPath: string): Promise<InstalledApp>
+
+  // ── Branching one document into another app ───────────────────────────────
+  /**
+   * Which installed apps have declared they will take the open document as a
+   * spin-off source. Empty is a normal answer — it means nothing downstream is
+   * installed, not that anything failed.
+   */
+  spinoffTargets(): Promise<SpinoffTarget[]>
+  /**
+   * Branch the open document into `appId`, carrying its data and its decision
+   * chain, and open the result. `map` overrides the target app's declared graft.
+   */
+  spinoffDocument(
+    appId: string,
+    title: string | null,
+    map: string | null,
+  ): Promise<OpenResult>
 
   // ── Getting bytes out ─────────────────────────────────────────────────────
   saveClanTo(path: string): Promise<void>

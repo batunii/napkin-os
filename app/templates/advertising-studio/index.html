@@ -1,0 +1,2111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Advertising Studio</title>
+<style>
+  :root{
+    --bg:#0c0e13; --bg2:#15182a; --surface:#141823; --surface2:#191e2c; --border:#232b3b;
+    --text:#e7eaf3; --muted:#717c92; --faint:#4c5568;
+    --indigo:#6366f1; --teal:#2dd4cf; --accent:#6366f1; --accent2:#2dd4cf; --btnText:#fff;
+    --amber:#f5b53d; --ok:#34d399; --red:#f87171;
+    --ui:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+    --serif:'Iowan Old Style','Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;
+    --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
+  }
+  /* The shell pushes its colour scheme in (clan:colorscheme); we also style the
+     attribute directly so a light user never sees a dark flash first. */
+  html[data-color-scheme="light"]{
+    --bg:#f7f8fb; --bg2:#eef1f8; --surface:#ffffff; --surface2:#f3f5fa; --border:#dfe3ec;
+    --text:#171c2b; --muted:#5c6478; --faint:#9aa3b5;
+    --indigo:#4f46e5; --teal:#0d9488; --accent:#4f46e5; --accent2:#0d9488;
+    --amber:#b45309; --ok:#15803d; --red:#b91c1c;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  button,input,select,textarea{font:inherit;color:inherit}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+  .shell{display:grid;grid-template-columns:224px minmax(0,1fr) 336px;height:100vh;overflow:hidden}
+
+  /* ── rail ───────────────────────────────────────────────────────────── */
+  .rail{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;padding:18px 0 14px}
+  .brandline{padding:0 18px 16px;border-bottom:1px solid var(--border);margin-bottom:14px}
+  .mark{display:flex;align-items:center;gap:9px}
+  .glyph{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--indigo),var(--teal));position:relative;flex:none}
+  .glyph::after{content:"";position:absolute;inset:5px 4px auto 4px;height:2px;border-radius:2px;background:rgba(255,255,255,.85)}
+  .wordmark{font-weight:680;letter-spacing:-.03em;font-size:17px}
+  .brandsub{font-family:var(--mono);font-size:9px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);margin-top:7px;display:flex;align-items:center;gap:6px}
+  .brandsub .bullet{width:5px;height:5px;border-radius:50%;background:var(--accent2);flex:none}
+
+  .projcard{margin:0 12px 16px;padding:10px;border:1px solid var(--border);border-radius:11px;background:var(--surface2);display:flex;gap:10px;align-items:center}
+  .avatar{width:30px;height:30px;border-radius:8px;flex:none;background:linear-gradient(135deg,var(--indigo),var(--teal));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+  .projmeta{min-width:0}
+  .projmeta b{display:block;font-size:12.5px;font-weight:640;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .projmeta span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .railsec{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);padding:8px 18px 6px}
+  .rnav{display:flex;flex-direction:column;gap:1px;padding:0 8px}
+  .rstep{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;border:none;background:none;cursor:pointer;text-align:left;color:var(--muted);transition:.13s;width:100%}
+  .rstep:hover{background:var(--surface2);color:var(--text)}
+  .rstep.on{background:color-mix(in srgb,var(--indigo) 16%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 1.5px var(--indigo)}
+  .rstep .ico{width:16px;text-align:center;flex:none;font-size:13px;opacity:.9}
+  .rstep .nm{flex:1;font-size:13px;font-weight:560;letter-spacing:-.01em}
+  .rstep .num{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .rstep.on .num{color:var(--accent2)}
+  .rstep .warn{width:6px;height:6px;border-radius:50%;flex:none}
+  .railfoot{margin-top:auto;padding:14px 18px 0;border-top:1px solid var(--border)}
+  .tier{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);padding:3px 0}
+  .tier .dot{width:6px;height:6px;border-radius:50%;flex:none}
+
+  /* ── work ───────────────────────────────────────────────────────────── */
+  .work{overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+  .topbar{display:flex;align-items:center;gap:12px;padding:14px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);z-index:5}
+  .crumbs{font-size:12.5px;color:var(--muted)}
+  .crumbs b{color:var(--text);font-weight:600}
+  .spacer{flex:1}
+  .gate{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid var(--border);cursor:pointer;background:none}
+  .gate .dot{width:7px;height:7px;border-radius:50%;flex:none}
+
+  .stephead{padding:26px 26px 4px}
+  .stepno{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .stephead h1{font-size:29px;font-weight:690;letter-spacing:-.035em;line-height:1.1;margin:10px 0 6px;text-wrap:balance}
+  .stephead p{color:var(--muted);font-size:14px;max-width:62ch}
+  .nextaction{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:11px 14px;border-radius:11px;background:color-mix(in srgb,var(--indigo) 11%,var(--surface));border:1px solid color-mix(in srgb,var(--indigo) 32%,var(--border));font-size:13px}
+  .nextaction .na{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent2);padding-top:2px;flex:none}
+  .body{padding:22px 26px 80px;min-width:0}
+
+  /* ── generic bits ───────────────────────────────────────────────────── */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px}
+  .sechead{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--accent2);margin:26px 0 11px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .sechead:first-child{margin-top:0;padding-top:0;border-top:none}
+  .sechead .sh-r{margin-left:auto;color:var(--muted);letter-spacing:.04em;text-transform:none;font-weight:500}
+  .lab{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px}
+  .in,textarea.in,select.in{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:13px;outline:none;transition:.13s}
+  .in:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+  textarea.in{resize:vertical;min-height:60px;line-height:1.5}
+  .in::placeholder{color:var(--faint)}
+  .btn{background:none;border:1px solid var(--border);border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:550;cursor:pointer;transition:.13s;display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
+  .btn:disabled{opacity:.42;cursor:not-allowed}
+  .btn:disabled:hover{border-color:var(--border)}
+  .btn.pri{background:linear-gradient(120deg,var(--accent),var(--accent2));border:none;color:var(--btnText);font-weight:620}
+  .btn.pri:hover{filter:brightness(1.07)}
+  .btn.sm{padding:4px 9px;font-size:11.5px;border-radius:7px}
+  .btn.danger:hover{border-color:var(--red);color:var(--red)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .muted{color:var(--muted)}
+  .mono{font-family:var(--mono)}
+  .empty{border:1px dashed var(--border);border-radius:13px;padding:26px;text-align:center;color:var(--muted);font-size:13px}
+  .empty b{display:block;color:var(--text);font-size:14.5px;font-weight:620;margin-bottom:6px}
+
+  /* status: colour ALWAYS paired with a word */
+  .st{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--border);white-space:nowrap}
+  .st .dot{width:6px;height:6px;border-radius:50%;flex:none}
+  .st.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 38%,transparent);background:color-mix(in srgb,var(--ok) 11%,transparent)}
+  .st.ok .dot{background:var(--ok)}
+  .st.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,transparent);background:color-mix(in srgb,var(--amber) 11%,transparent)}
+  .st.warn .dot{background:var(--amber)}
+  .st.bad{color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,transparent);background:color-mix(in srgb,var(--red) 11%,transparent)}
+  .st.bad .dot{background:var(--red)}
+  .st.neutral{color:var(--muted)}
+  .st.neutral .dot{background:var(--faint)}
+  .st.info{color:var(--accent2);border-color:color-mix(in srgb,var(--accent2) 38%,transparent);background:color-mix(in srgb,var(--accent2) 10%,transparent)}
+  .st.info .dot{background:var(--accent2)}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);color:var(--muted)}
+  .pill.on{border-color:var(--accent);color:var(--text);background:color-mix(in srgb,var(--accent) 15%,transparent)}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px}
+  button.pill{cursor:pointer}
+
+  /* honest notice — used wherever the app cannot do the thing */
+  .notice{display:flex;gap:11px;align-items:flex-start;border:1px solid color-mix(in srgb,var(--amber) 34%,var(--border));background:color-mix(in srgb,var(--amber) 8%,transparent);border-radius:11px;padding:12px 14px;font-size:12.5px;color:var(--text);margin-bottom:16px}
+  .notice .ni{color:var(--amber);flex:none;font-weight:700}
+  .notice b{display:block;margin-bottom:3px}
+  .notice span{color:var(--muted)}
+
+  /* brief */
+  .facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .factcol{border:1px solid var(--border);border-radius:11px;padding:12px;background:var(--surface)}
+  .factcol h4{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+  .factcol ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+  .factcol li{font-size:12.5px;line-height:1.45;padding-left:13px;position:relative;color:var(--muted)}
+  .factcol li::before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%}
+  .fc-supplied li::before{background:var(--ok)} .fc-supplied h4{color:var(--ok)}
+  .fc-assumed li::before{background:var(--amber)} .fc-assumed h4{color:var(--amber)}
+  .fc-missing li::before{background:var(--faint)} .fc-missing h4{color:var(--muted)}
+  .fc-missing li{font-style:italic}
+  .hero{font-family:var(--serif);font-size:23px;line-height:1.35;letter-spacing:-.015em;text-wrap:balance}
+  .bfield{padding:11px 0;border-bottom:1px solid color-mix(in srgb,var(--border) 55%,transparent)}
+  .bfield p{font-size:13.5px;line-height:1.6}
+  .bfield ul{margin-top:4px;padding-left:17px;font-size:13.5px;line-height:1.6}
+
+  /* concepts */
+  .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:12px}
+  .concept{border:1px solid var(--border);border-radius:12px;padding:13px;background:var(--surface);cursor:pointer;transition:.14s}
+  .concept:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--border))}
+  .concept.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .concept.rej{opacity:.55}
+  .concept h4{font-size:14px;font-weight:640;letter-spacing:-.015em;margin:7px 0 5px}
+  .concept .prem{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+  /* script */
+  .revbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+  .beat{border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-bottom:9px;overflow:hidden}
+  .beat.sel{border-color:var(--accent)}
+  .beathead{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;background:var(--surface2)}
+  .beatid{font-family:var(--mono);font-size:10px;color:var(--accent2);background:color-mix(in srgb,var(--accent2) 12%,transparent);padding:2px 7px;border-radius:5px;flex:none}
+  .beathead .sum{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .beathead .dur{font-family:var(--mono);font-size:11.5px;color:var(--muted);flex:none}
+  .beatbody{padding:13px;display:none;flex-direction:column;gap:11px;border-top:1px solid var(--border)}
+  .beat.open .beatbody{display:flex}
+  .dbar{height:5px;border-radius:3px;background:var(--border);overflow:hidden;margin:9px 0 3px}
+  .dbar i{display:block;height:100%;background:linear-gradient(90deg,var(--indigo),var(--teal))}
+  .dbar i.over{background:var(--amber)}
+
+  /* storyboard */
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
+  .shot{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;cursor:pointer;transition:.14s}
+  .shot:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--border))}
+  .shot.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .frame{aspect-ratio:16/9;background:linear-gradient(150deg,var(--surface2),var(--bg));display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--border)}
+  .frame.r916{aspect-ratio:9/16} .frame.r11{aspect-ratio:1/1}
+  .frame img{width:100%;height:100%;object-fit:cover}
+  .frame .ph{color:var(--faint);font-size:11px;font-family:var(--mono);letter-spacing:.08em;text-align:center;padding:10px}
+  .frame .ord{position:absolute;top:7px;left:7px;font-family:var(--mono);font-size:10px;background:color-mix(in srgb,var(--bg) 82%,transparent);border:1px solid var(--border);padding:2px 6px;border-radius:5px}
+  .frame .dur{position:absolute;bottom:7px;right:7px;font-family:var(--mono);font-size:10px;background:color-mix(in srgb,var(--bg) 82%,transparent);border:1px solid var(--border);padding:2px 6px;border-radius:5px}
+  .shotmeta{padding:10px 11px}
+  .shotmeta .ttl{font-size:12.5px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .shotmeta .foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+  /* blocking */
+  .blockwrap{display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;align-items:start}
+  .shotlist{display:flex;flex-direction:column;gap:4px}
+  .slitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;border:1px solid transparent;background:none;cursor:pointer;text-align:left;width:100%;transition:.13s}
+  .slitem:hover{background:var(--surface2)}
+  .slitem.on{background:var(--surface);border-color:var(--accent)}
+  .slitem .n{font-family:var(--mono);font-size:10px;color:var(--faint);flex:none}
+  .slitem .t{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .plan{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:13px}
+  .planbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:11px}
+  svg.floor{width:100%;display:block;border-radius:10px;background:var(--bg);border:1px solid var(--border);touch-action:none;cursor:crosshair}
+  svg.floor .grid{stroke:var(--border);stroke-width:.012}
+  svg.floor .gridm{stroke:color-mix(in srgb,var(--border) 60%,transparent);stroke-width:.006}
+  svg.floor text{font-family:var(--mono);fill:var(--muted);paint-order:stroke}
+  .handle{cursor:grab}
+  .handle:active{cursor:grabbing}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:11px;color:var(--muted)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+
+  /* timeline strip */
+  .tl{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--surface)}
+  .tlrow{display:grid;grid-template-columns:96px minmax(0,1fr);border-bottom:1px solid var(--border);min-height:34px}
+  .tlrow:last-child{border-bottom:none}
+  .tlname{font-size:10.5px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px 10px;border-right:1px solid var(--border);background:var(--surface2);display:flex;align-items:center}
+  .tltrack{position:relative;padding:5px 0}
+  .clip{position:absolute;top:5px;bottom:5px;border-radius:5px;font-size:10px;padding:2px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center;border:1px solid}
+  .clip.picture{background:color-mix(in srgb,var(--indigo) 26%,var(--surface));border-color:var(--indigo)}
+  .clip.audio{background:color-mix(in srgb,var(--teal) 22%,var(--surface));border-color:var(--teal)}
+  .clip.text{background:color-mix(in srgb,var(--amber) 20%,var(--surface));border-color:var(--amber)}
+
+  /* deliver */
+  .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .fmt{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:13px}
+  .fmtprev{background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:11px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:var(--mono);font-size:10px;min-height:74px}
+  .checkline{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 0;color:var(--muted)}
+  .checkline input{accent-color:var(--accent);width:14px;height:14px}
+  .blockers{display:flex;flex-direction:column;gap:7px}
+  .blocker{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;padding:9px 11px;border-radius:9px;background:var(--surface2);border:1px solid var(--border)}
+  .blocker .bi{flex:none;color:var(--amber);font-weight:700}
+
+  /* ── inspector ──────────────────────────────────────────────────────── */
+  .insp{background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;padding:0 0 60px}
+  .insphead{padding:15px 16px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:3}
+  .insphead .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
+  .insphead h3{font-size:17px;font-weight:660;letter-spacing:-.025em;margin:6px 0 8px;text-wrap:balance}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);padding:0 16px;position:sticky;top:0;background:var(--surface)}
+  .tab{background:none;border:none;padding:10px 11px;font-size:12.5px;font-weight:560;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab:hover{color:var(--text)}
+  .tab.on{color:var(--text);border-bottom-color:var(--accent)}
+  .inspbody{padding:15px 16px;display:flex;flex-direction:column;gap:14px}
+  .idet{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:6px 0;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)}
+  .idet .dk{color:var(--muted);flex:none}
+  .idet .dv{text-align:right;word-break:break-word}
+  .listrow{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:7px 0;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)}
+  .listrow .x{margin-left:auto;cursor:pointer;color:var(--faint);flex:none}
+  .listrow .x:hover{color:var(--red)}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,14px);background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px 16px;font-size:13px;opacity:0;pointer-events:none;transition:.22s;box-shadow:0 18px 40px -20px rgba(0,0,0,.85);z-index:50;max-width:70vw}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media (max-width:1220px){ .shell{grid-template-columns:200px minmax(0,1fr) 300px} .facts{grid-template-columns:1fr} }
+  @media (max-width:1040px){ .row3{grid-template-columns:1fr} .blockwrap{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="brandline">
+      <div class="mark"><span class="glyph"></span><span class="wordmark">napkin</span></div>
+      <div class="brandsub"><span class="bullet"></span> Advertising Studio</div>
+    </div>
+    <div class="projcard" id="projcard"></div>
+    <div class="railsec">Your production</div>
+    <nav class="rnav" id="steps"></nav>
+    <div class="railsec">Campaign tools</div>
+    <nav class="rnav" id="tools"></nav>
+    <div class="railfoot" id="tiers"></div>
+  </aside>
+
+  <main class="work">
+    <header class="topbar">
+      <div class="crumbs">Campaigns / <b id="crumbName">Untitled</b></div>
+      <div class="spacer"></div>
+      <button class="gate" id="gate"></button>
+    </header>
+    <div class="stephead">
+      <div class="stepno" id="stepno"></div>
+      <h1 id="stepTitle"></h1>
+      <p id="stepSub"></p>
+      <div class="nextaction" id="nextAction"></div>
+    </div>
+    <div class="body" id="body"></div>
+  </main>
+
+  <aside class="insp" id="insp"></aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ── host contract ─────────────────────────────────────────────────────
+  var clanScheme = navigator.userAgent.indexOf('Windows') >= 0 ? 'http://clan.localhost' : 'clan://localhost';
+  function data(){ return (window.__CLAN__ && window.__CLAN__.data) || {}; }
+  function get(p){ return String(p).split('.').reduce(function(o,k){ return (o==null)?undefined:o[k]; }, data()); }
+  function arr(p){ var v = get(p); return Array.isArray(v) ? v : []; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function assetUrl(n){ return clanScheme + '/assets/' + n; }
+  function uid(p){ return p + '-' + Math.random().toString(36).slice(2,8); }
+  function nowISO(){ return new Date().toISOString(); }
+  function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._t); t._t=setTimeout(function(){ t.classList.remove('on'); },2600); }
+
+  // Array and object records are always written whole at their TOP-LEVEL key:
+  // the bridge's setByPath builds plain objects, so a path like "shots.0.purpose"
+  // would silently create {shots:{0:{...}}} and destroy the array.
+  function put(key, value, action, rationale){
+    if(!window.clan || !window.clan.patchData){ toast('No host bridge — changes are not being saved.'); return Promise.resolve(); }
+    return window.clan.patchData(key, value, {
+      actor:'human', action: action || ('edit ' + key), rationale: rationale || '', pinned:false
+    });
+  }
+  function putMany(obj, action, rationale){
+    if(!window.clan || !window.clan.patchData) return Promise.resolve();
+    return window.clan.patchData(obj, { actor:'human', action:action||'edit', rationale:rationale||'', pinned:false });
+  }
+
+  // ── steps ─────────────────────────────────────────────────────────────
+  // Seven, not six. Blocking earns its own step: acceptance criterion 2 wants a
+  // saved recipe, start/end frames and a motion preview, and a floor plan has
+  // nowhere to live inside a Media tab. The schema's nine stages fold in:
+  // `picture` sits in Storyboard's Media tab, `formats` sits in Deliver.
+  var STEPS = [
+    { id:'brief',      n:'01', ico:'▤', label:'Brief',      title:'Start from what was agreed.',        sub:'The brief and the decisions behind it, carried in from briefing.' },
+    { id:'script',     n:'02', ico:'≡', label:'Script',     title:'Write it to the second.',            sub:'Timed beats with stable IDs. Every shot and cue hangs off one.' },
+    { id:'storyboard', n:'03', ico:'⌗', label:'Storyboard', title:'See the story. Shape every shot.',   sub:'Direct each frame before you bring it to life.' },
+    { id:'blocking',   n:'04', ico:'⌖', label:'Blocking',   title:'Say where everything is, and goes.', sub:'A floor plan is a recipe a provider can be held to. A prompt is not.' },
+    { id:'sound',      n:'05', ico:'∥', label:'Sound',      title:'Plan the track, line by line.',      sub:'Cues, casting and timing — kept separate from any mix.' },
+    { id:'edit',       n:'06', ico:'✂', label:'Edit',       title:'One timeline, one specification.',   sub:'What previews and what renders must be the same thing.' },
+    { id:'deliver',    n:'07', ico:'⤓', label:'Deliver',    title:'Every format, checked and named.',   sub:'Nothing is final while a placeholder is still standing in.' }
+  ];
+
+  var view = { step:'brief', shot:null, tab:'direction', beat:null, subject:null, format:null, aspect:'16:9' };
+
+  // ── derived reads ─────────────────────────────────────────────────────
+  function scriptRevs(){ return arr('script.revisions'); }
+  function currentRev(){
+    var revs = scriptRevs(); if(!revs.length) return null;
+    var cur = get('script.current');
+    for(var i=0;i<revs.length;i++) if(revs[i].id===cur) return revs[i];
+    return revs[revs.length-1];
+  }
+  function beatsOf(rev){ return (rev && Array.isArray(rev.beats)) ? rev.beats : []; }
+  function shots(){ return arr('shots').slice().sort(function(a,b){ return (a.order||0)-(b.order||0); }); }
+  function shotById(id){ var s=arr('shots'); for(var i=0;i<s.length;i++) if(s[i].id===id) return s[i]; return null; }
+  function blockingFor(shotId){ var b=arr('blocking'); for(var i=0;i<b.length;i++) if(b[i].shot_id===shotId) return b[i]; return null; }
+  function takesFor(shotId){ return arr('takes').filter(function(t){ return t.shot_id===shotId; }); }
+  function assetByHash(h){ var a=arr('assets'); for(var i=0;i<a.length;i++) if(a[i].sha256===h) return a[i]; return null; }
+  function staleFor(kind,id){ return arr('stale').filter(function(s){ return s.target && s.target.kind===kind && s.target.id===id; }); }
+  function approvalsFor(kind,id,rev){
+    return arr('approvals').filter(function(a){
+      if(!a.target || a.target.kind!==kind || a.target.id!==id) return false;
+      return rev==null || a.target.revision===rev;
+    });
+  }
+  function isApproved(kind,id,rev){
+    return approvalsFor(kind,id,rev).some(function(a){ return a.decision==='approved' && !a.automated; });
+  }
+  function fps(){ var f = Number(get('project.frame_rate')); return (f && f>0) ? f : 25; }
+  function targetDur(){ var d = Number(get('project.duration_s')); return (d && d>0) ? d : 15; }
+
+  function fmtCost(c){
+    if(!c) return 'not recorded';
+    var cur = c.currency || get('project.currency') || 'EUR';
+    if(c.unknown !== false && c.confirmed == null) {
+      var est = (c.estimate!=null) ? (' · est ' + cur + ' ' + c.estimate) : '';
+      return 'unknown' + est;
+    }
+    return cur + ' ' + c.confirmed;
+  }
+
+  // ── writers that keep the non-negotiables ─────────────────────────────
+  // A change never overwrites an approved revision. Editing an approved script
+  // forks a draft whose parent is the approved one; the approval stays history.
+  function writeScript(mutate, action){
+    var rev = currentRev();
+    var revs = scriptRevs().slice();
+    if(!rev){
+      rev = { id: uid('rev'), created_at: nowISO(), created_by:'human', status:'draft', beats: [] };
+      revs.push(rev);
+      var m0 = JSON.parse(JSON.stringify(rev)); mutate(m0);
+      revs[revs.length-1] = m0;
+      return putMany({ script: { current: m0.id, revisions: revs, proposals: get('script.proposals') } }, action);
+    }
+    var locked = rev.status === 'approved' || rev.status === 'superseded';
+    var target;
+    if(locked){
+      target = JSON.parse(JSON.stringify(rev));
+      target.id = uid('rev');
+      target.parent = rev.id;
+      target.created_at = nowISO();
+      target.created_by = 'human';
+      target.status = 'draft';
+      revs.push(target);
+    } else {
+      var ix = revs.indexOf(rev);
+      target = JSON.parse(JSON.stringify(rev));
+      revs[ix] = target;
+    }
+    mutate(target);
+    var payload = { script: { current: target.id, revisions: revs } };
+    var props = get('script.proposals'); if(props) payload.script.proposals = props;
+    return putMany(payload, action, locked ? ('forked a draft from approved revision ' + rev.id) : '')
+      .then(function(){ if(locked) toast('Approved revision preserved — you are editing a new draft.'); });
+  }
+
+  // Marking, not deleting: a change flags what it invalidates and leaves it.
+  function markStale(target, causedBy, reason){
+    var list = arr('stale').slice();
+    var dup = list.some(function(s){
+      return s.target && s.target.kind===target.kind && s.target.id===target.id &&
+             s.caused_by && s.caused_by.id===causedBy.id && s.reason===reason;
+    });
+    if(dup) return Promise.resolve();
+    list.push({ target:target, caused_by:causedBy, reason:reason, marked_at: nowISO() });
+    return put('stale', list, 'mark stale', reason);
+  }
+  function clearStale(kind,id){
+    var list = arr('stale').filter(function(s){ return !(s.target && s.target.kind===kind && s.target.id===id); });
+    return put('stale', list, 'clear stale');
+  }
+
+  function approve(kind, id, revision, note){
+    var list = arr('approvals').slice();
+    list.push({
+      id: uid('appr'),
+      target: { kind:kind, id:id, revision:revision },
+      decision:'approved', reviewer:'creative lead', role:'creative_lead',
+      reasons: note || '', automated:false, at: nowISO()
+    });
+    return put('approvals', list, 'approve ' + kind, 'bound to revision ' + revision);
+  }
+
+  // ── the readiness gate — computed live, never written during render ────
+  function blockers(){
+    var out = [];
+    var rev = currentRev();
+    if(!rev) out.push('No script has been written yet.');
+    else if(!isApproved('script', rev.id, rev.id)) out.push('Script revision ' + rev.id + ' has not been approved by a human.');
+
+    var sh = shots();
+    if(!sh.length) out.push('No shots have been broken out of the script.');
+    sh.forEach(function(s){
+      var sel = arr('takes').filter(function(t){ return t.shot_id===s.id && t.selected; })[0];
+      if(!sel){ out.push('Shot ' + (s.order||'?') + ' has no selected take.'); return; }
+      if(sel.kind==='mock' || sel.kind==='scratch')
+        out.push('Shot ' + (s.order||'?') + ' is standing on a ' + sel.kind + ' take.');
+      var needsBlocking = (s.method==='generated' || s.method==='blender');
+      var b = blockingFor(s.id);
+      if(needsBlocking && (!b || (b.required !== false && b.status !== 'approved')))
+        out.push('Shot ' + (s.order||'?') + ' is ' + s.method + ' but its blocking is not approved.');
+    });
+
+    arr('audio.tracks').forEach(function(tr){
+      (tr.cues||[]).forEach(function(c){
+        if(c.kind==='scratch') out.push('Audio cue "' + (c.text || c.id) + '" is a scratch recording.');
+      });
+    });
+    if(arr('audio.tracks').length && get('audio.listened_through') !== true)
+      out.push('Nobody has listened to the track end to end.');
+
+    var st = arr('stale');
+    if(st.length) out.push(st.length + ' record' + (st.length===1?' is':'s are') + ' stale after a change upstream.');
+
+    var fm = arr('formats');
+    if(!fm.length) out.push('No delivery formats have been created.');
+    fm.forEach(function(f){
+      if(f.status !== 'approved') out.push('Format ' + f.aspect + ' has not been approved.');
+    });
+    var ex = arr('exports');
+    if(!ex.length) out.push('Nothing has been exported and validated.');
+    else if(!ex.some(function(e){ return e.validated && e.downloadable; }))
+      out.push('No export has passed validation and been confirmed downloadable.');
+    return out;
+  }
+
+  // ── rail ──────────────────────────────────────────────────────────────
+  function renderRail(){
+    var name = get('project.name') || get('brief.project_name') || 'Untitled campaign';
+    var client = get('project.client') || get('project.brand') || 'No client set';
+    document.getElementById('crumbName').textContent = name;
+    document.getElementById('projcard').innerHTML =
+      '<div class="avatar">' + esc(String(client).trim().charAt(0).toUpperCase() || '·') + '</div>' +
+      '<div class="projmeta"><b>' + esc(client) + '</b><span>' + esc(name) + '</span></div>';
+
+    var warnByStep = {
+      script: !currentRev(),
+      storyboard: !shots().length,
+      blocking: shots().some(function(s){
+        if(s.method!=='generated' && s.method!=='blender') return false;
+        var b = blockingFor(s.id); return !b || (b.required!==false && b.status!=='approved');
+      }),
+      sound: !arr('audio.tracks').length,
+      edit: !arr('timeline.revisions').length,
+      deliver: !arr('formats').length
+    };
+
+    document.getElementById('steps').innerHTML = STEPS.map(function(s){
+      var w = warnByStep[s.id] ? '<span class="warn" style="background:var(--amber)" title="needs attention"></span>' : '';
+      return '<button class="rstep' + (view.step===s.id?' on':'') + '" data-step="' + s.id + '">' +
+        '<span class="ico">' + s.ico + '</span><span class="nm">' + esc(s.label) + '</span>' +
+        w + '<span class="num">' + s.n + '</span></button>';
+    }).join('');
+    document.querySelectorAll('#steps .rstep').forEach(function(b){
+      b.addEventListener('click', function(){ view.step = b.getAttribute('data-step'); view.shot=null; view.subject=null; render(); });
+    });
+
+    var TOOLS = [
+      { id:'brand', ico:'◈', label:'Brand library' },
+      { id:'containers', ico:'▦', label:'Containers' },
+      { id:'approvals', ico:'✓', label:'Approvals & checks' }
+    ];
+    document.getElementById('tools').innerHTML = TOOLS.map(function(t){
+      return '<button class="rstep' + (view.step===t.id?' on':'') + '" data-step="' + t.id + '">' +
+        '<span class="ico">' + t.ico + '</span><span class="nm">' + esc(t.label) + '</span></button>';
+    }).join('');
+    document.querySelectorAll('#tools .rstep').forEach(function(b){
+      b.addEventListener('click', function(){ view.step = b.getAttribute('data-step'); render(); });
+    });
+
+    // Container tiers: what this production spans, and what is not resolved here.
+    var cs = arr('containers');
+    var rows = [{ tier:'project', label:'project.clan', present:true }];
+    cs.forEach(function(c){ if(c.tier!=='project') rows.push({ tier:c.tier, label:c.id, present:c.present!==false }); });
+    document.getElementById('tiers').innerHTML =
+      '<div class="railsec" style="padding:0 0 5px">Containers</div>' +
+      rows.map(function(r){
+        var col = r.present ? 'var(--ok)' : 'var(--faint)';
+        return '<div class="tier"><span class="dot" style="background:' + col + '"></span>' +
+               esc(r.label) + (r.present ? '' : ' <span style="color:var(--faint)">· not here</span>') + '</div>';
+      }).join('');
+  }
+
+  function renderGate(){
+    var bl = blockers();
+    var g = document.getElementById('gate');
+    if(!bl.length){
+      g.className = 'gate';
+      g.innerHTML = '<span class="dot" style="background:var(--ok)"></span><span style="color:var(--ok)">Final ready</span>';
+    } else {
+      g.className = 'gate';
+      g.innerHTML = '<span class="dot" style="background:var(--amber)"></span>' +
+        '<span style="color:var(--amber)">' + bl.length + ' blocking ' + (bl.length===1?'issue':'issues') + '</span>';
+    }
+    g.onclick = function(){ view.step='deliver'; render(); };
+  }
+
+  // ── head ──────────────────────────────────────────────────────────────
+  function renderHead(){
+    var i = -1; STEPS.forEach(function(s,ix){ if(s.id===view.step) i=ix; });
+    var head = document.getElementById('stepno');
+    var na = document.getElementById('nextAction');
+    if(i < 0){
+      var tool = { brand:['Brand library','The assets and rules every format has to respect.'],
+                   containers:['Containers','What this production spans, and what is resolved here.'],
+                   approvals:['Approvals & checks','Every approval binds one exact revision.'] }[view.step];
+      head.innerHTML = '<span>Campaign tools</span>';
+      document.getElementById('stepTitle').textContent = tool ? tool[0] : '';
+      document.getElementById('stepSub').textContent = tool ? tool[1] : '';
+      na.style.display = 'none';
+      return;
+    }
+    var s = STEPS[i];
+    head.innerHTML = '<span>⌗</span> <span>Step ' + s.n + ' of 07</span>';
+    document.getElementById('stepTitle').textContent = s.title;
+    document.getElementById('stepSub').textContent = s.sub;
+    var next = get('stage.next_action');
+    if(next){
+      na.style.display = 'flex';
+      na.innerHTML = '<span class="na">Next</span><span>' + esc(next) + '</span>';
+    } else { na.style.display = 'none'; }
+  }
+
+  // ── step: brief ───────────────────────────────────────────────────────
+  function briefField(label, value, hero){
+    if(value==null || String(value).trim()==='') return '';
+    return '<div class="bfield"><span class="lab">' + esc(label) + '</span>' +
+      (hero ? '<div class="hero">' + esc(value) + '</div>' : '<p>' + esc(value) + '</p>') + '</div>';
+  }
+  function briefList(label, list){
+    if(!Array.isArray(list) || !list.length) return '';
+    return '<div class="bfield"><span class="lab">' + esc(label) + '</span><ul>' +
+      list.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
+  }
+
+  function renderBrief(){
+    var b = get('brief') || {};
+    var hasBrief = Object.keys(b).some(function(k){
+      var v = b[k]; return v!=null && (Array.isArray(v) ? v.length : String(v).trim());
+    });
+    var h = '';
+
+    if(!hasBrief){
+      h += '<div class="empty"><b>No brief has been carried in yet.</b>' +
+        'A production normally begins as a spin-off from an approved brief — ' +
+        '<span class="mono">clan spinoff --from brief.clan --app advertising-studio.clan</span> — which lands the ' +
+        'strategy under <span class="mono">brief.*</span> and brings the reasoning behind it with it.</div>';
+      return h;
+    }
+
+    if(b.source_clan){
+      h += '<div class="notice"><span class="ni">↳</span><div><b>Carried in from a brief</b>' +
+        '<span>Source document <span class="mono">' + esc(b.source_clan) + '</span>. The decisions that produced this ' +
+        'strategy travelled with it and are pinned in this file’s history.</span></div></div>';
+    }
+
+    h += '<div class="sechead">The proposition</div>';
+    h += '<div class="card">' +
+      briefField('Single-minded proposition', b.single_minded_proposition, true) +
+      briefField('The insight', b.insight) +
+      briefField('Audience', b.audience) +
+      '</div>';
+
+    // Supplied vs assumed vs missing — kept visually distinct on purpose.
+    var sup = Array.isArray(b.supplied_facts) ? b.supplied_facts : [];
+    var asu = Array.isArray(b.assumptions) ? b.assumptions : [];
+    var mis = Array.isArray(b.missing) ? b.missing : [];
+    if(sup.length || asu.length || mis.length){
+      h += '<div class="sechead">What we actually know<span class="sh-r">Supplied facts are not assumptions, and neither is a gap.</span></div>';
+      h += '<div class="facts">' +
+        '<div class="factcol fc-supplied"><h4><span class="st ok" style="padding:2px 7px"><span class="dot"></span>Supplied</span></h4><ul>' +
+          (sup.length ? sup.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') : '<li>Nothing recorded.</li>') + '</ul></div>' +
+        '<div class="factcol fc-assumed"><h4><span class="st warn" style="padding:2px 7px"><span class="dot"></span>Assumed</span></h4><ul>' +
+          (asu.length ? asu.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') : '<li>Nothing recorded.</li>') + '</ul></div>' +
+        '<div class="factcol fc-missing"><h4><span class="st neutral" style="padding:2px 7px"><span class="dot"></span>Missing</span></h4><ul>' +
+          (mis.length ? mis.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') : '<li>Nothing outstanding.</li>') + '</ul></div>' +
+        '</div>';
+    }
+
+    h += '<div class="sechead">Objectives &amp; response</div><div class="card">';
+    var o = b.objectives || {};
+    h += briefField('Commercial', o.commercial) + briefField('Behavioural', o.behavioural) + briefField('Attitudinal', o.attitudinal);
+    var d = b.desired_response || {};
+    h += briefField('Think', d.think) + briefField('Feel', d.feel) + briefField('Do', d.do);
+    h += '</div>';
+
+    h += '<div class="sechead">The rest of the brief</div><div class="card">';
+    h += briefField('Background', b.background) +
+         briefList('Reasons to believe', b.reasons_to_believe) +
+         briefList('Tone &amp; world', b.tone_and_world) +
+         briefList('Mandatories', b.mandatories) +
+         briefList('Required copy', b.required_copy) +
+         briefList('Claims', b.claims);
+    h += '</div>';
+
+    // Concepts
+    var cs = arr('concepts');
+    h += '<div class="sechead">Concepts<span class="sh-r">Rejected routes are kept with their reason.</span></div>';
+    if(!cs.length){
+      h += '<div class="empty">No concepts have been developed. The agent can propose a small set of distinct routes from this brief; a team can also enter its own.</div>';
+    } else {
+      var sel = get('selected_concept');
+      h += '<div class="cgrid">' + cs.map(function(c){
+        var st = c.status==='selected' || c.id===sel
+          ? '<span class="st ok"><span class="dot"></span>Selected</span>'
+          : c.status==='rejected'
+            ? '<span class="st neutral"><span class="dot"></span>Rejected</span>'
+            : '<span class="st info"><span class="dot"></span>Proposed</span>';
+        var org = c.origin==='human' ? '<span class="pill">Team’s own</span>' : '';
+        return '<div class="concept' + (c.id===sel?' sel':'') + (c.status==='rejected'?' rej':'') + '" data-cid="' + esc(c.id) + '">' +
+          '<div class="pillrow">' + st + org + '</div>' +
+          '<h4>' + esc(c.title || c.id) + '</h4>' +
+          '<div class="prem">' + esc(c.premise || '') + '</div>' +
+          (c.rejected_reason ? '<div class="prem" style="margin-top:7px;color:var(--amber)">Rejected: ' + esc(c.rejected_reason) + '</div>' : '') +
+          '</div>';
+      }).join('') + '</div>';
+    }
+    return h;
+  }
+
+  function wireBrief(){
+    document.querySelectorAll('.concept').forEach(function(el){
+      el.addEventListener('click', function(){
+        var id = el.getAttribute('data-cid');
+        var cs = arr('concepts').map(function(c){
+          return Object.assign({}, c, { status: c.id===id ? 'selected' : (c.status==='selected' ? 'proposed' : c.status) });
+        });
+        putMany({ concepts: cs, selected_concept: id }, 'select concept', 'concept ' + id + ' chosen; alternatives kept')
+          .then(function(){ toast('Concept selected. Script development is unlocked.'); });
+      });
+    });
+  }
+
+  // ── step: script ──────────────────────────────────────────────────────
+  function renderScript(){
+    var rev = currentRev(), revs = scriptRevs();
+    var h = '';
+
+    if(!revs.length){
+      h += '<div class="empty"><b>No script yet.</b>Write the first beat, or let the agent draft one from the approved concept.' +
+        '<div style="margin-top:14px"><button class="btn pri" id="firstBeat">Write the first beat</button></div></div>';
+      return h;
+    }
+
+    var approved = isApproved('script', rev.id, rev.id);
+    h += '<div class="revbar">';
+    h += '<span class="lab" style="margin:0 4px 0 0">Revisions</span>';
+    revs.forEach(function(r){
+      var w = r.status==='approved' ? 'Approved' : r.status==='superseded' ? 'Superseded' : r.status==='in_review' ? 'In review' : 'Draft';
+      h += '<button class="pill' + (r.id===rev.id?' on':'') + '" data-rev="' + esc(r.id) + '">' +
+        '<span class="mono">' + esc(r.id) + '</span> · ' + w + '</button>';
+    });
+    h += '<span style="flex:1"></span>';
+    if(!approved) h += '<button class="btn" id="approveScript">Approve this revision</button>';
+    h += '</div>';
+
+    if(approved){
+      h += '<div class="notice"><span class="ni">✓</span><div><b>This revision is approved</b>' +
+        '<span>Editing anything below forks a new draft. The approval stays attached to ' +
+        '<span class="mono">' + esc(rev.id) + '</span> as history — it is never moved.</span></div></div>';
+    }
+
+    var beats = beatsOf(rev);
+    var total = beats.reduce(function(a,b){ return a + (Number(b.duration_s)||0); }, 0);
+    var tgt = targetDur();
+    var pct = Math.min(100, tgt ? (total/tgt*100) : 0);
+    h += '<div class="card" style="margin-bottom:16px">' +
+      '<div style="display:flex;align-items:baseline;gap:10px">' +
+        '<span class="lab" style="margin:0">Running time</span>' +
+        '<b class="mono" style="font-size:15px">' + total.toFixed(1) + 's</b>' +
+        '<span class="muted" style="font-size:12px">of ' + tgt + 's target</span>' +
+        '<span style="flex:1"></span>' +
+        (total > tgt ? '<span class="st warn"><span class="dot"></span>Over by ' + (total-tgt).toFixed(1) + 's</span>'
+         : total < tgt ? '<span class="st neutral"><span class="dot"></span>' + (tgt-total).toFixed(1) + 's to fill</span>'
+         : '<span class="st ok"><span class="dot"></span>On time</span>') +
+      '</div>' +
+      '<div class="dbar"><i class="' + (total>tgt?'over':'') + '" style="width:' + pct + '%"></i></div>' +
+    '</div>';
+
+    if(rev.imported_text){
+      h += '<details class="card" style="margin-bottom:14px"><summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">' +
+        'The client’s own words — preserved, never edited over</summary>' +
+        '<p style="margin-top:11px;white-space:pre-wrap;font-size:13px;line-height:1.6">' + esc(rev.imported_text) + '</p></details>';
+    }
+
+    if(!beats.length){
+      h += '<div class="empty">This revision has no beats yet.</div>';
+    }
+    beats.forEach(function(bt, i){
+      var open = view.beat === bt.id;
+      var roles = Array.isArray(bt.roles) ? bt.roles : [];
+      var dependents = arr('shots').filter(function(s){ return s.source_beat===bt.id; });
+      h += '<div class="beat' + (open?' open':'') + (open?' sel':'') + '" data-beat="' + esc(bt.id) + '">' +
+        '<div class="beathead" data-toggle="' + esc(bt.id) + '">' +
+          '<span class="beatid">' + esc(bt.id) + '</span>' +
+          '<span class="sum">' + esc(bt.visual_action || bt.voiceover || bt.dialogue || 'Untitled beat') + '</span>' +
+          (roles.length ? '<span class="pill">' + esc(roles.join(' · ')) + '</span>' : '') +
+          (dependents.length ? '<span class="pill">' + dependents.length + ' shot' + (dependents.length===1?'':'s') + '</span>' : '') +
+          '<span class="dur">' + (Number(bt.duration_s)||0) + 's</span>' +
+        '</div>' +
+        '<div class="beatbody">' +
+          '<div><span class="lab">Visual action</span><textarea class="in" data-f="visual_action" data-b="' + esc(bt.id) + '">' + esc(bt.visual_action||'') + '</textarea></div>' +
+          '<div class="row2">' +
+            '<div><span class="lab">Dialogue</span><textarea class="in" data-f="dialogue" data-b="' + esc(bt.id) + '">' + esc(bt.dialogue||'') + '</textarea></div>' +
+            '<div><span class="lab">Voiceover</span><textarea class="in" data-f="voiceover" data-b="' + esc(bt.id) + '">' + esc(bt.voiceover||'') + '</textarea></div>' +
+          '</div>' +
+          '<div class="row2">' +
+            '<div><span class="lab">On-screen text</span><input class="in" data-f="on_screen_text" data-b="' + esc(bt.id) + '" value="' + esc(bt.on_screen_text||'') + '" /></div>' +
+            '<div><span class="lab">Duration (seconds)</span><input class="in" type="number" step="0.1" min="0" data-f="duration_s" data-b="' + esc(bt.id) + '" value="' + (Number(bt.duration_s)||0) + '" /></div>' +
+          '</div>' +
+          '<div><span class="lab">Sound intention</span><input class="in" data-f="sound_intention" data-b="' + esc(bt.id) + '" placeholder="What this beat should sound like" value="' + esc(bt.sound_intention||'') + '" /></div>' +
+          '<div><span class="lab">Roles in the film</span><div class="pillrow">' +
+            ['reveal','demonstration','cta','mandatory','end_card'].map(function(r){
+              return '<button class="pill' + (roles.indexOf(r)>=0?' on':'') + '" data-role="' + r + '" data-b="' + esc(bt.id) + '">' + esc(r.replace('_',' ')) + '</button>';
+            }).join('') +
+          '</div></div>' +
+          (bt.proposed_edit
+            ? '<div class="notice" style="margin:0"><span class="ni">✎</span><div><b>Proposed rewrite</b><span>' + esc(bt.proposed_edit) + '</span>' +
+              '<div style="margin-top:9px;display:flex;gap:7px">' +
+              '<button class="btn sm" data-accept="' + esc(bt.id) + '">Accept into the beat</button>' +
+              '<button class="btn sm" data-dismiss="' + esc(bt.id) + '">Dismiss</button></div></div></div>'
+            : '') +
+          '<div style="display:flex;gap:7px;flex-wrap:wrap">' +
+            '<button class="btn sm" data-dup="' + esc(bt.id) + '">Duplicate</button>' +
+            (i>0 ? '<button class="btn sm" data-mv="up" data-b="' + esc(bt.id) + '">Move up</button>' : '') +
+            (i<beats.length-1 ? '<button class="btn sm" data-mv="down" data-b="' + esc(bt.id) + '">Move down</button>' : '') +
+            '<span style="flex:1"></span>' +
+            '<button class="btn sm danger" data-del="' + esc(bt.id) + '">Remove beat</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    });
+
+    h += '<div style="margin-top:14px"><button class="btn pri" id="addBeat">Add a beat</button></div>';
+    return h;
+  }
+
+  function beatMutator(id, fn){
+    return function(rv){
+      var bs = rv.beats || [];
+      for(var i=0;i<bs.length;i++) if(bs[i].id===id){ fn(bs[i], i, bs); return; }
+    };
+  }
+
+  function wireScript(){
+    var first = document.getElementById('firstBeat');
+    if(first) first.addEventListener('click', addBeat);
+    var add = document.getElementById('addBeat');
+    if(add) add.addEventListener('click', addBeat);
+
+    function addBeat(){
+      var id = uid('beat');
+      writeScript(function(rv){
+        rv.beats = rv.beats || [];
+        rv.beats.push({ id:id, visual_action:'', dialogue:'', voiceover:'', on_screen_text:'', sound_intention:'', duration_s:3, roles:[] });
+      }, 'add beat').then(function(){ view.beat = id; render(); });
+    }
+
+    document.querySelectorAll('[data-rev]').forEach(function(b){
+      b.addEventListener('click', function(){ put('script', Object.assign({}, get('script')||{}, { current: b.getAttribute('data-rev') }), 'switch revision').then(render); });
+    });
+    document.querySelectorAll('[data-toggle]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-toggle');
+        view.beat = (view.beat===id) ? null : id;
+        render();
+      });
+    });
+    document.querySelectorAll('.beatbody [data-f]').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var id = inp.getAttribute('data-b'), f = inp.getAttribute('data-f');
+        var v = (f==='duration_s') ? Number(inp.value) : inp.value;
+        writeScript(beatMutator(id, function(bt){ bt[f] = v; }), 'edit beat ' + id).then(function(){
+          arr('shots').filter(function(s){ return s.source_beat===id; }).forEach(function(s){
+            markStale({kind:'shot', id:s.id, revision:s.revision}, {kind:'script', id:id, revision:(currentRev()||{}).id},
+                      'the beat this shot covers was rewritten');
+          });
+        });
+      });
+    });
+    document.querySelectorAll('[data-role]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-b'), r = b.getAttribute('data-role');
+        writeScript(beatMutator(id, function(bt){
+          var rs = Array.isArray(bt.roles) ? bt.roles.slice() : [];
+          var ix = rs.indexOf(r); if(ix>=0) rs.splice(ix,1); else rs.push(r);
+          bt.roles = rs;
+        }), 'set beat roles');
+      });
+    });
+    document.querySelectorAll('[data-dup]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-dup'), nid = uid('beat');
+        writeScript(function(rv){
+          var bs = rv.beats||[];
+          for(var i=0;i<bs.length;i++) if(bs[i].id===id){
+            var c = JSON.parse(JSON.stringify(bs[i])); c.id = nid; bs.splice(i+1, 0, c); return;
+          }
+        }, 'duplicate beat');
+      });
+    });
+    document.querySelectorAll('[data-mv]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-b'), dir = b.getAttribute('data-mv')==='up' ? -1 : 1;
+        writeScript(function(rv){
+          var bs = rv.beats||[];
+          for(var i=0;i<bs.length;i++) if(bs[i].id===id){
+            var j = i + dir; if(j<0 || j>=bs.length) return;
+            var t = bs[i]; bs[i] = bs[j]; bs[j] = t; return;
+          }
+        }, 'reorder beats');
+      });
+    });
+    document.querySelectorAll('[data-del]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-del');
+        var dep = arr('shots').filter(function(s){ return s.source_beat===id; });
+        if(dep.length && !confirm(dep.length + ' shot(s) cover this beat. They will be marked stale, not deleted. Remove the beat?')) return;
+        writeScript(function(rv){
+          rv.beats = (rv.beats||[]).filter(function(x){ return x.id!==id; });
+        }, 'remove beat').then(function(){
+          dep.forEach(function(s){
+            markStale({kind:'shot', id:s.id, revision:s.revision}, {kind:'script', id:id, revision:(currentRev()||{}).id},
+                      'the beat this shot covered was removed');
+          });
+          view.beat = null; render();
+        });
+      });
+    });
+    document.querySelectorAll('[data-accept]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-accept');
+        writeScript(beatMutator(id, function(bt){ bt.visual_action = bt.proposed_edit; delete bt.proposed_edit; }), 'accept proposed rewrite');
+      });
+    });
+    document.querySelectorAll('[data-dismiss]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-dismiss');
+        writeScript(beatMutator(id, function(bt){ delete bt.proposed_edit; }), 'dismiss proposed rewrite');
+      });
+    });
+    var ap = document.getElementById('approveScript');
+    if(ap) ap.addEventListener('click', function(){
+      var rev = currentRev(); if(!rev) return;
+      var revs = scriptRevs().map(function(r){ return r.id===rev.id ? Object.assign({}, r, {status:'approved'}) : r; });
+      putMany({ script: Object.assign({}, get('script')||{}, { revisions: revs }) }, 'approve script revision')
+        .then(function(){ return approve('script', rev.id, rev.id, 'script approved for breakdown'); })
+        .then(function(){ toast('Revision ' + rev.id + ' approved. Editing it now forks a draft.'); });
+    });
+  }
+
+  // ── step: storyboard ──────────────────────────────────────────────────
+  var METHODS = [
+    ['uploaded','Uploaded footage'], ['generated','Generated video'], ['blender','Blender render'],
+    ['stills','Still-image treatment'], ['composite','Composite of several']
+  ];
+  function methodLabel(m){ for(var i=0;i<METHODS.length;i++) if(METHODS[i][0]===m) return METHODS[i][1]; return 'Not decided'; }
+
+  function renderStoryboard(){
+    var sh = shots(), rev = currentRev(), beats = beatsOf(rev);
+    var h = '';
+    var total = sh.reduce(function(a,s){ return a + (Number(s.duration_s)||0); }, 0);
+
+    h += '<div class="revbar">' +
+      '<span class="st ' + (Math.abs(total-targetDur())<0.05 ? 'ok' : 'neutral') + '"><span class="dot"></span>' +
+        total.toFixed(1) + 's across ' + sh.length + ' shot' + (sh.length===1?'':'s') + '</span>' +
+      '<span style="flex:1"></span><span class="lab" style="margin:0">Framing guide</span>';
+    ['16:9','9:16','1:1'].forEach(function(a){
+      h += '<button class="pill' + (view.aspect===a?' on':'') + '" data-aspect="' + a + '">' + a + '</button>';
+    });
+    h += '<button class="btn" id="addShot">Add shot</button></div>';
+
+    if(!beats.length){
+      h += '<div class="notice"><span class="ni">!</span><div><b>There is no script to break down</b>' +
+        '<span>A shot must name the beat it covers. Write the script first — shots added now would have nothing to point at.</span></div></div>';
+    }
+
+    if(!sh.length){
+      h += '<div class="empty"><b>No shots yet.</b>Break the approved beats into coverage. There is no limit on how many shots a beat can take.</div>';
+      return h;
+    }
+
+    var cls = view.aspect==='9:16' ? 'r916' : view.aspect==='1:1' ? 'r11' : '';
+    h += '<div class="shots">' + sh.map(function(s){
+      var st = staleFor('shot', s.id).length;
+      var frame = s.storyboard_frame ? assetByHash(s.storyboard_frame) : null;
+      var sel = takesFor(s.id).filter(function(t){ return t.selected; })[0];
+      var statusPill = st ? '<span class="st warn"><span class="dot"></span>Stale</span>'
+        : s.status==='locked' ? '<span class="st ok"><span class="dot"></span>Locked</span>'
+        : s.status==='needs_review' ? '<span class="st warn"><span class="dot"></span>Needs review</span>'
+        : s.status==='blocked' ? '<span class="st info"><span class="dot"></span>Blocked</span>'
+        : '<span class="st neutral"><span class="dot"></span>Planned</span>';
+      var takePill = sel
+        ? (sel.kind==='mock' || sel.kind==='scratch'
+            ? '<span class="st warn"><span class="dot"></span>' + esc(sel.kind) + ' take</span>'
+            : '<span class="st ok"><span class="dot"></span>Take selected</span>')
+        : '<span class="st neutral"><span class="dot"></span>No take</span>';
+      return '<div class="shot' + (view.shot===s.id?' sel':'') + '" data-shot="' + esc(s.id) + '">' +
+        '<div class="frame ' + cls + '">' +
+          (frame && frame.container==='project'
+            ? '<img src="' + esc(assetUrl(frame.name||'')) + '" alt="" />'
+            : '<div class="ph">' + (frame ? 'FRAME IN ' + esc(frame.container||'ANOTHER CONTAINER') : 'NO FRAME') + '</div>') +
+          '<span class="ord">' + (s.order||0) + '</span>' +
+          '<span class="dur">' + (Number(s.duration_s)||0) + 's</span>' +
+        '</div>' +
+        '<div class="shotmeta">' +
+          '<div class="ttl">' + esc(s.purpose || s.subject || s.action || 'Untitled shot') + '</div>' +
+          '<div class="foot">' + statusPill + takePill +
+            '<span class="pill">' + esc(methodLabel(s.method)) + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+    return h;
+  }
+
+  function writeShots(list, action, rationale){
+    return put('shots', list, action, rationale);
+  }
+  function updateShot(id, fn, action){
+    var list = arr('shots').map(function(s){
+      if(s.id!==id) return s;
+      var c = JSON.parse(JSON.stringify(s)); fn(c); return c;
+    });
+    return writeShots(list, action || 'edit shot');
+  }
+
+  function wireStoryboard(){
+    document.querySelectorAll('[data-aspect]').forEach(function(b){
+      b.addEventListener('click', function(){ view.aspect = b.getAttribute('data-aspect'); render(); });
+    });
+    document.querySelectorAll('[data-shot]').forEach(function(el){
+      el.addEventListener('click', function(){ view.shot = el.getAttribute('data-shot'); view.tab='direction'; render(); });
+    });
+    var a = document.getElementById('addShot');
+    if(a) a.addEventListener('click', function(){
+      var list = arr('shots').slice();
+      var id = uid('shot');
+      var rev = currentRev(); var beats = beatsOf(rev);
+      list.push({
+        id:id, revision:'r1', order: list.length+1,
+        source_beat: beats.length ? beats[Math.min(list.length, beats.length-1)].id : '',
+        script_revision: rev ? rev.id : '',
+        purpose:'', duration_s: 3, status:'planned'
+      });
+      writeShots(list, 'add shot').then(function(){ view.shot = id; view.tab='direction'; render(); });
+    });
+  }
+
+  // ── step: blocking ────────────────────────────────────────────────────
+  var SUBJ_KINDS = [['performer','Performer'],['product','Product'],['prop','Prop'],['set_piece','Set piece']];
+
+  function ensureBlocking(shotId){
+    var b = blockingFor(shotId);
+    if(b) return Promise.resolve(b);
+    var s = shotById(shotId);
+    var rec = {
+      id: uid('blk'), shot_id: shotId, shot_revision: s ? s.revision : '', revision:'b1',
+      required: true, status:'draft',
+      floor_plan: { set_width_m: 8, set_depth_m: 6, subjects: [], camera: { start:{x:4,y:5.2}, end:{x:4,y:3.6}, height_m:1.4, lens_mm:35, move:'' } },
+      contact_points: [], forbidden_intersections: [], timing: [], eyelines: []
+    };
+    var list = arr('blocking').slice(); list.push(rec);
+    return put('blocking', list, 'start blocking recipe').then(function(){ return rec; });
+  }
+  function updateBlocking(shotId, fn, action){
+    var list = arr('blocking').map(function(b){
+      if(b.shot_id!==shotId) return b;
+      var c = JSON.parse(JSON.stringify(b)); fn(c); return c;
+    });
+    return put('blocking', list, action || 'edit blocking');
+  }
+
+  function renderBlocking(){
+    var sh = shots();
+    if(!sh.length) return '<div class="empty"><b>Nothing to block.</b>Blocking describes a shot. Build the shot board first.</div>';
+    if(!view.shot || !shotById(view.shot)) view.shot = sh[0].id;
+
+    var h = '<div class="notice"><span class="ni">⌖</span><div><b>Blocking is a recipe, not a description</b>' +
+      '<span>Where subjects and camera start, how they move, what they touch, where they end. ' +
+      'A provider adapter must declare which of these it can actually accept — an undeclared control is unavailable, never granted.</span></div></div>';
+
+    h += '<div class="blockwrap"><div class="shotlist">' + sh.map(function(s){
+      var b = blockingFor(s.id);
+      var col = !b ? 'var(--faint)' : b.required===false ? 'var(--muted)' : b.status==='approved' ? 'var(--ok)' : 'var(--amber)';
+      return '<button class="slitem' + (view.shot===s.id?' on':'') + '" data-bshot="' + esc(s.id) + '">' +
+        '<span class="n">' + (s.order||0) + '</span>' +
+        '<span class="t">' + esc(s.purpose || s.subject || 'Shot ' + (s.order||0)) + '</span>' +
+        '<span class="warn" style="width:7px;height:7px;border-radius:50%;background:' + col + '"></span></button>';
+    }).join('') + '</div>';
+
+    var b = blockingFor(view.shot);
+    var s = shotById(view.shot);
+    if(!b){
+      h += '<div class="plan"><div class="empty" style="border:none;padding:14px">' +
+        '<b>No blocking recipe for this shot.</b>' +
+        (s && (s.method==='generated' || s.method==='blender')
+          ? 'This shot is ' + esc(methodLabel(s.method)).toLowerCase() + ', so it cannot be reviewed against a plan until one exists.'
+          : 'You can start a recipe, or record a deliberate decision that this shot does not need one.') +
+        '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center">' +
+        '<button class="btn pri" id="startBlocking">Start a floor plan</button>' +
+        '<button class="btn" id="skipBlocking">Blocking not required…</button></div></div></div></div>';
+      return h;
+    }
+
+    if(b.required === false){
+      h += '<div class="plan">' +
+        '<div class="st neutral" style="margin-bottom:11px"><span class="dot"></span>Blocking not required</div>' +
+        '<p class="muted" style="font-size:13px;margin-bottom:12px">' + esc(b.not_required_reason || 'No reason recorded.') + '</p>' +
+        '<button class="btn" id="reqBlocking">This shot does need blocking after all</button></div></div>';
+      return h;
+    }
+
+    var fp = b.floor_plan || {};
+    var W = Number(fp.set_width_m)||8, D = Number(fp.set_depth_m)||6;
+    var subs = Array.isArray(fp.subjects) ? fp.subjects : [];
+    var cam = fp.camera || {};
+
+    h += '<div class="plan">';
+    h += '<div class="planbar">';
+    h += '<span class="lab" style="margin:0">Set</span>' +
+      '<input class="in" id="setW" type="number" min="1" step="0.5" value="' + W + '" style="width:74px" title="width in metres" /> × ' +
+      '<input class="in" id="setD" type="number" min="1" step="0.5" value="' + D + '" style="width:74px" title="depth in metres" /> <span class="muted">m</span>';
+    h += '<span style="flex:1"></span>';
+    SUBJ_KINDS.forEach(function(k){ h += '<button class="btn sm" data-addsub="' + k[0] + '">+ ' + esc(k[1]) + '</button>'; });
+    h += '</div>';
+
+    // The floor plan. viewBox is in metres and the element's aspect-ratio is
+    // pinned to the set, so client→model conversion is a straight scale.
+    var pad = 0.4;
+    h += '<svg class="floor" viewBox="' + (-pad) + ' ' + (-pad) + ' ' + (W+pad*2) + ' ' + (D+pad*2) + '" ' +
+         'style="aspect-ratio:' + (W+pad*2) + '/' + (D+pad*2) + '" id="floor" data-w="' + W + '" data-d="' + D + '">';
+    for(var gx=0; gx<=Math.floor(W); gx++)
+      h += '<line class="' + (gx%5===0?'grid':'gridm') + '" x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + D + '" />';
+    for(var gy=0; gy<=Math.floor(D); gy++)
+      h += '<line class="' + (gy%5===0?'grid':'gridm') + '" x1="0" y1="' + gy + '" x2="' + W + '" y2="' + gy + '" />';
+    h += '<rect x="0" y="0" width="' + W + '" height="' + D + '" fill="none" stroke="var(--border)" stroke-width="0.03" />';
+    h += '<text x="0.1" y="-0.12" font-size="0.26">upstage</text>';
+    h += '<text x="0.1" y="' + (D+0.3) + '" font-size="0.26">camera side · ' + W + 'm × ' + D + 'm</text>';
+
+    // forbidden intersections, drawn under everything
+    (b.forbidden_intersections||[]).forEach(function(f){
+      var A = subs.filter(function(x){ return x.id===f.a; })[0], B2 = subs.filter(function(x){ return x.id===f.b; })[0];
+      if(!A||!B2||!A.start||!B2.start) return;
+      h += '<line x1="' + A.start.x + '" y1="' + A.start.y + '" x2="' + B2.start.x + '" y2="' + B2.start.y +
+           '" stroke="var(--red)" stroke-width="0.035" stroke-dasharray="0.14 0.1" opacity="0.75" />';
+    });
+    (b.contact_points||[]).forEach(function(c){
+      var A = subs.filter(function(x){ return x.id===c.a; })[0], B2 = subs.filter(function(x){ return x.id===c.b; })[0];
+      if(!A||!B2||!A.start||!B2.start) return;
+      var mx = (A.start.x+B2.start.x)/2, my = (A.start.y+B2.start.y)/2;
+      h += '<line x1="' + A.start.x + '" y1="' + A.start.y + '" x2="' + B2.start.x + '" y2="' + B2.start.y +
+           '" stroke="var(--amber)" stroke-width="0.03" opacity="0.7" />' +
+           '<circle cx="' + mx + '" cy="' + my + '" r="0.13" fill="var(--amber)" />' +
+           '<text x="' + (mx+0.2) + '" y="' + (my-0.14) + '" font-size="0.24" fill="var(--amber)">' + esc(c.at_s!=null ? c.at_s + 's' : 'contact') + '</text>';
+    });
+
+    // camera path + start/end
+    var cs = cam.start || {x:W/2,y:D-0.8}, ce = cam.end || cs;
+    var cpath = Array.isArray(cam.path) ? cam.path : [];
+    var camPts = [cs].concat(cpath, [ce]).map(function(p){ return p.x + ',' + p.y; }).join(' ');
+    h += '<polyline points="' + camPts + '" fill="none" stroke="var(--teal)" stroke-width="0.035" stroke-dasharray="0.1 0.08" />';
+    function wedge(p, other, solid){
+      var ang = Math.atan2((other.y - p.y), (other.x - p.x));
+      var L = 0.62, spread = 0.42;
+      var p1 = [p.x + Math.cos(ang-spread)*L, p.y + Math.sin(ang-spread)*L];
+      var p2 = [p.x + Math.cos(ang+spread)*L, p.y + Math.sin(ang+spread)*L];
+      return '<polygon points="' + p.x + ',' + p.y + ' ' + p1[0] + ',' + p1[1] + ' ' + p2[0] + ',' + p2[1] + '" ' +
+             'fill="' + (solid ? 'color-mix(in srgb, var(--teal) 34%, transparent)' : 'transparent') + '" stroke="var(--teal)" stroke-width="0.025" />';
+    }
+    // Facing: toward the first subject if there is one, else along the move.
+    var look = subs.length && subs[0].start ? subs[0].start : { x: cs.x, y: cs.y - 1 };
+    h += wedge(cs, look, true) + wedge(ce, look, false);
+    h += '<circle class="handle" data-h="cam-start" cx="' + cs.x + '" cy="' + cs.y + '" r="0.2" fill="var(--teal)" stroke="var(--bg)" stroke-width="0.04" />';
+    h += '<circle class="handle" data-h="cam-end" cx="' + ce.x + '" cy="' + ce.y + '" r="0.17" fill="none" stroke="var(--teal)" stroke-width="0.05" />';
+    h += '<text x="' + (cs.x+0.26) + '" y="' + (cs.y+0.1) + '" font-size="0.26" fill="var(--teal)">CAM ' + (cam.lens_mm||35) + 'mm</text>';
+
+    // subjects
+    subs.forEach(function(su){
+      var st = su.start || {x:W/2,y:D/2}, en = su.end || st;
+      var col = su.kind==='product' ? 'var(--amber)' : su.kind==='prop' ? 'var(--muted)' : su.kind==='set_piece' ? 'var(--faint)' : 'var(--indigo)';
+      var moved = (Math.abs(st.x-en.x) + Math.abs(st.y-en.y)) > 0.02;
+      var pth = Array.isArray(su.path) ? su.path : [];
+      if(moved){
+        var pts = [st].concat(pth, [en]).map(function(p){ return p.x + ',' + p.y; }).join(' ');
+        h += '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="0.03" stroke-dasharray="0.12 0.09" opacity="0.85" />';
+        h += '<circle class="handle" data-h="sub-end:' + esc(su.id) + '" cx="' + en.x + '" cy="' + en.y + '" r="0.19" fill="none" stroke="' + col + '" stroke-width="0.05" />';
+      }
+      var isSel = view.subject===su.id;
+      h += '<circle class="handle" data-h="sub-start:' + esc(su.id) + '" cx="' + st.x + '" cy="' + st.y + '" r="0.24" fill="' + col + '" ' +
+           'stroke="' + (isSel ? 'var(--text)' : 'var(--bg)') + '" stroke-width="' + (isSel ? 0.07 : 0.04) + '" />';
+      h += '<text x="' + (st.x+0.32) + '" y="' + (st.y+0.09) + '" font-size="0.27" fill="' + col + '">' + esc(su.label || su.id) + '</text>';
+      if(!moved)
+        h += '<circle class="handle" data-h="sub-end:' + esc(su.id) + '" cx="' + (st.x+0.5) + '" cy="' + st.y + '" r="0.12" fill="none" stroke="' + col + '" stroke-width="0.035" opacity="0.45" />';
+    });
+    h += '</svg>';
+
+    h += '<div class="legend">' +
+      '<span><i style="background:var(--indigo)"></i>Performer</span>' +
+      '<span><i style="background:var(--amber)"></i>Product</span>' +
+      '<span><i style="background:var(--muted)"></i>Prop</span>' +
+      '<span><i style="background:var(--teal)"></i>Camera · solid is start, hollow is end</span>' +
+      '<span><i style="background:var(--red)"></i>Must never intersect</span>' +
+      '</div>';
+
+    h += '<div class="row3" style="margin-top:13px">' +
+      '<div><span class="lab">Lens (mm)</span><input class="in" id="lensMm" type="number" min="8" step="1" value="' + (cam.lens_mm||35) + '" /></div>' +
+      '<div><span class="lab">Camera height (m)</span><input class="in" id="camH" type="number" min="0" step="0.1" value="' + (cam.height_m!=null?cam.height_m:1.4) + '" /></div>' +
+      '<div><span class="lab">Screen direction</span><input class="in" id="screenDir" value="' + esc(b.screen_direction||'') + '" placeholder="e.g. left to right" /></div>' +
+      '</div>';
+    h += '<div style="margin-top:11px"><span class="lab">Camera move</span>' +
+      '<input class="in" id="camMove" value="' + esc(cam.move||'') + '" placeholder="e.g. slow push-in, ending on the label" /></div>';
+    h += '<div style="margin-top:13px;display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn" id="addContact">Record a contact point</button>' +
+      '<button class="btn" id="addForbid">Record a forbidden intersection</button>' +
+      '<span style="flex:1"></span>' +
+      (b.status!=='approved' ? '<button class="btn pri" id="approveBlocking">Approve this recipe</button>'
+        : '<span class="st ok"><span class="dot"></span>Approved</span>') +
+      '</div>';
+    h += '</div></div>';
+    return h;
+  }
+
+  function wireBlocking(){
+    document.querySelectorAll('[data-bshot]').forEach(function(b){
+      b.addEventListener('click', function(){ view.shot = b.getAttribute('data-bshot'); view.subject=null; render(); });
+    });
+    var sb = document.getElementById('startBlocking');
+    if(sb) sb.addEventListener('click', function(){ ensureBlocking(view.shot).then(render); });
+    var kb = document.getElementById('skipBlocking');
+    if(kb) kb.addEventListener('click', function(){
+      var why = prompt('Why does this shot not need blocking? The stage stays visible either way.');
+      if(why==null) return;
+      ensureBlocking(view.shot).then(function(){
+        return updateBlocking(view.shot, function(x){ x.required=false; x.not_required_reason=why; }, 'record blocking not required');
+      }).then(render);
+    });
+    var rb = document.getElementById('reqBlocking');
+    if(rb) rb.addEventListener('click', function(){
+      updateBlocking(view.shot, function(x){ x.required=true; delete x.not_required_reason; }, 'blocking required after all').then(render);
+    });
+
+    document.querySelectorAll('[data-addsub]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var kind = btn.getAttribute('data-addsub');
+        var b = blockingFor(view.shot); if(!b) return;
+        var fp = b.floor_plan||{}, W = Number(fp.set_width_m)||8, D = Number(fp.set_depth_m)||6;
+        var n = (fp.subjects||[]).length;
+        var id = uid(kind.slice(0,3));
+        updateBlocking(view.shot, function(x){
+          x.floor_plan = x.floor_plan || {};
+          x.floor_plan.subjects = x.floor_plan.subjects || [];
+          var px = W/2 + ((n%3)-1)*1.2, py = D/2 + Math.floor(n/3)*0.9;
+          x.floor_plan.subjects.push({
+            id:id, kind:kind, label: kind.charAt(0).toUpperCase()+kind.slice(1).replace('_',' ') + ' ' + (n+1),
+            start:{x:+px.toFixed(2), y:+py.toFixed(2)}, end:{x:+px.toFixed(2), y:+py.toFixed(2)}, path:[]
+          });
+        }, 'add ' + kind + ' to floor plan').then(function(){ view.subject = id; render(); });
+      });
+    });
+
+    function num(id, apply, action){
+      var e = document.getElementById(id);
+      if(e) e.addEventListener('change', function(){ updateBlocking(view.shot, function(x){ apply(x, Number(e.value)); }, action); });
+    }
+    function txt(id, apply, action){
+      var e = document.getElementById(id);
+      if(e) e.addEventListener('change', function(){ updateBlocking(view.shot, function(x){ apply(x, e.value); }, action); });
+    }
+    num('setW', function(x,v){ x.floor_plan = x.floor_plan||{}; x.floor_plan.set_width_m = v; }, 'resize set');
+    num('setD', function(x,v){ x.floor_plan = x.floor_plan||{}; x.floor_plan.set_depth_m = v; }, 'resize set');
+    num('lensMm', function(x,v){ x.floor_plan = x.floor_plan||{}; x.floor_plan.camera = x.floor_plan.camera||{}; x.floor_plan.camera.lens_mm = v; }, 'set lens');
+    num('camH', function(x,v){ x.floor_plan = x.floor_plan||{}; x.floor_plan.camera = x.floor_plan.camera||{}; x.floor_plan.camera.height_m = v; }, 'set camera height');
+    txt('camMove', function(x,v){ x.floor_plan = x.floor_plan||{}; x.floor_plan.camera = x.floor_plan.camera||{}; x.floor_plan.camera.move = v; }, 'describe camera move');
+    txt('screenDir', function(x,v){ x.screen_direction = v; }, 'set screen direction');
+
+    var ac = document.getElementById('addContact');
+    if(ac) ac.addEventListener('click', function(){ pairPrompt('contact_points', true); });
+    var af = document.getElementById('addForbid');
+    if(af) af.addEventListener('click', function(){ pairPrompt('forbidden_intersections', false); });
+    function pairPrompt(key, withTime){
+      var b = blockingFor(view.shot); if(!b) return;
+      var subs = ((b.floor_plan||{}).subjects)||[];
+      var opts = subs.map(function(s,i){ return i + ': ' + (s.label||s.id); }).join('\n');
+      if(subs.length < 2){ toast('Add at least two subjects first.'); return; }
+      var a = prompt('First subject—\n' + opts); if(a==null) return;
+      var c = prompt('Second subject—\n' + opts); if(c==null) return;
+      var A = subs[Number(a)], C = subs[Number(c)];
+      if(!A || !C){ toast('That was not one of the listed subjects.'); return; }
+      var at = null;
+      if(withTime){ var t = prompt('At what time, in seconds into the shot?'); if(t!=null && t!=='') at = Number(t); }
+      var note = prompt('A note, if it helps a reviewer:') || '';
+      updateBlocking(view.shot, function(x){
+        x[key] = x[key] || [];
+        var rec = { a:A.id, b:C.id, note:note };
+        if(withTime && at!=null) rec.at_s = at;
+        x[key].push(rec);
+      }, 'record ' + key.replace('_',' ')).then(render);
+    }
+
+    var abn = document.getElementById('approveBlocking');
+    if(abn) abn.addEventListener('click', function(){
+      var b = blockingFor(view.shot); if(!b) return;
+      updateBlocking(view.shot, function(x){ x.status='approved'; }, 'approve blocking recipe')
+        .then(function(){ return approve('blocking', b.id, b.revision || 'b1', 'floor plan and constraints approved'); })
+        .then(function(){ toast('Blocking approved, bound to revision ' + (b.revision||'b1') + '.'); });
+    });
+
+    wireFloorDrag();
+  }
+
+  // Drag handles on the floor plan. Commit on pointerup so one drag is one
+  // attributed decision, not sixty.
+  function wireFloorDrag(){
+    var svg = document.getElementById('floor');
+    if(!svg) return;
+    var W = Number(svg.getAttribute('data-w')), D = Number(svg.getAttribute('data-d'));
+    var pad = 0.4, vbW = W + pad*2, vbD = D + pad*2;
+    var drag = null;
+
+    function toModel(ev){
+      var r = svg.getBoundingClientRect();
+      var x = (ev.clientX - r.left) / r.width * vbW - pad;
+      var y = (ev.clientY - r.top) / r.height * vbD - pad;
+      return { x: Math.max(0, Math.min(W, +x.toFixed(2))), y: Math.max(0, Math.min(D, +y.toFixed(2))) };
+    }
+
+    svg.querySelectorAll('.handle').forEach(function(el){
+      el.addEventListener('pointerdown', function(ev){
+        ev.preventDefault();
+        drag = { key: el.getAttribute('data-h'), el: el };
+        el.setPointerCapture(ev.pointerId);
+        var k = drag.key;
+        if(k.indexOf('sub-start:')===0){ view.subject = k.split(':')[1]; renderInspector(); }
+      });
+    });
+
+    svg.addEventListener('pointermove', function(ev){
+      if(!drag) return;
+      var p = toModel(ev);
+      // Move the SVG element directly while dragging; the data write happens once, on release.
+      drag.last = p;
+      if(drag.el.tagName === 'circle'){ drag.el.setAttribute('cx', p.x); drag.el.setAttribute('cy', p.y); }
+    });
+
+    function commit(){
+      if(!drag || !drag.last){ drag = null; return; }
+      var k = drag.key, p = drag.last;
+      drag = null;
+      updateBlocking(view.shot, function(x){
+        var fp = x.floor_plan = x.floor_plan || {};
+        if(k==='cam-start'){ fp.camera = fp.camera||{}; fp.camera.start = p; }
+        else if(k==='cam-end'){ fp.camera = fp.camera||{}; fp.camera.end = p; }
+        else {
+          var parts = k.split(':'), which = parts[0], id = parts[1];
+          (fp.subjects||[]).forEach(function(s){
+            if(s.id!==id) return;
+            if(which==='sub-start') s.start = p; else s.end = p;
+          });
+        }
+      }, 'reposition ' + k.replace(':',' ')).then(render);
+    }
+    svg.addEventListener('pointerup', commit);
+    svg.addEventListener('pointercancel', commit);
+  }
+
+  // ── step: sound ───────────────────────────────────────────────────────
+  function renderSound(){
+    var tracks = arr('audio.tracks');
+    var rev = currentRev(), beats = beatsOf(rev);
+    var h = '<div class="notice"><span class="ni">!</span><div><b>Nothing here generates or mixes audio</b>' +
+      '<span>This step plans the track: casting, cues, timing and intent. Generating a voice line, rendering an ' +
+      'arrangement and measuring loudness all need the production service. Sources stay separate from any mix.</span></div></div>';
+
+    h += '<div class="sechead">Targets<span class="sh-r">Measured against the delivery profile, once something exists to measure.</span></div>';
+    h += '<div class="card row3">' +
+      '<div><span class="lab">Loudness target (LUFS)</span><input class="in" id="lufs" type="number" step="0.5" value="' + (get('audio.targets.loudness_lufs') != null ? get('audio.targets.loudness_lufs') : -16) + '" /></div>' +
+      '<div><span class="lab">True peak ceiling (dB)</span><input class="in" id="tpk" type="number" step="0.1" value="' + (get('audio.targets.true_peak_db') != null ? get('audio.targets.true_peak_db') : -1) + '" /></div>' +
+      '<div><span class="lab">Measured</span><div style="padding-top:7px"><span class="st neutral"><span class="dot"></span>Not measured</span></div></div>' +
+      '</div>';
+
+    h += '<div class="sechead">Cues<span class="sh-r">A cue points at the beat it serves.</span></div>';
+    if(!tracks.length){
+      h += '<div class="empty"><b>No tracks yet.</b>Dialogue, voiceover, music, ambience and effects are separate tracks so a change to one does not disturb the others.' +
+        '<div style="margin-top:14px"><button class="btn pri" id="addTrack">Add a track</button></div></div>';
+    } else {
+      tracks.forEach(function(tr){
+        var cues = Array.isArray(tr.cues) ? tr.cues : [];
+        h += '<div class="card" style="margin-bottom:11px">' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+            '<span class="st info"><span class="dot"></span>' + esc((tr.kind||'track').replace('_',' ')) + '</span>' +
+            '<span class="mono muted" style="font-size:11px">' + esc(tr.id) + '</span>' +
+            '<span style="flex:1"></span>' +
+            '<button class="btn sm" data-addcue="' + esc(tr.id) + '">Add cue</button>' +
+          '</div>';
+        if(!cues.length) h += '<p class="muted" style="font-size:12.5px">No cues on this track.</p>';
+        cues.forEach(function(c){
+          var bad = c.kind==='scratch';
+          h += '<div class="listrow" style="align-items:center;flex-wrap:wrap">' +
+            '<span class="mono" style="font-size:10.5px;color:var(--accent2)">' + esc(c.id) + '</span>' +
+            '<span style="flex:1;min-width:140px">' + esc(c.text || '—') + '</span>' +
+            (c.beat_id ? '<span class="pill">beat ' + esc(c.beat_id) + '</span>' : '') +
+            '<span class="mono muted" style="font-size:11px">@' + (c.place_at_s!=null?c.place_at_s:0) + 's</span>' +
+            (bad ? '<span class="st warn"><span class="dot"></span>Scratch</span>'
+                 : '<span class="st ' + (c.status==='approved'?'ok':'neutral') + '"><span class="dot"></span>' + esc(c.status||'planned') + '</span>') +
+            '<span class="x" data-delcue="' + esc(tr.id) + '|' + esc(c.id) + '">×</span>' +
+          '</div>';
+        });
+        h += '</div>';
+      });
+      h += '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="addTrack">Add a track</button></div>';
+    }
+
+    h += '<div class="sechead">Final listen</div>';
+    var lt = get('audio.listened_through') === true;
+    h += '<div class="card"><label class="checkline" style="font-size:13px">' +
+      '<input type="checkbox" id="listened"' + (lt?' checked':'') + ' /> ' +
+      'A human has played the whole track through, start to finish.</label>' +
+      '<p class="muted" style="font-size:12px;margin-top:6px">Measurement is not review. This is required before anything is called final.</p></div>';
+
+    if(!beats.length) h += '';
+    return h;
+  }
+
+  function wireSound(){
+    function setAudio(fn, action){
+      var a = JSON.parse(JSON.stringify(get('audio') || {}));
+      fn(a);
+      return put('audio', a, action || 'edit audio');
+    }
+    var at = document.getElementById('addTrack');
+    if(at) at.addEventListener('click', function(){
+      var kind = prompt('Track kind — dialogue, voiceover, music, ambience or fx:', 'voiceover');
+      if(!kind) return;
+      kind = kind.trim().toLowerCase();
+      if(['dialogue','voiceover','music','ambience','fx'].indexOf(kind) < 0){ toast('That is not one of the five track kinds.'); return; }
+      setAudio(function(a){ a.tracks = a.tracks||[]; a.tracks.push({ id: uid('trk'), kind: kind, cues: [] }); }, 'add ' + kind + ' track').then(render);
+    });
+    document.querySelectorAll('[data-addcue]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var tid = b.getAttribute('data-addcue');
+        var text = prompt('The line, or a description of the cue:');
+        if(text==null) return;
+        var at2 = prompt('Place it at how many seconds in?', '0');
+        var beats = beatsOf(currentRev());
+        var beatId = '';
+        if(beats.length){
+          var pick = prompt('Which beat does it serve? Leave blank for none.\n' + beats.map(function(x,i){ return i + ': ' + x.id + ' — ' + (x.visual_action||'').slice(0,40); }).join('\n'));
+          if(pick!=null && pick!=='' && beats[Number(pick)]) beatId = beats[Number(pick)].id;
+        }
+        setAudio(function(a){
+          (a.tracks||[]).forEach(function(t){
+            if(t.id!==tid) return;
+            t.cues = t.cues||[];
+            t.cues.push({ id: uid('cue'), text:text, place_at_s: Number(at2)||0, beat_id: beatId, gain_db:0, status:'planned' });
+          });
+        }, 'add audio cue').then(render);
+      });
+    });
+    document.querySelectorAll('[data-delcue]').forEach(function(x){
+      x.addEventListener('click', function(){
+        var p = x.getAttribute('data-delcue').split('|');
+        setAudio(function(a){
+          (a.tracks||[]).forEach(function(t){ if(t.id===p[0]) t.cues = (t.cues||[]).filter(function(c){ return c.id!==p[1]; }); });
+        }, 'remove audio cue').then(render);
+      });
+    });
+    ['lufs','tpk'].forEach(function(id){
+      var e = document.getElementById(id);
+      if(e) e.addEventListener('change', function(){
+        setAudio(function(a){
+          a.targets = a.targets||{};
+          if(id==='lufs') a.targets.loudness_lufs = Number(e.value); else a.targets.true_peak_db = Number(e.value);
+        }, 'set audio target');
+      });
+    });
+    var l = document.getElementById('listened');
+    if(l) l.addEventListener('change', function(){
+      setAudio(function(a){ a.listened_through = l.checked; }, 'record final listen').then(render);
+    });
+  }
+
+  // ── step: edit ────────────────────────────────────────────────────────
+  function currentTimeline(){
+    var revs = arr('timeline.revisions'); if(!revs.length) return null;
+    var cur = get('timeline.current');
+    for(var i=0;i<revs.length;i++) if(revs[i].id===cur) return revs[i];
+    return revs[revs.length-1];
+  }
+
+  function renderEdit(){
+    var tl = currentTimeline();
+    var h = '<div class="notice"><span class="ni">!</span><div><b>This is the specification, not a renderer</b>' +
+      '<span>Preview and final render must come from the same timeline, and neither runs here — both need the ' +
+      'production service. What this step owns is the spec: which take, which range, where it sits.</span></div></div>';
+
+    if(!tl){
+      var sh = shots();
+      h += '<div class="empty"><b>No timeline yet.</b>' +
+        (sh.length ? 'An assembly can be laid out from the shot board in order — durations and selected takes, nothing invented.'
+                   : 'Build the shot board first; there is nothing to assemble.') +
+        (sh.length ? '<div style="margin-top:14px"><button class="btn pri" id="assemble">Assemble from storyboard</button></div>' : '') +
+        '</div>';
+      return h;
+    }
+
+    var revs = arr('timeline.revisions');
+    h += '<div class="revbar"><span class="lab" style="margin:0 4px 0 0">Revisions</span>';
+    revs.forEach(function(r){
+      h += '<button class="pill' + (r.id===tl.id?' on':'') + '" data-tlrev="' + esc(r.id) + '"><span class="mono">' + esc(r.id) + '</span></button>';
+    });
+    h += '<span style="flex:1"></span><button class="btn" id="assemble">Re-assemble from storyboard</button></div>';
+
+    var dur = Number(tl.duration_frames) || Math.round(targetDur() * fps());
+    h += '<div class="card" style="margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap">' +
+      '<div><span class="lab">Frame rate</span><b class="mono">' + (tl.frame_rate || fps()) + ' fps</b></div>' +
+      '<div><span class="lab">Duration</span><b class="mono">' + dur + ' frames · ' + (dur/(tl.frame_rate||fps())).toFixed(2) + 's</b></div>' +
+      '<div><span class="lab">Tracks</span><b class="mono">' + (tl.tracks||[]).length + '</b></div>' +
+      '</div>';
+
+    h += '<div class="tl">';
+    (tl.tracks||[]).forEach(function(tr){
+      var cls = tr.kind==='picture' ? 'picture' : (tr.kind==='titles'||tr.kind==='captions') ? 'text' : 'audio';
+      h += '<div class="tlrow"><div class="tlname">' + esc(tr.kind) + '</div><div class="tltrack">';
+      (tr.clips||[]).forEach(function(c){
+        var at = Number(c.at_frames)||0;
+        var len = Math.max(1, (Number(c.source_out_frames)||0) - (Number(c.source_in_frames)||0));
+        var left = dur ? (at/dur*100) : 0, w = dur ? (len/dur*100) : 0;
+        var label = c.text || c.source_take || c.source_cue || c.id;
+        h += '<div class="clip ' + cls + '" style="left:' + left + '%;width:' + Math.max(1.2, w) + '%" title="' + esc(label) + '">' + esc(label) + '</div>';
+      });
+      h += '</div></div>';
+    });
+    h += '</div>';
+
+    var props = arr('timeline.proposals').filter(function(p){ return p.status==='pending'; });
+    if(props.length){
+      h += '<div class="sechead">Proposed edits<span class="sh-r">Shown before they apply. A rejected one changes nothing.</span></div>';
+      props.forEach(function(p){
+        h += '<div class="card" style="margin-bottom:9px">' +
+          '<p style="font-size:13.5px;margin-bottom:8px">“' + esc(p.instruction) + '”</p>' +
+          '<div class="pillrow" style="margin-bottom:10px">' +
+            (Array.isArray(p.affected_clips) ? p.affected_clips.map(function(c){ return '<span class="pill">' + esc(c) + '</span>'; }).join('') : '') +
+            (Array.isArray(p.range_frames) && p.range_frames.length===2 ? '<span class="pill">frames ' + p.range_frames[0] + '–' + p.range_frames[1] + '</span>' : '') +
+          '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center">' +
+            '<button class="btn sm" data-rejprop="' + esc(p.id) + '">Reject</button>' +
+            '<span class="muted" style="font-size:12px">Applying an edit is the production service’s job — the proposal carries no resulting timeline to merge.</span>' +
+          '</div></div>';
+      });
+    }
+    return h;
+  }
+
+  function wireEdit(){
+    var a = document.getElementById('assemble');
+    if(a) a.addEventListener('click', function(){
+      var sh = shots(), f = fps(), at = 0;
+      var clips = sh.map(function(s){
+        var len = Math.max(1, Math.round((Number(s.duration_s)||0) * f));
+        var sel = takesFor(s.id).filter(function(t){ return t.selected; })[0];
+        var c = { id: uid('clip'), source_in_frames:0, source_out_frames: len, at_frames: at, text: (s.purpose || 'Shot ' + (s.order||0)) };
+        if(sel) c.source_take = sel.id;
+        at += len;
+        return c;
+      });
+      var revs = arr('timeline.revisions').slice();
+      var id = uid('tl');
+      revs.push({
+        id:id, parent: (currentTimeline()||{}).id, created_at: nowISO(), created_by:'human',
+        frame_rate: f, duration_frames: at,
+        tracks: [{ id: uid('trk'), kind:'picture', clips: clips }]
+      });
+      putMany({ timeline: Object.assign({}, get('timeline')||{}, { current:id, revisions:revs }) },
+        'assemble timeline from storyboard', 'picture laid out in shot order at the declared frame rate')
+        .then(function(){ toast('Assembled ' + clips.length + ' picture clips. Nothing was rendered.'); render(); });
+    });
+    document.querySelectorAll('[data-tlrev]').forEach(function(b){
+      b.addEventListener('click', function(){
+        putMany({ timeline: Object.assign({}, get('timeline')||{}, { current: b.getAttribute('data-tlrev') }) }, 'switch timeline revision').then(render);
+      });
+    });
+    document.querySelectorAll('[data-rejprop]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-rejprop');
+        var props = arr('timeline.proposals').map(function(p){ return p.id===id ? Object.assign({}, p, {status:'rejected'}) : p; });
+        putMany({ timeline: Object.assign({}, get('timeline')||{}, { proposals: props }) }, 'reject edit proposal').then(render);
+      });
+    });
+  }
+
+  // ── step: deliver ─────────────────────────────────────────────────────
+  var ASPECTS = { '16:9':[1920,1080], '9:16':[1080,1920], '1:1':[1080,1080] };
+
+  function renderDeliver(){
+    var h = '';
+    var bl = blockers();
+
+    h += '<div class="sechead">Final-ready<span class="sh-r">Computed from this file, every time you look.</span></div>';
+    if(!bl.length){
+      h += '<div class="card"><span class="st ok"><span class="dot"></span>Nothing is blocking delivery</span>' +
+        '<p class="muted" style="font-size:12.5px;margin-top:8px">Every shot has a real take, blocking is approved where it is needed, ' +
+        'the track has been listened to, and an export has validated.</p></div>';
+    } else {
+      h += '<div class="card"><div style="display:flex;align-items:center;gap:9px;margin-bottom:11px">' +
+        '<span class="st warn"><span class="dot"></span>' + bl.length + ' blocking ' + (bl.length===1?'issue':'issues') + '</span>' +
+        '<span class="muted" style="font-size:12px">A clearly-labelled review cut is still possible.</span></div>' +
+        '<div class="blockers">' + bl.map(function(x){
+          return '<div class="blocker"><span class="bi">!</span><span>' + esc(x) + '</span></div>';
+        }).join('') + '</div>' +
+        '<div style="margin-top:12px"><button class="btn" id="recordGate">Record this readiness check</button></div></div>';
+    }
+
+    h += '<div class="sechead">Formats<span class="sh-r">A vertical version is a new framing, not a new canvas.</span></div>';
+    var fm = arr('formats');
+    h += '<div class="fgrid">';
+    Object.keys(ASPECTS).forEach(function(a){
+      var f = fm.filter(function(x){ return x.aspect===a; })[0];
+      var dims = ASPECTS[a];
+      if(!f){
+        h += '<div class="fmt"><div class="fmtprev" style="aspect-ratio:' + a.replace(':','/') + '">' + a + '</div>' +
+          '<b style="font-size:13px">' + a + '</b>' +
+          '<p class="muted" style="font-size:12px;margin:5px 0 10px">' + dims[0] + '×' + dims[1] + ' · not created</p>' +
+          '<button class="btn sm" data-mkfmt="' + a + '">Create this format</button></div>';
+        return;
+      }
+      var ck = f.checks || {};
+      h += '<div class="fmt"><div class="fmtprev" style="aspect-ratio:' + a.replace(':','/') + '">' + a + '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:13px">' + a + '</b>' +
+        (f.status==='approved' ? '<span class="st ok"><span class="dot"></span>Approved</span>'
+          : '<span class="st neutral"><span class="dot"></span>' + esc(f.status||'draft') + '</span>') + '</div>' +
+        '<p class="muted" style="font-size:12px;margin:5px 0 8px">' + (f.width||dims[0]) + '×' + (f.height||dims[1]) + '</p>' +
+        '<label class="checkline"><input type="checkbox" data-ck="' + esc(f.id) + '|important_action_visible"' + (ck.important_action_visible?' checked':'') + ' /> Important action survives the crop</label>' +
+        '<label class="checkline"><input type="checkbox" data-ck="' + esc(f.id) + '|cta_fits"' + (ck.cta_fits?' checked':'') + ' /> CTA fits the frame</label>' +
+        '<label class="checkline"><input type="checkbox" data-ck="' + esc(f.id) + '|required_copy_fits"' + (ck.required_copy_fits?' checked':'') + ' /> Required copy fits</label>' +
+        (f.status!=='approved' ? '<button class="btn sm" style="margin-top:9px" data-apfmt="' + esc(f.id) + '">Approve format</button>' : '') +
+        '</div>';
+    });
+    h += '</div>';
+
+    h += '<div class="sechead">Exports</div>';
+    var ex = arr('exports');
+    if(!ex.length){
+      h += '<div class="empty">Nothing has been exported. Rendering an actual file needs the production service — ' +
+        'a progress bar here would be a lie, so there isn’t one.</div>';
+    } else {
+      h += '<div class="card">' + ex.map(function(e){
+        var st = (e.validated && e.downloadable) ? '<span class="st ok"><span class="dot"></span>Validated</span>'
+          : e.validated ? '<span class="st warn"><span class="dot"></span>Validated, not confirmed downloadable</span>'
+          : '<span class="st warn"><span class="dot"></span>Not validated</span>';
+        var m = e.measured || {};
+        return '<div class="listrow"><span class="mono" style="font-size:11px">' + esc(e.id) + '</span>' +
+          '<span style="flex:1">' + esc(e.format_id||'') + ' · ' + esc(e.profile||'') + '</span>' +
+          (m.duration_frames!=null ? '<span class="mono muted" style="font-size:11px">' + m.duration_frames + 'f</span>' : '') +
+          (m.loudness_lufs!=null ? '<span class="mono muted" style="font-size:11px">' + m.loudness_lufs + ' LUFS</span>' : '') +
+          st + '</div>';
+      }).join('') + '</div>';
+    }
+
+    var dp = arr('delivery_profiles');
+    if(dp.length){
+      h += '<div class="sechead">Delivery profiles<span class="sh-r">Unverified means nobody has proved a file against it.</span></div>';
+      h += '<div class="card">' + dp.map(function(p){
+        return '<div class="listrow"><b>' + esc(p.label||p.id) + '</b>' +
+          '<span class="muted">' + esc(p.container||'') + ' / ' + esc(p.video_codec||'') + ' / ' + esc(p.audio_codec||'') + '</span>' +
+          '<span style="flex:1"></span>' +
+          (p.verified ? '<span class="st ok"><span class="dot"></span>Verified</span>' : '<span class="st neutral"><span class="dot"></span>Unverified</span>') +
+          '</div>';
+      }).join('') + '</div>';
+    }
+    return h;
+  }
+
+  function wireDeliver(){
+    document.querySelectorAll('[data-mkfmt]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var a = b.getAttribute('data-mkfmt'), d = ASPECTS[a];
+        var list = arr('formats').slice();
+        list.push({ id: uid('fmt'), aspect:a, width:d[0], height:d[1],
+          timeline_revision: (currentTimeline()||{}).id || '', status:'draft', checks:{}, framing:[] });
+        put('formats', list, 'create format ' + a).then(render);
+      });
+    });
+    document.querySelectorAll('[data-ck]').forEach(function(c){
+      c.addEventListener('change', function(){
+        var p = c.getAttribute('data-ck').split('|');
+        var list = arr('formats').map(function(f){
+          if(f.id!==p[0]) return f;
+          var n = JSON.parse(JSON.stringify(f)); n.checks = n.checks||{}; n.checks[p[1]] = c.checked; return n;
+        });
+        put('formats', list, 'record format check');
+      });
+    });
+    document.querySelectorAll('[data-apfmt]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-apfmt');
+        var f = arr('formats').filter(function(x){ return x.id===id; })[0];
+        if(!f) return;
+        var ck = f.checks||{};
+        if(!ck.important_action_visible || !ck.cta_fits || !ck.required_copy_fits){
+          if(!confirm('Not every framing check is ticked. Approve anyway?')) return;
+        }
+        var list = arr('formats').map(function(x){ return x.id===id ? Object.assign({}, x, {status:'approved'}) : x; });
+        put('formats', list, 'approve format')
+          .then(function(){ return approve('format', id, f.timeline_revision || 'v1', 'framing reviewed in ' + f.aspect); })
+          .then(render);
+      });
+    });
+    var rg = document.getElementById('recordGate');
+    if(rg) rg.addEventListener('click', function(){
+      var bl = blockers();
+      putMany({ stage: Object.assign({}, get('stage')||{}, { final_ready: bl.length===0, blocked_by: bl }) },
+        'record readiness check', bl.length ? bl.length + ' issue(s) outstanding' : 'nothing outstanding')
+        .then(function(){ toast('Readiness recorded in the file.'); });
+    });
+  }
+
+  // ── campaign tools ────────────────────────────────────────────────────
+  function renderTools(){
+    if(view.step==='brand'){
+      var b = get('brand') || {};
+      var h = '<div class="card">';
+      h += '<div class="bfield"><span class="lab">Logo</span><p>' + (b.logo_asset ? esc(b.logo_asset) : '<span class="muted">Not supplied</span>') + '</p></div>';
+      h += '<div class="bfield"><span class="lab">Palette</span><div class="pillrow">' +
+        ((b.palette||[]).map(function(c){ return '<span class="pill"><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + esc(c) + '"></i>' + esc(c) + '</span>'; }).join('') || '<span class="muted">None recorded</span>') + '</div></div>';
+      h += '<div class="bfield"><span class="lab">Fonts</span><div class="pillrow">' +
+        ((b.fonts||[]).map(function(f){ return '<span class="pill">' + esc(f) + '</span>'; }).join('') || '<span class="muted">None recorded</span>') + '</div></div>';
+      h += '<div class="bfield"><span class="lab">Legal</span><ul>' +
+        ((b.legal||[]).map(function(l){ return '<li>' + esc(l) + '</li>'; }).join('') || '<li class="muted">Nothing recorded</li>') + '</ul></div>';
+      h += '</div>';
+      return h;
+    }
+    if(view.step==='containers'){
+      var cs = arr('containers'), as = arr('assets');
+      var h2 = '<div class="notice"><span class="ni">▦</span><div><b>A production spans several containers</b>' +
+        '<span>This file is the hot one. Take vaults are appended when a take lands; the campaign container is written once per ' +
+        'release. Everything is found by <span class="mono">sha256</span>, never by filename.</span></div></div>';
+      h2 += '<div class="card">';
+      h2 += '<div class="listrow"><b>project</b><span class="muted">this file — ledger, frames, floor plans, scratch audio</span>' +
+        '<span style="flex:1"></span><span class="st ok"><span class="dot"></span>Open</span></div>';
+      if(!cs.length) h2 += '<div class="listrow"><span class="muted">No other containers are referenced yet.</span></div>';
+      cs.forEach(function(c){
+        if(c.tier==='project') return;
+        h2 += '<div class="listrow"><b>' + esc(c.id) + '</b><span class="muted">' + esc(c.tier) + (c.shot_id ? ' · ' + esc(c.shot_id) : '') + '</span>' +
+          '<span style="flex:1"></span>' +
+          (c.present!==false ? '<span class="st ok"><span class="dot"></span>Resolved</span>'
+            : '<span class="st neutral"><span class="dot"></span>Not in this workspace</span>') + '</div>';
+      });
+      h2 += '</div>';
+      h2 += '<div class="sechead">Assets<span class="sh-r">' + as.length + ' recorded</span></div>';
+      h2 += '<div class="card">' + (as.length ? as.map(function(a){
+        return '<div class="listrow"><span class="mono" style="font-size:10.5px">' + esc(String(a.sha256||'').slice(0,12)) + '</span>' +
+          '<span style="flex:1">' + esc(a.name||'—') + '</span>' +
+          '<span class="pill">' + esc(a.kind||'?') + '</span>' +
+          '<span class="pill">' + esc(a.container||'project') + '</span>' +
+          (a.stored ? '<span class="pill">stored</span>' : '') + '</div>';
+      }).join('') : '<span class="muted">No assets recorded.</span>') + '</div>';
+      return h2;
+    }
+    // approvals
+    var ap = arr('approvals'), st = arr('stale'), jb = arr('jobs');
+    var h3 = '<div class="sechead">Approvals<span class="sh-r">Each one names an exact revision.</span></div><div class="card">';
+    h3 += ap.length ? ap.map(function(a){
+      return '<div class="listrow">' +
+        '<span class="st ' + (a.decision==='approved'?'ok':a.decision==='rejected'?'bad':'warn') + '"><span class="dot"></span>' + esc(a.decision) + '</span>' +
+        '<span style="flex:1">' + esc(a.target ? (a.target.kind + ' ' + a.target.id) : '?') + ' <span class="mono muted">@' + esc(a.target ? a.target.revision : '') + '</span></span>' +
+        '<span class="muted" style="font-size:11.5px">' + esc(a.reviewer||'') + (a.automated ? ' · advisory only' : '') + '</span></div>';
+    }).join('') : '<span class="muted">Nothing has been approved yet.</span>';
+    h3 += '</div>';
+
+    h3 += '<div class="sechead">Stale after a change<span class="sh-r">Marked, never deleted.</span></div><div class="card">';
+    h3 += st.length ? st.map(function(s){
+      return '<div class="listrow"><span class="st warn"><span class="dot"></span>Stale</span>' +
+        '<span style="flex:1">' + esc(s.target ? (s.target.kind + ' ' + s.target.id) : '?') + ' — ' + esc(s.reason||'') + '</span>' +
+        '<span class="x" data-clearstale="' + esc(s.target ? s.target.kind + '|' + s.target.id : '') + '" title="reviewed, no longer stale">✓</span></div>';
+    }).join('') : '<span class="muted">Nothing is stale.</span>';
+    h3 += '</div>';
+
+    h3 += '<div class="sechead">Jobs<span class="sh-r">An uncertain job is never retried as a paid call.</span></div><div class="card">';
+    h3 += jb.length ? jb.map(function(j){
+      var cls = j.state==='completed' ? 'ok' : (j.state==='failed'||j.state==='uncertain') ? 'bad' : 'info';
+      return '<div class="listrow"><span class="st ' + cls + '"><span class="dot"></span>' + esc(j.state) + '</span>' +
+        '<span style="flex:1">' + esc(j.op||'') + ' <span class="muted">' + esc(j.provider||'') + '</span></span>' +
+        '<span class="mono muted" style="font-size:11px">' + esc(fmtCost(j.cost)) + '</span></div>';
+    }).join('') : '<span class="muted">No jobs have been submitted from this file.</span>';
+    h3 += '</div>';
+    return h3;
+  }
+
+  function wireTools(){
+    document.querySelectorAll('[data-clearstale]').forEach(function(x){
+      x.addEventListener('click', function(){
+        var p = x.getAttribute('data-clearstale').split('|');
+        if(p.length===2) clearStale(p[0], p[1]).then(render);
+      });
+    });
+  }
+
+  // ── inspector ─────────────────────────────────────────────────────────
+  function det(k, v){ return '<div class="idet"><span class="dk">' + esc(k) + '</span><span class="dv">' + (v||'<span class="muted">—</span>') + '</span></div>'; }
+
+  function renderInspector(){
+    var el = document.getElementById('insp');
+    if(view.step==='storyboard' || view.step==='brief'){ el.innerHTML = inspShot(); wireInspShot(); return; }
+    if(view.step==='blocking'){ el.innerHTML = inspBlocking(); wireInspBlocking(); return; }
+    if(view.step==='script'){ el.innerHTML = inspBeat(); return; }
+    el.innerHTML = inspGeneric();
+  }
+
+  function inspGeneric(){
+    var p = get('project') || {};
+    var h = '<div class="insphead"><div class="k">This production</div><h3>' + esc(p.name || 'Untitled') + '</h3>' +
+      '<div class="pillrow"><span class="pill">' + (p.duration_s||targetDur()) + 's</span><span class="pill">' + fps() + ' fps</span></div></div>';
+    h += '<div class="inspbody">';
+    h += det('Client', esc(p.client||'')) + det('Brand', esc(p.brand||'')) + det('Product', esc(p.product||''));
+    h += det('Budget limit', p.budget_limit!=null ? esc((p.currency||'EUR') + ' ' + p.budget_limit) : '');
+    h += det('Confirmed spend', p.spent_confirmed!=null ? esc((p.currency||'EUR') + ' ' + p.spent_confirmed) : '<span class="muted">unknown</span>');
+    h += det('Reserved', p.spent_reserved!=null ? esc((p.currency||'EUR') + ' ' + p.spent_reserved) : '<span class="muted">none</span>');
+    h += det('Channels', (p.channels||[]).join(', '));
+    h += '</div>';
+    return h;
+  }
+
+  function inspBeat(){
+    var rev = currentRev();
+    if(!rev || !view.beat) return inspGeneric();
+    var bt = beatsOf(rev).filter(function(b){ return b.id===view.beat; })[0];
+    if(!bt) return inspGeneric();
+    var dep = arr('shots').filter(function(s){ return s.source_beat===bt.id; });
+    var cues = [];
+    arr('audio.tracks').forEach(function(t){ (t.cues||[]).forEach(function(c){ if(c.beat_id===bt.id) cues.push(c); }); });
+    var h = '<div class="insphead"><div class="k">Beat · ' + esc(bt.id) + '</div>' +
+      '<h3>' + esc((bt.visual_action||'Untitled beat').slice(0,70)) + '</h3>' +
+      '<div class="pillrow"><span class="pill">' + (Number(bt.duration_s)||0) + 's</span>' +
+      (Array.isArray(bt.roles) ? bt.roles.map(function(r){ return '<span class="pill on">' + esc(r.replace('_',' ')) + '</span>'; }).join('') : '') +
+      '</div></div><div class="inspbody">';
+    h += '<div><span class="lab">What depends on this beat</span>';
+    if(!dep.length && !cues.length) h += '<p class="muted" style="font-size:12.5px">Nothing yet. A rewrite would cost nothing downstream.</p>';
+    dep.forEach(function(s){ h += '<div class="listrow"><span class="pill">shot</span><span>' + esc(s.purpose || ('Shot ' + (s.order||0))) + '</span></div>'; });
+    cues.forEach(function(c){ h += '<div class="listrow"><span class="pill">cue</span><span>' + esc(c.text||c.id) + '</span></div>'; });
+    h += '</div>';
+    h += det('Revision', '<span class="mono">' + esc(rev.id) + '</span>');
+    h += det('Revision status', esc(rev.status||'draft'));
+    h += '</div>';
+    return h;
+  }
+
+  function inspShot(){
+    var s = view.shot ? shotById(view.shot) : null;
+    if(!s) return inspGeneric();
+    var rev = currentRev(), beats = beatsOf(rev);
+    var st = staleFor('shot', s.id);
+    var h = '<div class="insphead"><div class="k">Shot ' + String(s.order||0).padStart(2,'0') + '</div>' +
+      '<h3>' + esc(s.purpose || s.subject || 'Untitled shot') + '</h3>' +
+      '<div class="pillrow">' +
+        (st.length ? '<span class="st warn"><span class="dot"></span>Stale</span>' : '') +
+        '<span class="st neutral"><span class="dot"></span>' + esc(s.status||'planned') + '</span>' +
+      '</div></div>';
+    h += '<div class="tabs">' +
+      ['direction','media','details'].map(function(t){
+        return '<button class="tab' + (view.tab===t?' on':'') + '" data-tab="' + t + '">' + t.charAt(0).toUpperCase()+t.slice(1) + '</button>';
+      }).join('') + '</div><div class="inspbody">';
+
+    if(st.length){
+      h += '<div class="notice" style="margin:0"><span class="ni">!</span><div><b>Stale</b><span>' +
+        st.map(function(x){ return esc(x.reason||''); }).join(' · ') +
+        '</span><div style="margin-top:8px"><button class="btn sm" id="inspClearStale">Reviewed — clear</button></div></div></div>';
+    }
+
+    if(view.tab==='direction'){
+      h += '<div><span class="lab">What happens in this shot?</span><textarea class="in" data-s="action">' + esc(s.action||'') + '</textarea></div>';
+      h += '<div><span class="lab">Purpose</span><input class="in" data-s="purpose" value="' + esc(s.purpose||'') + '" /></div>';
+      h += '<div><span class="lab">Source beat</span><select class="in" data-s="source_beat">' +
+        '<option value="">— none —</option>' +
+        beats.map(function(b){
+          return '<option value="' + esc(b.id) + '"' + (s.source_beat===b.id?' selected':'') + '>' + esc(b.id + ' · ' + (b.visual_action||'').slice(0,34)) + '</option>';
+        }).join('') + '</select></div>';
+      h += '<div class="row2">' +
+        '<div><span class="lab">Length (seconds)</span><input class="in" type="number" step="0.1" min="0" data-s="duration_s" value="' + (Number(s.duration_s)||0) + '" /></div>' +
+        '<div><span class="lab">Lens</span><input class="in" data-s="lens" value="' + esc(s.lens||'') + '" placeholder="e.g. 50mm" /></div>' +
+        '</div>';
+      h += '<div><span class="lab">Composition</span><input class="in" data-s="composition" value="' + esc(s.composition||'') + '" placeholder="e.g. static, wide, centred" /></div>';
+      h += '<div><span class="lab">Camera move</span><input class="in" data-s="camera_move" value="' + esc(s.camera_move||'') + '" /></div>';
+      h += '<div><span class="lab">Subject</span><input class="in" data-s="subject" value="' + esc(s.subject||'') + '" /></div>';
+      h += '<div><span class="lab">Location</span><input class="in" data-s="location" value="' + esc(s.location||'') + '" /></div>';
+      h += '<div><span class="lab">Performance</span><input class="in" data-s="performance" value="' + esc(s.performance||'') + '" /></div>';
+      h += '<div><span class="lab">Dialogue in shot</span><textarea class="in" data-s="dialogue">' + esc(s.dialogue||'') + '</textarea></div>';
+    }
+
+    if(view.tab==='media'){
+      h += '<div><span class="lab">How will this shot be made?</span><select class="in" data-s="method">' +
+        '<option value="">— not decided —</option>' +
+        METHODS.map(function(m){ return '<option value="' + m[0] + '"' + (s.method===m[0]?' selected':'') + '>' + m[1] + '</option>'; }).join('') +
+        '</select></div>';
+      h += '<div><span class="lab">Why that method</span><input class="in" data-s="method_reason" value="' + esc(s.method_reason||'') + '" placeholder="Recorded, not implied" /></div>';
+
+      var ts = takesFor(s.id);
+      h += '<div><span class="lab">Takes</span>';
+      if(!ts.length){
+        h += '<p class="muted" style="font-size:12.5px">No takes. Generating or rendering one needs the production service; ' +
+             'an uploaded file can be attached once the host resolves take vaults.</p>';
+      }
+      ts.forEach(function(t){
+        var flag = (t.kind==='mock' || t.kind==='scratch')
+          ? '<span class="st warn"><span class="dot"></span>' + esc(t.kind) + '</span>'
+          : '<span class="st ok"><span class="dot"></span>' + esc(t.kind||'take') + '</span>';
+        h += '<div class="listrow" style="flex-wrap:wrap;align-items:center">' + flag +
+          '<span style="flex:1;min-width:90px" class="mono">' + esc(t.id) + '</span>' +
+          '<span class="muted" style="font-size:11.5px">' + esc(fmtCost(t.cost)) + '</span>' +
+          (t.selected ? '<span class="st ok"><span class="dot"></span>Selected</span>'
+                      : '<button class="btn sm" data-seltake="' + esc(t.id) + '">Select</button>') +
+          '</div>';
+      });
+      h += '</div>';
+
+      h += '<div><span class="lab">Checks</span><p class="muted" style="font-size:12px">' +
+        'A file that decodes has passed a technical check, not a creative one. Creative checks are recorded per take ' +
+        'against the approved plan.</p></div>';
+    }
+
+    if(view.tab==='details'){
+      h += det('Shot id', '<span class="mono">' + esc(s.id) + '</span>');
+      h += det('Revision', '<span class="mono">' + esc(s.revision||'') + '</span>');
+      h += det('Script revision', '<span class="mono">' + esc(s.script_revision||'') + '</span>');
+      h += det('Order', String(s.order||0));
+      h += det('Method', esc(methodLabel(s.method)));
+      var b = blockingFor(s.id);
+      h += det('Blocking', b ? (b.required===false ? 'Not required' : esc(b.status||'draft')) : '<span class="muted">none</span>');
+      h += det('Approvals', String(approvalsFor('shot', s.id, null).length));
+      h += '<div><span class="lab">Continuity constraints</span>' +
+        ((s.continuity||[]).map(function(c){ return '<div class="listrow"><span>' + esc(c) + '</span></div>'; }).join('') ||
+         '<p class="muted" style="font-size:12.5px">None recorded.</p>') + '</div>';
+      h += '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">' +
+        '<button class="btn sm" id="dupShot">Duplicate</button>' +
+        '<button class="btn sm" id="mvUp">Move earlier</button>' +
+        '<button class="btn sm" id="mvDown">Move later</button>' +
+        '<button class="btn sm danger" id="rmShot">Remove shot</button></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function wireInspShot(){
+    document.querySelectorAll('[data-tab]').forEach(function(b){
+      b.addEventListener('click', function(){ view.tab = b.getAttribute('data-tab'); renderInspector(); });
+    });
+    document.querySelectorAll('[data-s]').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var f = inp.getAttribute('data-s');
+        var v = (f==='duration_s') ? Number(inp.value) : inp.value;
+        updateShot(view.shot, function(s){ s[f] = v; }, 'edit shot ' + f).then(render);
+      });
+    });
+    document.querySelectorAll('[data-seltake]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var tid = b.getAttribute('data-seltake');
+        var list = arr('takes').map(function(t){
+          if(t.shot_id!==view.shot) return t;
+          return Object.assign({}, t, { selected: t.id===tid });
+        });
+        put('takes', list, 'select take', 'locked one take for this shot').then(function(){
+          return updateShot(view.shot, function(s){ s.selected_take = tid; }, 'lock selected take');
+        }).then(render);
+      });
+    });
+    var cs = document.getElementById('inspClearStale');
+    if(cs) cs.addEventListener('click', function(){ clearStale('shot', view.shot).then(render); });
+    var du = document.getElementById('dupShot');
+    if(du) du.addEventListener('click', function(){
+      var s = shotById(view.shot); if(!s) return;
+      var list = arr('shots').slice();
+      var c = JSON.parse(JSON.stringify(s)); c.id = uid('shot'); c.order = (s.order||0) + 1; c.selected_take = undefined;
+      list.forEach(function(x){ if(x.id!==s.id && (x.order||0) > (s.order||0)) x.order = (x.order||0) + 1; });
+      list.push(c);
+      writeShots(list, 'duplicate shot').then(function(){ view.shot = c.id; render(); });
+    });
+    function move(dir){
+      var list = shots(); var ix = -1;
+      list.forEach(function(x,i){ if(x.id===view.shot) ix = i; });
+      var j = ix + dir; if(ix<0 || j<0 || j>=list.length) return;
+      var a = list[ix], b = list[j];
+      var out = arr('shots').map(function(x){
+        if(x.id===a.id) return Object.assign({}, x, {order: b.order});
+        if(x.id===b.id) return Object.assign({}, x, {order: a.order});
+        return x;
+      });
+      writeShots(out, 'reorder shots').then(render);
+    }
+    var mu = document.getElementById('mvUp'); if(mu) mu.addEventListener('click', function(){ move(-1); });
+    var md = document.getElementById('mvDown'); if(md) md.addEventListener('click', function(){ move(1); });
+    var rm = document.getElementById('rmShot');
+    if(rm) rm.addEventListener('click', function(){
+      var ts = takesFor(view.shot);
+      if(!confirm('Remove this shot?' + (ts.length ? ' Its ' + ts.length + ' take(s) stay in the file and in their vault.' : ''))) return;
+      var gone = view.shot;
+      writeShots(arr('shots').filter(function(x){ return x.id!==gone; }), 'remove shot').then(function(){
+        view.shot = null; render();
+      });
+    });
+  }
+
+  function inspBlocking(){
+    var b = view.shot ? blockingFor(view.shot) : null;
+    var s = view.shot ? shotById(view.shot) : null;
+    if(!b || !s) return inspGeneric();
+    var fp = b.floor_plan || {};
+    var subs = Array.isArray(fp.subjects) ? fp.subjects : [];
+    var su = view.subject ? subs.filter(function(x){ return x.id===view.subject; })[0] : null;
+
+    var h = '<div class="insphead"><div class="k">Blocking · shot ' + String(s.order||0).padStart(2,'0') + '</div>' +
+      '<h3>' + esc(su ? (su.label||su.id) : 'The recipe') + '</h3>' +
+      '<div class="pillrow">' +
+        (b.status==='approved' ? '<span class="st ok"><span class="dot"></span>Approved</span>'
+          : '<span class="st warn"><span class="dot"></span>' + esc(b.status||'draft') + '</span>') +
+        '<span class="pill mono">' + esc(b.revision||'b1') + '</span>' +
+      '</div></div><div class="inspbody">';
+
+    if(su){
+      h += '<div><span class="lab">Label</span><input class="in" data-su="label" value="' + esc(su.label||'') + '" /></div>';
+      h += '<div><span class="lab">Kind</span><select class="in" data-su="kind">' +
+        SUBJ_KINDS.map(function(k){ return '<option value="' + k[0] + '"' + (su.kind===k[0]?' selected':'') + '>' + k[1] + '</option>'; }).join('') +
+        '</select></div>';
+      var st0 = su.start||{x:0,y:0}, en0 = su.end||st0;
+      h += '<div class="row2">' +
+        '<div><span class="lab">Start x (m)</span><input class="in" type="number" step="0.1" data-su="start.x" value="' + (st0.x||0) + '" /></div>' +
+        '<div><span class="lab">Start y (m)</span><input class="in" type="number" step="0.1" data-su="start.y" value="' + (st0.y||0) + '" /></div>' +
+        '</div>';
+      h += '<div class="row2">' +
+        '<div><span class="lab">End x (m)</span><input class="in" type="number" step="0.1" data-su="end.x" value="' + (en0.x||0) + '" /></div>' +
+        '<div><span class="lab">End y (m)</span><input class="in" type="number" step="0.1" data-su="end.y" value="' + (en0.y||0) + '" /></div>' +
+        '</div>';
+      h += '<div><span class="lab">Facing (degrees)</span><input class="in" type="number" step="5" data-su="start.rotation_deg" value="' + (st0.rotation_deg||0) + '" /></div>';
+      h += '<div style="display:flex;gap:7px"><button class="btn sm danger" id="rmSub">Remove from the plan</button>' +
+           '<button class="btn sm" id="deselSub">Done</button></div>';
+      h += '<hr style="border:none;border-top:1px solid var(--border);margin:4px 0" />';
+    }
+
+    h += '<div><span class="lab">Contact points</span>';
+    h += (b.contact_points||[]).length ? (b.contact_points||[]).map(function(c,i){
+      var A = subs.filter(function(x){return x.id===c.a;})[0], B2 = subs.filter(function(x){return x.id===c.b;})[0];
+      return '<div class="listrow"><span>' + esc((A?A.label:c.a) + ' ↔ ' + (B2?B2.label:c.b)) +
+        (c.at_s!=null ? ' <span class="mono muted">@' + c.at_s + 's</span>' : '') + '</span>' +
+        '<span class="x" data-rmpair="contact_points|' + i + '">×</span></div>';
+    }).join('') : '<p class="muted" style="font-size:12.5px">None recorded.</p>';
+    h += '</div>';
+
+    h += '<div><span class="lab">Must never intersect</span>';
+    h += (b.forbidden_intersections||[]).length ? (b.forbidden_intersections||[]).map(function(c,i){
+      var A = subs.filter(function(x){return x.id===c.a;})[0], B2 = subs.filter(function(x){return x.id===c.b;})[0];
+      return '<div class="listrow"><span>' + esc((A?A.label:c.a) + ' × ' + (B2?B2.label:c.b)) + '</span>' +
+        '<span class="x" data-rmpair="forbidden_intersections|' + i + '">×</span></div>';
+    }).join('') : '<p class="muted" style="font-size:12.5px">None recorded.</p>';
+    h += '</div>';
+
+    h += '<div><span class="lab">Start and end frames</span>';
+    var fr = b.frames || {};
+    h += '<div class="listrow"><span class="muted">Start frame</span><span style="flex:1"></span>' +
+      (fr.start_asset ? '<span class="mono">' + esc(String(fr.start_asset).slice(0,10)) + '</span>' : '<span class="st neutral"><span class="dot"></span>Not captured</span>') + '</div>';
+    h += '<div class="listrow"><span class="muted">End frame</span><span style="flex:1"></span>' +
+      (fr.end_asset ? '<span class="mono">' + esc(String(fr.end_asset).slice(0,10)) + '</span>' : '<span class="st neutral"><span class="dot"></span>Not captured</span>') + '</div>';
+    h += '</div>';
+
+    h += '<div><span class="lab">Motion preview</span>' +
+      (b.motion_preview ? '<span class="mono">' + esc(String(b.motion_preview).slice(0,12)) + '</span>'
+        : '<p class="muted" style="font-size:12.5px">Not generated. A low-cost preview of this move needs the production service.</p>') + '</div>';
+
+    h += '<div><span class="lab">Provider capability</span>';
+    var pc = b.provider_capabilities;
+    if(!pc || !pc.provider){
+      h += '<p class="muted" style="font-size:12.5px">No adapter has declared against this recipe. Until one does, treat every ' +
+           'control here as unenforced — a prompt does not guarantee physical control.</p>';
+    } else {
+      h += '<div class="listrow"><b>' + esc(pc.provider) + '</b><span class="muted" style="font-size:11.5px">' + esc(pc.declared_at||'') + '</span></div>';
+      h += '<div class="pillrow" style="margin-top:6px">' +
+        (pc.accepted||[]).map(function(a){ return '<span class="st ok"><span class="dot"></span>' + esc(a) + '</span>'; }).join('') +
+        (pc.rejected||[]).map(function(a){ return '<span class="st bad"><span class="dot"></span>' + esc(a) + '</span>'; }).join('') +
+        '</div>';
+      if((pc.rejected||[]).length)
+        h += '<p class="muted" style="font-size:12px;margin-top:7px">The rejected constraints stay on the record and are still ' +
+             'reviewed against the result, even though the provider cannot enforce them.</p>';
+    }
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  function wireInspBlocking(){
+    document.querySelectorAll('[data-su]').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var f = inp.getAttribute('data-su');
+        var v = (inp.type==='number') ? Number(inp.value) : inp.value;
+        updateBlocking(view.shot, function(x){
+          (((x.floor_plan||{}).subjects)||[]).forEach(function(s){
+            if(s.id!==view.subject) return;
+            var p = f.split('.');
+            if(p.length===1){ s[p[0]] = v; }
+            else { s[p[0]] = s[p[0]] || {}; s[p[0]][p[1]] = v; }
+          });
+        }, 'edit subject ' + f).then(render);
+      });
+    });
+    var rs = document.getElementById('rmSub');
+    if(rs) rs.addEventListener('click', function(){
+      var id = view.subject;
+      updateBlocking(view.shot, function(x){
+        var fp = x.floor_plan||{};
+        fp.subjects = (fp.subjects||[]).filter(function(s){ return s.id!==id; });
+        x.contact_points = (x.contact_points||[]).filter(function(c){ return c.a!==id && c.b!==id; });
+        x.forbidden_intersections = (x.forbidden_intersections||[]).filter(function(c){ return c.a!==id && c.b!==id; });
+      }, 'remove subject from floor plan').then(function(){ view.subject = null; render(); });
+    });
+    var ds = document.getElementById('deselSub');
+    if(ds) ds.addEventListener('click', function(){ view.subject = null; renderInspector(); });
+    document.querySelectorAll('[data-rmpair]').forEach(function(x){
+      x.addEventListener('click', function(){
+        var p = x.getAttribute('data-rmpair').split('|'), key = p[0], ix = Number(p[1]);
+        updateBlocking(view.shot, function(b){ (b[key]||[]).splice(ix,1); }, 'remove ' + key.replace('_',' ')).then(render);
+      });
+    });
+  }
+
+  // ── render ────────────────────────────────────────────────────────────
+  function render(){
+    renderRail(); renderGate(); renderHead();
+    var body = document.getElementById('body');
+    var h = '';
+    switch(view.step){
+      case 'brief': h = renderBrief(); break;
+      case 'script': h = renderScript(); break;
+      case 'storyboard': h = renderStoryboard(); break;
+      case 'blocking': h = renderBlocking(); break;
+      case 'sound': h = renderSound(); break;
+      case 'edit': h = renderEdit(); break;
+      case 'deliver': h = renderDeliver(); break;
+      default: h = renderTools();
+    }
+    body.innerHTML = h;
+    switch(view.step){
+      case 'brief': wireBrief(); break;
+      case 'script': wireScript(); break;
+      case 'storyboard': wireStoryboard(); break;
+      case 'blocking': wireBlocking(); break;
+      case 'sound': wireSound(); break;
+      case 'edit': wireEdit(); break;
+      case 'deliver': wireDeliver(); break;
+      default: wireTools();
+    }
+    renderInspector();
+  }
+
+  // ── boot ──────────────────────────────────────────────────────────────
+  // The schema's nine stages collapse onto seven steps: `picture` lives in
+  // Storyboard's Media tab, `formats` lives in Deliver.
+  var STAGE_TO_STEP = { brief:'brief', script:'script', storyboard:'storyboard', blocking:'blocking',
+                        picture:'storyboard', sound:'sound', edit:'edit', formats:'deliver', deliver:'deliver' };
+  var startStage = get('stage.current');
+  if(startStage && STAGE_TO_STEP[startStage]) view.step = STAGE_TO_STEP[startStage];
+
+  render();
+  window.addEventListener('clan:dataupdated', render);
+  window.addEventListener('clan:colorscheme', render);
+  window.addEventListener('napkin:ready', function(){ render(); });
+})();
+</script>
+</body>
+</html>

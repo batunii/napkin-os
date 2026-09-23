@@ -19,7 +19,7 @@ use crate::error::HostError;
 use crate::event::HostEvent;
 #[cfg(feature = "native")]
 use crate::export::write_temp_html;
-use crate::library::{create_instance, scan_apps, scan_recent};
+use crate::library::{create_instance, scan_apps, scan_recent, spinoff_document, spinoff_targets};
 #[cfg(feature = "native")]
 use crate::proxy::api_proxy;
 use crate::session::{Session, TRUSTED_CAPABILITIES};
@@ -269,6 +269,42 @@ pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> Host
                     .with_event(HostEvent::OpenDocument(id.to_string()))
                 }
                 Err(e) => HostResponse::error(422, &e.message),
+            }
+        }
+
+        // What can this document become? The apps that have declared they will
+        // take it as a spin-off source — a brief offering to become a
+        // production, rather than the user having to know an app id.
+        "/spinoff-targets" => HostResponse::json(
+            200,
+            &serde_json::json!(spinoff_targets(
+                &**session.store(),
+                session.app_id().as_deref(),
+            )),
+        ),
+
+        // Branch the open document into another app, carrying its data and its
+        // decisions. Like /launch, the new file is opened by the shell.
+        "/spinoff" => {
+            let v = req.body_json();
+            let app_id = v.get("app_id").and_then(|x| x.as_str()).unwrap_or("");
+            if app_id.is_empty() {
+                return HostResponse::error(400, "missing app_id");
+            }
+            let title = v.get("title").and_then(|x| x.as_str()).map(String::from);
+            let map = v.get("map").and_then(|x| x.as_str()).map(String::from);
+            let Some(source) = session.current_id() else {
+                return HostError::no_file_open().into();
+            };
+            match spinoff_document(&**session.store(), &source, app_id, title, map) {
+                Ok(id) => HostResponse::json(
+                    200,
+                    &serde_json::json!({ "ok": true, "path": id.to_string() }),
+                )
+                .with_event(HostEvent::OpenDocument(id.to_string())),
+                // Carries the real status: 404 when the app is not installed,
+                // 422 when the target refuses this source.
+                Err(e) => e.into(),
             }
         }
 

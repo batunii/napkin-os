@@ -19,7 +19,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_core::Stream;
-use napkin_host::{export, library, proxy, DocId, InstalledApp, OpenResult, RecentDoc};
+use napkin_host::{
+    export, library, proxy, DocId, InstalledApp, OpenResult, RecentDoc, SpinoffTarget,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_stream::StreamExt;
@@ -49,6 +51,8 @@ pub fn router() -> Router<Arc<AppCtx>> {
         .route("/t/{tenant}/d/{doc}/edit-mode", post(edit_mode))
         .route("/t/{tenant}/d/{doc}/preview-html", post(preview_html))
         .route("/t/{tenant}/d/{doc}/patch", post(patch))
+        .route("/t/{tenant}/d/{doc}/spinoff-targets", get(spinoff_targets))
+        .route("/t/{tenant}/d/{doc}/spinoff", post(spinoff_document))
         .route("/t/{tenant}/d/{doc}/download", get(download))
         .route("/t/{tenant}/d/{doc}/export", post(export_document))
         .route("/t/{tenant}/export/{handle}", get(export_download))
@@ -139,6 +143,50 @@ async fn new_document(
     let ws = ctx.workspace(&tenant);
     let doc = library::create_instance(&*ws.store, &body.app_id, body.title)?;
     Ok(Json(open_view(&ctx, &tenant, &ws, doc)?))
+}
+
+/// Which installed apps will take this document as a spin-off source.
+async fn spinoff_targets(
+    State(ctx): Ctx,
+    Tenant(tenant): Tenant,
+    Path((_t, doc)): Path<(String, String)>,
+) -> ApiResult<Json<Vec<SpinoffTarget>>> {
+    let (ws, session, id) = doc_session(&ctx, &tenant, &doc)?;
+    // The session may not have this document open yet; opening is what makes
+    // `app_id` answerable.
+    session.open(id)?;
+    Ok(Json(library::spinoff_targets(
+        &*ws.store,
+        session.app_id().as_deref(),
+    )))
+}
+
+#[derive(Deserialize)]
+struct Spinoff {
+    app_id: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    map: Option<String>,
+}
+
+/// Branch this document into another app, carrying its data and its decisions,
+/// and open the result.
+async fn spinoff_document(
+    State(ctx): Ctx,
+    Tenant(tenant): Tenant,
+    Path((_t, doc)): Path<(String, String)>,
+    Json(body): Json<Spinoff>,
+) -> ApiResult<Json<OpenView>> {
+    let ws = ctx.workspace(&tenant);
+    let out = library::spinoff_document(
+        &*ws.store,
+        &DocId::new(doc),
+        &body.app_id,
+        body.title,
+        body.map,
+    )?;
+    Ok(Json(open_view(&ctx, &tenant, &ws, out)?))
 }
 
 /// Accept an uploaded `.clan` as a document of this tenant and open it.

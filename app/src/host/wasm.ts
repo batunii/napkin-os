@@ -14,7 +14,14 @@
 // slate — which is the right default for a link anyone can open.
 
 import init, { NapkinHost } from '../wasm/napkin_wasm'
-import type { Host, HostEvents, InstalledApp, OpenResult, Unlisten } from './types'
+import type {
+  Host,
+  HostEvents,
+  InstalledApp,
+  OpenResult,
+  SpinoffTarget,
+  Unlisten,
+} from './types'
 
 /** Bytes out of wasm arrive as an Array unless they already are a view. */
 function asBytes(value: Uint8Array | number[]): Uint8Array {
@@ -298,6 +305,10 @@ export const wasmHost: Host = {
     const bytes = h.download()
     return h.installApp(bytes) as InstalledApp
   },
+
+  spinoffTargets: async () => (await boot()).spinoffTargets() as SpinoffTarget[],
+  spinoffDocument: async (appId, title, map) =>
+    adopt((await boot()).spinoffDocument(appId, title ?? undefined, map ?? undefined) as OpenResult),
 
   saveClanTo: async () => {
     const h = await boot()
