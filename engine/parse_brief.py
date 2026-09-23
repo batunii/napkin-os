@@ -1097,7 +1097,10 @@ class _RateLimited(RuntimeError):
 MAXTOK_JUDGE = 500       # rubric gates / judges / territory gate / rerank: tiny JSON verdicts
 MAXTOK_GEN = 1200        # candidate generation / refine: one field's worth of text
 MAXTOK_SYNTH_ONE = 700    # one loop's synthesis paragraph (was 2500 for all five in one call)
-MAXTOK_EXTRACT = 2500    # extraction / scorecard / golden / loop synthesis: big JSON
+MAXTOK_EXTRACT = 8000    # extraction / scorecard / golden: one big JSON. Was 2500: measured 2026-09-23 on a
+                         # real 4,156-char client brief (Friskies), Loop-1 extraction hit stop_reason=max_tokens
+                         # at 2,500 output tokens, the JSON was cut off, and every chain link failed the same way.
+                         # A ceiling, not a cost: billing is per token actually produced.
 
 
 def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
