@@ -32,7 +32,8 @@ Environment:
   MOCK_MIDDLEWARE_ORG          dev tenant org reported in trace.scope (org/dev-agency)
   MOCK_MIDDLEWARE_BRAND        dev tenant brand reported in trace.scope (brand/dev-brand)
   MOCK_MIDDLEWARE_TOKEN        if set, requests must carry it (Bearer or x-api-key)
-  MOCK_MIDDLEWARE_JOB_SECONDS  wall time a long job takes to finish (2.0)
+  MOCK_MIDDLEWARE_JOB_SECONDS  wall time a long job takes to finish (2.0); start_campaign
+                               spreads it over its six stages, at least one per poll
   MOCK_MIDDLEWARE_CLOCK        freeze content timestamps at this ISO datetime
   MOCK_MIDDLEWARE_DUMP_DIR     write each request body here (off by default)
 
@@ -83,15 +84,21 @@ REGISTRY = {
     "extract_ask": {"task": "extract_ask", "versions": {1: "1.0"}},
     "research_lens": {"task": "research_lens", "versions": {1: "1.0"}},
     "synthesise_findings": {"task": "synthesise_findings", "versions": {1: "1.0"}},
+    "start_campaign": {"task": "start_campaign", "versions": {1: "1.0"}},
+    "answer_question": {"task": "answer_question", "versions": {1: "1.0"}},
+    "compose_report": {"task": "compose_report", "versions": {1: "1.0"}},
 }
 # Used only when the document carries no pipeline (the declared built-in map).
 BUILTIN_PIPELINE = {
     "extract_ask": "extract_ask@1",
     "research_lens": "research_lens@1",
     "synthesise_findings": "synthesise_findings@1",
+    "start_campaign": "start_campaign@1",
+    "answer_question": "answer_question@1",
+    "compose_report": "compose_report@1",
 }
 TASKS = set(BUILTIN_PIPELINE) | {"job_status"}
-LONG_TASKS = {"research_lens", "synthesise_findings"}
+LONG_TASKS = {"research_lens", "synthesise_findings", "start_campaign"}
 
 LENSES = [
     "market_structure", "brands_positioning", "consumer_culture", "category_codes",
@@ -546,7 +553,7 @@ def extract_candidates(mats: list, subject_name: str | None) -> tuple[dict, list
                         continue
                     if subject_name and slug(nm) == slug(subject_name):
                         continue
-                    ref = "brand/" + slug(nm)
+                    ref, nm = brand_ref(nm)
                     if slug(nm) and ref not in items:
                         items[ref] = mat.span(s, e)
                         names[ref] = nm
@@ -650,6 +657,16 @@ def extract_candidates(mats: list, subject_name: str | None) -> tuple[dict, list
     return out, notes
 
 
+def brand_ref(name: str):
+    """A brand name -> (ref, name), through the brand layer's roster when it
+    knows the brand (a product of a roster brand, "Lúnasa 0.0", is that brand)."""
+    name = name.strip().rstrip(".,;:")
+    for ref, row in sorted(ROSTER.items(), key=lambda kv: -len(kv[1]["name"])):
+        if slug(name) == slug(row["name"]) or slug(name).startswith(slug(row["name"]) + "-"):
+            return ref, row["name"]
+    return "brand/" + slug(name), name
+
+
 def item_key(fname, item):
     return item["ref"] if fname == "competitor_set" else item["id"] if isinstance(item, dict) else item
 
@@ -674,17 +691,21 @@ def read_set(data: dict, patch: dict) -> dict:
     return out
 
 
-def run_extract(doc, base, clan, inp, handler):
+def run_extract(doc, base, clan, inp, handler, skip=(), did=None, action="extract_ask"):
+    """`skip`: fields another stage owns (start_campaign's identify writes brand,
+    client_org and categories); they are neither written nor listed as abstained."""
     data = ctx_data(clan)
     facts = ctx_facts(clan)
     decisions = ctx_decisions(clan)
     mats, unread = build_materials(inp, data)
     if not mats:
         raise bad("nothing to read: input.prompt is empty and no attachment carries text")
-    did = uid("d_", doc, base, "extract", [m.sha for m in mats])
+    did = did or uid("d_", doc, base, "extract", [m.sha for m in mats])
     subject = field_value(data, "brand")
     subject_name = subject.get("name") if isinstance(subject, dict) else None
     cands, notes = extract_candidates(mats, subject_name)
+    for f in skip:
+        cands.pop(f, None)
 
     # Step 1 of the contract: deterministic layer lookups -> proposed, citing pins.
     subject_ref = subject.get("ref") if isinstance(subject, dict) else None
@@ -707,6 +728,8 @@ def run_extract(doc, base, clan, inp, handler):
         proposed["client_org"] = {"value": {"ref": co["value"], "name": name}, "fact_ids": [co["id"]]}
         cands.pop("client_org", None)
 
+    for f in skip:
+        proposed.pop(f, None)
     campaign_patch, written, withheld = {}, [], {}
     existing = data.get("campaign") or {}
     for fname in [f for f in CAMPAIGN_FIELDS if f in cands or f in proposed]:
@@ -742,7 +765,7 @@ def run_extract(doc, base, clan, inp, handler):
         written.append(fname)
 
     abstained = [f for f in CAMPAIGN_FIELDS if f not in NOT_EXTRACTED and f not in written
-                 and f not in withheld and f not in existing]
+                 and f not in withheld and f not in existing and f not in skip]
     patch = {"campaign": campaign_patch} if campaign_patch else {}
     new_mats = {m.id: {"kind": m.kind, "name": m.name, "sha256": m.sha, "received_at": iso(now()),
                        # Unindexed material is classed at the strictest licence until a human says otherwise.
@@ -754,7 +777,7 @@ def run_extract(doc, base, clan, inp, handler):
     rationale = (f"Read {len(mats)} material(s); filled {len(written)} field(s) from spans"
                  f"{' and layer pins' if proposed else ''}; abstained on {len(abstained)}"
                  + (f"; held back {len(withheld)} human-owned" if withheld else "") + ".")
-    dec = decision(doc, did, "edit", handler, "extract_ask", rationale,
+    dec = decision(doc, did, "edit", handler, action, rationale,
                    [f"campaign.{f}" for f in written] or ["campaign"], cites,
                    fields_changed=[f"campaign.{f}" for f in written],
                    material_read=[m.id for m in mats], abstained=abstained)
@@ -767,7 +790,7 @@ def run_extract(doc, base, clan, inp, handler):
             for p in proposed.values() for fid in p["fact_ids"] if fid in fact_by_id]
     result = {"summary": rationale, "fields": written, "abstained": abstained,
               "withheld": withheld, "notes": notes, "materials_read": [m.id for m in mats],
-              "materials_unread": unread}
+              "materials_unread": unread, "materials_new": sorted(new_mats)}
     return result, change, hits
 
 
@@ -900,7 +923,9 @@ def origin_uri(layer, entity, key, version):
     return f"fact://{layer}/{path}/{key}@{version}"
 
 
-def run_research(doc, base, clan, inp, handler):
+def run_research(doc, base, clan, inp, handler, pairs=None):
+    """`pairs`: when given, only these (lens, market) runs (start_campaign's
+    research stage runs the pairs its select stage chose)."""
     data = ctx_data(clan)
     lenses = inp.get("lenses", LENSES)
     if not isinstance(lenses, list) or not lenses or any(l not in LENSES for l in lenses):
@@ -933,6 +958,8 @@ def run_research(doc, base, clan, inp, handler):
     runs, cands, gaps, sources_seen = [], {}, [], {}
     for lens in lenses:
         for market in markets:
+            if pairs is not None and (lens, market) not in pairs:
+                continue
             found, gap_ids = [], []
             for who, key, unit, method, per_market in LENS_SPECS[lens]:
                 if who == "category":
@@ -1050,7 +1077,9 @@ def run_research(doc, base, clan, inp, handler):
             + (["selection.gaps"] if r["gaps"] else [])))
     coverage = {}
     for lens in lenses:
-        vals = [by_market[m][lens] for m in markets]
+        vals = [by_market[m][lens] for m in markets if lens in by_market.get(m, {})]
+        if not vals:
+            continue  # not run in any market (skipped): no coverage
         coverage[lens] = "filled" if all(v == "filled" for v in vals) else \
             "empty" if all(v == "empty" for v in vals) else "thin"
 
@@ -1230,6 +1259,1117 @@ def envelope(task, handler, job, result, change, hits):
 
 
 # ---------------------------------------------------------------------------
+# The chat intake — start_campaign, answer_question, compose_report (§8)
+# ---------------------------------------------------------------------------
+# One start_campaign job runs six stages. Each stage's output is a "chunk": a
+# slice of a change (patch, read-set, pins, findings, decisions) plus the agent
+# message it narrates. A chunk is computed once and cached, so a repeat is
+# byte-identical and carries the same decision ids (the host skips a field
+# whose decisions are all in its chain, §5). A reply carries every finished
+# chunk whose decisions the request's `clan.decision_chain` does not hold yet
+# (§8.4): what was not delivered, or did not land, goes again.
+
+STAGES = ["extract", "identify", "select", "research", "synthesise", "report"]
+
+# The brand layer, stood in by a fixture roster. A row gives the brand's
+# category leaves (ranked, at most two) and the client that holds it. Every
+# name and brand here is invented. A roster pin the document already holds for
+# the subject brand wins over this table.
+ROSTER = {
+    "brand/lunasa": {"name": "Lúnasa", "categories": ["drinks.cider", "drinks.no_low_alcohol"],
+                     "client_org": ("org/glenmore-drinks", "Glenmore Drinks")},
+    "brand/brightwater": {"name": "Brightwater 0.0", "categories": ["drinks.no_low_alcohol", "drinks.beer"],
+                          "client_org": ("org/brightwater-brewing", "Brightwater Brewing")},
+    "brand/kestrel-press": {"name": "Kestrel Press", "categories": ["drinks.cider"],
+                            "client_org": ("org/kestrel-cider-co", "Kestrel Cider Co")},
+    "brand/oakfield": {"name": "Oakfield Dairy", "categories": ["food.dairy"],
+                       "client_org": ("org/oakfield-foods", "Oakfield Foods")},
+    "brand/crunchwell": {"name": "Crunchwell", "categories": ["food.snacks"],
+                         "client_org": ("org/oakfield-foods", "Oakfield Foods")},
+    "brand/tidewater-bank": {"name": "Tidewater Bank", "categories": ["finance.banking"],
+                             "client_org": ("org/tidewater-financial", "Tidewater Financial")},
+    "brand/tidewater-cover": {"name": "Tidewater Cover", "categories": ["finance.insurance"],
+                              "client_org": ("org/tidewater-financial", "Tidewater Financial")},
+}
+# The leaves the stand-in can classify into, each with the words that signal
+# it. Used only to rank at most two CANDIDATES for the person to pick from when
+# the brand has no roster row — never to write a category.
+TAXONOMY = {
+    "drinks.cider": [r"\bciders?\b"],
+    "drinks.no_low_alcohol": [r"\balcohol[- ]free\b", r"\bnon[- ]alcoholic\b", r"\bno/low\b", r"\blow[- ]alcohol\b",
+                              r"\b0\.0\b", r"\bzero[- ]alcohol\b"],
+    "drinks.beer": [r"\bbeers?\b", r"\blagers?\b", r"\bstouts?\b", r"\bales?\b"],
+    "drinks.spirits": [r"\bgin\b", r"\bwhiske?y\b", r"\bvodka\b", r"\brum\b", r"\bspirits?\b"],
+    "drinks.soft_drinks": [r"\bsoft drinks?\b", r"\bsodas?\b", r"\blemonade\b", r"\bfizzy\b"],
+    "drinks.mixers": [r"\bmixers?\b", r"\btonics?\b"],
+    "food.dairy": [r"\bdairy\b", r"\byogh?urts?\b", r"\bcheeses?\b", r"\bmilk\b", r"\bbutter\b"],
+    "food.snacks": [r"\bsnacks?\b", r"\bcrisps\b", r"\bchips\b"],
+    "food.confectionery": [r"\bchocolates?\b", r"\bsweets\b", r"\bconfectionery\b"],
+    "finance.banking": [r"\bbank(?:ing)?\b", r"\bcurrent accounts?\b", r"\bmortgages?\b", r"\bsavings\b"],
+    "finance.insurance": [r"\binsurance\b", r"\binsurer\b", r"\bpolic(?:y|ies)\b"],
+    "retail.grocery": [r"\bsupermarkets?\b", r"\bgrocer(?:y|ies)\b"],
+}
+# Verticals whose advertising carries category rules the clearance lens reads.
+REGULATED_VERTICALS = {"drinks", "food", "finance", "health", "gambling"}
+LENS_WORDS = {
+    "market_structure": r"\bmarket (?:size|structure|share|landscape)\b|\blandscape\b|\bcategory growth\b",
+    "brands_positioning": r"\bcompetit(?:ors?|ion|ive)\b|\bpositioning\b|\bbrand health\b|\bawareness\b|\bcomparators?\b",
+    "consumer_culture": r"\baudiences?\b|\bconsumers?\b|\bculture\b|\bshoppers?\b",
+    "category_codes": r"\b(?:category|visual) codes\b|\bcodes\b|\bsemiotics?\b",
+    "rhythm_moments": r"\btiming\b|\bmoments?\b|\bseasonality\b|\bcalendar\b|\brhythm\b",
+    "media_spend": r"\bmedia\b|\bad ?spend\b|\bshare of voice\b",
+    "regulation_clearance": r"\bregulat\w*\b|\bclearance\b|\bcompliance\b|\blegal\b",
+    "effectiveness_evidence": r"\beffectiveness\b|\bcase stud(?:y|ies)\b|\bcases\b",
+}
+LENS_TITLES = {
+    "market_structure": "The market", "brands_positioning": "Brands and comparators",
+    "consumer_culture": "Who it is for", "category_codes": "Category codes",
+    "rhythm_moments": "Timing", "media_spend": "Media", "regulation_clearance": "Clearance",
+    "effectiveness_evidence": "Effectiveness",
+}
+MARKET_NAMES = {"IE": "Ireland", "GB": "GB", "US": "the US", "FR": "France", "DE": "Germany", "ES": "Spain",
+                "IT": "Italy", "NL": "the Netherlands", "BE": "Belgium", "PT": "Portugal", "PL": "Poland",
+                "SE": "Sweden", "DK": "Denmark", "NO": "Norway", "FI": "Finland", "AT": "Austria",
+                "CH": "Switzerland", "CA": "Canada", "AU": "Australia", "NZ": "New Zealand"}
+FIELD_LABELS = {"brand": "Brand", "client_org": "Client", "categories": "Categories", "markets": "Markets",
+                "competitor_set": "Comparators", "audience": "The researched audience",
+                "in_market": "In market", "constraints": "Constraints", "campaign_type": "Campaign type"}
+
+
+def market_list(codes):
+    names = [MARKET_NAMES.get(c, c) for c in codes]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1] if names else "no market"
+
+
+def opt_id(text: str) -> str:
+    return (re.sub(r"[^a-z0-9]+", "_", slug(text)).strip("_") or "opt")[:40]
+
+
+def ulid_like(prefix: str, seq: int, *seed) -> str:
+    """msg_<time><seed><seq>: sorts in creation order (display order is `at`, then key)."""
+    ms = int(now().timestamp() * 1000)
+    alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    t = ""
+    for _ in range(10):
+        t = alphabet[ms % 32] + t
+        ms //= 32
+    return f"{prefix}{t}{uid('', *seed, n=4)}{seq:03d}"
+
+
+def canon_sha(obj) -> str:
+    return "sha256:" + hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+# -- addresses and read-sets for staged writes ---------------------------------
+
+def field_paths(patch: dict) -> list:
+    """The fields a data_patch writes, at the granularity the host judges them:
+    campaign.<f>, selection.<k>, materials.<id>, intake.messages.<id>, report."""
+    out = []
+    for top, sub in patch.items():
+        if top == "intake" and isinstance(sub, dict) and isinstance(sub.get("messages"), dict):
+            out += [f"intake.messages.{k}" for k in sub["messages"]]
+        elif top in ("campaign", "selection", "materials") and isinstance(sub, dict) and sub:
+            out += [f"{top}.{k}" for k in sub]
+        else:
+            out.append(top)
+    return out
+
+
+def address(path: str) -> str:
+    """Patch path -> address path: map keys go in brackets (Contract 3 §2.4)."""
+    for m in ("intake.messages.", "materials."):
+        if path.startswith(m):
+            return f"{m[:-1]}[{path[len(m):]}]"
+    return path
+
+
+def get_dotted(data, dotted):
+    for k in dotted.split("."):
+        if not isinstance(data, dict) or k not in data:
+            return None
+        data = data[k]
+    return copy.deepcopy(data)
+
+
+def read_of(data: dict, patch: dict) -> dict:
+    return {p: get_dotted(data, p) for p in field_paths(patch)}
+
+
+def deep_merge(a: dict, b: dict) -> dict:
+    """Merge two data_patches (b after a) into one merge patch."""
+    out = copy.deepcopy(a)
+    for k, v in b.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict) and v:
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def apply_patch(target, patch):
+    """RFC 7396 merge patch."""
+    if not isinstance(patch, dict):
+        return copy.deepcopy(patch)
+    out = copy.deepcopy(target) if isinstance(target, dict) else {}
+    for k, v in patch.items():
+        if v is None:
+            out.pop(k, None)
+        else:
+            out[k] = apply_patch(out.get(k), v)
+    return out
+
+
+def known_ids(clan: dict) -> set:
+    """Decision ids the document holds, with those a contest withheld (§4)."""
+    ids = set()
+    for d in ctx_decisions(clan):
+        ids.add(d.get("id"))
+        for h in d.get("withheld") or []:
+            ids.add(h.get("id") if isinstance(h, dict) else h)
+    return ids
+
+
+# -- the job ---------------------------------------------------------------------
+
+class Chunk:
+    """One stage's (part of a) change, computed once."""
+
+    def __init__(self, stage, base, patch, read, facts=(), findings=(), decisions=(), message=None):
+        self.stage, self.base = stage, base
+        self.patch, self.read = patch, read
+        self.facts, self.findings, self.decisions = list(facts), list(findings), list(decisions)
+        self.message = message  # {id, text, stage}
+        self.ids = {d["id"] for d in self.decisions}
+
+
+def combine(doc, chunks) -> dict | None:
+    if not chunks:
+        return None
+    patch, read, facts, findings, decs = {}, {}, [], [], []
+    for c in chunks:
+        patch = deep_merge(patch, c.patch)
+        for k, v in c.read.items():
+            read.setdefault(k, v)  # what the EARLIEST writer of the path read
+        facts += [f for f in c.facts if f["id"] not in {x["id"] for x in facts}]
+        findings += [f for f in c.findings if f["id"] not in {x["id"] for x in findings}]
+        decs += [d for d in c.decisions if d["id"] not in {x["id"] for x in decs}]
+    return {"doc": doc, "base_version": chunks[0].base, "read": read if patch else {}, "data_patch": patch,
+            "facts_append": facts, "findings_append": findings, "decisions": decs}
+
+
+class CampaignJob:
+    def __init__(self, jid, doc, handler, clan, inp):
+        self.id, self.doc, self.handler = jid, doc, handler
+        self.scope = dict(SCOPE)
+        self.inp = inp            # {prompt, attachments} as extract reads them
+        self.lock = threading.Lock()
+        self.t0 = time.monotonic()
+        self.next_due = self.t0
+        self.per_stage = JOB_SECONDS / len(STAGES) if JOB_SECONDS > 0 else 0
+        self.started_at = iso(_dt.datetime.now(_dt.timezone.utc))
+        self.finished_at = None
+        self.state = "queued"
+        self.stage_idx = 0        # index of the stage being worked on
+        self.question = None
+        self.error = None
+        self.chunks: list[Chunk] = []
+        self.last_change = None
+        self.seq = 0
+        self.answers = {}         # field -> the value the person picked
+        self.pending_text = None  # {field, text}: a free-text answer to resolve
+        self.brands = None        # brands found in the material
+        self.selected = None      # (pairs, skipped)
+        self.hits = []
+        self.W = {}; self.W_facts = []; self.W_findings = []; self.W_version = None
+        self.sync(clan)
+
+    # the job's working copy of the document: the request's clan, plus any
+    # chunk of ours that has not landed there yet
+    def sync(self, clan):
+        known = known_ids(clan)
+        W = copy.deepcopy(ctx_data(clan))
+        facts = copy.deepcopy(ctx_facts(clan))
+        findings = copy.deepcopy(ctx_findings(clan))
+        for c in self.chunks:
+            if c.ids <= known:
+                continue
+            for p in field_paths(c.patch):
+                if get_dotted(W, p) is None:
+                    W = apply_patch(W, self._sub(c.patch, p))
+            facts += [f for f in c.facts if f["id"] not in {x["id"] for x in facts}]
+            findings += [f for f in c.findings if f["id"] not in {x["id"] for x in findings}]
+        camp = W.setdefault("campaign", {})
+        for f, v in self.answers.items():
+            if f not in camp:  # the person answered; the view's write has not reached us
+                camp[f] = {"value": v, "origin": "confirmed", "gate": GATES[f], "decision": "d_PENDINGANSWER"}
+        self.W, self.W_facts, self.W_findings, self.W_version = W, facts, findings, clan.get("version")
+        self.clan = clan
+
+    @staticmethod
+    def _sub(patch, path):
+        parts = path.split(".")
+        node = patch
+        for p in parts:
+            node = node[p]
+        out = node
+        for p in reversed(parts):
+            out = {p: out}
+        return out
+
+    def wclan(self):
+        return {"id": self.doc, "version": self.W_version, "data": self.W, "facts": self.W_facts,
+                "findings": self.W_findings, "decision_chain": self.clan.get("decision_chain") or {}}
+
+    def mint_msg(self, stage, text, question=None):
+        self.seq += 1
+        mid = ulid_like("msg_", self.seq, self.doc, self.id, stage)
+        m = {"role": "agent", "text": text, "at": iso(now()), "job_id": self.id, "stage": stage}
+        if question:
+            m["question"] = question
+        return mid, m
+
+    def did(self, *parts):
+        return uid("d_", self.doc, self.id, *parts)
+
+    def add_chunk(self, stage, patch, decisions, facts=(), findings=(), text=None, question=None,
+                  msg_decision=None, base=None, read_from=None):
+        """Record a stage's output. The message goes into the patch under
+        intake.messages.<id>, and is named by `msg_decision` (or, when None, the
+        first decision of the chunk)."""
+        patch = copy.deepcopy(patch)
+        message = None
+        if text:
+            mid, m = self.mint_msg(stage, text, question)
+            patch.setdefault("intake", {}).setdefault("messages", {})[mid] = m
+            message = {"id": mid, "text": text, "stage": stage}
+            tgt = f"{self.doc}#intake.messages[{mid}]"
+            owner = msg_decision or (decisions[0] if decisions else None)
+            if owner is None:
+                owner = decision(self.doc, self.did(stage, "narrate", self.seq), "edit", self.handler, "narrate",
+                                 f"The {stage} stage's chat message.", [])
+                decisions = list(decisions) + [owner]
+            elif owner not in decisions:
+                decisions = list(decisions) + [owner]
+            owner["targets"].append(tgt)
+            owner.setdefault("fields_changed", [])
+            if "intake.messages" not in owner["fields_changed"]:
+                owner["fields_changed"].append("intake.messages")
+        # every field the patch writes is named by a decision's targets (§3)
+        for p in field_paths(patch):
+            a = f"{self.doc}#{address(p)}"
+            if not any(a == t or t.startswith(a + "[") for d in decisions for t in d["targets"]):
+                decisions[0]["targets"].append(a)
+        c = Chunk(stage, base if base is not None else self.W_version, patch,
+                  read_of(read_from if read_from is not None else self.W, patch), facts, findings, decisions, message)
+        self.chunks.append(c)
+        # the working copy moves on as if it had landed
+        self.W = apply_patch(self.W, patch)
+        self.W_facts += [f for f in c.facts if f["id"] not in {x["id"] for x in self.W_facts}]
+        self.W_findings += [f for f in c.findings if f["id"] not in {x["id"] for x in self.W_findings}]
+        return c
+
+    def messages(self):
+        return [c.message for c in self.chunks if c.message]
+
+    # -- advancing ------------------------------------------------------------
+    def advance(self, clan, only_identify=False):
+        self.sync(clan)
+        if self.state in ("queued", "running"):
+            self.state = "running"
+            ran = 0
+            while self.stage_idx < len(STAGES):
+                if ran and time.monotonic() < self.next_due:
+                    break
+                stage = STAGES[self.stage_idx]
+                if only_identify and stage != "identify":
+                    break
+                if stage == "report":
+                    earlier = set().union(*(c.ids for c in self.chunks)) if self.chunks else set()
+                    if not earlier <= known_ids(clan):
+                        break  # composes once the earlier stages have landed (§8.4)
+                try:
+                    finished = getattr(self, "stage_" + stage)()
+                except TaskError as e:
+                    self.fail(stage, e.etype, e.message)
+                    break
+                except Exception as e:  # never a silent fallback
+                    self.fail(stage, "internal", f"the {stage} stage failed ({type(e).__name__})")
+                    break
+                ran += 1
+                if not finished:  # needs_input
+                    self.state = "needs_input"
+                    break
+                self.stage_idx += 1
+                self.next_due = time.monotonic() + self.per_stage
+            if self.stage_idx >= len(STAGES) and self.state == "running":
+                self.state = "done"
+                self.finished_at = iso(_dt.datetime.now(_dt.timezone.utc))
+        known = known_ids(clan)
+        pending = [c for c in self.chunks if not c.ids <= known]
+        change = combine(self.doc, pending)
+        if change is None and self.state == "done":
+            change = self.last_change  # a done job's later polls return the same change again
+        if change is not None:
+            self.last_change = change
+        return change
+
+    def fail(self, stage, etype, message):
+        self.state = "failed"
+        self.error = {"type": etype, "message": message}
+        self.finished_at = iso(_dt.datetime.now(_dt.timezone.utc))
+        d = decision(self.doc, self.did(stage, "failed"), "edit", self.handler, "stage_failed",
+                     f"The {stage} stage failed: {message}. What landed before it stays.", [])
+        self.add_chunk(stage, {}, [d], text=f"The {stage} stage failed: {message}. What already landed stays.")
+
+    def view(self):
+        return {"id": self.id, "state": self.state,
+                "progress": {"done": min(self.stage_idx, len(STAGES)), "total": len(STAGES)},
+                "stage": STAGES[min(self.stage_idx, len(STAGES) - 1)],
+                "question": self.question if self.state == "needs_input" else None,
+                "started_at": self.started_at, "finished_at": self.finished_at, "error": self.error}
+
+    def summary(self):
+        if self.state == "needs_input":
+            return f"Waiting for you: {self.question['text']}"
+        if self.state == "done":
+            return "Campaign ready: the report is in the document."
+        if self.state == "failed":
+            return f"Failed at {self.view()['stage']}: {self.error['message']}"
+        return f"{self.view()['stage']}: {self.stage_idx} of {len(STAGES)} stage(s) done"
+
+    # -- stages -----------------------------------------------------------------
+    def stage_extract(self):
+        did = self.did("extract")
+        result, change, hits = run_extract(self.doc, self.W_version, self.wclan(), self.inp, self.handler,
+                                           skip={"brand", "client_org", "categories"}, did=did, action="extract")
+        self.hits += hits
+        dec = change["decisions"][0]
+        dec["targets"] = [t for t in dec["targets"] if t != f"{self.doc}#campaign"]
+        for mid in result.get("materials_new", []):
+            dec["targets"].append(f"{self.doc}#materials[{mid}]")
+        filled = result["fields"]
+        names = ", ".join(f.replace("_", " ") for f in filled) or "nothing"
+        text = (f"Read {len(result['materials_read'])} material(s). Filled from what they say: {names}."
+                + (f" Left open, because nothing supports them: {', '.join(a.replace('_', ' ') for a in result['abstained'])}."
+                   if result["abstained"] else ""))
+        if result["materials_unread"]:
+            text += f" {len(result['materials_unread'])} attachment(s) had no readable text and ground nothing."
+        self.add_chunk("extract", change["data_patch"], [dec], text=text)
+        return True
+
+    def materials(self):
+        mats, _ = build_materials(self.inp, self.W)
+        return mats
+
+    def detect_brands(self):
+        """Brands the material names, in order: {ref, name, span, comparator, how}."""
+        if self.brands is not None:
+            return self.brands
+        mats = self.materials()
+        found, order = {}, []
+        roster_names = sorted(((r["name"], ref) for ref, r in ROSTER.items()), key=lambda x: -len(x[0]))
+
+        def add(name, mat, s, e, how, comparator=False):
+            ref, name = brand_ref(name)
+            if not slug(name) or slug(name) in ("we", "the", "our", "it", "i"):
+                return
+            if ref not in found:
+                found[ref] = {"ref": ref, "name": name, "span": mat.span(s, e), "comparator": comparator, "how": how}
+                order.append(ref)
+            else:
+                found[ref]["comparator"] = found[ref]["comparator"] or comparator
+
+        cues = [
+            (re.compile(rf"(?P<n>{NAME})\s+(?:as|is)\s+(?:the\s+)?(?:one|brand|competitor|rival)\s+to\s+beat"), True),
+            (re.compile(rf"(?i:competitors?|rivals?|competing with|compete with|up against|versus|vs\.?)"
+                        rf"\s*(?:(?i:is|are|include|includes|like)\s+|:\s*)?(?P<l>{NAME}(?:\s*(?:,|and|&)\s*{NAME})*)"), True),
+            (re.compile(rf"(?i:brands?)(?:\s+(?i:in this brief|named|involved|here))?\s*(?::|(?i:are|is))\s*"
+                        rf"(?P<l>{NAME}(?:\s*(?:,|and|&)\s*{NAME})*)"), False),
+            (re.compile(rf"(?i:(?:re)?launch(?:ing|es)?|introducing)\s+(?P<n>{NAME})"), False),
+        ]
+        for mat in mats:
+            for para, s, e in mat.sentences:
+                sent = mat.text[s:e]
+                for rn, rref in roster_names:
+                    for m in re.finditer(rf"(?<![\w]){re.escape(rn)}(?![\w])", sent, re.I):
+                        add(rn, mat, s, e, "roster")
+                for rx, comp in cues:
+                    for m in rx.finditer(sent):
+                        blob = m.groupdict().get("n") or m.groupdict().get("l") or ""
+                        for nm in re.split(r"\s*(?:,|\band\b|&)\s*", blob):
+                            if nm.strip():
+                                add(nm, mat, s, e, "cue", comp)
+        self.brands = [found[r] for r in order]
+        return self.brands
+
+    def subject_claim(self):
+        """The subject brand when the material says clearly which is the client's."""
+        mats = self.materials()
+        for mat in mats:  # a Brand: label
+            m = re.search(r"^[ \t]*Brand[ \t]*:[ \t]*(?P<b>[^\n]{2,60}?)[ \t]*$", mat.text, re.M)
+            if m and slug(m.group("b")):
+                return self._as_brand(m.group("b"), mat.span(m.start("b"), m.end("b")))
+        for mat in [m for m in mats if m.kind == "prompt"]:  # named in the prompt as ours / the client's
+            for rx in [rf"\b(?i:our|the)\s+client(?:['’]s brand)?\s*(?:is|,|:)?\s+(?P<b>{NAME})",
+                       rf"(?P<b>{NAME})\s+is\s+(?:our|the)\s+client(?:['’]s)?\b",
+                       rf"\b(?i:our|my)\s+brand\s*(?:is|,|:)?\s+(?P<b>{NAME})",
+                       rf"\b(?i:for)\s+our\s+client\s+(?P<b>{NAME})"]:
+                m = re.search(rx, mat.text)
+                if m:
+                    return self._as_brand(m.group("b"), mat.span(m.start("b"), m.end("b")))
+        brands = self.detect_brands()
+        if len(brands) == 1 and not brands[0]["comparator"]:
+            b = brands[0]  # the only brand in the material, and not named as a comparator
+            return {"ref": b["ref"], "name": b["name"], "span": b["span"]}
+        return None
+
+    def _as_brand(self, name, span):
+        ref, name = brand_ref(name)
+        return {"ref": ref, "name": name, "span": span}
+
+    def category_candidates(self, texts):
+        """Ranked at most two leaves by keyword hits: (leaf, span|None)."""
+        score = {}
+        for mat, s, e, sent in texts:
+            for leaf, pats in TAXONOMY.items():
+                n = sum(len(re.findall(p, sent, re.I)) for p in pats)
+                if n:
+                    sc = score.setdefault(leaf, [0, len(score), mat.span(s, e) if mat else None])
+                    sc[0] += n
+        ranked = sorted(score.items(), key=lambda kv: (-kv[1][0], kv[1][1]))[:2]
+        return [(leaf, v[2]) for leaf, v in ranked]
+
+    def ask(self, field, text, options, allow_text, intro, decisions=None, patch=None, facts=()):
+        qid = uid("q_", self.doc, self.id, field, self.seq + 1, n=12)
+        q = {"id": qid, "text": text, "options": options, "allow_text": allow_text,
+             "address": f"{self.doc}#campaign.{field}"}
+        self.question = q
+        d = decision(self.doc, self.did("ask", qid), "edit", self.handler, "identify",
+                     f"Asked the person ({field}): {text} Research waits; nothing is guessed.", [],
+                     [o["source"]["material_id"] for o in options if o.get("source")]
+                     + [f for o in options for f in o.get("fact_ids", [])])
+        decs = list(decisions or []) + [d]
+        self.add_chunk("identify", patch or {}, decs, facts=facts, text=f"{intro} {text}".strip(),
+                       question=q, msg_decision=d)
+        return False
+
+    def stage_identify(self):
+        camp = self.W.get("campaign") or {}
+        mats = self.materials()
+        patch, decs, facts, notes = {"campaign": {}}, [], [], []
+        did = self.did("identify", len(self.chunks))
+        idec = decision(self.doc, did, "edit", self.handler, "identify", "", [], [])
+
+        def write(field, env):
+            patch["campaign"][field] = dict(env, gate=GATES[field], decision=did)
+            idec["targets"].append(f"{self.doc}#campaign.{field}")
+            idec.setdefault("fields_changed", []).append(f"campaign.{field}")
+
+        def flush():
+            idec["rationale"] = " ".join(notes) or "Nothing settled from the material yet."
+            p = patch if patch["campaign"] else {}
+            ds = ([idec] if idec["targets"] else []) + decs
+            return p, ds
+
+        # 1. the subject brand ----------------------------------------------------
+        brand = (camp.get("brand") or {}).get("value")
+        if not brand:
+            pt = self.pending_text if (self.pending_text or {}).get("field") == "brand" else None
+            claim = None if pt else self.subject_claim()
+            if claim:
+                brand = {"ref": claim["ref"], "name": claim["name"]}
+                write("brand", {"value": brand, "origin": "extracted", "source": claim["span"]})
+                idec["cites"].append(claim["span"]["material_id"])
+                notes.append(f"{claim['name']} is the client's brand (read from the material).")
+            else:
+                self.pending_text = None
+                if pt:
+                    opts, found = self.brand_from_text(pt["text"])
+                    intro = (f"From \"{pt['text']}\":" if found else
+                             f"\"{pt['text']}\" does not name a brand I can use.")
+                    p, ds = flush()
+                    return self.ask("brand", "Which brand is the client's?" if found else
+                                    "Which brand is the client's? Type its name.", opts, True, intro, ds, p, facts)
+                brands = self.detect_brands()
+                p, ds = flush()
+                if brands:
+                    opts = [{"id": opt_id(b["name"]), "label": b["name"], "value": {"ref": b["ref"], "name": b["name"]},
+                             "origin": "extracted", "source": b["span"]} for b in brands]
+                    opts = list({o["id"]: o for o in opts}.values())
+                    opts.append({"id": "none", "label": "None of these"})
+                    names = [b["name"] for b in brands]
+                    intro = (f"The material names {' and '.join(names) if len(names) < 3 else ', '.join(names)}"
+                             f"{'' if len(names) > 1 else ', as a comparator'}, and does not say which is the client's."
+                             + (" The other is treated as a comparator." if len(names) == 2 else
+                                " The others are treated as comparators." if len(names) > 2 else "")
+                             + " Research waits for your answer.")
+                    return self.ask("brand", "Which brand is the client's?", opts, True, intro, ds, p, facts)
+                return self.ask("brand", "Which brand is this campaign for? Type its name.", [], True,
+                                "I could not find the client's brand in the prompt or the material.", ds, p, facts)
+        subject_ref = brand.get("ref")
+
+        # 2. roster row: pinned already, or looked up in the brand layer -----------
+        pinned = [f for f in self.W_facts if f.get("entity") == subject_ref and str(f.get("key", "")).startswith("roster.")
+                  and f.get("status", "active") == "active"]
+        row = ROSTER.get(subject_ref)
+        if row and not any(f["key"].startswith("roster.categories") for f in pinned):
+            facts = self.roster_pins(subject_ref, row)
+            pin_did = facts[0]["decision"]
+            decs.append(decision(self.doc, pin_did, "pin", self.handler, "lookup",
+                                 f"Deterministic lookup of {row['name']}'s roster row in the brand layer: "
+                                 f"{len(facts)} row(s) pinned.", [f"facts[{f['id']}]" for f in facts],
+                                 [s for f in facts for s in f["sources"]]))
+            self.hits += [{"id": f["id"], "scope": "brand", "source": f["origin"]} for f in facts]
+            pinned = pinned + facts
+        cat_pins = sorted([f for f in pinned if f["key"] in ("roster.categories.primary", "roster.categories.secondary")
+                           and re.fullmatch(r"[a-z0-9_]+\.[a-z0-9_]+", str(f.get("value")))],
+                          key=lambda f: f["key"] != "roster.categories.primary")
+        org_pin = next((f for f in pinned if f["key"] == "roster.client_org"
+                        and re.fullmatch(r"org/[a-z0-9][a-z0-9-]*", str(f.get("value")))), None)
+
+        # 3. categories --------------------------------------------------------------
+        if not camp.get("categories"):
+            if cat_pins:
+                why = human_owned(self.W, ctx_decisions(self.clan), self.doc, "categories")
+                if not why:
+                    vals = list(dict.fromkeys(f["value"] for f in cat_pins))[:2]
+                    write("categories", {"value": vals, "origin": "proposed", "fact_ids": [f["id"] for f in cat_pins]})
+                    idec["cites"] += [f["id"] for f in cat_pins]
+                    notes.append(f"Categories from the roster row: {', '.join(vals)} (proposed, to confirm).")
+            else:
+                pt = self.pending_text if (self.pending_text or {}).get("field") == "categories" else None
+                self.pending_text = None
+                p, ds = flush()
+                if pt:
+                    cands = self.category_candidates([(None, 0, 0, pt["text"])])
+                    typed = [l for l in re.findall(r"\b[a-z0-9_]+\.[a-z0-9_]+\b", pt["text"]) if l in TAXONOMY]
+                    leaves = list(dict.fromkeys(typed + [c[0] for c in cands]))[:2]
+                    opts = self.category_options([(l, None) for l in leaves], "stated")
+                    if leaves:
+                        return self.ask("categories", "Which category is it?", opts, True,
+                                        f"From \"{pt['text']}\":", ds, p, facts)
+                    return self.ask("categories", "Which category is it? Type a leaf such as drinks.cider.", [], True,
+                                    f"\"{pt['text']}\" does not match a category leaf I know.", ds, p, facts)
+                texts = [(m, s, e, m.text[s:e]) for m in mats for _, s, e in m.sentences]
+                cands = self.category_candidates(texts)
+                if cands:
+                    return self.ask("categories", "Which category is it?", self.category_options(cands, "extracted"), True,
+                                    f"{brand['name']} has no roster row, so its category is not known. "
+                                    "The material points at these; pick one or say what it is.", ds, p, facts)
+                return self.ask("categories", "Which category is it? Type it.", [], True,
+                                f"{brand['name']} has no roster row and the material does not say its category.",
+                                ds, p, facts)
+
+        # 4. markets ---------------------------------------------------------------------
+        if not camp.get("markets"):
+            pt = self.pending_text if (self.pending_text or {}).get("field") == "markets" else None
+            self.pending_text = None
+            p, ds = flush()
+            if pt:
+                codes = self.markets_from_text(pt["text"])
+                if codes:
+                    opts = [{"id": "markets", "label": market_list(codes), "value": codes, "origin": "stated"},
+                            {"id": "other", "label": "Something else"}]
+                    return self.ask("markets", "Which markets is it for?", opts, True, f"From \"{pt['text']}\":", ds, p, facts)
+                return self.ask("markets", "Which markets is it for? Name the countries.", [], True,
+                                f"\"{pt['text']}\" does not name a country I can research.", ds, p, facts)
+            return self.ask("markets", "Which markets is it for? Name the countries.", [], True,
+                            "Nothing names a market, and research runs once per market.", ds, p, facts)
+
+        # 5. the client ------------------------------------------------------------------
+        if not camp.get("client_org") and not human_owned(self.W, ctx_decisions(self.clan), self.doc, "client_org"):
+            if org_pin:
+                ext, _ = extract_candidates(mats, brand.get("name"))
+                e = ext.get("client_org")
+                name = e["value"]["name"] if e and e["value"]["ref"] == org_pin["value"] else (
+                    row["client_org"][1] if row and row["client_org"][0] == org_pin["value"] else
+                    org_pin["value"][4:].replace("-", " ").title())
+                write("client_org", {"value": {"ref": org_pin["value"], "name": name}, "origin": "proposed",
+                                     "fact_ids": [org_pin["id"]]})
+                idec["cites"].append(org_pin["id"])
+                notes.append(f"Client: {name} (from the roster row, proposed).")
+            else:
+                ext, _ = extract_candidates(mats, brand.get("name"))
+                if "client_org" in ext:
+                    write("client_org", {"value": ext["client_org"]["value"], "origin": "extracted",
+                                         "source": ext["client_org"]["span"]})
+                    idec["cites"].append(ext["client_org"]["span"]["material_id"])
+                    notes.append(f"Client: {ext['client_org']['value']['name']} (read from the material).")
+
+        # 6. the subject is never its own comparator: a later stage rewriting an
+        #    earlier stage's field (new decision, read = what extract wrote, §3)
+        cs = camp.get("competitor_set")
+        if cs and cs.get("origin") in ("extracted", "proposed") and \
+                any(isinstance(c, dict) and c.get("ref") == subject_ref for c in cs.get("value") or []):
+            keep = [c for c in cs["value"] if c.get("ref") != subject_ref]
+            if keep:
+                env = {k: v for k, v in cs.items() if k not in ("decision",)}
+                env["value"] = keep
+                if "item_provenance" in env:
+                    env["item_provenance"] = {k: v for k, v in env["item_provenance"].items() if k != subject_ref}
+                    if not env["item_provenance"]:
+                        env.pop("item_provenance")
+                write("competitor_set", env)
+            else:
+                patch["campaign"]["competitor_set"] = None
+                idec["targets"].append(f"{self.doc}#campaign.competitor_set")
+            notes.append(f"{brand['name']} removed from the comparators: it is the client's brand.")
+
+        idec["rationale"] = " ".join(notes) or "Subject brand, categories and markets already settled."
+        p, ds = flush()
+        if not ds:
+            ds = [decision(self.doc, did, "edit", self.handler, "identify", idec["rationale"], [])]
+        text = " ".join(notes) or f"{brand['name']}: brand, categories and markets are settled."
+        self.add_chunk("identify", p, ds, facts=facts, text=text)
+        self.question = None
+        return True
+
+    def category_options(self, cands, origin):
+        opts = []
+        for leaf, span in cands:
+            o = {"id": leaf.replace(".", "_"), "label": leaf, "value": [leaf], "origin": origin}
+            if origin == "extracted":
+                o["source"] = span
+            opts.append(o)
+        if len(cands) == 2:
+            o = {"id": "both", "label": f"Both: {cands[0][0]} and {cands[1][0]}",
+                 "value": [cands[0][0], cands[1][0]], "origin": origin}
+            if origin == "extracted":
+                o["source"] = cands[0][1]
+            opts.append(o)
+        opts.append({"id": "other", "label": "Something else"})
+        return opts
+
+    def brand_from_text(self, text):
+        """Free text -> candidate brands (origin stated: the person's words). The
+        last-resort candidate is the text itself as a new brand (§8.3)."""
+        t = slug(text)
+        opts, refs = [], set()
+        if len(t) >= 2:
+            pool = [(r, v["name"]) for r, v in ROSTER.items()] + [(b["ref"], b["name"]) for b in self.detect_brands()]
+            for ref, name in pool:
+                s = slug(name)
+                if ref not in refs and (s == t or (len(t) >= 3 and (t in s or s in t))):
+                    refs.add(ref)
+                    opts.append({"id": opt_id(name), "label": name, "value": {"ref": ref, "name": name},
+                                 "origin": "stated"})
+            if "brand/" + t not in refs and not any(slug(o["value"]["name"]) == t for o in opts):
+                name = text.strip()
+                opts.append({"id": opt_id(name) if opt_id(name) not in {o["id"] for o in opts} else "typed",
+                             "label": f"{name} (new brand)", "value": {"ref": "brand/" + t, "name": name},
+                             "origin": "stated"})
+        found = bool(opts)
+        opts.append({"id": "none", "label": "None of these"})
+        return opts, found
+
+    def markets_from_text(self, text):
+        hits = sorted((m.start(), code) for rx, code in COUNTRIES for m in re.finditer(rx, text))
+        codes = [c for _, c in hits]
+        codes += [c for c in re.findall(r"\b[A-Z]{2}\b", text) if c in ISO_3166]
+        return list(dict.fromkeys(codes))
+
+    def roster_pins(self, ref, row):
+        today = now().date().isoformat()
+        pin_did = self.did("roster", ref)
+        src = lid("src_", SCOPE["org"], "roster", ref)
+        rows = [("roster.categories.primary", row["categories"][0])]
+        if len(row["categories"]) > 1:
+            rows.append(("roster.categories.secondary", row["categories"][1]))
+        rows.append(("roster.client_org", row["client_org"][0]))
+        out = []
+        for key, value in rows:
+            out.append({"id": uid("f_", SCOPE["org"], ref, key, 1, value), "entity": ref, "key": key, "value": value,
+                        "unit": "code", "as_of": today, "retrieved_at": today, "sources": [src],
+                        "confidence": derive_confidence([{"tier": "mock"}]), "licence": "client-confidential",
+                        "status": "active", "version": 1, "supersedes": None,
+                        "origin": origin_uri("brand", ref, key, 1), "decision": pin_did,
+                        "pinned_at": iso(now()),
+                        "pin_reason": f"Roster row ({key}): mock brand-layer fixture, proposed for "
+                                      f"campaign.{'categories' if 'categories' in key else 'client_org'}",
+                        "layer": "brand", "method": "report"})
+        return out
+
+    def stage_select(self):
+        camp = self.W.get("campaign") or {}
+        markets = list((camp.get("markets") or {}).get("value") or [])
+        cats = list((camp.get("categories") or {}).get("value") or [])
+        prompt = next((m for m in self.materials() if m.kind == "prompt"), None)
+        skip = {}  # (lens, market|None) -> reason
+        if prompt:
+            for _, s, e in prompt.sentences:
+                sent = prompt.text[s:e].strip()
+                lenses = [l for l, rx in LENS_WORDS.items() if re.search(rx, sent, re.I)]
+                if not lenses:
+                    continue
+                named = [c for c in dict.fromkeys(code for rx, code in COUNTRIES for _ in re.finditer(rx, sent))
+                         if c in markets]
+                if re.search(r"\b(?:skip|ignore|leave out|no need for|don['’]t need|do not need|not interested in|"
+                             r"without)\b", sent, re.I):
+                    for l in lenses:
+                        skip[(l, None)] = f"The prompt leaves it out (\"{sent}\")."
+                elif re.search(r"\bonly\b", sent, re.I) and named:
+                    for l in lenses:
+                        for mk in markets:
+                            if mk not in named:
+                                skip[(l, mk)] = f"The prompt asks for it in {market_list(named)} only (\"{sent}\")."
+                elif re.search(r"\b(?:only|just)\b", sent, re.I):
+                    for l in LENSES:
+                        if l not in lenses:
+                            skip[(l, None)] = f"The prompt asks only for {', '.join(LENS_TITLES[x].lower() for x in lenses)} (\"{sent}\")."
+        if cats and not any(c.split(".")[0] in REGULATED_VERTICALS for c in cats):
+            skip.setdefault(("regulation_clearance", None),
+                            f"No category advertising rules for {', '.join(cats)}: the clearance lens has nothing to read.")
+        pairs = [(l, m) for l in LENSES for m in markets if (l, None) not in skip and (l, m) not in skip]
+        skipped = [{"lens": l, **({"market": m} if m else {}), "reason": r} for (l, m), r in
+                   sorted(skip.items(), key=lambda kv: (LENSES.index(kv[0][0]), markets.index(kv[0][1]) if kv[0][1] in markets else -1))]
+        self.selected = (pairs, skipped)
+        did = self.did("select")
+        prior = [x for x in ((self.W.get("selection") or {}).get("lenses_skipped") or [])
+                 if (x.get("lens"), x.get("market")) not in {(s["lens"], s.get("market")) for s in skipped}
+                 and not any(x.get("lens") == l and x.get("market") in (None, m) for l, m in pairs)]
+        for s in skipped:
+            s["decision"] = did
+        d = decision(self.doc, did, "edit", self.handler, "select",
+                     f"Selected {len(pairs)} lens x market pair(s) for this prompt; skipped {len(skipped)}"
+                     + (": " + "; ".join(f"{s['lens']}{'/' + s['market'] if 'market' in s else ''}" for s in skipped)
+                        if skipped else "") + ".",
+                     ["selection.lenses_skipped"] + [f"selection.lenses_skipped[{s['lens']}{'/' + s['market'] if 'market' in s else ''}]"
+                                                     for s in skipped],
+                     [prompt.id] if prompt else [], fields_changed=["selection.lenses_skipped"])
+        by_lens = {}
+        for l, m in pairs:
+            by_lens.setdefault(l, []).append(m)
+        text = (f"Researching {len(by_lens)} lens(es) across {market_list(markets)}."
+                + ("".join(f" {LENS_TITLES[s['lens']]} is skipped{' in ' + market_list([s['market']]) if 'market' in s else ''}: "
+                           f"{s['reason']}" for s in skipped)))
+        self.add_chunk("select", {"selection": {"lenses_skipped": prior + skipped}}, [d], text=text)
+        return True
+
+    def stage_research(self):
+        pairs = self.selected[0] if self.selected else []
+        if not pairs:
+            d = decision(self.doc, self.did("research"), "edit", self.handler, "research",
+                         "Nothing selected: no lens x market to research.", [])
+            self.add_chunk("research", {}, [d], text="Nothing to research: every lens was skipped.")
+            return True
+        lenses = [l for l in LENSES if any(p[0] == l for p in pairs)]
+        markets = list(dict.fromkeys(m for _, m in pairs))
+        result, change, hits, _ = run_research(self.doc, self.W_version, self.wclan(),
+                                               {"lenses": lenses, "markets": markets}, self.handler, pairs=set(pairs))
+        self.hits += hits
+        decs = change["decisions"]
+        merge = next(d for d in decs if d["action"] == "research_merge")
+        for k in change["data_patch"].get("selection", {}):
+            merge["targets"].append(f"{self.doc}#selection.{k}")
+        self.add_chunk("research", change["data_patch"], decs, facts=change["facts_append"],
+                       text=f"Research: {result['summary']}", msg_decision=merge)
+        return True
+
+    def stage_synthesise(self):
+        try:
+            result, change, hits, _ = run_synthesis(self.doc, self.W_version, self.wclan(), {}, self.handler)
+        except TaskError:
+            d = decision(self.doc, self.did("synthesise"), "edit", self.handler, "synthesise",
+                         "No pins to synthesise from; no finding is invented.", [])
+            self.add_chunk("synthesise", {}, [d], text="Nothing to synthesise: research pinned no facts.")
+            return True
+        self.hits += hits
+        n = len(change["findings_append"])
+        text = (f"{n} finding(s), each derived by the agent and waiting for a person to verify or reject."
+                if n else "No new findings: what the pins say is already written up.")
+        self.add_chunk("synthesise", {}, change["decisions"], findings=change["findings_append"], text=text)
+        return True
+
+    def stage_report(self):
+        clan = self.clan  # the request's document, now holding every earlier stage
+        report, cites, hits = compose(self.doc, clan, self.handler)
+        did = self.did("report")
+        d = decision(self.doc, did, "edit", self.handler, "report",
+                     "The report stage: structured blocks over the pins and findings the document held once the "
+                     "earlier stages had landed. Every claim cites a pin or a finding.",
+                     ["report"], cites, fields_changed=["report"])
+        self.hits += hits
+        self.add_chunk("report", {"report": report}, [d], base=clan.get("version"), read_from=ctx_data(clan),
+                       text="Report ready. The short list under it is what to confirm before the brief.")
+        return True
+
+
+# -- the report (Contract 3 §17) ----------------------------------------------------
+
+def compose(doc, clan, handler):
+    """data.report from the document as the request holds it. Deterministic, no
+    model: each claim is either a finding's own statement (citing it) or a
+    sentence with no figure in it (citing the pins the view renders)."""
+    data = ctx_data(clan)
+    camp = data.get("campaign") or {}
+    sel = data.get("selection") or {}
+    pins = [f for f in ctx_facts(clan) if re.fullmatch(r"f_[0-9A-Z]{6,}", str(f.get("id", "")))]
+    pin_ids = {f["id"] for f in pins}
+    findings = [f for f in ctx_findings(clan) if f.get("status") in ("proposed", "verified")
+                and re.fullmatch(r"fi_[0-9A-Z]{6,}", str(f.get("id", "")))]
+    if not pins and not findings:
+        raise bad("nothing to cite: the document holds no pin and no finding, so no claim could be sourced")
+    fval = lambda f: (camp.get(f) or {}).get("value")
+    brand = (fval("brand") or {}).get("name") or fval("name") or "The campaign"
+    markets = list(fval("markets") or [])
+
+    def lens_of_key(k):
+        return KEY_LENS.get(str(k).split(".")[0])
+
+    roster = [f for f in pins if str(f.get("key", "")).startswith("roster.")]
+    by_lens = {l: {"pins": [], "findings": [], "gaps": [], "contests": []} for l in LENSES}
+    for f in pins:
+        l = lens_of_key(f.get("key"))
+        if l:
+            by_lens[l]["pins"].append(f)
+    for fi in findings:
+        l = fi.get("lens") if fi.get("lens") in LENSES else next(
+            (lens_of_key(p["key"]) for p in pins if p["id"] in (fi.get("cites") or []) and lens_of_key(p["key"])), None)
+        if l:
+            by_lens[l]["findings"].append(fi)
+    for g in sel.get("gaps") or []:
+        l = g.get("lens") if g.get("lens") in LENSES else lens_of_key(str(g.get("key", "")).partition(":")[2])
+        if l and re.fullmatch(r"[a-z0-9_]+", str(g.get("id", ""))):
+            by_lens[l]["gaps"].append(g)
+    for c in sel.get("contested") or []:
+        l = lens_of_key(str(c.get("key", "")).partition(":")[2].partition("@")[0])
+        if l and re.fullmatch(r"[a-z0-9_]+", str(c.get("id", ""))):
+            by_lens[l]["contests"].append(c)
+
+    def fcites(fi):
+        return [fi["id"]] + [c for c in fi.get("cites") or [] if c in pin_ids]
+
+    sections, used = [], set()
+    if roster:
+        ids = [f["id"] for f in roster]
+        sections.append({"id": "s_identity", "title": "Brand and category", "blocks": [
+            {"kind": "claim", "text": f"The categories and the client come from {brand}'s roster row in the brand layer.",
+             "cites": ids}, {"kind": "pins", "fact_ids": ids}]})
+        used |= set(ids)
+    for l in LENSES:
+        g = by_lens[l]
+        if not any(g.values()):
+            continue
+        blocks = []
+        pm = sorted({p["market"] for p in g["pins"] if p.get("market")})
+        if g["findings"]:
+            fi = g["findings"][0]
+            blocks.append({"kind": "claim", "text": fi["statement"], "cites": fcites(fi)})
+        elif g["pins"]:
+            where = f" for {market_list(pm)}" if pm else ""
+            blocks.append({"kind": "claim", "text": f"{LENS_TITLES[l]}: what research pinned{where}; the values are shown below.",
+                           "cites": [p["id"] for p in g["pins"]]})
+        if g["pins"]:
+            blocks.append({"kind": "pins", "fact_ids": [p["id"] for p in g["pins"]]})
+        blocks += [{"kind": "finding", "finding_id": fi["id"]} for fi in g["findings"]]
+        blocks += [{"kind": "contest", "contest_id": c["id"]} for c in g["contests"]]
+        blocks += [{"kind": "gap", "gap_id": x["id"]} for x in g["gaps"]]
+        sec = {"id": "s_" + l, "title": LENS_TITLES[l], "lens": l, "blocks": blocks}
+        mk = {x.get("market") for x in g["pins"] + g["gaps"]} - {None}
+        if len(mk) == 1 and not any(not p.get("market") for p in g["pins"]):
+            sec["market"] = mk.pop()
+        sections.append(sec)
+        for b in blocks:
+            used |= set(b.get("cites", [])) | set(b.get("fact_ids", []))
+            if b["kind"] == "finding":
+                used.add(b["finding_id"])
+
+    summary = [{"text": fi["statement"], "cites": fcites(fi)}
+               for l in LENSES for fi in by_lens[l]["findings"][:1]][:4]
+    if not summary:
+        for l in LENSES:
+            if by_lens[l]["pins"] and len(summary) < 4:
+                summary.append({"text": f"{LENS_TITLES[l]} rests on pinned facts; nothing has been synthesised from them yet.",
+                                "cites": [p["id"] for p in by_lens[l]["pins"]]})
+    if not summary:
+        summary = [{"text": f"Only {brand}'s roster row is pinned so far; nothing has been researched yet.",
+                    "cites": [f["id"] for f in roster]}]
+    head_cites = [findings[0]["id"]] if findings else [pins[0]["id"]]
+    open_ct = [c for c in sel.get("contested") or [] if c.get("status") == "open"]
+    headline = {"text": f"{brand}{' in ' + market_list(markets) if markets else ''}: what the research found"
+                        + (", with values still contested" if open_ct else "") + ".",
+                "cites": head_cites}
+
+    # confirm: D3's four while extracted or proposed, then every other proposed field
+    confirm = []
+    d3 = ["brand", "categories", "markets", "competitor_set"]
+    order = [f for f in d3 if (camp.get(f) or {}).get("origin") in ("extracted", "proposed")] + \
+        [f for f in CAMPAIGN_FIELDS if f not in d3 and (camp.get(f) or {}).get("origin") == "proposed"]
+    for f in order:
+        env = camp[f]
+        v = env.get("value")
+        if f in ("brand", "client_org"):
+            shown = v.get("name") if isinstance(v, dict) else str(v)
+        elif f == "markets":
+            shown = market_list(v or [])
+        elif f == "competitor_set":
+            shown = ", ".join(c.get("name", c.get("ref", "")) for c in v or [])
+        elif f == "categories":
+            shown = ", ".join(v or [])
+        else:
+            shown = None
+        label = f"{FIELD_LABELS.get(f, f.replace('_', ' ').capitalize())}" + (f": {shown}" if shown else "")
+        why = ("Read from the material; a person has not confirmed it yet." if env.get("origin") == "extracted"
+               else "Proposed from pinned facts; a person has not confirmed it yet.")
+        confirm.append({"address": f"{doc}#campaign.{f}", "label": label, "why": why})
+
+    # not researched: every skipped lens x market, then any other lens x market with no run
+    skipped = [s for s in sel.get("lenses_skipped") or [] if s.get("lens") in LENSES]
+    nr = [{"lens": s["lens"], **({"market": s["market"]} if s.get("market") else {}), "reason": s["reason"]}
+          for s in skipped]
+    ran = {(r.get("lens"), r.get("market")) for r in sel.get("lenses_run") or []}
+    for l in LENSES:
+        for m in markets:
+            if (l, m) in ran or any(s["lens"] == l and s.get("market") in (None, m) for s in skipped):
+                continue
+            nr.append({"lens": l, "market": m, "reason": "No research run covers it yet."})
+    nr = list({json.dumps(x, sort_keys=True): x for x in nr}.values())
+
+    bf = (data.get("projection") or {}).get("built_from") or {}
+    fsha = bf.get("facts_sha256") if re.fullmatch(r"sha256:[0-9a-f]{64}", str(bf.get("facts_sha256"))) else None
+    isha = bf.get("findings_sha256") if re.fullmatch(r"sha256:[0-9a-f]{64}", str(bf.get("findings_sha256"))) else None
+    report = {
+        "built_at": iso(now()), "handler": handler,
+        "based_on": {"version": str(clan.get("version")),
+                     # the host's member hashes, as read; a document with no
+                     # projection yet gets a hash of the members as sent
+                     "facts_sha256": fsha or canon_sha({"facts": ctx_facts(clan)}),
+                     "findings_sha256": isha or canon_sha({"findings": ctx_findings(clan)})},
+        "headline": headline, "summary": summary, "sections": sections,
+        "confirm": confirm, "not_researched": nr,
+    }
+    cites = list(dict.fromkeys(list(head_cites) + [c for s in summary for c in s["cites"]] + sorted(used)))
+    fact_by_id = {f["id"]: f for f in pins}
+    hits = [{"id": c, "scope": fact_by_id[c].get("layer", ""), "source": fact_by_id[c].get("origin", "")}
+            for c in cites if c in fact_by_id]
+    return report, cites, hits
+
+
+# -- dispatch for the three tasks ---------------------------------------------------
+
+CAMPAIGN_JOBS: dict = {}
+
+
+def unfinished_campaign(doc):
+    with JOBS_LOCK:
+        return next((j for j in CAMPAIGN_JOBS.values() if j.doc == doc and j.scope == SCOPE
+                     and j.state in ("queued", "running", "needs_input")), None)
+
+
+def campaign_envelope(job, change):
+    return envelope("start_campaign", job.handler, job.view(),
+                    {"summary": job.summary(), "messages": job.messages()}, change,
+                    job.hits if job.state == "done" else [])
+
+
+def start_campaign(doc, base, clan, inp, handler):
+    prompt = inp.get("prompt", "")
+    if not isinstance(prompt, str):
+        raise bad("input.prompt must be a string")
+    atts = inp.get("attachments", [])
+    if not isinstance(atts, list):
+        raise bad("input.attachments must be a list")
+    mats = ctx_data(clan).get("materials") if isinstance(ctx_data(clan).get("materials"), dict) else {}
+    for a in atts:
+        if not isinstance(a, dict) or not isinstance(a.get("material_id"), str) or not a.get("sha256") \
+                or not isinstance(a.get("name"), str):
+            raise bad("each attachment needs a material_id, a name and a sha256")
+        m = mats.get(a["material_id"])
+        if not isinstance(m, dict) or norm_sha(m.get("sha256", "")) != norm_sha(a["sha256"]):
+            raise bad(f"attachment {a['material_id']} is not in clan.data.materials with that sha256 "
+                      "(the view indexes a file before it starts the campaign)")
+    xinp = {"prompt": prompt, "attachments": [{"name": a["name"], "sha256": a["sha256"],
+                                               **({"text": a["text"]} if "text" in a else {})} for a in atts]}
+    build_materials(xinp, ctx_data(clan))  # validates shas
+    if not (prompt.strip() or any(isinstance(a.get("text"), str) and a["text"].strip() for a in atts)):
+        raise bad("nothing to read: input.prompt is empty and no attachment carries text")
+    if unfinished_campaign(doc):
+        raise TaskError(409, "job_state", "a start_campaign job on this document is still running or waiting "
+                                          "for an answer; one composition of a document at a time")
+    jid = "job_" + _digest(SCOPE, doc, base, "start_campaign", inp, next(_SEQ)).hex()[:20]
+    job = CampaignJob(jid, doc, handler, clan, xinp)
+    with JOBS_LOCK:
+        CAMPAIGN_JOBS[jid] = job
+        if len(CAMPAIGN_JOBS) > MAX_JOBS:
+            for k in sorted(CAMPAIGN_JOBS, key=lambda k: CAMPAIGN_JOBS[k].t0)[: len(CAMPAIGN_JOBS) - MAX_JOBS]:
+                del CAMPAIGN_JOBS[k]
+    return campaign_envelope(job, None)
+
+
+def campaign_job(doc, jid):
+    if not isinstance(jid, str) or not jid:
+        raise bad("input.job_id is required")
+    with JOBS_LOCK:
+        job = CAMPAIGN_JOBS.get(jid)
+    if job is None or job.scope != SCOPE or job.doc != doc:
+        raise TaskError(404, "unknown_job", f"no job {jid} for this document")
+    return job
+
+
+def poll_campaign(job, clan):
+    with job.lock:
+        change = job.advance(clan)
+        return campaign_envelope(job, change)
+
+
+def answer_question(doc, clan, inp):
+    job = campaign_job(doc, inp.get("job_id"))
+    with job.lock:
+        if job.state != "needs_input":
+            raise TaskError(409, "job_state", f"job {job.id} is {job.state}, not waiting for an answer")
+        q = job.question
+        if inp.get("question_id") != q["id"]:
+            raise bad(f"question_id is not the job's open question ({q['id']})")
+        has_opt, has_text = "option_id" in inp, "text" in inp
+        if has_opt == has_text:
+            raise bad("answer with exactly one of option_id and text")
+        field = q["address"].partition("#campaign.")[2]
+        if has_opt:
+            opt = next((o for o in q["options"] if o["id"] == inp["option_id"]), None)
+            if opt is None:
+                raise bad(f"option {inp['option_id']!r} is not one of the question's options")
+            if "value" not in opt:
+                raise bad(f"option {opt['id']!r} is the escape: answer it with text")
+            job.answers[field] = opt["value"]
+        else:
+            if not q["allow_text"]:
+                raise bad("this question does not take a free-text answer")
+            if not isinstance(inp["text"], str) or not inp["text"].strip():
+                raise bad("text must be a non-empty string")
+            job.pending_text = {"field": field, "text": inp["text"].strip()}
+        job.question = None
+        job.state = "running"
+        change = job.advance(clan, only_identify=True)  # the answer's clan is the base from here
+        return campaign_envelope(job, change)
+
+
+def compose_report_task(doc, base, clan, handler):
+    if unfinished_campaign(doc):
+        raise TaskError(409, "job_state", "a start_campaign job on this document is unfinished; "
+                                          "one composition of a document at a time")
+    report, cites, hits = compose(doc, clan, handler)
+    jid = "job_" + _digest(SCOPE, doc, base, "compose_report", next(_SEQ)).hex()[:20]
+    did = uid("d_", doc, base, "compose_report", jid)
+    mid = ulid_like("msg_", 1, doc, jid, "report")
+    text = "Report refreshed from the document as it stands."
+    patch = {"report": report, "intake": {"messages": {mid: {"role": "agent", "text": text, "at": iso(now()),
+                                                             "job_id": jid, "stage": "report"}}}}
+    d = decision(doc, did, "edit", handler, "compose_report",
+                 "Refresh report: recomposed from the document as it stands; every claim cites a pin or a finding.",
+                 ["report", f"intake.messages[{mid}]"], cites, fields_changed=["report", "intake.messages"])
+    change = {"doc": doc, "base_version": base, "read": read_of(ctx_data(clan), patch), "data_patch": patch,
+              "facts_append": [], "findings_append": [], "decisions": [d]}
+    t = iso(_dt.datetime.now(_dt.timezone.utc))
+    job = {"id": jid, "state": "done", "progress": {"done": 1, "total": 1}, "stage": "report", "question": None,
+           "started_at": t, "finished_at": t, "error": None}
+    return envelope("compose_report", handler, job,
+                    {"summary": f"Report composed: {len(report['sections'])} section(s), "
+                                f"{len(report['confirm'])} to confirm.",
+                     "messages": [{"id": mid, "text": text, "stage": "report"}]}, change, hits)
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -1262,12 +2402,22 @@ def handle(body: dict) -> dict:
         raise bad("clan.id is required: a change is computed for one document")
     doc = clan["id"]
     if task == "job_status":
+        with JOBS_LOCK:
+            cj = CAMPAIGN_JOBS.get(inp.get("job_id")) if isinstance(inp.get("job_id"), str) else None
+        if cj is not None:
+            return poll_campaign(campaign_job(doc, inp.get("job_id")), clan)
         return poll(doc, inp)
     base = clan.get("version")
     if not isinstance(base, (str, int)) or isinstance(base, bool) or base == "":
         raise bad("clan.version is required: a change records the version it read")
     handler = resolve_handler(task, clan)
     t0 = iso(_dt.datetime.now(_dt.timezone.utc))
+    if task == "start_campaign":
+        return start_campaign(doc, base, clan, inp, handler)
+    if task == "answer_question":
+        return answer_question(doc, clan, inp)
+    if task == "compose_report":
+        return compose_report_task(doc, base, clan, handler)
     if task == "extract_ask":
         result, change, hits = run_extract(doc, base, clan, inp, handler)
         job = {"id": "job_" + _digest(SCOPE, doc, base, task, inp, next(_SEQ)).hex()[:20], "state": "done",
