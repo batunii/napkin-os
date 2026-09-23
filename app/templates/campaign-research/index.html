@@ -20,6 +20,7 @@
   --green:#22C55E; --green-soft:#DCFCE7; --green-ink:#146C35;
   --amber:#F5A524; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
   --frost:rgba(255,255,255,.82);
+  --plan:#14161B; --plan-eye:#FFFFFF; --produce-eye:#14161B; --learn-eye:#14161B;
   --shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07);
   --shadow-lg:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.16);
   --ease:cubic-bezier(.2,.8,.2,1);
@@ -36,6 +37,7 @@
     --green-soft:#10281A; --green-ink:#6EE7A0;
     --amber-soft:#2A2110; --amber-ink:#F7C361;
     --frost:rgba(14,16,20,.8);
+    --plan:#F2F3F5; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
     --shadow-lg:0 2px 6px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
   }
@@ -49,6 +51,7 @@
   --green-soft:#10281A; --green-ink:#6EE7A0;
   --amber-soft:#2A2110; --amber-ink:#F7C361;
   --frost:rgba(14,16,20,.8);
+  --plan:#F2F3F5; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
   --shadow-lg:0 2px 6px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
 }
@@ -68,11 +71,6 @@ a{color:inherit}
 /* ---------- top bar ---------- */
 .top{position:sticky;top:0;z-index:40;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line-soft)}
 .top-in{max-width:1180px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.mark{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.03em;font-size:16px;white-space:nowrap}
-.mark i{display:inline-grid;grid-template-columns:1fr 1fr;width:20px;height:20px;border-radius:50%;overflow:hidden;transform:rotate(-45deg)}
-.mark i b:nth-child(1){background:var(--ink)}.mark i b:nth-child(2){background:var(--create)}
-.mark i b:nth-child(3){background:var(--learn)}.mark i b:nth-child(4){background:var(--produce)}
-.mark small{font-family:var(--mono);font-weight:400;font-size:11px;color:var(--ink3);letter-spacing:.04em}
 .nav{display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:999px;flex-wrap:wrap}
 .nav a{text-decoration:none;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:500;color:var(--ink2);transition:background .2s var(--ease),color .2s var(--ease)}
 .nav a:hover{background:var(--paper);color:var(--ink)}
@@ -341,6 +339,183 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   main{padding:24px 16px 96px}
   .top-act{margin-left:0}
 }
+/* ---------- agent figures (static copies of the shell's AgentFigure) ---------- */
+.agent-figure{display:block;overflow:visible;flex:none;width:27px;height:36px}
+.agent-figure .af-shadow{fill:var(--ink);opacity:.08}
+.agent-figure .af-leg line{stroke:var(--ink);stroke-width:2;stroke-linecap:round}
+.agent-figure .af-leg rect{fill:var(--ink)}
+.agent-figure .af-fold{fill:#000;opacity:.14}
+.agent-figure .af-light{fill:#fff;opacity:.22}
+.agent-figure .af-leg,.agent-figure .af-body{transform-box:fill-box}
+.agent-figure .af-leg{transform-origin:50% 0}
+.working .agent-figure .af-leg-l{animation:af-step .55s ease-in-out infinite alternate}
+.working .agent-figure .af-leg-r{animation:af-step .55s ease-in-out infinite alternate-reverse}
+.working .agent-figure .af-body{animation:af-bob .275s ease-in-out infinite alternate}
+@keyframes af-step{from{transform:rotate(-9deg)}to{transform:rotate(9deg)}}
+@keyframes af-bob{from{transform:translateY(0)}to{transform:translateY(-1.2px)}}
+
+/* ---------- the chat intake ---------- */
+section.chat{margin-top:40px}
+.chatbox{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);overflow:hidden}
+.chatbox > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px 20px;font-weight:600;font-size:14px;border-bottom:1px solid var(--line-soft);background:var(--soft)}
+.chatbox > summary::-webkit-details-marker{display:none}
+.chatbox > summary .sp{flex:1}
+.chatbox > summary .chev{transition:transform .2s var(--ease);color:var(--ink3)}
+.chatbox[open] > summary .chev{transform:rotate(180deg)}
+.chatbox:not([open]) > summary{border-bottom:0}
+.stepper{display:flex;gap:4px;padding:12px 20px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap;align-items:center}
+.step{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink3);padding:3px 10px 3px 6px;border-radius:999px}
+.step i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);display:inline-grid;place-items:center;flex:none;font-style:normal;font-family:var(--mono);font-size:9px}
+.step.done{color:var(--ink2)}
+.step.done i{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.step.now{color:var(--ink);background:var(--soft);font-weight:600}
+.step.now i{border-color:var(--ink);border-top-color:transparent;animation:spin 1s linear infinite}
+.step.wait{color:var(--create-ink);background:var(--create-soft);font-weight:600}
+.step.wait i{border-color:var(--create);background:var(--create)}
+.step.fail{color:var(--create-ink)}
+.step.fail i{border-color:var(--create)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.stepper .pct{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.thread{display:grid;gap:16px;padding:22px 20px}
+.msg{display:flex;gap:10px;align-items:flex-end;max-width:100%}
+.msg.user{justify-content:flex-end}
+.msg .col{display:grid;gap:5px;max-width:min(640px,86%);min-width:0}
+.msg.user .col{justify-items:end}
+.msg .meta{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink3);flex-wrap:wrap}
+.msg .meta b{color:var(--ink2);font-weight:600}
+.msg .meta time{font-family:var(--mono);font-size:10.5px}
+.bub{padding:10px 14px;border-radius:18px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.agent .bub{background:var(--soft);border-bottom-left-radius:6px}
+.msg.user .bub{background:var(--ink);color:var(--paper);border-bottom-right-radius:6px}
+.msg.agent.q .bub{background:var(--paper);border:1px solid var(--ink);box-shadow:var(--shadow)}
+.msg.agent.err .bub{background:var(--create-soft);color:var(--create-ink)}
+.msg .fig{width:32px;display:grid;justify-items:center;padding-bottom:2px;flex:none}
+.msg.user .fig{order:2}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--learn);color:var(--ink);display:grid;place-items:center;font-size:11px;font-weight:700;text-transform:uppercase}
+.atts{display:flex;flex-wrap:wrap;gap:6px}
+.msg.user .atts{justify-content:flex-end}
+.att{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px 4px 8px;border-radius:10px;background:var(--paper);border:1px solid var(--line);text-decoration:none;max-width:100%}
+.att svg{width:13px;height:13px;flex:none;color:var(--ink3)}
+.att .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:28ch}
+.att small{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.att button{border:0;background:transparent;cursor:pointer;padding:0 0 0 2px;color:var(--ink3);font-size:15px;line-height:1}
+.att button:hover{color:var(--create-ink)}
+.q-opts{display:grid;gap:8px;margin-top:4px}
+.q-opt{display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:14px;padding:9px 12px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease);width:100%}
+button.q-opt{cursor:pointer}
+button.q-opt:hover{border-color:var(--ink);box-shadow:var(--shadow)}
+button.q-opt:active{transform:translateY(1px)}
+.q-opt .l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;font-size:14px}
+.q-opt .src{font-size:12px;color:var(--ink2);white-space:normal}
+.q-opt .src q{font-style:italic}
+.q-opt.escape{border-style:dashed}
+.q-opt.picked{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft)}
+.q-opt.dim{opacity:.55}
+button.q-opt[disabled]{cursor:wait;opacity:.6}
+.q-text{display:flex;gap:8px;margin-top:8px}
+.q-text input{flex:1;min-width:0;padding:8px 12px;border-radius:999px}
+.q-note{font-size:12px;color:var(--ink3)}
+.typing{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink2)}
+.typing .dots{display:inline-flex;gap:3px}
+.typing .dots i{width:5px;height:5px;border-radius:50%;background:var(--ink3);animation:blink 1.2s infinite}
+.typing .dots i:nth-child(2){animation-delay:.2s}.typing .dots i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+
+/* composer */
+.composer{position:relative;margin:0;border:1px solid var(--line);border-radius:22px;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);box-shadow:var(--shadow-lg);padding:14px 14px 10px;display:grid;gap:10px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
+.composer:focus-within{border-color:var(--ink3)}
+.composer.drag{border-color:var(--create);border-style:dashed;box-shadow:0 0 0 4px var(--create-soft),var(--shadow-lg)}
+.composer textarea{border:0;background:transparent;min-height:96px;padding:6px 8px;font-size:16px;line-height:1.5;resize:none;outline:none}
+.composer textarea::placeholder{color:var(--ink3)}
+.composer .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.composer .row .sp{flex:1}
+.composer .who{font-size:12px;color:var(--ink3);display:inline-flex;gap:6px;align-items:center}
+.composer .who input{width:14ch;padding:3px 8px;font-size:12px;border-radius:999px}
+.composer .name{display:flex;gap:8px;align-items:center;padding:0 8px;font-size:12.5px;color:var(--ink2)}
+.composer .name input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;background:transparent;padding:4px 2px;font-size:13px}
+.composer .name input:focus{outline:none;border-bottom-color:var(--ink)}
+.btn.icon svg{width:15px;height:15px}
+.drop-hint{position:absolute;inset:0;display:none;place-items:center;border-radius:22px;background:color-mix(in srgb,var(--paper) 80%,transparent);font-weight:600;color:var(--create-ink);pointer-events:none}
+.composer.drag .drop-hint{display:grid}
+.composer-wrap{padding:16px 20px 20px;border-top:1px solid var(--line-soft)}
+
+/* the empty document: Brief Maker's intake, in this view's tokens */
+.apptitle{font-weight:600;font-size:14px;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+body.fresh .nav,body.fresh .top-act,body.fresh #hero,body.fresh #gates,body.fresh #jobs,body.fresh section.region,body.fresh #docfoot{display:none!important}
+body.fresh section.chat{margin-top:0}
+.intake{min-height:calc(100vh - 150px);display:flex;flex-direction:column;justify-content:center;gap:22px;max-width:680px;margin:0 auto;width:100%;padding:3vh 0 7vh}
+.intake .h1{font-size:clamp(32px,5.5vw,50px);font-weight:800;letter-spacing:-.045em;line-height:1.03;margin:10px 0 0;text-wrap:balance}
+.intake .lede{margin:0;color:var(--ink2);font-size:16px;line-height:1.6;max-width:56ch}
+.intake .figs{display:flex;gap:2px;align-items:flex-end;flex-wrap:wrap}
+.intake .figs .agent-figure{width:22px;height:30px}
+.btn.go{padding:10px 18px;font-size:14px;font-weight:600;border-radius:12px}
+.btn.go .arrow{transition:transform .2s var(--ease)}
+.btn.go:hover .arrow{transform:translateX(3px)}
+.composer .btn.icon{border-radius:12px;padding:9px 13px}
+/* ---------- the report ---------- */
+section.report{margin-top:36px}
+.rep{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);padding:26px 28px 24px;display:grid;gap:22px}
+.rep-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rep-top .sp{flex:1}
+.rep-stale{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--amber-soft);color:var(--amber-ink);border-radius:12px;padding:10px 14px;font-size:13px}
+.rep-stale > div{flex:1;min-width:24ch}
+.rep-stale b{font-weight:600}
+.rep-stale ul{margin:2px 0 0;padding-left:18px}
+.rep h2.headline{margin:0;font-size:clamp(22px,2.6vw,32px);line-height:1.18;letter-spacing:-.03em;font-weight:800;text-wrap:balance;max-width:34ch}
+.cites{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle}
+.cites a{text-decoration:none}
+.rep-hl{display:grid;gap:10px}
+.cites a.pinc .k{max-width:18ch}
+.rep-sum{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.rep-sum li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;font-size:15px;line-height:1.5}
+.rep-sum li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--create);margin:9px 0 0 4px}
+.rep-sum .cites,.blk-claim .cites{margin-left:6px}
+.rep-sec{border-top:1px solid var(--line-soft);padding-top:18px;display:grid;gap:12px}
+.rep-sec > h3{margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:19px;letter-spacing:-.02em;font-weight:700}
+.blk-claim{font-size:15px;line-height:1.55;margin:0;max-width:78ch}
+.blk-pins{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+a.pin-card{display:grid;gap:3px;align-content:start;text-decoration:none;border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px;background:var(--soft);transition:border-color .2s var(--ease)}
+a.pin-card:hover{border-color:var(--ink3)}
+a.pin-card .v{font-size:20px;font-weight:700;letter-spacing:-.02em;overflow-wrap:anywhere}
+a.pin-card .v.text{font-size:14px;font-weight:600;letter-spacing:0;line-height:1.35}
+a.pin-card .k{font-family:var(--mono);font-size:11px;color:var(--ink2);overflow-wrap:anywhere}
+a.pin-card .m{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+a.pin-card.stale{background:var(--amber-soft)}
+a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
+.blk-card{border:1px solid var(--line-soft);border-radius:14px;padding:12px 14px;display:grid;gap:6px;background:var(--paper)}
+.blk-card.proposed{border-style:dashed;border-color:var(--ink3)}
+.blk-card.rejected .st{text-decoration:line-through;color:var(--ink2)}
+.blk-card.gap{background:var(--soft)}
+.blk-card .st{font-size:14.5px;font-weight:500;line-height:1.45}
+.blk-card .h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.blk-card .h .sp{flex:1}
+.blk-card a.path{font-family:var(--mono);font-size:10.5px;color:var(--ink3);text-decoration:none}
+.blk-card a.path:hover{color:var(--ink);text-decoration:underline}
+.blk-card .cvals{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.blk-card .cval .v{font-size:17px}
+.confirm-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.confirm-list li{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--line-soft);border-radius:12px}
+.confirm-list li .t{flex:1;min-width:18ch;display:grid;gap:2px}
+.confirm-list li .t a{font-weight:600;text-decoration:none}
+.confirm-list li .t a:hover{text-decoration:underline}
+.confirm-list li .t span{font-size:12.5px;color:var(--ink2)}
+.confirm-list li.done{background:var(--soft)}
+.nr-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.nr-list li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13.5px}
+.rep-foot{font-family:var(--mono);font-size:11px;color:var(--ink3);display:flex;flex-wrap:wrap;gap:4px 14px;border-top:1px solid var(--line-soft);padding-top:12px;overflow-wrap:anywhere}
+.flash{animation:flash 1.6s var(--ease)}
+@keyframes flash{0%,40%{box-shadow:0 0 0 4px var(--create-soft),var(--shadow-lg)}100%{box-shadow:var(--shadow)}}
+@media (max-width:640px){
+  .rep{padding:18px 16px;border-radius:18px}
+  .thread{padding:16px 12px}
+  .composer-wrap{padding:12px}
+  .msg .col{max-width:88%}
+  .stepper{padding:10px 12px}
+  .step{padding:2px 6px 2px 4px}
+  .step span{display:none}
+  .step.now span,.step.wait span{display:inline}
+}
+
 /* ---------- print / export ---------- */
 @media print{
   :root{color-scheme:light}
@@ -350,6 +525,9 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   section.region{margin-top:28pt;break-before:auto}
   .field,.card,.entity,.matrix,.gates{box-shadow:none!important;break-inside:avoid;page-break-inside:avoid}
   .field:target,.card:target{box-shadow:none}
+  .rep,.chatbox,.blk-card{box-shadow:none!important;break-inside:avoid-page}
+  .chatbox > summary .chev{display:none}
+  body.fresh .intake{display:none}
   a{text-decoration:none}
   @page{margin:16mm}
 }
@@ -358,8 +536,10 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
 <body>
 <header class="top no-print" role="banner">
   <div class="top-in">
-    <div class="mark" aria-label="Napkin Research"><i aria-hidden="true"><b></b><b></b><b></b><b></b></i>Research <small>campaign</small></div>
+    <div class="apptitle">Research Tool</div>
     <nav class="nav" aria-label="Sections">
+      <a href="#report" id="nav-report-a" hidden>Report</a>
+      <a href="#chat" id="nav-chat-a" hidden>Chat<span id="nav-chat"></span></a>
       <a href="#ask">The ask<span id="nav-ask"></span></a>
       <a href="#facts">Facts<span id="nav-facts"></span></a>
       <a href="#findings">Findings<span id="nav-findings"></span></a>
@@ -380,6 +560,8 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
 <main id="doc">
   <div id="notices"></div>
   <div class="hero" id="hero"></div>
+  <section class="report" id="report" aria-labelledby="h-report" hidden></section>
+  <section class="chat" id="chat" aria-label="The conversation that started this campaign" hidden></section>
   <div id="gates"></div>
   <div id="jobs" aria-live="polite"></div>
 
@@ -652,25 +834,33 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   // ════════════════════════════════════════════════════════════════════════
   // render: header, notices, gates
   // ════════════════════════════════════════════════════════════════════════
+  // Only a document that cites pins or findings needs the projection: a chat
+  // that has just started has neither yet.
+  function citesMembers(){
+    var c=camp();
+    if(FIELDS.some(function(f){ var e=c[f.k]; return isObj(e)&&(arr(e.fact_ids).length||citedFindings(e).length||(isObj(e.value)&&e.value.size)); })) return true;
+    var s=sel();
+    return !!(arr(s.lenses_run).length||arr(s.contested).length||arr(s.gaps).length||isObj(D().report));
+  }
   function renderNotices(){
     var h='', d=D();
-    if(d.example_notice) h+='<div class="notice" role="note"><b>Example.</b> '+esc(d.example_notice)+'</div>';
+    if(d.example_notice) h+='<div class="notice" role="note"><div><b>Example.</b> '+esc(d.example_notice)+'</div></div>';
     var p=proj();
-    if(!p && (Object.keys(camp()).length || arr(sel().contested).length)) h+='<div class="notice" role="note"><b>No projection.</b> The host has not built <span class="mono">projection</span> from shared/facts.yaml and shared/findings.yaml, so pins and findings cannot be shown. The members are the authority.</div>';
-    if(CHAIN.state==='unavailable') h+='<div class="notice info no-print" role="note">The decision chain could not be read (<span class="mono">clan://chain</span>: '+esc(CHAIN.err)+'). Verdicts, confidential marks and history are not shown.</div>';
+    if(!p && citesMembers()) h+='<div class="notice" role="note"><div><b>No projection.</b> The host has not built <span class="mono">projection</span> from shared/facts.yaml and shared/findings.yaml, so pins and findings cannot be shown. The members are the authority.</div></div>';
+    if(CHAIN.state==='unavailable') h+='<div class="notice info no-print" role="note"><div>The decision chain could not be read (<span class="mono">clan://chain</span>: '+esc(CHAIN.err)+'). Verdicts, confidential marks and history are not shown.</div></div>';
     $('notices').innerHTML=h;
   }
   function renderHero(){
     var c=camp();
-    var name=c.name&&c.name.value;
+    var name=c.name&&c.name.value, started=Object.keys(intakeMsgs()).length>0;
     var bits=[];
     if(c.brand) bits.push('<span>'+esc(c.brand.value&&c.brand.value.name)+'</span>');
     if(c.client_org) bits.push('<span class="muted">for '+esc(c.client_org.value&&c.client_org.value.name)+'</span>');
     if(c.markets) bits.push(arr(c.markets.value).map(function(m){ return '<span class="pill">'+esc(m)+'</span>'; }).join(' '));
     if(c.campaign_type) bits.push('<span class="pill">'+esc(TYPES[c.campaign_type.value]||c.campaign_type.value)+'</span>');
     $('hero').innerHTML='<div class="eyebrow">Campaign research'+(c.id?' · '+esc(c.id.value):'')+'</div>'
-      +'<h1 class="'+(name?'':'empty')+'">'+(name?esc(name):'A campaign with no ask yet')+'</h1>'
-      +'<div class="sub">'+(bits.length?bits.join('<span class="sep" aria-hidden="true">/</span>'):'<span class="muted">Nothing has been extracted. Open it from the client’s brief, then extract the ask.</span>')+'</div>';
+      +'<h1 class="'+(name?'':'empty')+'">'+(name?esc(name):started?'A new campaign':'A campaign with no ask yet')+'</h1>'
+      +'<div class="sub">'+(bits.length?bits.join('<span class="sep" aria-hidden="true">/</span>'):'<span class="muted">'+(started?'The agent is reading your message. The ask fills in below as each stage lands.':'Nothing has been extracted. Open it from the client’s brief, then extract the ask.')+'</span>')+'</div>';
   }
   function renderGates(){
     var h='<div class="gates" role="list" aria-label="Gates">';
@@ -1072,7 +1262,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
 
   function render(){
     try{
-      renderNotices(); renderHero(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop();
+      renderNotices(); renderHero(); renderReport(); renderChat(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop(); syncTitle();
     }catch(e){
       console.error(e);
       $('notices').innerHTML='<div class="notice" role="alert"><b>The view could not render this document.</b> '+esc(e&&e.message)+'</div>';
@@ -1163,7 +1353,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
       +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">'+(bad.length?'Why it stands, despite the verdict <span class="req">required</span>':'Note (optional)')+'<textarea name="note" '+(bad.length?'required ':'')+'placeholder="Why this is right"></textarea></label>'
       +chainWarning()
       +'<div id="dlg-prev"></div>'
-      +'<div class="foot"><span class="why">Writes campaign.'+esc(k)+' via patch-data, attributed to you, pinned.</span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary" '+(hasHost()?'':'aria-disabled="true" title="Needs the Napkin host"')+'>Confirm</button></div>',
+      +'<div class="foot"><span class="why">Writes campaign.'+esc(k)+' via patch-data, attributed to you, pinned.</span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary" '+(hasHost()?'':'aria-disabled="true" title="Needs the host"')+'>Confirm</button></div>',
       function(fm){
         function build(){
           var who=fm.who.value.trim(), id=mintDecisionId();
@@ -1176,7 +1366,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
         fm.who.addEventListener('input',upd); fm.note.addEventListener('input',upd); upd();
         fm.onsubmit=function(e){
           e.preventDefault();
-          if(!hasHost()){ toast('Confirming needs the Napkin Studio OS host.'); return; }
+          if(!hasHost()){ toast('Confirming needs the host.'); return; }
           if(!fm.who.checkValidity()){ fm.who.reportValidity(); return; }
           if(!fm.note.checkValidity()){ fm.note.reportValidity(); return; }
           var b=build(); setReviewer(b.who);
@@ -1216,7 +1406,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
         fm.addEventListener('input',upd); fm.addEventListener('change',upd); upd();
         fm.onsubmit=function(e){
           e.preventDefault();
-          if(!hasHost()){ toast('Resolving needs the Napkin Studio OS host.'); return; }
+          if(!hasHost()){ toast('Resolving needs the host.'); return; }
           var b=build();
           if(!b.ch){ toast('Pick the value this document uses.'); return; }
           if(!b.entry.reason){ fm.reason.reportValidity(); return; }
@@ -1304,7 +1494,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   // ── reviewer
   function doWho(){
     openDialog('<h2 id="dlg-title">Who is reviewing?</h2>'+whoField()+'<div class="foot"><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Save</button></div>',
-      function(fm){ fm.onsubmit=function(e){ e.preventDefault(); if(!fm.who.checkValidity()){ fm.who.reportValidity(); return; } setReviewer(fm.who.value.trim()); closeDialog(); renderTop(); }; });
+      function(fm){ fm.onsubmit=function(e){ e.preventDefault(); if(!fm.who.checkValidity()){ fm.who.reportValidity(); return; } setReviewer(fm.who.value.trim()); closeDialog(); render(); }; });
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1378,7 +1568,7 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
     }, delay);
   }
   function runTask(task, input){
-    if(!(window.clan&&window.clan.apiProxy)){ toast('Research runs through the Napkin host’s api-proxy.'); return; }
+    if(!(window.clan&&window.clan.apiProxy)){ toast('Research runs through the host’s api-proxy.'); return; }
     var j={task:task, state:'sending'}; JOBS.unshift(j); renderJobs();
     var el=$('jobs'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'nearest'});
     window.clan.apiProxy('middleware', {task:task, input:input}).then(function(res){
@@ -1443,12 +1633,699 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // The chat intake (Contract 3 §16–18, middleware-api §8). A campaign starts
+  // as a chat: the person's prompt and files go in as ONE human write
+  // (materials + the user message), then start_campaign runs as one job. The
+  // view writes only role:user messages and the fields a person answers; the
+  // middleware's staged changes (agent messages, fields, the report) are the
+  // host's to apply. Polls (job_status) are free; submissions spend quota.
+  // ════════════════════════════════════════════════════════════════════════
+  var STAGES=[
+    {k:'extract',    l:'Read the ask',     who:'Extract'},
+    {k:'identify',   l:'Brand & category', who:'Identify'},
+    {k:'select',     l:'Pick the lenses',  who:'Select'},
+    {k:'research',   l:'Research',         who:'Research'},
+    {k:'synthesise', l:'Synthesise',       who:'Synthesis'},
+    {k:'report',     l:'Report',           who:'Report'}
+  ];
+  var STAGE={}; STAGES.forEach(function(S,i){ S.i=i; STAGE[S.k]=S; });
+  // Static copies of the shell's approved figures (app/src/studio/AgentFigure.tsx),
+  // one per stage: extract, positioning, judge, market_structure, synthesis, drafter.
+  var FIG={"extract":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.697\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M24 9 L40 41 L8 41Z\" fill=\"var(--plan)\"></path><path class=\"af-fold\" d=\"M24 9 L40 41 L24 41Z\"></path><g class=\"af-emblem\"><g stroke=\"var(--plan-eye)\" stroke-width=\"1.5\" stroke-linecap=\"round\" fill=\"none\"><path d=\"M19.5 31.9 h9\"></path><path d=\"M19.5 35.1 h5.5\"></path></g></g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.6\" y=\"23\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"23\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","identify":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.841\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M24 3 L38.4 23.2 L24 43.4 L9.6 23.2Z\" fill=\"var(--produce)\"></path><path class=\"af-fold\" d=\"M24 3 L38.4 23.2 L24 43.4Z\"></path><path class=\"af-fold\" d=\"M9.6 23.2 L24 23.2 L24 43.4Z\"></path><g class=\"af-emblem\"><g><circle cx=\"24\" cy=\"28.6\" r=\"4.2\" stroke=\"var(--produce-eye)\" stroke-width=\"1.2\" stroke-linecap=\"round\" fill=\"none\"></circle><circle cx=\"24\" cy=\"28.6\" r=\"1.3\" fill=\"var(--produce-eye)\"></circle></g></g><g class=\"af-eyes\" fill=\"var(--produce-eye)\"><rect x=\"19.6\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","select":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.167\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"33\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"33\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M13 14 H31 V36 H13Z\" fill=\"var(--plan)\"></path><path d=\"M31 14 L36 11.5 V33.5 L31 36Z\" fill=\"var(--plan)\"></path><path d=\"M13 14 L18 11.5 H36 L31 14Z\" fill=\"var(--plan)\"></path><path class=\"af-fold\" d=\"M31 14 L36 11.5 V33.5 L31 36Z\"></path><path class=\"af-light\" d=\"M13 14 L18 11.5 H36 L31 14Z\"></path><g class=\"af-emblem\"><path d=\"M20.6 28.5 l2.3 2.3 l4.5 -4.6\" stroke=\"var(--plan-eye)\" stroke-width=\"1.7\" stroke-linecap=\"round\" fill=\"none\"></path></g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.6\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","research":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.496\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"33\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"33\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M13 14 H31 V36 H13Z\" fill=\"var(--produce)\"></path><path d=\"M31 14 L36 11.5 V33.5 L31 36Z\" fill=\"var(--produce)\"></path><path d=\"M13 14 L18 11.5 H36 L31 14Z\" fill=\"var(--produce)\"></path><path class=\"af-fold\" d=\"M31 14 L36 11.5 V33.5 L31 36Z\"></path><path class=\"af-light\" d=\"M13 14 L18 11.5 H36 L31 14Z\"></path><g class=\"af-emblem\"><g fill=\"var(--produce-eye)\"><rect x=\"19.4\" y=\"28.5\" width=\"2.2\" height=\"3\" rx=\"0.5\"></rect><rect x=\"22.799999999999997\" y=\"26.3\" width=\"2.2\" height=\"5.2\" rx=\"0.5\"></rect><rect x=\"26.2\" y=\"24.1\" width=\"2.2\" height=\"7.4\" rx=\"0.5\"></rect></g></g><g class=\"af-eyes\" fill=\"var(--produce-eye)\"><rect x=\"19.6\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","synthesise":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.572\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M24 3 L38.4 23.2 L24 43.4 L9.6 23.2Z\" fill=\"var(--plan)\"></path><path class=\"af-fold\" d=\"M24 3 L38.4 23.2 L24 43.4Z\"></path><path class=\"af-fold\" d=\"M9.6 23.2 L24 23.2 L24 43.4Z\"></path><g class=\"af-emblem\"><path d=\"M24 24 Q24.6 27.4 28 28 Q24.6 28.6 24 32 Q23.4 28.6 20 28 Q23.4 27.4 24 24Z\" fill=\"var(--plan-eye)\"></path></g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.6\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","report":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.038\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"40\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"40\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M31.71 18.81 A12 12 0 1 0 28.1 39.28\" fill=\"none\" stroke=\"var(--learn)\" stroke-width=\"9.6\"></path><path d=\"M30.17 20.65 A9.6 9.6 0 1 0 27.28 37.02\" fill=\"none\" stroke=\"rgba(0,0,0,.14)\" stroke-width=\"4.8\"></path><g class=\"af-emblem\"></g><g class=\"af-eyes\" fill=\"var(--learn-eye)\"><rect x=\"19.6\" y=\"14\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"14\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>"};
+  function fig(stage){ return FIG[stage]||FIG.extract||''; }
+  ICON.clip='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M10.5 4.5 5.8 9.2a1.6 1.6 0 0 0 2.3 2.3l4.9-4.9a3 3 0 0 0-4.3-4.3L3.8 7.2a4.4 4.4 0 0 0 6.2 6.2l3.5-3.5"/></svg>';
+  ICON.send='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg>';
+  ICON.doc='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M4 1.8h5.2L12.5 5v9.2H4Z M9 1.8V5h3.5"/></svg>';
+  ICON.chev='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="m4 6 4 4 4-4"/></svg>';
+
+  var CHAT={files:[], draft:'', name:'', who:'', sending:false, sendStep:'', sendErr:'',
+            job:null, live:{}, answering:null, qdraft:{}, open:null,
+            reportBusy:false, reportErr:''};
+  var POLL={t:null, delay:1000};
+  var TITLE={done:'', hadName:null};
+
+  // ── small helpers ──────────────────────────────────────────────────────────
+  var CROCK='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  function ulid(){
+    var t=Date.now(), s='';
+    for(var i=0;i<10;i++){ s=CROCK.charAt(t%32)+s; t=Math.floor(t/32); }
+    var r=new Uint8Array(16);
+    if(window.crypto&&crypto.getRandomValues) crypto.getRandomValues(r); else for(var k=0;k<16;k++) r[k]=Math.random()*256|0;
+    for(var j=0;j<16;j++) s+=CROCK.charAt(r[j]%32);
+    return s;
+  }
+  function nowIso(){ return new Date().toISOString(); }
+  function store(k, v){ try{ if(v==null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); }catch(e){} }
+  function stored(k){ try{ return sessionStorage.getItem(k); }catch(e){ return null; } }
+  function jobKey(){ return 'clan.research.job.'+docId(); }
+  function hexOf(buf){ return Array.prototype.map.call(new Uint8Array(buf), function(x){ return ('0'+x.toString(16)).slice(-2); }).join(''); }
+  // SHA-256, for the material index (sha256 of the bytes; of the UTF-8 text for
+  // the prompt). WebCrypto when the frame has it, else a plain implementation.
+  function sha256js(msg){
+    var K=[], H=[], P=[], n=2;
+    while(P.length<64){ var ok=true; for(var d=2;d*d<=n;d++) if(n%d===0){ ok=false; break; } if(ok) P.push(n); n++; }
+    P.forEach(function(p,i){ if(i<8) H[i]=(Math.pow(p,1/2)*0x100000000)|0; K[i]=(Math.pow(p,1/3)*0x100000000)|0; });
+    var l=msg.length, len=((l+9+63)>>6)<<6, m=new Uint8Array(len); m.set(msg); m[l]=0x80;
+    var hi=Math.floor(l/0x20000000), lo=(l*8)>>>0;
+    m[len-8]=hi>>>24; m[len-7]=(hi>>>16)&255; m[len-6]=(hi>>>8)&255; m[len-5]=hi&255;
+    m[len-4]=lo>>>24; m[len-3]=(lo>>>16)&255; m[len-2]=(lo>>>8)&255; m[len-1]=lo&255;
+    var w=new Array(64);
+    function rr(x,c){ return (x>>>c)|(x<<(32-c)); }
+    for(var o=0;o<len;o+=64){
+      var i;
+      for(i=0;i<16;i++) w[i]=(m[o+4*i]<<24)|(m[o+4*i+1]<<16)|(m[o+4*i+2]<<8)|m[o+4*i+3];
+      for(i=16;i<64;i++){ var x=w[i-15], y=w[i-2]; w[i]=(w[i-16]+(rr(x,7)^rr(x,18)^(x>>>3))+w[i-7]+(rr(y,17)^rr(y,19)^(y>>>10)))|0; }
+      var a=H[0],b=H[1],c=H[2],e=H[4],f=H[5],g=H[6],h=H[7],dd=H[3];
+      for(i=0;i<64;i++){
+        var t1=(h+(rr(e,6)^rr(e,11)^rr(e,25))+((e&f)^(~e&g))+K[i]+w[i])|0;
+        var t2=((rr(a,2)^rr(a,13)^rr(a,22))+((a&b)^(a&c)^(b&c)))|0;
+        h=g; g=f; f=e; e=(dd+t1)|0; dd=c; c=b; b=a; a=(t1+t2)|0;
+      }
+      H[0]=(H[0]+a)|0; H[1]=(H[1]+b)|0; H[2]=(H[2]+c)|0; H[3]=(H[3]+dd)|0; H[4]=(H[4]+e)|0; H[5]=(H[5]+f)|0; H[6]=(H[6]+g)|0; H[7]=(H[7]+h)|0;
+    }
+    return H.map(function(v){ return ('00000000'+(v>>>0).toString(16)).slice(-8); }).join('');
+  }
+  function sha256Hex(bytes){
+    bytes=new Uint8Array(bytes);
+    try{
+      if(window.crypto&&crypto.subtle&&crypto.subtle.digest)
+        return crypto.subtle.digest('SHA-256', bytes).then(hexOf, function(){ return sha256js(bytes); });
+    }catch(e){}
+    return Promise.resolve(sha256js(bytes));
+  }
+  function utf8(s){ return new TextEncoder().encode(s); }
+  function readBytes(f){
+    if(f.arrayBuffer) return f.arrayBuffer();
+    return new Promise(function(res, rej){ var r=new FileReader(); r.onload=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; r.readAsArrayBuffer(f); });
+  }
+  function fmtSize(n){ return n<1024?n+' B':n<1048576?Math.round(n/1024)+' KB':(Math.round(n/104857.6)/10)+' MB'; }
+  // RFC 7396 merge patch, as the host applies it (null removes a key).
+  function mergePatch(t, p){
+    if(!isObj(p)) return p;
+    if(!isObj(t)) t={};
+    Object.keys(p).forEach(function(k){ if(p[k]===null) delete t[k]; else t[k]=mergePatch(t[k], p[k]); });
+    return t;
+  }
+  // A merge patch that REPLACES `old` with `next`: keys `next` drops are nulled,
+  // so a merge cannot leave an earlier origin's source or fact_ids behind.
+  function replacing(old, next){
+    if(!isObj(old)||!isObj(next)) return next;
+    var out={};
+    Object.keys(next).forEach(function(k){ out[k]=replacing(old[k], next[k]); });
+    Object.keys(old).forEach(function(k){ if(!(k in next)) out[k]=null; });
+    return out;
+  }
+  // One attributed human write through patch-data. The bridge refreshes its
+  // copy key by key at the top level, which for a nested patch drops siblings
+  // (campaign.* beside the one field written), so the view keeps the merge the
+  // host made: its own copy, merge-patched.
+  function humanWrite(patch, action, rationale){
+    var before=JSON.parse(JSON.stringify(D()));
+    return window.clan.patchData(patch, {actor:'human', action:action, pinned:true, rationale:rationale}).then(function(res){
+      if(res&&res.ok){ window.__CLAN__.data=mergePatch(before, patch); render(); loadChain(); }
+      return res;
+    });
+  }
+  function chainHuman(){
+    var d=decs().slice().sort(function(a,b){ return ts(b)-ts(a); });
+    for(var i=0;i<d.length;i++) if(/^human:./.test(d[i].actor||'')) return d[i].actor.slice(6);
+    return '';
+  }
+  function me(){ return reviewer()||chainHuman(); }
+  function initials(id){ id=String(id||'').replace(/^u_/,''); return (id.slice(0,2)||'you').toUpperCase(); }
+
+  // ── the thread ─────────────────────────────────────────────────────────────
+  function intakeMsgs(){ var i=D().intake, m=isObj(i)&&i.messages; return isObj(m)?m:{}; }
+  // Stored messages in order (at, then key), then the job's narration that has
+  // not landed yet (result.messages), de-duplicated by id.
+  function thread(){
+    var M=intakeMsgs();
+    var list=Object.keys(M).map(function(id){ return {id:id, m:isObj(M[id])?M[id]:{}, stored:true}; });
+    list.sort(function(a,b){ return ((Date.parse(a.m.at)||0)-(Date.parse(b.m.at)||0))||(a.id<b.id?-1:a.id>b.id?1:0); });
+    Object.keys(CHAT.live).forEach(function(id){ if(!M[id]) list.push({id:id, m:CHAT.live[id], stored:false}); });
+    return list;
+  }
+  function answerTo(qid, T){
+    T=T||thread();
+    for(var i=T.length-1;i>=0;i--){ var a=T[i].m.answer; if(T[i].m.role==='user'&&isObj(a)&&a.question_id===qid) return T[i]; }
+    return null;
+  }
+  function liveQuestion(){ var j=CHAT.job; return (j&&j.state==='needs_input'&&isObj(j.question))?j.question:null; }
+  function jobActive(){ var j=CHAT.job; return !!(j&&/^(sending|checking|queued|running)$/.test(j.state||'')); }
+  function stageStates(){
+    var j=CHAT.job, st={}, seen={};
+    thread().forEach(function(x){ if(x.m.role==='agent'&&STAGE[x.m.stage]) seen[x.m.stage]=true; });
+    var ci=(j&&STAGE[j.stage]&&j.state!=='done')?STAGE[j.stage].i:-1;
+    var doneN=(j&&j.progress&&typeof j.progress.done==='number')?j.progress.done:0;
+    STAGES.forEach(function(S){
+      var s='todo';
+      if(j&&j.state==='done') s='done';
+      else if(ci>=0) s=(S.i<ci||S.i<doneN)?'done':S.i===ci?(j.state==='needs_input'?'wait':j.state==='failed'?'fail':'now'):'todo';
+      else if(seen[S.k]) s='done';
+      st[S.k]=s;
+    });
+    if(!j && isObj(D().report)) st.report='done';
+    return st;
+  }
+  function stepperHtml(){
+    var st=stageStates(), j=CHAT.job;
+    var pg=j&&j.progress&&j.progress.total?j.progress:null;
+    return '<div class="stepper" role="list" aria-label="Stages">'+STAGES.map(function(S){
+      var s=st[S.k], t={done:'done',now:'working',wait:'waiting for you',fail:'failed',todo:'not started'}[s];
+      return '<span class="step '+s+'" role="listitem" title="'+esc(S.l+': '+t)+'"><i aria-hidden="true">'+(s==='done'?'✓':s==='fail'?'!':'')+'</i><span>'+esc(S.l)+'</span><span class="sr"> — '+esc(t)+'</span></span>';
+    }).join('')+(pg?'<span class="pct">'+esc(pg.done)+' of '+esc(pg.total)+' stages</span>':'')+'</div>';
+  }
+  function attChip(mid){
+    var m=material(mid), href=assetHref(m), name=m?(m.name||mid):mid;
+    var inner=ICON.doc+'<span class="nm">'+esc(name)+'</span><small>'+esc(m?(m.kind||''):'not indexed')+'</small>';
+    return href?'<a class="att" href="'+esc(href)+'" target="_blank" rel="noopener" title="'+esc(mid)+'">'+inner+'</a>':'<span class="att" title="'+esc(mid)+'">'+inner+'</span>';
+  }
+  function optOrigin(o){
+    if(o.origin==='extracted') return '<span class="ob extracted" title="Read from the material you supplied">'+ICON.quote+'You said this</span>';
+    if(o.origin==='proposed') return '<span class="ob proposed" title="Derived from pinned layer facts">'+ICON.infer+'We inferred this</span>';
+    if(o.origin==='stated') return '<span class="ob stated" title="From your own words, in an earlier answer">'+ICON.person+'You typed this</span>';
+    return '';
+  }
+  function optEvidence(o){
+    var h='';
+    if(isObj(o.source)){ var m=material(o.source.material_id);
+      h+='<span class="src">'+(o.source.quote?'<q>'+esc(o.source.quote)+'</q> — ':'')+esc(m?(m.name||o.source.material_id):o.source.material_id)+(o.source.locator?' · '+esc(o.source.locator):'')+'</span>'; }
+    if(arr(o.fact_ids).length) h+=pinChips(o.fact_ids);
+    return h;
+  }
+  function questionHtml(q, ans){
+    var lq=liveQuestion(), live=!!(lq&&lq.id===q.id), open=live&&!ans, busy=CHAT.answering===q.id;
+    var picked=ans&&ans.m.answer.option_id;
+    var h='<div class="q-opts" role="group" aria-label="'+esc(q.text)+'">';
+    arr(q.options).forEach(function(o){
+      var isPick=picked&&picked===o.id;
+      var inner='<span class="l">'+esc(o.label)+(o.value!==undefined?optOrigin(o):'<span class="pill dash">say it in your words</span>')+(isPick?'<span class="pill ok"><span class="d"></span>your answer</span>':'')+'</span>'+optEvidence(o);
+      if(open) h+='<button type="button" class="q-opt'+(o.value===undefined?' escape':'')+'" data-act="q-opt" data-q="'+esc(q.id)+'" data-opt="'+esc(o.id)+'"'+(busy?' disabled':'')+'>'+inner+'</button>';
+      else h+='<div class="q-opt'+(isPick?' picked':' dim')+'">'+inner+'</div>';
+    });
+    h+='</div>';
+    if(open && (q.allow_text||!arr(q.options).length)){
+      var v=CHAT.qdraft[q.id]||'';
+      h+='<div class="q-text no-print"><input type="text" id="qtext-'+esc(q.id)+'" data-q="'+esc(q.id)+'" value="'+esc(v)+'" placeholder="'+(arr(q.options).length?'Or say it in your own words':'Type your answer')+'" aria-label="Answer in your own words"'+(busy?' disabled':'')+'><button type="button" class="btn primary sm" data-act="q-send" data-q="'+esc(q.id)+'"'+(busy?' disabled':'')+'>Answer</button></div>'
+        +'<div class="q-note no-print">Your words are not written as the answer: the agent turns them into choices and asks you to pick one.</div>';
+    }
+    if(busy) h+='<div class="q-note">Recording your answer…</div>';
+    if(ans && isObj(ans.m.answer) && ans.m.answer.text) h+='<div class="q-note">You answered in your own words: “'+esc(ans.m.answer.text)+'”</div>';
+    if(ans && live && !busy) h+='<div class="q-note no-print">Your answer is recorded, but the job is still waiting on this question. <button type="button" class="btn sm" data-act="q-resend" data-q="'+esc(q.id)+'">Send it again</button></div>';
+    if(!ans && !live){
+      var j=CHAT.job;
+      h+='<div class="q-note">'+(j&&j.state==='checking'?'Checking whether the job is still waiting on this…':j&&j.id?'This question is no longer open.':'The job that asked this is not running here; nothing was answered.')+'</div>';
+    }
+    return h;
+  }
+  function msgHtml(x, T){
+    var m=x.m;
+    if(m.role==='user'){
+      var who=human(m.by);
+      var ans=isObj(m.answer)?m.answer:null;
+      return '<div class="msg user" id="msg-'+esc(x.id)+'"><div class="col"><div class="meta"><b>'+esc(who||'you')+'</b>'+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+(ans?'<span class="pill">answer</span>':'')+'</div>'
+        +(m.text?'<div class="bub">'+esc(m.text)+'</div>':'')
+        +(arr(m.attachments).length?'<div class="atts">'+arr(m.attachments).map(attChip).join('')+'</div>':'')
+        +'</div><div class="fig"><span class="avatar" aria-hidden="true">'+esc(initials(who))+'</span></div></div>';
+    }
+    var S=STAGE[m.stage]||{l:m.stage||'agent', who:'Agent'}, q=isObj(m.question)?m.question:null;
+    var ans=q?answerTo(q.id, T):null;
+    return '<div class="msg agent'+(q&&!ans?' q':'')+(m.error?' err':'')+'" id="msg-'+esc(x.id)+'"><div class="fig">'+fig(m.stage)+'</div><div class="col">'
+      +'<div class="meta"><b>'+esc(S.who)+'</b>'+(m.stage?'<span class="pill">'+esc(m.stage)+'</span>':'')+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+(x.stored?'':'<span class="pill dash" title="Shown from the job’s reply; the host has not written it yet">in flight</span>')+'</div>'
+      +(m.text?'<div class="bub">'+esc(m.text)+(q&&q.text&&String(m.text).indexOf(q.text)===-1?'\n\n<b>'+esc(q.text)+'</b>':'')+'</div>':'')
+      +(q?questionHtml(q, ans):'')
+      +'</div></div>';
+  }
+  function statusHtml(){
+    var j=CHAT.job; if(!j) return '';
+    var S=STAGE[j.stage]||STAGE.extract;
+    if(jobActive()){
+      var what=j.state==='sending'?'Sending to the research agent…':j.state==='checking'?'Checking on the research job…':S.l+(j.summary?' — '+j.summary:'…');
+      return '<div class="msg agent working" aria-live="polite"><div class="fig">'+fig(j.stage||'extract')+'</div><div class="col"><div class="typing"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>'+esc(what)+'</span></div>'
+        +(j.applied===false&&j.reason&&j.reason!=='already applied'?'<div class="flag amber"><div>The host did not apply the last change: '+esc(j.reason)+'</div></div>':'')+'</div></div>';
+    }
+    if(j.state==='failed'||j.error){
+      return '<div class="msg agent err"><div class="fig">'+fig(j.stage)+'</div><div class="col"><div class="meta"><b>'+esc(S.who)+'</b><span class="pill alert"><span class="d"></span>'+(j.state==='failed'?'failed':'not reached')+'</span></div><div class="bub">'+esc(j.error||'The job failed.')+(j.state==='failed'?' What already landed stays in the document.':'')+'</div>'
+        +(j.id&&j.state!=='failed'?'<div class="no-print"><button type="button" class="btn sm" data-act="chat-poll">Check again</button></div>':'')+'</div></div>';
+    }
+    return '';
+  }
+  // The empty document opens the way Brief Maker does: a prompt box, attach
+  // any files, one primary action. Files upload on send (middleware §8.1).
+  function composerHtml(){
+    var who=me();
+    return '<div class="composer no-print" id="composer">'
+      +'<label class="sr" for="cmp-prompt">What does the client need?</label>'
+      +'<textarea id="cmp-prompt" rows="4" placeholder="Paste or describe the ask: the client, the brand, the markets, what they need to know…">'+esc(CHAT.draft)+'</textarea>'
+      +(CHAT.files.length?'<div class="atts">'+CHAT.files.map(function(f,i){ return '<span class="att">'+ICON.doc+'<span class="nm">'+esc(f.name)+'</span><small>'+esc(fmtSize(f.size||0))+'</small><button type="button" data-act="cmp-rm" data-i="'+i+'" aria-label="Remove '+esc(f.name)+'"'+(CHAT.sending?' disabled':'')+'>\u00d7</button></span>'; }).join('')+'</div>':'')
+      +'<div class="name"><label for="cmp-name">Working name</label><input type="text" id="cmp-name" value="'+esc(CHAT.name)+'" placeholder="optional" autocomplete="off"></div>'
+      +'<div class="row"><button type="button" class="btn icon" data-act="cmp-attach"'+(CHAT.sending?' disabled':'')+'>'+ICON.clip+'Attach files</button><input type="file" id="cmp-file" multiple hidden>'
+      +'<span class="sp"></span>'
+      +(who?'<span class="who">as <b>'+esc(who)+'</b><button type="button" class="btn ghost sm" data-act="who">change</button></span>'
+           :'<span class="who"><label for="cmp-who">You are</label><span class="mono">human:</span><input type="text" id="cmp-who" value="'+esc(CHAT.who)+'" placeholder="your user id" autocomplete="username"></span>')
+      +'<button type="button" class="btn primary go" data-act="cmp-send"'+(CHAT.sending?' disabled':'')+'>'+(CHAT.sending?'Starting…':'Start research <span class="arrow" aria-hidden="true">\u2192</span>')+'</button></div>'
+      +(CHAT.sending?'<div class="q-note" role="status">'+esc(CHAT.sendStep)+'</div>':'')
+      +(CHAT.sendErr?'<div class="flag" role="alert"><div>'+esc(CHAT.sendErr)+'</div></div>':'')
+      +'<div class="drop-hint" aria-hidden="true">Drop to attach</div>'
+      +'</div>';
+  }
+  function intakeHtml(){
+    return '<div class="intake">'
+      +'<div><div class="eyebrow">Campaign research</div><h1 class="h1">Start a campaign.</h1></div>'
+      +'<p class="lede">Say what the client needs and drop in what they sent: the brief, the email, the deck. The agent works out the brand and the category, asks you when it cannot tell, researches the lenses your prompt calls for, and comes back with a report in which every claim cites a pinned fact or a finding.</p>'
+      +composerHtml()
+      +'<div class="figs" aria-hidden="true">'+STAGES.map(function(S){ return '<span title="'+esc(S.l)+'">'+fig(S.k)+'</span>'; }).join('')+'<span class="muted" style="font-size:12px;margin-left:6px">read the ask · brand and category · pick the lenses · research · synthesise · report</span></div>'
+      +'</div>';
+  }
+  function renderChat(){
+    var el=$('chat'); if(!el) return;
+    var ae=document.activeElement, keep=null;
+    if(ae&&ae.id&&el.contains(ae)) keep={id:ae.id, s:ae.selectionStart, e:ae.selectionEnd};
+    var T=thread(), fresh=!T.length&&!Object.keys(camp()).length;
+    $('nav-chat-a').hidden=!T.length; $('nav-chat').textContent=T.length||'';
+    document.body.classList.toggle('fresh', fresh&&!CHAT.job);
+    if(!T.length && !fresh && !CHAT.job){ el.hidden=true; el.innerHTML=''; return; }
+    el.hidden=false;
+    if(fresh && !CHAT.job){
+      el.innerHTML=intakeHtml();
+    } else {
+      var idle=!jobActive()&&!liveQuestion();
+      var open=CHAT.open!==null?CHAT.open:!(isObj(D().report)&&idle);
+      var st=CHAT.job?(CHAT.job.state==='needs_input'?'<span class="pill alert"><span class="d"></span>waiting for you</span>':jobActive()?'<span class="pill warn"><span class="d"></span>working</span>':CHAT.job.state==='failed'?'<span class="pill alert"><span class="d"></span>failed</span>':CHAT.job.state==='done'?'<span class="pill ok"><span class="d"></span>done</span>':''):'';
+      var started=T.some(function(x){ return x.m.role==='user'&&x.m.material_id; });
+      var anyAgent=T.some(function(x){ return x.m.role==='agent'; });
+      var h='<details class="chatbox" id="chatbox"'+(open?' open':'')+'><summary><span>The conversation</span><span class="pill">'+T.length+' message'+(T.length===1?'':'s')+'</span>'+st+'<span class="sp"></span><span class="chev">'+ICON.chev+'</span></summary>'
+        +stepperHtml()
+        +'<div class="thread" role="log" aria-label="Messages">'+T.map(function(x){ return msgHtml(x, T); }).join('')
+        +(liveQuestion()&&!T.some(function(x){ return isObj(x.m.question)&&x.m.question.id===liveQuestion().id; })?msgHtml({id:'live-'+liveQuestion().id, m:{role:'agent', stage:CHAT.job.stage, text:liveQuestion().text, question:liveQuestion()}, stored:false}, T):'')
+        +statusHtml()+'</div>';
+      if(started && !anyAgent && !CHAT.job && !CHAT.sending){
+        h+='<div class="composer-wrap no-print"><div class="flag amber"><div>Your message is saved, but no research job is running for it. <button type="button" class="btn sm" data-act="chat-retry">Start the research</button></div></div></div>';
+      }
+      el.innerHTML=h+'</details>';
+    }
+    if(keep){ var n=$(keep.id); if(n){ try{ n.focus({preventScroll:true}); if(keep.s!=null) n.setSelectionRange(keep.s, keep.e); }catch(e){} } }
+    var ta=$('cmp-prompt'); if(ta) grow(ta);
+  }
+  function grow(ta){ ta.style.height='auto'; ta.style.height=Math.min(Math.max(ta.scrollHeight,96),420)+'px'; }
+
+  // ── composer: attach, upload, index, send ──────────────────────────────────
+  function addFiles(list){
+    Array.prototype.forEach.call(list||[], function(f){
+      if(!CHAT.files.some(function(g){ return g.name===f.name&&g.size===f.size; })) CHAT.files.push(f);
+    });
+    renderChat();
+  }
+  function assetNamesInUse(){
+    var used={};
+    Object.keys(mats()).forEach(function(id){ var a=mats()[id].asset; if(a) used[String(a).replace(/^(human\/)?assets\//,'')]=true; });
+    Object.keys((window.__CLAN__||{}).assets||{}).forEach(function(k){ used[k]=true; });
+    return used;
+  }
+  function uniqueAssetName(name, used){
+    var n=String(name||'').replace(/[\\/]+/g,'-').replace(/\.\.+/g,'.').replace(/^[.\s]+/,'').trim()||'attachment';
+    if(!used[n]) return n;
+    var dot=n.lastIndexOf('.'), base=dot>0?n.slice(0,dot):n, ext=dot>0?n.slice(dot):'';
+    for(var i=2;;i++){ var c=base+'-'+i+ext; if(!used[c]) return c; }
+  }
+  function matKind(f){
+    var n=f.name||'';
+    if(/\.(eml|msg)$/i.test(n)) return 'email';
+    if(/\.(pptx?|key|odp)$/i.test(n)) return 'deck';
+    if(/brief/i.test(n)) return 'client_brief';
+    return 'other';
+  }
+  function mediaType(f){
+    if(f.type) return f.type;
+    var e=(/\.([a-z0-9]+)$/i.exec(f.name||'')||[])[1]||'';
+    return {pdf:'application/pdf', txt:'text/plain', md:'text/markdown', eml:'message/rfc822', csv:'text/csv', json:'application/json',
+      docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation'}[e.toLowerCase()]||'application/octet-stream';
+  }
+  function doSend(){
+    if(CHAT.sending) return;
+    var ta=$('cmp-prompt'), prompt=String(ta?ta.value:CHAT.draft).trim();
+    if(!prompt){ toast('Say what the client needs: the research starts from your prompt.'); if(ta) ta.focus(); return; }
+    if(!(window.clan&&window.clan.patchData&&window.clan.apiProxy&&(window.clan.uploadAsset||!CHAT.files.length))){ toast('Starting a campaign needs the host.'); return; }
+    // `by` must name the person. The host attributes every write to its own
+    // actor, so the view reads that from the chain when it can: an upload is
+    // recorded as the person's, so with a file attached the id is learned
+    // before the message is written. Without one it takes the id typed here.
+    var whoIn=$('cmp-who'), typed=whoIn?whoIn.value.trim():CHAT.who, files=CHAT.files.slice();
+    if(typed&&!/^[A-Za-z0-9_.@-]+$/.test(typed)){ toast('That user id has characters it cannot carry.'); if(whoIn) whoIn.focus(); return; }
+    if(!me()&&!typed&&!files.length){ toast('Say who you are first: your user id.'); if(whoIn) whoIn.focus(); return; }
+    var at=nowIso(), used=assetNamesInUse(), up=[], by='';
+    CHAT.sending=true; CHAT.sendErr=''; CHAT.sendStep=files.length?'Reading your files…':'Saving your message…'; renderChat();
+    var p=Promise.resolve();
+    files.forEach(function(f, i){
+      p=p.then(function(){
+        CHAT.sendStep='Uploading '+f.name+' ('+(i+1)+' of '+files.length+')…'; renderChat();
+        return readBytes(f).then(function(buf){ return sha256Hex(buf).then(function(hx){
+          var an=uniqueAssetName(f.name, used); used[an]=true;
+          return window.clan.uploadAsset(an, buf, 'human').then(function(res){
+            if(!res||res.ok===false||res.error) throw new Error('the upload of '+f.name+' was refused'+(res&&res.error?': '+(res.error.message||res.error):''));
+            up.push({id:'mat_'+ulid(), name:f.name, asset:an, sha:'sha256:'+hx, kind:matKind(f), type:mediaType(f)});
+          });
+        }); });
+      });
+    });
+    p.then(function(){ return (up.length&&!me())?loadChain():null; }).then(function(){
+      var who=me()||typed;
+      if(!who) throw new Error('the host did not say who you are, so type your user id');
+      if(!reviewer()) setReviewer(who);
+      by='human:'+who;
+      return sha256Hex(utf8(prompt));
+    }).then(function(ph){
+      var pid='mat_'+ulid(), mid='msg_'+ulid(), did=mintDecisionId();
+      var M={};
+      M[pid]={kind:'prompt', name:'Prompt', sha256:'sha256:'+ph, media_type:'text/plain', received_at:at, licence:'client-confidential'};
+      up.forEach(function(u){ M[u.id]={kind:u.kind, name:u.name, sha256:u.sha, media_type:u.type, asset:'assets/'+u.asset, received_at:at, licence:'client-confidential'}; });
+      var msg={role:'user', by:by, at:at, text:prompt, material_id:pid};
+      if(up.length) msg.attachments=up.map(function(u){ return u.id; });
+      var patch={materials:M, intake:{messages:{}}}; patch.intake.messages[mid]=msg;
+      var targets=[addr('intake.messages['+mid+']')].concat(Object.keys(M).map(function(k){ return addr('materials['+k+']'); }));
+      var c={}, had=camp(), env=function(v){ return {value:v, origin:'stated', gate:'created', by:by, decision:did}; };
+      if(!isObj(had.id)) c.id=env('cmp_'+ulid());
+      if(up.length&&!isObj(had.ask_source)) c.ask_source=env({material_id:up[0].id, sha256:up[0].sha});
+      var nm=CHAT.name.trim(); if(nm&&!isObj(had.name)) c.name=env(nm);
+      Object.keys(c).forEach(function(k){ targets.unshift(addr('campaign.'+k)); });
+      if(Object.keys(c).length) patch.campaign=c;
+      var rationale=did+' · create · '+targets.join(' ')+' · started a campaign in the chat: the prompt'+(up.length?' and '+up.map(function(u){ return u.name; }).join(', '):'')+', by '+by;
+      CHAT.sendStep='Saving your message…'; renderChat();
+      return humanWrite(patch, 'start_campaign', rationale).then(function(res){
+        if(!(res&&res.ok)) throw new Error((res&&(res.error||res.message))||'the host refused the write');
+        CHAT.files=[]; CHAT.draft=''; CHAT.name=''; CHAT.sending=false;
+        startCampaign(prompt, up.map(function(u){ return {material_id:u.id, name:u.asset, sha256:u.sha}; }));
+      });
+    }).catch(function(e){ CHAT.sending=false; CHAT.sendErr='Not sent: '+(e&&e.message||e)+'. Nothing was started.'; renderChat(); });
+  }
+  function firstPrompt(){
+    var T=thread();
+    for(var i=0;i<T.length;i++){ var m=T[i].m; if(m.role==='user'&&m.material_id) return m; }
+    return null;
+  }
+  function doRetry(){
+    var m=firstPrompt(); if(!m) return;
+    startCampaign(m.text, arr(m.attachments).map(function(id){ var x=material(id)||{};
+      return {material_id:id, name:String(x.asset||x.name||id).replace(/^(human\/)?assets\//,''), sha256:x.sha256}; }));
+  }
+  function startCampaign(prompt, atts){
+    CHAT.job={state:'sending', stage:'extract'}; CHAT.open=true; POLL.delay=1000; renderChat();
+    var el=$('chat'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'start', behavior:'smooth'});
+    window.clan.apiProxy('middleware', {task:'start_campaign', input:{prompt:prompt, attachments:atts}}).then(function(r){ onJobReply(r); }, unreachable);
+  }
+
+  // ── the job: replies, polling, questions ───────────────────────────────────
+  function hostErr(res){
+    if(!res) return 'Empty reply from the host.';
+    if(res.error){ var e=res.error, st=res.status&&res.status!==200?' ('+res.status+')':'';
+      return typeof e==='string'?e+st:(e.type?e.type+st+': ':'')+(e.message||JSON.stringify(e)); }
+    if(res.ok===false) return 'The host could not complete the call'+(res.status?' (status '+res.status+')':'')+'. Nothing was applied.';
+    var b=mwBody(res);
+    if(!b||typeof b!=='object'||b.api!==MW_API) return 'Not a '+MW_API+' reply'+(b&&b.api?' (got '+b.api+')':'')+'. Nothing was applied.';
+    return null;
+  }
+  function onJobReply(res, resume){
+    var j=CHAT.job||(CHAT.job={}), err=hostErr(res);
+    if(err){
+      if(resume){ CHAT.job=null; store(jobKey(), null); }
+      else { j.error=err; if(j.state==='sending') j.state='unsent'; else if(jobActive()) j.state='stalled'; }
+      render(); return;
+    }
+    var b=mwBody(res);
+    j.error=null;
+    if(isObj(b.job)){
+      j.id=b.job.id||j.id; j.state=b.job.state||j.state; j.stage=b.job.stage||j.stage;
+      j.progress=b.job.progress||j.progress; j.question=b.job.question||null;
+      if(b.job.error) j.error=(b.job.error.message||b.job.error.type||String(b.job.error));
+    }
+    if(isObj(b.result)){
+      if(b.result.summary) j.summary=b.result.summary;
+      arr(b.result.messages).forEach(function(m){ if(isObj(m)&&m.id&&m.text&&!CHAT.live[m.id]) CHAT.live[m.id]={role:'agent', text:m.text, stage:m.stage, job_id:j.id}; });
+    }
+    if(isObj(b.change)){ j.applied=b.change.applied; j.reason=b.change.reason; if(b.change.applied) loadChain(); }
+    if(j.id) store(jobKey(), (j.state==='done'||j.state==='failed')?null:j.id);
+    if(j.state==='done') CHAT.open=null;
+    render();
+    if(j.state==='queued'||j.state==='running') schedulePoll();
+    if(j.state==='needs_input'){ var inp=j.question&&$('qtext-'+j.question.id); if(inp&&(!document.activeElement||document.activeElement===document.body)) inp.focus({preventScroll:true}); }
+  }
+  function unreachable(e){
+    var j=CHAT.job||(CHAT.job={});
+    j.error='The middleware could not be reached: '+(e&&e.message||e);
+    j.state=j.state==='sending'?'unsent':'stalled';
+    render();
+  }
+  function schedulePoll(){
+    clearTimeout(POLL.t);
+    POLL.t=setTimeout(pollNow, POLL.delay);
+    POLL.delay=Math.min(Math.round(POLL.delay*1.4), 6000);
+  }
+  function pollNow(resume){
+    var j=CHAT.job; if(!j||!j.id) return;
+    window.clan.apiProxy('middleware', {task:'job_status', input:{job_id:j.id}}).then(function(r){ onJobReply(r, resume===true); }, function(e){ if(resume===true){ CHAT.job=null; render(); } else unreachable(e); });
+  }
+  // On open: pick up a job this document started (the id kept for this tab, or
+  // the thread's newest job unless its report has landed) with one free poll.
+  function resumeJob(){
+    if(!(window.clan&&window.clan.apiProxy)) return;
+    var id=stored(jobKey()), T=thread(), last=null, lastStage=null;
+    T.forEach(function(x){ if(x.m.job_id){ last=x.m.job_id; if(x.m.role==='agent') lastStage=x.m.stage; } });
+    if(!id){ if(!last||(lastStage==='report'&&isObj(D().report))) return; id=last; }
+    CHAT.job={id:id, state:'checking'}; renderChat();
+    pollNow(true);
+  }
+  function doAnswer(qid, optId, text){
+    var j=CHAT.job, q=liveQuestion();
+    if(!q||q.id!==qid){ toast('This question is no longer open.'); return; }
+    if(CHAT.answering) return;
+    var opt=null;
+    if(optId){
+      opt=arr(q.options).filter(function(o){ return o.id===optId; })[0]; if(!opt) return;
+      if(opt.value===undefined){ var inp=$('qtext-'+qid); if(inp){ inp.focus(); inp.placeholder='Say it in your own words'; } else toast('This question takes a pick, not text.'); return; }
+    } else {
+      text=String(text||'').trim();
+      if(!text){ toast('Type an answer first.'); var t=$('qtext-'+qid); if(t) t.focus(); return; }
+    }
+    var who=me(); if(!who){ doWho(); toast('Say who you are, then answer.'); return; }
+    var k=(/#campaign\.([a-z_]+)$/.exec(q.address||'')||[])[1];
+    if(opt&&!(k&&FIELD[k])){ toast('The question names no field this view can write ('+(q.address||'no address')+').'); return; }
+    var by='human:'+who, mid='msg_'+ulid(), did=mintDecisionId();
+    var msg={role:'user', by:by, at:nowIso(), text:opt?opt.label:text, job_id:j.id,
+             answer:opt?{question_id:qid, option_id:opt.id}:{question_id:qid, text:text}};
+    var patch={intake:{messages:{}}}; patch.intake.messages[mid]=msg;
+    var targets=[addr('intake.messages['+mid+']')], rationale;
+    if(opt){
+      // Contract 3 §16.3 / middleware §8.3: the person's pick is their write.
+      var env={value:opt.value, gate:FIELD[k].gate, by:by, decision:did};
+      if(opt.origin==='stated') env.origin='stated';
+      else { env.origin='confirmed'; env.confirmed_from=opt.origin||'extracted';
+        if(isObj(opt.source)) env.source=opt.source;
+        if(arr(opt.fact_ids).length) env.fact_ids=opt.fact_ids; }
+      patch.campaign={}; patch.campaign[k]=replacing(camp()[k], env);
+      targets.unshift(addr('campaign.'+k));
+      rationale=did+' · answer_question · '+targets.join(' ')+' · '+qid+': '+opt.label+(env.origin==='confirmed'?' (confirmed from '+env.confirmed_from+')':' (stated)')+', by '+by;
+    } else {
+      rationale=did+' · answer_question · '+targets.join(' ')+' · '+qid+' answered in words by '+by+'; the middleware turns them into choices';
+    }
+    CHAT.answering=qid; renderChat();
+    humanWrite(patch, 'answer_question', rationale).then(function(res){
+      if(!(res&&res.ok)) throw new Error((res&&(res.error||res.message))||'the host refused the write');
+      CHAT.qdraft[qid]='';
+      sendAnswer(j.id, qid, opt?{option_id:opt.id}:{text:text});
+    }).catch(function(e){ CHAT.answering=null; toast('Not answered: '+(e&&e.message||e)); renderChat(); });
+  }
+  function sendAnswer(jobId, qid, a){
+    var input={job_id:jobId, question_id:qid}; if(a.option_id) input.option_id=a.option_id; else input.text=a.text;
+    CHAT.answering=qid; POLL.delay=1000; renderChat();
+    window.clan.apiProxy('middleware', {task:'answer_question', input:input}).then(function(r){
+      CHAT.answering=null;
+      var err=hostErr(r);
+      if(err){ toast('The job did not take the answer: '+err); pollNow(); return; }
+      onJobReply(r);
+    }, function(e){ CHAT.answering=null; unreachable(e); });
+  }
+  function doResend(qid){
+    var a=answerTo(qid); if(!a||!CHAT.job) return;
+    sendAnswer(CHAT.job.id, qid, a.m.answer.option_id?{option_id:a.m.answer.option_id}:{text:a.m.answer.text});
+  }
+
+  // ── the report (Contract 3 §17) — middleware-written, rendered read-only ───
+  function citeChips(ids){
+    ids=arr(ids); if(!ids.length) return '<span class="pill alert" title="Every claim must cite a pin or a finding">no cite</span>';
+    return '<span class="cites">'+ids.map(function(id){ return /^fi_/.test(id)?findingChip(id):pinChip(id); }).join('')+'</span>';
+  }
+  function pinCard(id){
+    var p=pins()[id];
+    if(!p) return '<a class="pin-card missing" href="#facts"><span class="k">'+esc(id)+'</span><span>not in the projection</span></a>';
+    var v=fmtPinValue(p), txt=typeof p.value==='string'&&v.length>18;
+    return '<a class="pin-card'+(p.stale?' stale':'')+'" href="#fact-'+esc(id)+'" title="'+esc(id+' · '+p.entity+' · '+p.key)+'">'
+      +'<span class="v'+(txt?' text':'')+'">'+esc(v)+'</span><span class="k">'+esc(p.key)+'</span><span class="k" style="color:var(--ink3)">'+esc(p.entity)+'</span>'
+      +'<span class="m">'+(p.market?'<span class="pill">'+esc(p.market)+'</span>':'<span class="pill">all markets</span>')+'<span class="pill">as of '+esc(p.as_of)+'</span>'
+      +'<span class="pill'+(p.confidence==='high'?' ok':p.confidence==='low'?' alert':'')+'">'+esc(p.confidence)+'</span>'
+      +(p.stale?'<span class="pill warn"><span class="d"></span>stale</span>':'')+'</span></a>';
+  }
+  function findingBlock(id){
+    var f=fnds()[id];
+    if(!f) return '<div class="blk-card"><span class="pill dash">'+esc(id)+' · not in the projection</span></div>';
+    var st=f.status;
+    return '<div class="blk-card '+esc(st)+'"><div class="h">'
+      +(st==='verified'?'<span class="pill ok"><span class="d"></span>verified by a person</span>':'<span class="derived">'+ICON.agent+'Derived by the agent</span>'+(st==='rejected'?'<span class="pill alert"><span class="d"></span>rejected</span>':'<span class="pill dash">not yet verified</span>'))
+      +'<span class="sp"></span><a class="path" href="#finding-'+esc(id)+'">'+esc(id)+'</a></div>'
+      +'<div class="st">'+esc(f.statement)+'</div>'+pinChips(f.cites)+'</div>';
+  }
+  function gapBlock(gid){
+    var g=arr(sel().gaps).filter(function(x){ return x.id===gid; })[0];
+    if(!g) return '<div class="blk-card gap"><span class="pill dash">gap '+esc(gid)+' · not in selection</span></div>';
+    return '<div class="blk-card gap"><div class="h"><span class="pill warn"><span class="d"></span>looked for, not found</span>'+(g.lens?'<span class="pill">'+esc((LENS[g.lens]||{}).l||g.lens)+'</span>':'')+(g.market?'<span class="pill">'+esc(g.market)+'</span>':'')
+      +'<span class="sp"></span><a class="path" href="#gap-'+esc(g.id)+'">'+esc(g.id)+'</a></div><div class="st">'+esc(g.searched)+'</div>'+(g.note?'<div class="muted" style="font-size:13px">'+esc(g.note)+'</div>':'')+'</div>';
+  }
+  function contestBlock(cid){
+    var c=arr(sel().contested).filter(function(x){ return x.id===cid; })[0];
+    if(!c) return '<div class="blk-card"><span class="pill dash">contest '+esc(cid)+' · not in selection</span></div>';
+    var open=c.status==='open';
+    return '<div class="blk-card"><div class="h">'+(open?'<span class="pill alert"><span class="d"></span>sources disagree · nothing picked</span>':'<span class="pill ok"><span class="d"></span>disagreement resolved</span>')
+      +'<span class="mono" style="font-size:12px">'+esc(c.key)+'</span><span class="sp"></span><a class="path" href="#contest-'+esc(c.id)+'">'+esc(c.id)+'</a></div>'
+      +'<div class="cvals">'+arr(c.values).map(function(v){ var ch=!open&&c.chosen===v.fact_id;
+        return '<div class="cval'+(ch?' chosen':!open?' loser':'')+'"><div class="eyebrow">'+(ch?'chosen':!open?'not chosen':'value')+'</div><div class="v">'+esc(fmtPinValue({value:v.value, unit:v.unit}))+'</div><div class="srcline">from '+esc(v.from)+' · '+esc(v.fact_id)+'</div></div>'; }).join('')+'</div>'
+      +(!open&&c.reason?'<div class="wholine"><b>Why:</b> '+esc(c.reason)+'</div>':'')+'</div>';
+  }
+  function blockHtml(b){
+    if(!isObj(b)) return '';
+    switch(b.kind){
+      case 'claim': return '<p class="blk-claim">'+esc(b.text)+' '+citeChips(b.cites)+'</p>';
+      case 'pins': return '<div class="blk-pins">'+arr(b.fact_ids).map(pinCard).join('')+'</div>';
+      case 'finding': return findingBlock(b.finding_id);
+      case 'gap': return gapBlock(b.gap_id);
+      case 'contest': return contestBlock(b.contest_id);
+    }
+    return '<div class="blk-card"><span class="pill dash">unknown block '+esc(b.kind)+'</span></div>';
+  }
+  function touchesAsk(d){
+    var re=/^(campaign|selection)(\.|\[|$)/;
+    if(arr(d.targets).length) return arr(d.targets).some(function(a){ return re.test(pathOf(a)); });
+    return arr(d.fields_changed).some(function(f){ return re.test(String(f)); });
+  }
+  // Out of date (Contract 3 §17): the member hashes it was composed from are
+  // not the projection's, or a campaign/selection decision is newer than it.
+  function reportStale(r){
+    var out=[], p=proj(), b=isObj(r.based_on)?r.based_on:{};
+    if(p&&isObj(p.built_from)){
+      if(b.facts_sha256&&p.built_from.facts_sha256&&b.facts_sha256!==p.built_from.facts_sha256) out.push('The pinned facts have changed since.');
+      if(b.findings_sha256&&p.built_from.findings_sha256&&b.findings_sha256!==p.built_from.findings_sha256) out.push('The findings have changed since (verified, rejected or new).');
+    }
+    var bt=Date.parse(r.built_at)||0;
+    var newer=decs().filter(function(d){ return ts(d)>bt&&touchesAsk(d); });
+    if(newer.length) out.push(newer.length+' decision'+(newer.length===1?'':'s')+' about the ask or the selection since ('+newer.slice(0,3).map(function(d){ return (d.action||d.kind||'edit')+' by '+human(d.actor||d.agent); }).join('; ')+(newer.length>3?'; …':'')+').');
+    return out;
+  }
+  function renderReport(){
+    var el=$('report'), r=D().report;
+    $('nav-report-a').hidden=!isObj(r);
+    if(!isObj(r)){ el.hidden=true; el.innerHTML=''; return; }
+    el.hidden=false;
+    var stale=reportStale(r), hl=isObj(r.headline)?r.headline:{};
+    var h='<div class="rep"><div class="rep-top"><span class="eyebrow">Report</span><span class="derived">'+ICON.agent+'composed by the agent</span><span class="sp"></span>'
+      +'<span class="srcline">built '+esc(fmtDate(r.built_at))+'</span>'
+      +'<button type="button" class="btn sm'+(stale.length?' primary':'')+'" data-act="report-refresh"'+(CHAT.reportBusy?' disabled':'')+' title="compose_report: re-compose from the document as it stands">'+(CHAT.reportBusy?'Refreshing…':'Refresh report')+'</button></div>';
+    if(stale.length) h+='<div class="rep-stale" role="status"><div><b>Out of date.</b> The document has moved on since this report was composed.<ul>'+stale.map(function(s){ return '<li>'+esc(s)+'</li>'; }).join('')+'</ul></div></div>';
+    if(CHAT.reportErr) h+='<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>';
+    h+='<div class="rep-hl"><h2 class="headline" id="h-report">'+esc(hl.text)+'</h2>'+citeChips(hl.cites)+'</div>';
+    if(arr(r.summary).length) h+='<ul class="rep-sum">'+arr(r.summary).map(function(s){ return '<li><span>'+esc(s&&s.text)+' '+citeChips(s&&s.cites)+'</span></li>'; }).join('')+'</ul>';
+    arr(r.sections).forEach(function(s){
+      if(!isObj(s)) return;
+      h+='<div class="rep-sec" id="rs-'+esc(slug(s.id||''))+'"><h3>'+esc(s.title)+(s.lens?'<span class="pill">'+esc((LENS[s.lens]||{}).l||s.lens)+'</span>':'')+(s.market?'<span class="pill">'+esc(s.market)+'</span>':'')+'</h3>'+arr(s.blocks).map(blockHtml).join('')+'</div>';
+    });
+    var conf=arr(r.confirm);
+    if(conf.length){
+      h+='<div class="rep-sec"><h3>Confirm before the brief <span class="pill">'+conf.length+'</span></h3><ul class="confirm-list">'+conf.map(function(c){
+        var k=(/#campaign\.([a-z_]+)$/.exec(String(c&&c.address||''))||[])[1], env=k?camp()[k]:null;
+        var can=isObj(env)&&(env.origin==='extracted'||env.origin==='proposed');
+        return '<li class="'+(can?'':'done')+'"><div class="t">'+(k&&FIELD[k]?'<a href="#field-'+esc(k)+'" data-act="goto-confirm" data-field="'+esc(k)+'">'+esc(c.label)+'</a>':'<b>'+esc(c.label)+'</b>')+'<span>'+esc(c.why)+'</span></div>'
+          +(isObj(env)?originBadge(env.origin):'<span class="pill">not filled</span>')
+          +(can?'<button type="button" class="btn sm live no-print" data-act="confirm" data-field="'+esc(k)+'">'+ICON.check.replace('<svg','<svg style="width:12px;height:12px"')+'Confirm…</button>':'')+'</li>';
+      }).join('')+'</ul></div>';
+    }
+    var nr=arr(r.not_researched);
+    if(nr.length) h+='<div class="rep-sec"><h3>Not researched <span class="pill">'+nr.length+'</span></h3><ul class="nr-list">'+nr.map(function(n){
+      return '<li><span class="pill">'+esc((LENS[n.lens]||{}).l||n.lens)+'</span>'+(n.market?'<span class="pill">'+esc(n.market)+'</span>':'<span class="pill">every market</span>')+'<span>'+esc(n.reason)+'</span></li>'; }).join('')+'</ul></div>';
+    var bo=isObj(r.based_on)?r.based_on:{};
+    h+='<div class="rep-foot"><span>'+esc(r.handler)+'</span><span title="'+esc(bo.version)+'">composed from version '+esc(String(bo.version||'?').slice(7,19))+'</span><span title="'+esc(bo.facts_sha256)+'">facts '+esc(String(bo.facts_sha256||'?').slice(7,19))+'</span><span title="'+esc(bo.findings_sha256)+'">findings '+esc(String(bo.findings_sha256||'?').slice(7,19))+'</span><span>every claim cites a pin or a finding below</span></div></div>';
+    el.innerHTML=h;
+  }
+  function doRefreshReport(){
+    if(!(window.clan&&window.clan.apiProxy)){ toast('Refreshing the report runs through the host.'); return; }
+    if(CHAT.reportBusy) return;
+    CHAT.reportBusy=true; CHAT.reportErr=''; renderReport();
+    window.clan.apiProxy('middleware', {task:'compose_report', input:{}}).then(function(res){
+      CHAT.reportBusy=false;
+      var err=hostErr(res);
+      if(err){ CHAT.reportErr='Not refreshed: '+err; render(); return; }
+      var b=mwBody(res);
+      if(b.job&&b.job.state==='failed'){ CHAT.reportErr='Not refreshed: '+((b.job.error&&(b.job.error.message||b.job.error.type))||'the job failed'); }
+      arr(b.result&&b.result.messages).forEach(function(m){ if(isObj(m)&&m.id&&m.text&&!CHAT.live[m.id]) CHAT.live[m.id]={role:'agent', text:m.text, stage:m.stage||'report', job_id:b.job&&b.job.id}; });
+      if(isObj(b.change)){ if(b.change.applied){ loadChain(); toast('Report refreshed.'); } else if(b.change.reason&&b.change.reason!=='already applied') CHAT.reportErr='The host did not apply the new report: '+b.change.reason; }
+      render();
+    }, function(e){ CHAT.reportBusy=false; CHAT.reportErr='Not refreshed: the middleware could not be reached ('+(e&&e.message||e)+').'; render(); });
+  }
+  function gotoConfirm(k){
+    var f=$('field-'+k); if(!f) return;
+    f.scrollIntoView({block:'center', behavior:'smooth'});
+    f.classList.remove('flash'); void f.offsetWidth; f.classList.add('flash');
+    var b=f.querySelector('[data-act=confirm]')||f.querySelector('button');
+    if(b) setTimeout(function(){ try{ b.focus({preventScroll:true}); }catch(e){} }, 350);
+  }
+
+  // ── title: from campaign.name, once known ──────────────────────────────────
+  // Set when the name first appears in this session, or when the document still
+  // wears a generic title; a title the person chose later is left alone.
+  function syncTitle(){
+    var n=camp().name&&camp().name.value, m=(window.__CLAN__||{}).manifest||{};
+    if(TITLE.hadName===null) TITLE.hadName=typeof n==='string'&&!!n.trim();
+    if(typeof n!=='string'||!n.trim()) return;
+    document.title=n+' · Research';
+    if(TITLE.done===n||m.title===n||!(window.clan&&window.clan.setTitle)) return;
+    var generic=!m.title||/^(untitled.*|new .*|campaign[ -]research.*|research( tool)?|x)$/i.test(String(m.title).trim());
+    if(TITLE.hadName&&!generic) return;
+    TITLE.done=n;
+    window.clan.setTitle(n).then(function(res){ if(res&&res.ok!==false) m.title=n; else TITLE.done=''; }, function(){ TITLE.done=''; });
+  }
+
+  // ── wiring for the chat (delegated: the chat re-renders) ───────────────────
+  document.addEventListener('input', function(e){
+    var t=e.target, id=t&&t.id;
+    if(id==='cmp-prompt'){ CHAT.draft=t.value; grow(t); }
+    else if(id==='cmp-name') CHAT.name=t.value;
+    else if(id==='cmp-who') CHAT.who=t.value.trim();
+    else if(id&&id.indexOf('qtext-')===0) CHAT.qdraft[t.getAttribute('data-q')]=t.value;
+  });
+  document.addEventListener('keydown', function(e){
+    var t=e.target; if(e.key!=='Enter'||e.isComposing||!t||!t.id) return;
+    if(t.id==='cmp-prompt'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); doSend(); }
+    else if(t.id.indexOf('qtext-')===0){ e.preventDefault(); doAnswer(t.getAttribute('data-q'), null, t.value); }
+  });
+  document.addEventListener('change', function(e){ if(e.target&&e.target.id==='cmp-file'){ addFiles(e.target.files); e.target.value=''; } });
+  document.addEventListener('toggle', function(e){ if(e.target&&e.target.id==='chatbox') CHAT.open=e.target.open; }, true);
+  ['dragenter','dragover'].forEach(function(t){ document.addEventListener(t, function(e){
+    var c=$('composer'); if(!c||!e.dataTransfer) return;
+    e.preventDefault(); if(c.contains(e.target)) c.classList.add('drag');
+  }); });
+  document.addEventListener('dragleave', function(e){ var c=$('composer'); if(c&&(!e.relatedTarget||!c.contains(e.relatedTarget))) c.classList.remove('drag'); });
+  document.addEventListener('drop', function(e){
+    var c=$('composer'); if(!c) return;
+    e.preventDefault(); c.classList.remove('drag');
+    if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
   // export (EXPORT-CONTRACT Path B): the view renders at runtime, so it claims
   // clan:export and hands the host a static, light, control-free document.
   // ════════════════════════════════════════════════════════════════════════
   function buildExportHTML(){
     var clone=$('doc').cloneNode(true);
     clone.querySelectorAll('.ctl,.no-print,button,dialog,select').forEach(function(n){ n.remove(); });
+    // The report and the conversation travel; the composer and every control do not.
+    clone.querySelectorAll('details').forEach(function(n){ n.setAttribute('open',''); });
+    clone.querySelectorAll('[hidden]').forEach(function(n){ n.remove(); });
     var css=$('cr-style').textContent;
     var title=(camp().name&&camp().name.value)||'Campaign research';
     return '<!DOCTYPE html><html lang="en" data-theme="light" data-color-scheme="light"><head><meta charset="UTF-8"><title>'+esc(title)+'</title>'
@@ -1479,6 +2356,17 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
       case 'reject': doFinding(/findings\[(.+)\]$/.exec(b.getAttribute('data-address'))[1],'reject'); break;
       case 'pin': doPin(b.getAttribute('data-address')); break;
       case 'why': doWhy(b.getAttribute('data-path'), b.getAttribute('data-address')); break;
+      case 'who': doWho(); break;
+      case 'cmp-attach': var fi=$('cmp-file'); if(fi) fi.click(); break;
+      case 'cmp-rm': CHAT.files.splice(+b.getAttribute('data-i'),1); renderChat(); break;
+      case 'cmp-send': doSend(); break;
+      case 'chat-retry': doRetry(); break;
+      case 'chat-poll': POLL.delay=1000; pollNow(); break;
+      case 'q-opt': doAnswer(b.getAttribute('data-q'), b.getAttribute('data-opt')); break;
+      case 'q-send': var qi=$('qtext-'+b.getAttribute('data-q')); doAnswer(b.getAttribute('data-q'), null, qi?qi.value:''); break;
+      case 'q-resend': doResend(b.getAttribute('data-q')); break;
+      case 'report-refresh': doRefreshReport(); break;
+      case 'goto-confirm': gotoConfirm(b.getAttribute('data-field')); break;
     }
   });
   $('lockBtn').addEventListener('click', doLock);
@@ -1491,6 +2379,10 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   window.addEventListener('clan:dataupdated', render);
   render();
   loadChain();
+  // The host injects the bridge after this script, so window.clan exists only
+  // once the document has parsed.
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ resumeJob(); render(); });
+  else setTimeout(function(){ resumeJob(); render(); }, 0);
 })();
 </script>
 </body>
