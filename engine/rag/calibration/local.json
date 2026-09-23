@@ -1,0 +1,332 @@
+{
+ "a": 0.664321,
+ "b": -0.166164,
+ "threshold": 0.439321,
+ "fitted_on": "golden held-out, rerank-pilot selection (119 specific ipa/cannes + 40 playbook, seed 7); hybrid pool 40 from _index_v3 (nvidia/nemotron-3-embed-1b) filtered by source; label = doc_id in accept set; Platt fit on 70% of cases",
+ "n": 4440,
+ "provisional": true,
+ "backend": "local",
+ "fitted_at": "2026-09-23",
+ "method": "Platt scaling p = sigmoid(a*raw + b); Newton on cross-entropy with Platt's smoothed targets (Lin, Lin & Weng 2007); fitted on train cases only",
+ "threshold_policy": "maximises F1 on the train cases' fitted probabilities; midpoint between the adjacent distinct probabilities; ties pass more",
+ "n_pos": 706,
+ "n_neg": 3734,
+ "split": {
+  "unit": "case",
+  "method": "sha1(source|query) % 1000 < 700",
+  "train_cases": 111,
+  "test_cases": 48,
+  "by_source": {
+   "cannes/test": 5,
+   "cannes/train": 8,
+   "ipa/test": 29,
+   "ipa/train": 77,
+   "playbook/test": 14,
+   "playbook/train": 26
+  }
+ },
+ "train": {
+  "n_pos": 706,
+  "n_neg": 3734,
+  "auc": 0.9635,
+  "ece_10": 0.0134,
+  "raw_median_pos": 2.355,
+  "raw_median_neg": -6.519,
+  "at": {
+   "0.3": {
+    "threshold": 0.3,
+    "precision": 0.7613,
+    "recall": 0.8314,
+    "f1": 0.7949,
+    "pass_rate": 0.1736,
+    "tp": 587,
+    "fp": 184,
+    "fn": 119,
+    "tn": 3550
+   },
+   "0.5": {
+    "threshold": 0.5,
+    "precision": 0.8346,
+    "recall": 0.772,
+    "f1": 0.8021,
+    "pass_rate": 0.1471,
+    "tp": 545,
+    "fp": 108,
+    "fn": 161,
+    "tn": 3626
+   },
+   "0.7": {
+    "threshold": 0.7,
+    "precision": 0.8674,
+    "recall": 0.6303,
+    "f1": 0.7301,
+    "pass_rate": 0.1155,
+    "tp": 445,
+    "fp": 68,
+    "fn": 261,
+    "tn": 3666
+   },
+   "chosen": {
+    "threshold": 0.439321,
+    "precision": 0.8174,
+    "recall": 0.7989,
+    "f1": 0.808,
+    "pass_rate": 0.1554,
+    "tp": 564,
+    "fp": 126,
+    "fn": 142,
+    "tn": 3608
+   }
+  }
+ },
+ "test": {
+  "n_pos": 298,
+  "n_neg": 1622,
+  "auc": 0.9678,
+  "ece_10": 0.0195,
+  "raw_median_pos": 2.066,
+  "raw_median_neg": -6.816,
+  "at": {
+   "0.3": {
+    "threshold": 0.3,
+    "precision": 0.755,
+    "recall": 0.8893,
+    "f1": 0.8166,
+    "pass_rate": 0.1828,
+    "tp": 265,
+    "fp": 86,
+    "fn": 33,
+    "tn": 1536
+   },
+   "0.5": {
+    "threshold": 0.5,
+    "precision": 0.8127,
+    "recall": 0.7718,
+    "f1": 0.7917,
+    "pass_rate": 0.1474,
+    "tp": 230,
+    "fp": 53,
+    "fn": 68,
+    "tn": 1569
+   },
+   "0.7": {
+    "threshold": 0.7,
+    "precision": 0.8676,
+    "recall": 0.594,
+    "f1": 0.7052,
+    "pass_rate": 0.1062,
+    "tp": 177,
+    "fp": 27,
+    "fn": 121,
+    "tn": 1595
+   },
+   "chosen": {
+    "threshold": 0.439321,
+    "precision": 0.8007,
+    "recall": 0.8087,
+    "f1": 0.8047,
+    "pass_rate": 0.1568,
+    "tp": 241,
+    "fp": 60,
+    "fn": 57,
+    "tn": 1562
+   }
+  },
+  "reliability": [
+   {
+    "bin": "0.0-0.1",
+    "n": 1425,
+    "mean_p": 0.0149,
+    "pos_rate": 0.0084
+   },
+   {
+    "bin": "0.1-0.2",
+    "n": 96,
+    "mean_p": 0.1392,
+    "pos_rate": 0.0938
+   },
+   {
+    "bin": "0.2-0.3",
+    "n": 48,
+    "mean_p": 0.247,
+    "pos_rate": 0.25
+   },
+   {
+    "bin": "0.3-0.4",
+    "n": 37,
+    "mean_p": 0.3476,
+    "pos_rate": 0.4865
+   },
+   {
+    "bin": "0.4-0.5",
+    "n": 31,
+    "mean_p": 0.4506,
+    "pos_rate": 0.5484
+   },
+   {
+    "bin": "0.5-0.6",
+    "n": 41,
+    "mean_p": 0.5545,
+    "pos_rate": 0.5854
+   },
+   {
+    "bin": "0.6-0.7",
+    "n": 38,
+    "mean_p": 0.6462,
+    "pos_rate": 0.7632
+   },
+   {
+    "bin": "0.7-0.8",
+    "n": 52,
+    "mean_p": 0.7555,
+    "pos_rate": 0.8462
+   },
+   {
+    "bin": "0.8-0.9",
+    "n": 66,
+    "mean_p": 0.8617,
+    "pos_rate": 0.8485
+   },
+   {
+    "bin": "0.9-1.0",
+    "n": 86,
+    "mean_p": 0.9452,
+    "pos_rate": 0.8953
+   }
+  ]
+ },
+ "test_by_source": {
+  "cannes": {
+   "cases": 5,
+   "n_pos": 34,
+   "n_neg": 166,
+   "auc": 0.9414,
+   "chosen": {
+    "threshold": 0.439321,
+    "precision": 0.6071,
+    "recall": 1.0,
+    "f1": 0.7556,
+    "pass_rate": 0.28,
+    "tp": 34,
+    "fp": 22,
+    "fn": 0,
+    "tn": 144
+   }
+  },
+  "ipa": {
+   "cases": 29,
+   "n_pos": 186,
+   "n_neg": 974,
+   "auc": 0.9911,
+   "chosen": {
+    "threshold": 0.439321,
+    "precision": 0.8241,
+    "recall": 0.957,
+    "f1": 0.8856,
+    "pass_rate": 0.1862,
+    "tp": 178,
+    "fp": 38,
+    "fn": 8,
+    "tn": 936
+   }
+  },
+  "playbook": {
+   "cases": 14,
+   "n_pos": 78,
+   "n_neg": 482,
+   "auc": 0.9392,
+   "chosen": {
+    "threshold": 0.439321,
+    "precision": 1.0,
+    "recall": 0.3718,
+    "f1": 0.5421,
+    "pass_rate": 0.0518,
+    "tp": 29,
+    "fp": 0,
+    "fn": 49,
+    "tn": 482
+   }
+  }
+ },
+ "label_noise": "document-level labels on passages: a pooled chunk outside the accept set can be genuinely relevant (counted FP), a chunk of an accepted document can be off-topic (counted FN); precision and recall are approximate",
+ "domain_caveat": "golden queries are retrieval-shaped (case names, templated questions); briefs pair a long query-plus-context with each passage, so logits may shift. Provisional until refitted on labelled brief pairs",
+ "test_within_capacity": {
+  "capacity": 20,
+  "n_pos": 295,
+  "n_neg": 665,
+  "auc": 0.9417,
+  "ece_10": 0.0312,
+  "raw_median_pos": 2.085,
+  "raw_median_neg": -5.922,
+  "at": {
+   "0.3": {
+    "threshold": 0.3,
+    "precision": 0.7681,
+    "recall": 0.8983,
+    "f1": 0.8281,
+    "pass_rate": 0.3594,
+    "tp": 265,
+    "fp": 80,
+    "fn": 30,
+    "tn": 585
+   },
+   "0.5": {
+    "threshold": 0.5,
+    "precision": 0.8156,
+    "recall": 0.7797,
+    "f1": 0.7972,
+    "pass_rate": 0.2938,
+    "tp": 230,
+    "fp": 52,
+    "fn": 65,
+    "tn": 613
+   },
+   "0.7": {
+    "threshold": 0.7,
+    "precision": 0.8676,
+    "recall": 0.6,
+    "f1": 0.7094,
+    "pass_rate": 0.2125,
+    "tp": 177,
+    "fp": 27,
+    "fn": 118,
+    "tn": 638
+   },
+   "chosen": {
+    "threshold": 0.439321,
+    "precision": 0.8033,
+    "recall": 0.8169,
+    "f1": 0.8101,
+    "pass_rate": 0.3125,
+    "tp": 241,
+    "fp": 59,
+    "fn": 54,
+    "tn": 606
+   }
+  }
+ },
+ "backend_config": {
+  "backend": "local",
+  "model": "BAAI/bge-reranker-v2-m3",
+  "device": "mps",
+  "capacity": 20,
+  "deadline_s": 120.0,
+  "calls_per_brief": 1,
+  "max_length": 512,
+  "passage_chars": 1500
+ },
+ "run": {
+  "cases_selected": 159,
+  "pools": 159,
+  "deadline_s": 120.0,
+  "attempted": 159,
+  "scored": 159,
+  "skipped": {},
+  "aborted": 0,
+  "latency_s": {
+   "p50": 4.531,
+   "p90": 9.057,
+   "max": 12.305
+  }
+ }
+}
