@@ -53,6 +53,45 @@ tasks:
     writes: shared/findings.yaml entries, status proposed, method synthesis; may propose campaign.audience and campaign.in_market citing them
     confidence: derived from the cited pins, never produced by the model
 
+  # ---- the chat intake (docs/contracts/middleware-api.md §8, Contract 3 §16-17) ----
+  start_campaign:
+    handler: start_campaign@1
+    job: long                      # ONE middleware job; orchestration lives in the middleware (M1)
+    input: "{ prompt, attachments: [{ material_id, name, sha256, text? }] }"
+    stages: [extract, identify, select, research, synthesise, report]
+    stage_rules:
+      extract: as extract_ask (deterministic lookups, then ONE structured-output call), except campaign.brand, campaign.client_org and campaign.categories, which identify writes
+      identify: >
+        subject brand — exactly one brand clearly the client (named in the prompt as ours/the client,
+        a "Brand:" label, or the only brand in the material) is written extracted with its span; several
+        brands, or subject vs comparator unclear, is needs_input (options: the brands found + "None of
+        these"); none is needs_input, free text. Categories — from the brand's roster row, proposed citing
+        the pin; else a ranked array of at most two candidates is needs_input (options: the candidates +
+        "Something else"). Markets — none in the material is needs_input, free text. Never classify by
+        retrieving; never guess the subject brand.
+      select: which lenses x campaign.markets this prompt needs; the rest go to selection.lenses_skipped with the reason
+      research: as research_lens, over the selected lens x market pairs only
+      synthesise: as synthesise_findings
+      report: composes data.report from the document as the host holds it, once every earlier stage has landed
+    writes: campaign.* envelopes (extracted or proposed), materials, selection.*, shared/facts.yaml, shared/findings.yaml, intake.messages (role agent only), report
+    never:
+      - writes a field the person answered — the view writes the answer, confirmed or stated, as a human write
+      - writes a role user message, or a field whose origin is confirmed or stated
+    staged: a reply may carry a change for the stages finished since the previous one; every write in it carries a decision whose targets name it
+
+  answer_question:
+    handler: answer_question@1
+    continues: start_campaign      # the reply describes the start_campaign job; its task and handler are the job's
+    input: "{ job_id, question_id, option_id? | text? }"   # exactly one of option_id and text
+    precondition: the job is needs_input and question_id is job.question.id
+
+  compose_report:
+    handler: compose_report@1
+    job: short                     # done, with its change, in one response ("Refresh report")
+    input: "{}"
+    reads: the document as it now stands — campaign, selection, pins, findings (a rejected finding is never cited)
+    writes: report (replaced whole), one intake message (role agent, stage report)
+
 # Campaign -> retrieval pairs. The handoff mapping is stored here so it travels
 # with every document. Scope (tenant, brand) is NEVER in this mapping: the
 # middleware injects it from Ctx.
@@ -76,6 +115,13 @@ merge_policies:
   selection.excluded: append
   selection.contested: ask
   selection.coverage: ask
+  selection.lenses_skipped: append
+  # A map keyed by message id: branches add keys and a key-wise union keeps both.
+  # Ids never collide across writers; the same id with different content is ask.
+  intake.messages: append
+  # Written by the middleware only and replaced wholesale on every write; the
+  # newest composition wins. The view flags it out of date against based_on.
+  report: last-write
   # `projection` is deliberately absent: it is never merged, the host rebuilds it
   # from shared/facts.yaml and shared/findings.yaml after the merge commits.
 

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://napkin.ie/schemas/campaign-research/data.schema.json",
   "title": "Campaign Research — shared/data.yaml",
-  "description": "Contract 3 (docs/contracts/campaign-clan.md). Region A (campaign.*), Region C (selection.*), the supplied-material index and the host's read-only projection of the facts and findings members. Nothing here has a default and no campaign field is required: a field's gate says which state the document cannot reach without it (D4). Every present field is an envelope {value, origin, gate, decision, ...}.",
+  "description": "Contract 3 (docs/contracts/campaign-clan.md). Region A (campaign.*), Region C (selection.*), the supplied-material index, the chat intake thread, the middleware-written report and the host's read-only projection of the facts and findings members. Nothing here has a default and no campaign field is required: a field's gate says which state the document cannot reach without it (D4). Every present field is an envelope {value, origin, gate, decision, ...}.",
   "type": "object",
   "additionalProperties": true,
   "definitions": {
@@ -396,6 +396,552 @@
       "allOf": [
         {
           "$ref": "#/definitions/origin_rules"
+        }
+      ]
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^job_[0-9A-Za-z_-]{4,}$",
+      "description": "A middleware job id (napkin.middleware/1 job.id)."
+    },
+    "message_id": {
+      "type": "string",
+      "pattern": "^msg_[0-9A-Za-z]{4,}$",
+      "description": "Key of a message in intake.messages. Opaque; ULID-style so a writer's keys sort in creation order."
+    },
+    "question_id": {
+      "type": "string",
+      "pattern": "^q_[0-9A-Za-z_]{4,}$"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "extract",
+        "identify",
+        "select",
+        "research",
+        "synthesise",
+        "report"
+      ],
+      "description": "The stages of a start_campaign job, in order. compose_report messages use report."
+    },
+    "handler": {
+      "type": "string",
+      "pattern": "^[a-z_]+@\\d+(\\.\\d+)?$",
+      "description": "name@major.minor — the response's handler."
+    },
+    "cite_id": {
+      "description": "A claim's citation: a pin in shared/facts.yaml or a finding in shared/findings.yaml. Never a source, a material or a rejected finding.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/fact_id"
+        },
+        {
+          "$ref": "#/definitions/finding_id"
+        }
+      ]
+    },
+    "cites": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/cite_id"
+      }
+    },
+    "question_option": {
+      "type": "object",
+      "description": "One button under a question. With a value it is a candidate: value is the COMPLETE value for the question's field, typed per the field (Contract 3 §2.3), and origin says where the candidate came from, carrying what that origin carries (extracted: source; proposed: fact_ids; stated: the person's own words from an earlier free-text answer). Without a value it is the escape ('None of these', 'Something else'): the view opens the text box and the answer is sent as text.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/item_key"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": [
+            "object",
+            "array",
+            "string"
+          ]
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "extracted",
+            "proposed",
+            "stated"
+          ]
+        },
+        "source": {
+          "$ref": "#/definitions/span"
+        },
+        "fact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/fact_id"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "required": [
+              "origin"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "origin"
+                  ]
+                },
+                {
+                  "required": [
+                    "source"
+                  ]
+                },
+                {
+                  "required": [
+                    "fact_ids"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "extracted"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "proposed"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "required": [
+              "fact_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "stated"
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "source"
+                  ]
+                },
+                {
+                  "required": [
+                    "fact_ids"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "question": {
+      "type": "object",
+      "description": "What the middleware asked when it could not decide (job.state needs_input). The same object as job.question in the envelope. address is the field the answer settles.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text",
+        "options",
+        "allow_text"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/question_id"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/question_option"
+          }
+        },
+        "allow_text": {
+          "type": "boolean"
+        },
+        "address": {
+          "type": "string",
+          "pattern": "^[^#\\s]+#campaign\\.[a-z_]+$",
+          "description": "<doc-id>#campaign.<field> — the field the person's answer writes."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "options": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allow_text": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "options": {
+                "contains": {
+                  "not": {
+                    "required": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allow_text": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "answer": {
+      "type": "object",
+      "description": "The person's answer to a question: an option id, or free text. Exactly one.",
+      "additionalProperties": false,
+      "required": [
+        "question_id"
+      ],
+      "properties": {
+        "question_id": {
+          "$ref": "#/definitions/question_id"
+        },
+        "option_id": {
+          "$ref": "#/definitions/item_key"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "option_id"
+          ]
+        },
+        {
+          "required": [
+            "text"
+          ]
+        }
+      ]
+    },
+    "intake_message": {
+      "type": "object",
+      "description": "One chat message. role user: written by the view as a human write (by required); may carry the prompt's material_id, attachments and an answer. role agent: written by the middleware's data_patch (job_id and stage required); may carry a question.",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "text",
+        "at"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "agent"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "$ref": "#/definitions/datetime"
+        },
+        "by": {
+          "$ref": "#/definitions/actor"
+        },
+        "material_id": {
+          "$ref": "#/definitions/material_id",
+          "description": "User messages: the material this message's text is indexed as (kind prompt, sha256 of the text's UTF-8 bytes)."
+        },
+        "attachments": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/material_id"
+          },
+          "description": "Materials attached to this message; each is a key of materials."
+        },
+        "job_id": {
+          "$ref": "#/definitions/job_id"
+        },
+        "stage": {
+          "$ref": "#/definitions/stage"
+        },
+        "question": {
+          "$ref": "#/definitions/question"
+        },
+        "answer": {
+          "$ref": "#/definitions/answer"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "user"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "by"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "stage"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "question"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "agent"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "job_id",
+                  "stage"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "by"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "material_id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "attachments"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "answer"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "answer"
+            ]
+          },
+          "then": {
+            "required": [
+              "job_id"
+            ]
+          }
+        }
+      ]
+    },
+    "report_block": {
+      "description": "One block of a report section. claim: a sentence with at least one cite; it states no figure that is not in a cited pin (the view renders figures from pins blocks). pins: the view renders these pins from projection.pins. finding: one finding, labelled derived by the agent unless verified. gap: a selection.gaps entry. contest: a selection.contested entry.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "text",
+            "cites"
+          ],
+          "properties": {
+            "kind": {
+              "const": "claim"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cites": {
+              "$ref": "#/definitions/cites"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "fact_ids"
+          ],
+          "properties": {
+            "kind": {
+              "const": "pins"
+            },
+            "fact_ids": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/fact_id"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "finding_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "finding"
+            },
+            "finding_id": {
+              "$ref": "#/definitions/finding_id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "gap_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "gap"
+            },
+            "gap_id": {
+              "$ref": "#/definitions/item_key"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "contest_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "contest"
+            },
+            "contest_id": {
+              "$ref": "#/definitions/item_key"
+            }
+          }
         }
       ]
     }
@@ -1426,6 +1972,34 @@
               }
             }
           }
+        },
+        "lenses_skipped": {
+          "type": "array",
+          "description": "Lenses the select stage judged not relevant to this ask, with why. Skipped is not empty: a skipped lens x market has no lenses_run entry and no coverage. market absent: skipped in every market. Address key: <lens>/<market>, or <lens> when market is absent.",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "lens",
+              "reason"
+            ],
+            "properties": {
+              "lens": {
+                "$ref": "#/definitions/lens"
+              },
+              "market": {
+                "$ref": "#/definitions/market"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "decision": {
+                "$ref": "#/definitions/decision_id"
+              }
+            }
+          }
         }
       }
     },
@@ -1481,6 +2055,192 @@
               "client-confidential"
             ],
             "description": "Facts derived from client-confidential material carry the brand licence class and never promote (C3)."
+          }
+        }
+      }
+    },
+    "intake": {
+      "type": "object",
+      "description": "The chat that started the campaign. messages is a MAP keyed by message id, never an array: two writers (the person through the view, the middleware through its data_patch) each add keys, and a JSON merge patch merges objects key-wise, so neither write replaces the other and no stale-base collision arises. Display order: at, then key.",
+      "additionalProperties": false,
+      "properties": {
+        "messages": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/definitions/message_id"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/intake_message"
+          }
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "description": "WRITTEN BY THE MIDDLEWARE ONLY (the report stage of start_campaign, or compose_report), replaced whole on every write; the view renders it read-only and no human patch writes it. Structured blocks, never HTML. Every claim cites pins or findings that exist in the document; nothing cites a rejected finding.",
+      "additionalProperties": false,
+      "required": [
+        "built_at",
+        "handler",
+        "based_on",
+        "headline",
+        "summary",
+        "sections",
+        "confirm",
+        "not_researched"
+      ],
+      "properties": {
+        "built_at": {
+          "$ref": "#/definitions/datetime"
+        },
+        "handler": {
+          "$ref": "#/definitions/handler"
+        },
+        "based_on": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The document the report was composed from: its clan.version and the host's member hashes (projection.built_from) as read. The view flags the report out of date when these hashes differ from projection.built_from, or a campaign or selection decision is newer than built_at.",
+          "required": [
+            "version",
+            "facts_sha256",
+            "findings_sha256"
+          ],
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "facts_sha256": {
+              "$ref": "#/definitions/sha256"
+            },
+            "findings_sha256": {
+              "$ref": "#/definitions/sha256"
+            }
+          }
+        },
+        "headline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "cites"
+          ],
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cites": {
+              "$ref": "#/definitions/cites"
+            }
+          }
+        },
+        "summary": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text",
+              "cites"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cites": {
+                "$ref": "#/definitions/cites"
+              }
+            }
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "title",
+              "blocks"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/item_key"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lens": {
+                "$ref": "#/definitions/lens"
+              },
+              "market": {
+                "$ref": "#/definitions/market"
+              },
+              "blocks": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/definitions/report_block"
+                }
+              }
+            }
+          }
+        },
+        "confirm": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "D3's short confirmation list: the subject brand, categories, markets and comparators while any is not yet confirmed or stated, then every other proposed field. Non-blocking; the chat only blocks on what identify cannot decide.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "address",
+              "label",
+              "why"
+            ],
+            "properties": {
+              "address": {
+                "type": "string",
+                "pattern": "^[^#\\s]+#campaign\\.[a-z_]+$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "why": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "not_researched": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Every lens x market that was not researched and why — at least every selection.lenses_skipped entry, with its reason.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "lens",
+              "reason"
+            ],
+            "properties": {
+              "lens": {
+                "$ref": "#/definitions/lens"
+              },
+              "market": {
+                "$ref": "#/definitions/market"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         }
       }

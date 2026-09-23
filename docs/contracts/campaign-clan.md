@@ -43,6 +43,10 @@ No property in any of them has a `default`.
   keyed by material id. Spans cite it. Bytes live as assets, by hash.
 - `projection` — the host's read-only scalar copy of the facts and findings
   members, for view bindings (§5).
+- `intake` — the chat that started the campaign: `intake.messages`, a map
+  keyed by message id (§16).
+- `report` — the structured report the middleware composes and the view
+  renders read-only (§17).
 
 `shared/facts.yaml` and `shared/findings.yaml` are their own registered members
 with their own roles (D2): a data-update pack replaces `shared/data.yaml` whole
@@ -200,6 +204,9 @@ index is invalid. Each list has a natural key:
 | `selection.contested`, `selection.gaps` | `id` | `#selection.contested[ct_orchard_hill_abv]` |
 | `selection.lenses_run` | `<lens>/<market>` | `#selection.lenses_run[media_spend/GB]` |
 | `selection.excluded` | `fact_id` | `#selection.excluded[f_01J7X3Q2MN]` |
+| `selection.lenses_skipped` | `<lens>/<market>`, or `<lens>` when skipped in every market | `#selection.lenses_skipped[effectiveness_evidence/GB]` |
+| `materials`, `intake.messages` (maps) | the key | `#intake.messages[msg_01JA0A04U]` — the patch path `intake.messages.msg_01JA0A04U` |
+| `report` | the whole object | `#report` |
 
 Every list is `uniqueItems`, and item ids are stable: an item keeps its id
 when reworded.
@@ -398,6 +405,7 @@ selection:
   gaps:        [{ id, key, lens?, market?, searched, sources_tried[], note? }]
   contested:   [{ id, key, status: open | resolved, values[], chosen?, reason?, decided_by?, opened_by? }]
   excluded:    [{ fact_id, reason, decision? }]
+  lenses_skipped: [{ lens, market?, reason, decision? }]           # judged not relevant to this ask
 ```
 
 - **Lenses** (the Planner Research Taxonomy, in order): `market_structure`
@@ -416,6 +424,13 @@ selection:
   `decided_by`. Resolved entries stay, and the losing values stay with the
   written reason. No `open` entry may remain at lock.
 - **Excluded**: facts research found and deliberately did not pin, with why.
+- **Lenses skipped**: lens × market pairs the `select` stage of
+  `start_campaign` judged not relevant to the prompt, with the reason.
+  `market` absent means every market. **Skipped is not empty**: a skipped pair
+  has no `lenses_run` entry and no `coverage_by_market` entry, merged coverage
+  is computed over the markets that ran the lens (a lens skipped everywhere
+  has no `coverage` entry), and the report lists it under `not_researched`.
+  A later `research_lens` run of a skipped pair removes its entry.
 
 The values inside a contest are the adjudication record, not pins: they may
 point at layer rows that are not pinned. Only the chosen one is pinned.
@@ -441,7 +456,9 @@ Merging, under the lease, is by **entity + key + market**:
 Merged coverage per lens: `filled` only if filled in every market, `empty` only
 if empty in every market, otherwise `thin`. Merge policies are declared in
 `app/pipeline.yaml`: `ask` for every `campaign.*` field and for contests and
-coverage, `append` for `lenses_run`, `gaps`, `excluded`.
+coverage, `append` for `lenses_run`, `gaps`, `excluded`, `lenses_skipped`
+and `intake.messages` (a key-wise union of the map), `last-write` for
+`report` (§17).
 
 ---
 
@@ -583,7 +600,9 @@ campaign.<field>.finding_ids[] -> projection.findings.<id>  flagged if .status =
 campaign.<field>.by, .confirmed_from                       confirmed / stated
 campaign.<list>.item_provenance.<item key>.origin …        per item
 campaign.audience.value.{definition, size.fact_ids, behaviours[], attitudes[], synthesis_finding_ids}
-selection.{lenses_run[], coverage.<lens>, coverage_by_market.<m>.<lens>, gaps[], contested[], excluded[]}
+selection.{lenses_run[], coverage.<lens>, coverage_by_market.<m>.<lens>, gaps[], contested[], excluded[], lenses_skipped[]}
+intake.messages.<msg_id>.{role, text, at, by, material_id, attachments[], job_id, stage, question, answer}   §16
+report.{built_at, handler, based_on, headline, summary[], sections[].blocks[], confirm[], not_researched[]}  §17
 materials.<material_id>.{name, kind, licence, asset}
 projection.pins.<fact_id>.{value, unit, as_of, confidence, licence, stale, current_version}
 projection.findings.<finding_id>.{statement, status, confidence, cites[]}
@@ -596,7 +615,11 @@ twice; brand-layer and category-layer pins; a pin taken while its layer row was
 contested; a verified finding and the synthesis fact it became; proposed
 findings; a rejected finding and the field it flags (`campaign.in_market`); a
 good and a bad verdict (in the chain); coverage filled, thin and empty; two
-gaps; an open and a resolved contest; an exclusion; a classify mark.
+gaps; an open and a resolved contest; an exclusion; a classify mark; a chat
+thread (the prompt with an attachment, stage messages, a question the bot
+asked about the subject brand and the person's answer, the confirmed field it
+wrote); a report whose every claim cites real pins and findings; a skipped
+lens.
 
 Not in the example, because they are not stored: an absent gated field (render
 the empty template `{}` — every field shows as missing with its gate), and a pin
@@ -614,3 +637,194 @@ whose currency is **unavailable** (fail the category-layer read at render).
 | W1-C1 | Carry `market` in the fact envelope (§13 item 8) |
 | W1P-I5 | Decision flatten tail — until then the SDK drops the §3 fields on rewrite |
 | W3-J1 | Fill it from real research |
+
+---
+
+## 16. The chat intake (`intake.messages`)
+
+A new campaign starts as a chat: the person types a prompt, attaches
+material, and the middleware's `start_campaign` job extracts the ask,
+identifies the brand and categories, researches and reports
+(`docs/contracts/middleware-api.md` §8). The thread is kept in the document.
+
+```yaml
+intake:
+  messages:                               # a MAP keyed by message id — never an array
+    msg_01JA0A01U:
+      role: user                          # user | agent
+      by: human:u_aoife                   # user messages: who
+      at: 2026-09-21T08:58:40Z
+      text: "Brief from Glenmore attached — …"
+      material_id: mat_prompt01           # this text, indexed as a kind: prompt material
+      attachments: [mat_email01]          # each a key of materials
+    msg_01JA0A03A:
+      role: agent
+      job_id: job_01JA0C2288              # agent messages: the job and the stage
+      stage: identify                     # extract | identify | select | research | synthesise | report
+      at: 2026-09-21T09:00:06Z
+      text: "The email names two brands … Which one is your client's?"
+      question:                           # = job.question when the job entered needs_input
+        id: q_01JA0A03SUBJ
+        text: "Which brand is the client's?"
+        address: "<doc-id>#campaign.brand"
+        allow_text: true
+        options:
+          - { id: lunasa, label: "Lúnasa", value: { ref: brand/lunasa, name: "Lúnasa" },
+              origin: extracted, source: { material_id: mat_email01, locator: "¶1", quote: "…" } }
+          - { id: none, label: "None of these" }      # the escape: no value, answered with text
+    msg_01JA0A04U:
+      role: user
+      by: human:u_aoife
+      at: 2026-09-21T09:05:00Z
+      text: "Lúnasa"
+      job_id: job_01JA0C2288              # the job it answers
+      answer: { question_id: q_01JA0A03SUBJ, option_id: lunasa }   # option_id or text, exactly one
+```
+
+### 16.1 Why a map
+
+Two writers add to the thread: the person, through the view (a human write),
+and the middleware, through a job's `data_patch`. A JSON merge patch replaces
+an array whole, so an array would make every write carry the whole thread —
+and a job computed before the person's latest message would, on landing,
+either drop it or be judged a stale write over it and open a contest. A map
+merges key-wise: each writer adds its own keys and never touches the other's,
+so there is no stale-base collision. Message ids are opaque, ULID-style
+(`msg_…`), unique across writers; display order is `at`, then the key.
+
+### 16.2 Who writes what
+
+| Message | Written by | Carries |
+|---|---|---|
+| `role: user` | the view, as a human write (a decision with `actor: human:<id>`) | `by`; the first carries `material_id` (the prompt, `kind: prompt`, sha256 of the text's UTF-8 bytes) and `attachments`; an answer carries `job_id` and `answer` |
+| `role: agent` | the middleware's `data_patch`, each with a decision targeting `#intake.messages[<id>]` | `job_id`, `stage`; a question carries `question` |
+
+The middleware never writes a `role: user` message; the view never writes a
+`role: agent` one. Messages are display and record: no field's value is read
+from one. The person's answers settle fields by the view's own write of the
+field (§16.3); the thread records that they did.
+
+### 16.3 The chat is D3's confirmation step, split in two
+
+D3 asks for a short confirmation list — the category pick, the markets,
+subject vs comparator — and §3 says an ambiguous subject brand blocks and
+never defaults. The chat splits that list by whether it blocks:
+
+- **Blocking**, asked in the chat while research waits: what `identify`
+  cannot decide (`docs/contracts/middleware-api.md` §8.6) — the subject brand
+  when several brands are named or none clearly is the client's, the
+  categories when the brand has no roster row, the markets when the material
+  names none.
+- **Non-blocking**, listed under the report (`report.confirm`, §17): every
+  other value the person has not yet accepted.
+
+**A person's answer is a human write and becomes `confirmed`.** The view
+writes the answered field as the person: a picked candidate that was
+`extracted` or `proposed` becomes `origin: confirmed`, `confirmed_from:
+<that origin>`, `by: human:<id>`, keeping its `source` / `fact_ids`; a
+candidate built from the person's own free text becomes `origin: stated`.
+Free text itself never becomes a value: the middleware turns it into
+candidates and asks again. Confirmed and stated fields belong to the human
+(§2.2), so the job never writes them.
+
+The origins stay honest: `extracted` (the chat read it from the material,
+quoted), `proposed` (the roster pin), `confirmed` (the person picked it in
+the chat, or from the confirm list), `stated` (the person typed it).
+
+## 17. The report (`report`)
+
+```yaml
+report:                                  # MIDDLEWARE-WRITTEN, rendered read-only
+  built_at: 2026-09-23T08:10:00Z
+  handler: compose_report@1.0            # the response's handler (start_campaign@1.x for the report stage)
+  based_on: { version, facts_sha256, findings_sha256 }
+  headline: { text, cites: [f_… | fi_…] }
+  summary:  [{ text, cites: [f_… | fi_…] }]           # ≥1 line
+  sections:
+    - id: s_market                       # item key, unique
+      title: "The market"
+      lens: market_structure             # optional
+      market: IE                         # optional
+      blocks:                            # ≥1, in reading order
+        - { kind: claim,   text: "…", cites: [f_…, fi_…] }
+        - { kind: pins,    fact_ids: [f_…] }
+        - { kind: finding, finding_id: fi_… }
+        - { kind: gap,     gap_id: g_… }
+        - { kind: contest, contest_id: ct_… }
+  confirm:        [{ address: "<doc-id>#campaign.<field>", label, why }]
+  not_researched: [{ lens, market?, reason }]
+```
+
+| Block | The view renders |
+|---|---|
+| `claim` | the sentence, with its cites as chips (pins from `projection.pins`, findings from `projection.findings`) |
+| `pins` | each pin's value, unit, market, as-of, confidence and stale flag, from `projection.pins` |
+| `finding` | the finding, labelled **derived by the agent** unless verified |
+| `gap` | the `selection.gaps` entry: what was looked for and not found |
+| `contest` | the `selection.contested` entry, open or resolved, with every value |
+
+**The cite rule.** The headline, every summary line and every `claim` block
+cite at least one id; each is a pin in `shared/facts.yaml` or a finding in
+`shared/findings.yaml` — never a source, a material or a URL. No cite and no
+`finding` block names a rejected finding. A claim states no figure that is
+not in a cited pin (or verbatim in a cited finding); figures are shown by
+`pins` blocks, which render the pinned value. Entity names that contain
+digits ("Lúnasa 0.0") are names, not figures. `gap_id` and `contest_id` name
+entries in `selection`.
+
+**`based_on`** is the document the report was composed from: its
+`clan.version` and the host's member hashes, `projection.built_from.
+{facts_sha256, findings_sha256}`, as read. The view shows the report as out
+of date — and offers **Refresh report** (`compose_report`) — when those
+hashes differ from `projection.built_from`, or when a decision newer than
+`built_at` targets `campaign.*` or `selection.*`.
+
+**`confirm`** is D3's short list, non-blocking (§16.3): `brand`,
+`categories`, `markets`, `competitor_set` — each while its origin is
+`extracted` or `proposed` — then every other campaign field whose origin is
+`proposed`. `label` says what is being confirmed, `why` why it needs a
+person. The view renders each with the field's confirm action (§10).
+
+**`not_researched`** lists every lens × market that was not researched, with
+why: at least every `selection.lenses_skipped` entry, with its reason.
+Researched-and-empty is not here: that is a `gap` block and `coverage: empty`.
+
+**Who writes it.** The middleware only — the `report` stage of
+`start_campaign` and `compose_report` — replacing it whole on every write,
+with a decision targeting `#report`. It is derived, never edited: the view
+renders it read-only and no human patch writes it; a person changes the
+report by changing the document and refreshing. Merge policy `last-write`:
+the newest composition wins, and `based_on` says what it describes. Never
+HTML, never markdown to be rendered as markup: the view escapes every string.
+
+## 18. Calls the chat intake made
+
+Decided while writing the intake contract (2026-09-24), for the owner to
+confirm or overturn.
+
+1. **The answered field is the view's human write**, not the middleware's:
+   the middleware never writes a confirmed or stated field (§2.2), and only
+   a human write carries the person as actor.
+2. **Question options carry typed values** (the whole field value) with the
+   candidate's origin and evidence, so the view can write the envelope
+   without guessing; an option without a value is the escape.
+3. **Free text becomes candidates, then a pick**: text never becomes a value
+   directly, so the view never mints a brand ref or a leaf code.
+4. **A brand read from the material is `extracted`**, not `proposed`: the
+   brief's "proposed with the evidence span" is Contract 3's `extracted`
+   (`proposed` requires pins).
+5. **Markets are asked when absent** — the `research` gate needs them.
+6. **The prompt is a material** (`kind: prompt`, hashed), linked from the
+   first message by `material_id`, so spans can cite it.
+7. **User messages carry `by`**; agent messages require `job_id` and `stage`.
+8. **Addresses for maps use the key in brackets**: `#intake.messages[<id>]`,
+   `#materials[<id>]`.
+9. **`selection.lenses_skipped` items carry an optional `decision`** like the
+   other selection lists, and skipped pairs have no coverage.
+10. **`report.confirm` is computed** (the D3 four while unconfirmed, then
+    every proposed field) — a rule the example checker enforces.
+11. **Merge policies**: `append` for `intake.messages` and `lenses_skipped`,
+    `last-write` for `report` — names the SDK already knows.
+12. **`based_on` hashes are the host's**, copied from the
+    `projection.built_from` the composer read; the report stage therefore
+    composes once the earlier stages have landed.
