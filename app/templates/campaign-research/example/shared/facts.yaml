@@ -1,0 +1,378 @@
+# EXAMPLE — fabricated for testing. Every brand, figure and source below is invented.
+# Region B: pinned facts. Frozen copies of knowledge-layer rows (Contract 3 §4).
+# Schema: app/templates/campaign-research/facts.schema.json
+facts:
+  # ---- brand layer: brand/lunasa (agency database, RLS by brand) ----------------
+  - id: f_01JA0B1C2D
+    entity: brand/lunasa
+    key: roster.categories.primary
+    value: drinks.cider
+    unit: code
+    as_of: 2026-01-15
+    retrieved_at: 2026-09-21
+    sources: [src_r0st]
+    confidence: high
+    licence: client-confidential
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://brand/lunasa/roster.categories.primary@1
+    decision: d_01JA0D02LKP
+    pinned_at: 2026-09-21T09:00:04Z
+    pin_reason: "Roster row: primary category, proposed for campaign.categories"
+    layer: brand
+    method: report
+  - id: f_01JA0B1C3E
+    entity: brand/lunasa
+    key: roster.categories.secondary
+    value: drinks.no_low_alcohol
+    unit: code
+    as_of: 2026-01-15
+    retrieved_at: 2026-09-21
+    sources: [src_r0st]
+    confidence: high
+    licence: client-confidential
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://brand/lunasa/roster.categories.secondary@1
+    decision: d_01JA0D02LKP
+    pinned_at: 2026-09-21T09:00:04Z
+    pin_reason: "Roster row: secondary category, proposed for campaign.categories"
+    layer: brand
+    method: report
+  - id: f_01JA0B1C4F
+    entity: brand/lunasa
+    key: roster.client_org
+    value: org/glenmore-drinks
+    unit: code
+    as_of: 2026-01-15
+    retrieved_at: 2026-09-21
+    sources: [src_r0st]
+    confidence: high
+    licence: client-confidential
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://brand/lunasa/roster.client_org@1
+    decision: d_01JA0D02LKP
+    pinned_at: 2026-09-21T09:00:04Z
+    pin_reason: "Roster row: the client that holds the brand, proposed for campaign.client_org"
+    layer: brand
+    method: report
+  - id: f_01JA0B2K7M
+    entity: brand/lunasa
+    key: awareness.prompted
+    value: 0.47
+    unit: proportion
+    as_of: 2026-06-30
+    retrieved_at: 2026-09-21
+    sources: [src_4f2a, src_9c11]
+    confidence: high
+    licence: client-confidential
+    status: active
+    version: 3
+    supersedes: f_01J9Q0B8HX
+    origin: fact://brand/lunasa/awareness.prompted@3
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "IE awareness is the launch's starting asset"
+    layer: brand
+    market: IE
+    method: measurement
+  - id: f_01JA0B2K8N
+    entity: brand/lunasa
+    key: awareness.prompted
+    value: 0.12
+    unit: proportion
+    as_of: 2026-06-30
+    retrieved_at: 2026-09-21
+    sources: [src_4f2a]
+    confidence: medium
+    licence: client-confidential
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://brand/lunasa/awareness.prompted@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "GB awareness — a market difference, not a conflict, with the IE figure"
+    layer: brand
+    market: GB
+    method: measurement
+  # STALE (superseded once): the layer now holds v3. The pinned 0.82 stays; the view offers 0.86.
+  - id: f_01JA0B3P4Q
+    entity: brand/lunasa
+    key: distribution.off_trade_weighted
+    value: 0.82
+    unit: proportion
+    as_of: 2026-03-31
+    retrieved_at: 2026-09-21
+    sources: [src_n1el]
+    confidence: high
+    licence: licensed-internal
+    status: active
+    version: 2
+    supersedes: f_01J8M2R7TA
+    origin: fact://brand/lunasa/distribution.off_trade_weighted@2
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "The parent brand's shelf presence the 0.0 variant can borrow"
+    layer: brand
+    market: IE
+    method: measurement
+    stale:
+      detected_at: 2026-09-23T07:30:00Z
+      current_version: 3
+      current_fact_id: f_01JA0C7T2V
+      current_value: 0.86
+  - id: f_01JA0B3R5S
+    entity: brand/lunasa
+    key: consideration.among_nolo_drinkers
+    value: 0.18
+    unit: proportion
+    as_of: 2026-06-30
+    retrieved_at: 2026-09-21
+    sources: [src_4f2a]
+    confidence: medium
+    licence: client-confidential
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://brand/lunasa/consideration.among_nolo_drinkers@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "How many no/low drinkers would consider the brand today"
+    layer: brand
+    market: IE
+    method: measurement
+  # A verified finding written back to the layer (method: synthesis), then pinned like any other.
+  # It cites a client-confidential fact, so it stays at brand scope and never promotes (C3).
+  - id: f_01JA0C9V4X
+    entity: brand/lunasa
+    key: insight.nolo_occasion_is_social
+    value: "For Irish moderators the 0.0 occasion is social: weeknights at home with friends, where being seen to drink cider still matters."
+    unit: text
+    as_of: 2026-09-22
+    retrieved_at: 2026-09-22
+    sources: [human:u_aoife, f_01JA0B6D6G, f_01JA0B6D7H, f_01JA0B3R5S]
+    confidence: medium
+    licence: client-confidential
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://brand/lunasa/insight.nolo_occasion_is_social@1
+    decision: d_01JA0D07VER
+    pinned_at: 2026-09-22T16:05:31Z
+    pin_reason: "Verified finding fi_01JA0F1A, written to the layer and pinned"
+    layer: brand
+    market: IE
+    method: synthesis
+
+  # ---- category layer (shared category database, no brand_id) -------------------
+  - id: f_01JA0B4A1B
+    entity: category/drinks.no_low_alcohol
+    key: market.value_growth_yoy
+    value: 0.24
+    unit: proportion
+    as_of: 2026-06-30
+    retrieved_at: 2026-09-21
+    sources: [src_n1el, src_k4nt]
+    confidence: high
+    licence: licensed-internal
+    status: active
+    version: 5
+    supersedes: f_01J9W4A1QB
+    origin: fact://category/drinks.no_low_alcohol/market.value_growth_yoy@5
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Size of the prize in IE"
+    layer: category
+    market: IE
+    method: measurement
+  - id: f_01JA0B4A2C
+    entity: category/drinks.no_low_alcohol
+    key: market.value_growth_yoy
+    value: 0.11
+    unit: proportion
+    as_of: 2026-06-30
+    retrieved_at: 2026-09-21
+    sources: [src_n1el, src_k4nt]
+    confidence: high
+    licence: licensed-internal
+    status: active
+    version: 4
+    supersedes: f_01J9W4A2QC
+    origin: fact://category/drinks.no_low_alcohol/market.value_growth_yoy@4
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Size of the prize in GB"
+    layer: category
+    market: GB
+    method: measurement
+  # Pinned while the layer row was contested; the document resolved which value it uses (selection.contested[ct_cider_top3_share]).
+  - id: f_01JA0B4B3D
+    entity: category/drinks.cider
+    key: market.volume_share_top3
+    value: 0.71
+    unit: proportion
+    as_of: 2026-06-30
+    retrieved_at: 2026-09-21
+    sources: [src_n1el]
+    confidence: medium
+    licence: licensed-internal
+    status: contested
+    version: 2
+    supersedes: f_01J9T3B3DA
+    origin: fact://category/drinks.cider/market.volume_share_top3@2
+    decision: d_01JA0D06RES
+    pinned_at: 2026-09-21T14:20:55Z
+    pin_reason: "How concentrated the cider category is — chosen in the resolved contest"
+    layer: category
+    market: IE
+    method: measurement
+  - id: f_01JA0B5C4E
+    entity: brand/orchard-hill
+    key: launch.date
+    value: "2026-03-09"
+    unit: date
+    as_of: 2026-03-09
+    retrieved_at: 2026-09-21
+    sources: [src_tr4d]
+    confidence: medium
+    licence: open
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://category/brand/orchard-hill/launch.date@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "A comparator launched an alcohol-free cider this year"
+    layer: category
+    market: IE
+    method: report
+  - id: f_01JA0B5C5F
+    entity: brand/kestrel-press
+    key: positioning.claim
+    value: "The grown-up alcohol-free"
+    unit: text
+    as_of: 2026-07-01
+    retrieved_at: 2026-09-21
+    sources: [src_ad7r]
+    confidence: medium
+    licence: open
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://category/brand/kestrel-press/positioning.claim@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Territory a comparator already claims"
+    layer: category
+    method: observation
+  - id: f_01JA0B6D6G
+    entity: category/drinks.no_low_alcohol
+    key: consumer.adults_moderating
+    value: 0.31
+    unit: proportion
+    as_of: 2026-05-31
+    retrieved_at: 2026-09-21
+    sources: [src_0mn1]
+    confidence: medium
+    licence: open
+    status: active
+    version: 2
+    supersedes: f_01J9R6D6GA
+    origin: fact://category/drinks.no_low_alcohol/consumer.adults_moderating@2
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Audience size: adults who say they are cutting back"
+    layer: category
+    market: IE
+    method: measurement
+  - id: f_01JA0B6D7H
+    entity: category/drinks.no_low_alcohol
+    key: consumer.top_occasion
+    value: "Weeknight socialising at home"
+    unit: text
+    as_of: 2026-05-31
+    retrieved_at: 2026-09-21
+    sources: [src_0mn1, src_s0c1]
+    confidence: medium
+    licence: open
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://category/drinks.no_low_alcohol/consumer.top_occasion@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Audience behaviour: when 0.0 gets chosen"
+    layer: category
+    market: IE
+    method: measurement
+  # STALE (superseded twice): pinned at v1, the layer is at v3. The pin keeps v1's text; the view offers v3's.
+  - id: f_01JA0B7E8J
+    entity: category/drinks.no_low_alcohol
+    key: regulation.parent_livery_rule
+    value: "EXAMPLE: an ad for a 0.0 variant that shares the parent alcohol brand's livery is assessed as alcohol advertising."
+    unit: text
+    as_of: 2025-11-01
+    retrieved_at: 2026-09-21
+    sources: [src_asa1]
+    confidence: high
+    licence: open
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://category/drinks.no_low_alcohol/regulation.parent_livery_rule@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Clearance rule behind the livery constraint"
+    layer: category
+    market: IE
+    method: report
+    stale:
+      detected_at: 2026-09-23T07:30:00Z
+      current_version: 3
+      current_fact_id: f_01JA0C8U3W
+      current_value: "EXAMPLE: an ad for a 0.0 variant is assessed as alcohol advertising if it shares the parent's livery, or if 'alcohol-free' is not shown with equal prominence to the brand name."
+  - id: f_01JA0B8F9K
+    entity: category/drinks.cider
+    key: rhythm.peak_months
+    value: "May–August"
+    unit: text
+    as_of: 2025-12-31
+    retrieved_at: 2026-09-21
+    sources: [src_n1el]
+    confidence: high
+    licence: licensed-internal
+    status: active
+    version: 3
+    supersedes: f_01J8K8F9KA
+    origin: fact://category/drinks.cider/rhythm.peak_months@3
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "Drives the in-market window"
+    layer: category
+    market: IE
+    method: measurement
+  - id: f_01JA0B9G1L
+    entity: category/drinks.no_low_alcohol
+    key: media.digital_share_of_spend
+    value: 0.58
+    unit: proportion
+    as_of: 2025-12-31
+    retrieved_at: 2026-09-21
+    sources: [src_k4nt]
+    confidence: medium
+    licence: licensed-internal
+    status: active
+    version: 1
+    supersedes: null
+    origin: fact://category/drinks.no_low_alcohol/media.digital_share_of_spend@1
+    decision: d_01JA0D04MRG
+    pinned_at: 2026-09-21T11:42:10Z
+    pin_reason: "How the category spends in GB"
+    layer: category
+    market: GB
+    method: measurement
