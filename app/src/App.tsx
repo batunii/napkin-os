@@ -5,20 +5,27 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { host } from './host'
 import type { InstalledApp, OpenResult } from './host'
-import ApiKeyButton from './components/ApiKeyButton'
-import ThemeToggle from './components/ThemeToggle'
 import { askAppToExport } from './shell/appExport'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
 import AppRuntime from './shell/AppRuntime'
 import InstallPrompt from './shell/InstallPrompt'
 import type { RunningApp, Screen } from './shell/types'
+import StudioShell from './studio/StudioShell'
+import FloorView from './studio/floor/FloorView'
+import DecisionsView from './studio/decisions/DecisionsView'
+import { StudioContext } from './studio/nav'
+import type { Studio, StudioView } from './studio/nav'
 import './index.css'
 
 // Theme keys an immersive app may recolor → CSS variables on the shell root.
+// These are the design tokens; the legacy names (--bg, --surface, --text,
+// --border, --muted) alias onto them in index.css, so both follow. The accent
+// is --accent, not --create: an app may recolour the chrome's accent but not
+// the Create department.
 const THEME_VARS: Record<string, string> = {
-  accent: '--accent', bg: '--bg', surface: '--surface',
-  text: '--text', border: '--border', muted: '--muted',
+  accent: '--accent', bg: '--paper', surface: '--card',
+  text: '--ink', border: '--line', muted: '--ink2',
 }
 function applyTheme(colors: Record<string, string> | null | undefined) {
   if (!colors) return
@@ -34,8 +41,10 @@ function resetTheme() {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
+  // Which studio tab home shows. Survives a trip into a document and back.
+  const [view, setView] = useState<StudioView>('floor')
   const [running, setRunning] = useState<RunningApp | null>(null)
-  // The home page is itself a CLAN app, rendered full-bleed.
+  // The home CLAN app, shown under the Apps tab.
   const [home, setHome] = useState<{ open: OpenResult; html: string } | null>(null)
   const [installed, setInstalled] = useState<InstalledApp[]>([])
   const [pendingLaunch, setPendingLaunch] = useState<OpenResult | null>(null)
@@ -55,6 +64,7 @@ export default function App() {
       const open = await host.openHome()
       const html = open.has_human_view ? await host.getHumanHtml() : ''
       setHome({ open, html })
+      refreshApps() // views other than Apps may offer installed apps too
     } catch (e) {
       console.error('open_home failed', e)
       setHome(null) // fall back to the native launcher
@@ -193,6 +203,24 @@ export default function App() {
     await runArtifact(result)
   }, [pendingLaunch, runArtifact])
 
+  const studio: Studio = {
+    view, go: setView, installed, launchApp, openPath, openFile: handleOpenFile,
+  }
+
+  // Apps: the home CLAN app when the host has one (as home always was), the
+  // native launcher when it couldn't load.
+  const apps = home ? (
+    <AppRuntime
+      htmlContent={home.html}
+      hasHumanView={home.open.has_human_view}
+      manifest={home.open.manifest}
+      renderModel="authored"
+      editMode={false}
+    />
+  ) : (
+    <Launcher installed={installed} loading={loading} onLaunchApp={launchApp} onOpenFile={handleOpenFile} />
+  )
+
   return (
     <>
       {error && (
@@ -204,22 +232,18 @@ export default function App() {
 
       {screen === 'app' && running ? (
         <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} onExport={exportCurrent} onSpinoff={spinOff} />
-      ) : home ? (
-        // The home page is a CLAN file, rendered full-bleed with no doc chrome.
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-          <ApiKeyButton variant="floating" />
-          <ThemeToggle variant="floating" />
-          <AppRuntime
-            htmlContent={home.html}
-            hasHumanView={home.open.has_human_view}
-            manifest={home.open.manifest}
-            renderModel="authored"
-            editMode={false}
-          />
-        </div>
       ) : (
-        // Fallback: native launcher if the home CLAN app couldn't load.
-        <Launcher installed={installed} loading={loading} onLaunchApp={launchApp} onOpenFile={handleOpenFile} />
+        <StudioContext value={studio}>
+          <StudioShell view={view} onView={setView}>
+            {view === 'floor' && <FloorView />}
+            {view === 'decisions' && <DecisionsView />}
+            {/* Kept mounted while hidden, so going back to Apps doesn't reload
+                the home app's frame. */}
+            <div style={{ display: view === 'apps' ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
+              {apps}
+            </div>
+          </StudioShell>
+        </StudioContext>
       )}
 
       {pendingLaunch && (

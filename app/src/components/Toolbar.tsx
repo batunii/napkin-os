@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { NapkinLogo } from '../brand/NapkinMark'
+import { StudioLogo } from '../brand/StudioMark'
 import ApiKeyButton from './ApiKeyButton'
 import ContinueIn from './ContinueIn'
 import ThemeToggle from './ThemeToggle'
@@ -70,8 +70,8 @@ export default function Toolbar({
       >
         ☰
       </button>
-      <button style={s.home} onClick={onHome} title="Back to apps">
-        <NapkinLogo size={16} compact />
+      <button style={s.home} onClick={onHome} title="Back to the studio">
+        <StudioLogo size={15} compact />
       </button>
       <span style={s.title}>{loading ? 'Loading…' : (title ?? 'No file open')}</span>
       {isTemplate && <span style={s.templateBadge}>TEMPLATE</span>}

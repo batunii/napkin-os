@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { host } from '../host'
-import { NapkinMark } from '../brand/NapkinMark'
+import { StudioMark } from '../brand/StudioMark'
 import { PoweredByClan } from '../brand/PoweredByClan'
 import type { InstalledApp } from './types'
 
@@ -17,21 +17,21 @@ interface Props {
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column',
+    flex: 1, background: 'var(--paper)', overflowY: 'auto', display: 'flex', flexDirection: 'column',
     alignItems: 'center', padding: '0 32px', gap: 8,
   },
   hero: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, marginTop: '12vh', marginBottom: 26 },
   banner: {
-    fontFamily: '"Space Grotesk", system-ui, sans-serif', fontWeight: 600,
-    fontSize: 44, letterSpacing: '-0.01em', color: '#eceefb', display: 'flex', alignItems: 'center', gap: 14,
+    fontFamily: 'var(--f-display)', fontWeight: 800,
+    fontSize: 44, letterSpacing: '-0.045em', color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 14,
   },
-  bannerOs: { color: '#2dd4cf', fontWeight: 500 },
+  bannerOs: { color: 'var(--ink2)', fontWeight: 500 },
   sub: { color: 'var(--muted)', fontSize: 14 },
 
   composer: {
     width: '100%', maxWidth: 720, background: 'var(--surface)', border: '1px solid var(--border)',
     borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
-    boxShadow: '0 8px 30px rgba(0,0,0,0.25)',
+    boxShadow: 'var(--shadow-soft)',
   },
   textarea: {
     width: '100%', minHeight: 56, maxHeight: 220, resize: 'none', border: 'none', outline: 'none',
@@ -42,7 +42,7 @@ const s: Record<string, React.CSSProperties> = {
   endpoint: { fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' },
   send: {
     width: 36, height: 36, borderRadius: 10, border: 'none', cursor: 'pointer',
-    background: 'linear-gradient(135deg, #6366f1, #2dd4cf)', color: '#fff', fontSize: 16,
+    background: 'var(--create)', color: 'var(--create-fg)', fontSize: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   sendDisabled: { opacity: 0.4, cursor: 'default' },
@@ -74,8 +74,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   iconWrap: {
     width: 40, height: 40, borderRadius: 10,
-    background: 'linear-gradient(135deg, #6366f1, #2dd4cf)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: '#fff', fontWeight: 700,
+    background: 'var(--ink)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: 'var(--paper)', fontWeight: 700,
   },
   cardName: { fontSize: 13, fontWeight: 600, color: 'var(--text)' },
   cardVer: { fontSize: 11, color: 'var(--muted)' },
@@ -129,8 +129,8 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
     <div style={s.root}>
       <div style={s.hero}>
         <div style={s.banner}>
-          <NapkinMark size={40} />
-          Napkin <span style={s.bannerOs}>Studio</span>
+          <StudioMark size={40} />
+          Napkin <span style={s.bannerOs}>Studio OS</span>
         </div>
         <div style={s.sub}>Let's start here.</div>
       </div>
