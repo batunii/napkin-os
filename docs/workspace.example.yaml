@@ -16,6 +16,15 @@ proxies:
     endpoint: http://localhost:8787
   research:
     endpoint: http://localhost:8787
+  # `middleware` serves napkin.middleware/1 (docs/contracts/middleware-api.md):
+  # extract_ask, research_lens, synthesise_findings, job_status. Configure it
+  # explicitly — an unconfigured kind falls back to agent_url, which does not
+  # speak this contract. Moving to the real middleware is changing `endpoint`.
+  # middleware:
+  #   endpoint: http://localhost:8790/v1/tasks        # local stand-in (mock-middleware/)
+  #   # endpoint: https://middleware.internal.example/v1/tasks
+  #   auth_kind: bearer
+  #   secret_ref: middleware_api                       # key in secrets.yaml
   # Remote example, with a host-held secret:
   # agent:
   #   endpoint: https://briefing.internal.example/agent
