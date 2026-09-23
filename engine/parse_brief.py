@@ -1092,7 +1092,7 @@ MAXTOK_EXTRACT = 2500    # extraction / scorecard / golden / loop synthesis: big
 
 
 def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
-                            timeout=300, system=None, max_tokens=None, json_mode=False):
+                            timeout=300, system=None, max_tokens=None, json_mode=False, schema=None):
     """One code path for NVIDIA NIM, OpenAI, and Ollama — all OpenAI-compatible."""
     # NOTE: do NOT prepend a "detailed thinking off" system message for
     # Nemotron — on NIM a second system message displaces the real one and
@@ -1105,8 +1105,15 @@ def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
         "messages": messages,
     }
     # Structured-output mode: cuts the unclean-JSON retries that multiply calls through
-    # the chain. Only for providers known to accept it; a 400 retries without it below.
-    if json_mode and provider_label.split(":", 1)[0] in ("groq", "cerebras", "openai"):
+    # the chain. A 400 drops the flag and retries the same link (see the handler below),
+    # so naming a provider that turns out not to accept it costs one round trip rather
+    # than a chain hop — which is why `nim` is included despite being the backstop.
+    if schema and json_mode:
+        # A schema is a hard constraint, not a hint: the model cannot return prose.
+        payload["response_format"] = {"type": "json_schema",
+                                      "json_schema": {"name": "extraction", "strict": True,
+                                                      "schema": schema}}
+    elif json_mode and provider_label.split(":", 1)[0] in ("groq", "cerebras", "openai", "nim"):
         payload["response_format"] = {"type": "json_object"}
     # Disable thinking only for reasoning models — non-reasoning models (e.g.
     # llama-3.3-70b) don't support this flag and may error on it.
@@ -1160,6 +1167,19 @@ def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
                       file=sys.stderr)
                 time.sleep(2 * (attempt + 1))
                 continue
+            # Name the failure class. A dead link and an unentitled one print the same
+            # "link failed" today, and they need opposite responses: one is a config fix
+            # you own, the other is a vendor conversation. Both went unnoticed for four
+            # weeks behind a working lead link because the log never said which.
+            if e.code == 410:
+                raise RuntimeError(
+                    f"HTTP 410 from {provider_label}: model RETIRED by the provider — "
+                    f"replace it in the chain. {detail}") from None
+            if e.code == 404 and "not found for account" in detail.lower():
+                raise RuntimeError(
+                    f"HTTP 404 from {provider_label}: model exists in the catalog but is "
+                    f"NOT ENTITLED to this account — a vendor/tier question, not a config "
+                    f"one. {detail}") from None
             raise RuntimeError(f"HTTP {e.code} from {provider_label}: {detail}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             if attempt < 2:
@@ -1169,6 +1189,44 @@ def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
                 time.sleep(2 * (attempt + 1))
                 continue
             raise RuntimeError(f"{provider_label} unreachable after 3 attempts: {e}") from None
+
+
+def check_chain(verbose=True) -> dict:
+    """Call every link in the CONFIGURED chain once and report which are alive.
+
+    `list_models` already existed and answers a different question — what the catalog
+    lists — which is not the same thing and was not enough: both dead links were a
+    catalog lookup away from looking fine, and one of them IS still in the catalog. The
+    only honest test of a fallback chain is to call it.
+
+    Nothing exercises the backstop in normal operation, because it is only reached when
+    the lead fails. So it rots silently and the first time you find out is the day the
+    lead is down — the one day the fallback had to work. Wire this into --check and CI."""
+    rows, alive = [], 0
+    for provider, m in _model_chain(None):
+        label = f"{provider}:{m}"
+        try:
+            out = _call_link(provider, m, 'Return {"ok": true} and nothing else.',
+                             system="Return only raw JSON.", max_tokens=60, json_mode=True)
+            clean = isinstance(out, str) and _loads_lenient(
+                re.sub(r"^```(?:json)?|```$", "", (out or "").strip(), flags=re.MULTILINE)
+            ) is not None
+            rows.append({"link": label, "ok": True, "clean_json": clean})
+            alive += 1
+            if verbose:
+                print(f"  {'OK  ' if clean else 'WARN'} {label}"
+                      f"{'' if clean else '  — reachable but did not return clean JSON'}",
+                      file=sys.stderr)
+        except Exception as e:
+            rows.append({"link": label, "ok": False, "error": str(e)[:200]})
+            if verbose:
+                print(f"  DEAD {label}\n       {str(e)[:180]}", file=sys.stderr)
+    if verbose:
+        print(f"[i] chain: {alive}/{len(rows)} links alive", file=sys.stderr)
+        if alive <= 1:
+            print("[!] no working fallback — if the lead link fails, every call returns "
+                  "None and the run drops to heuristic mode.", file=sys.stderr)
+    return {"alive": alive, "total": len(rows), "links": rows}
 
 
 def list_models(provider="nim"):
@@ -1183,14 +1241,32 @@ def list_models(provider="nim"):
     return ids
 
 
-def _chat_anthropic(user, system=None):
+def _chat_anthropic(user, system=None, max_tokens=None, schema=None):
+    """The Anthropic link. `schema` turns on structured outputs — the API constrains the
+    response to that JSON Schema rather than the prompt merely asking for JSON.
+
+    Why it matters here: this is the FIRST link in the live chain, and until now it was
+    the only link that could not be asked for JSON at all — `json_mode` was not even a
+    parameter, so `_json_call` set it and this function ignored it. Every JSON guarantee
+    rested on the words 'Return ONLY raw JSON' in a prompt plus _loads_lenient cleaning up
+    afterwards. That holds while there is something to extract and fails when there is
+    not: a model with no signal to report explains itself in prose instead, which is the
+    no-signal case that returned prose five times out of five."""
     import anthropic
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     _stats_call("anthropic", len(system or EXTRACTION_SYSTEM) + len(user))
-    msg = client.messages.create(model=model_for("anthropic"), max_tokens=4000,
+    kw = {}
+    if schema:
+        kw["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
+    # max_tokens was hardcoded at 4000, which ignored every caller's ceiling — a judge
+    # call asking for 500 was allocated 4000.
+    msg = client.messages.create(model=model_for("anthropic"),
+                                 max_tokens=int(max_tokens or MAXTOK_EXTRACT),
                                  system=system or EXTRACTION_SYSTEM,
-                                 messages=[{"role": "user", "content": user}])
-    text = msg.content[0].text
+                                 messages=[{"role": "user", "content": user}], **kw)
+    # Take the first TEXT block rather than content[0]: a model configured with thinking
+    # returns a thinking block first, and indexing blindly would read the wrong one.
+    text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
     u = getattr(msg, "usage", None)
     _stats_usage({"prompt_tokens": getattr(u, "input_tokens", 0),
                   "completion_tokens": getattr(u, "output_tokens", 0)} if u else None, len(text))
@@ -1206,8 +1282,18 @@ _DEFAULT_CHAIN = [
     ("cerebras", "zai-glm-4.7"),                   # 2nd Cerebras model (different failure mode)
     ("groq",     "openai/gpt-oss-120b"),           # same strong model, different host
     ("groq",     "llama-3.3-70b-versatile"),       # fast, clean JSON
-    ("nim",      "meta/llama-3.3-70b-instruct"),   # reliable clean-JSON backstop
-    ("nim",      "nvidia/llama-3.1-nemotron-70b-instruct"),
+    # NIM backstop, re-verified 2026-09-22 by probing every link on this account.
+    # The two that used to sit here were both dead and had been for weeks, silently,
+    # because the chain only reaches them when the lead fails:
+    #   meta/llama-3.3-70b-instruct          410 Gone — EOL 2026-08-26, gone from the catalog
+    #   nvidia/llama-3.1-nemotron-70b-instr  404 — IN the catalog, not entitled to this account
+    # Those are different problems with the same log line, which is why neither was noticed.
+    # Catalog presence does not imply entitlement: check with a real call, not `list_models`.
+    ("nim",      "nvidia/nemotron-3-super-120b-a12b"),   # probed clean JSON
+    ("nim",      "openai/gpt-oss-20b"),                  # probed clean JSON, different family
+    # Rejected after probing: nemotron-3.5-lightning-30b-a3b leaks its reasoning preamble
+    # (the enable_thinking guard keys off "reasoning"/"thinking" in the NAME and this has
+    # neither), and nemotron-3-ultra-550b-a55b returned a corrupted key: {"ok{": true}.
 ]
 _KEY_ENV = {"cerebras": "CEREBRAS_API_KEY", "groq": "GROQ_API_KEY", "nim": "NVIDIA_API_KEY",
             "gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
@@ -1270,10 +1356,11 @@ def _model_chain(model=None) -> list:
 
 
 def _call_link(provider: str, model: str, user, system=None, max_tokens=None,
-               json_mode=False) -> "str | None":
+               json_mode=False, schema=None) -> "str | None":
     """Call exactly ONE (provider, model) link. Raises on failure so the chain advances."""
     if provider == "anthropic":
-        return _chat_anthropic(user, system=system)
+        return _chat_anthropic(user, system=system, max_tokens=max_tokens,
+                               schema=schema if json_mode else None)
     cfg = PROVIDERS.get(provider)
     if not cfg:
         raise RuntimeError(f"unknown provider '{provider}'")
@@ -1283,7 +1370,7 @@ def _call_link(provider: str, model: str, user, system=None, max_tokens=None,
         raise RuntimeError(f"{key_env} not set")
     return _chat_openai_compatible(default_base, key, model, user,
                                    provider_label=f"{provider}:{model}", system=system,
-                                   max_tokens=max_tokens, json_mode=json_mode)
+                                   max_tokens=max_tokens, json_mode=json_mode, schema=schema)
 
 
 def _stats_logical():
@@ -1314,7 +1401,8 @@ def _chat(user, system=None, model=None, max_tokens=None):
     return None
 
 
-def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens=None):
+def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens=None,
+               schema=None):
     """Chat call that must return JSON, with provider juggling: each chain link gets up to
     `retries`+1 tries; unparseable output (or one rejected by `accept`) advances to the next
     link. Returns the first usable object, or None if the whole chain is exhausted."""
@@ -1323,7 +1411,7 @@ def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens
         for attempt in range(retries + 1):
             try:
                 raw = _call_link(provider, m, user, system=system, max_tokens=max_tokens,
-                                 json_mode=True)
+                                 json_mode=True, schema=schema)
             except _RateLimited:
                 _cooldown(provider, m)
                 print(f"[i] link {provider}:{m} rate-limited; cooling {int(_COOLDOWN_SECS)}s, next link…",
@@ -1997,6 +2085,18 @@ def _loops37_from_digests(loop2, fields) -> dict | None:
     }
 
 
+# The evidence a gate reads and the evidence a human skims are different things. The
+# 280-char clip below is a DISPLAY concern; a judgement backend asked "does this passage
+# support that claim?" needs the passage, not its first sentence. So each entry carries
+# both: `snippet` for reading, `text` for checking.
+# Bounded rather than unbounded, because the corpus contains chunks that are not
+# retrievable units at all — 91-pestle-steep-analysis.md has a single 238,675-char
+# "OUTPUT TEMPLATE" section, and three of the four chunks over 20k chars come from it.
+# 6,000 chars keeps the p90 of every level whole (child 785, chunk 2,507, parent 4,790)
+# and stops one malformed chunk from swallowing a prompt.
+EVIDENCE_MAX_CHARS = 6000
+
+
 def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
     """Loops 3–7: classify intent → build queries from the Loop-2 brief → retrieve
     top-k playbooks + effectiveness evidence → ground a short strategy with
@@ -2053,6 +2153,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                 # cannot be recovered afterwards from anything.
                 "scope": str((h.get("metadata") or {}).get("scope") or "global"),
                 "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
+                "text": (h.get("text") or "")[:EVIDENCE_MAX_CHARS],
             })
         # Pull award-winning PRECEDENT cases from every case pack whose `loops`
         # gate includes this loop (default: insight + substantiation). Which packs
@@ -2076,6 +2177,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                             "score": h["score"],
                             "scope": str((h.get("metadata") or {}).get("scope") or "global"),
                             "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
+                            "text": (h.get("text") or "")[:EVIDENCE_MAX_CHARS],
                         })
         return key, {"title": title, "query": q, "evidence": evidence}
 
