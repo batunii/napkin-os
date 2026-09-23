@@ -20,7 +20,7 @@ mod store;
 
 use std::sync::Arc;
 
-use napkin_host::{library, DocId, DocStore, HostRequest, NoConfig, Session};
+use napkin_host::{library, Ctx, DocId, DocStore, HostRequest, NoConfig, Session};
 use wasm_bindgen::prelude::*;
 
 use crate::store::MemStore;
@@ -73,7 +73,9 @@ impl NapkinHost {
         let store = Arc::new(MemStore::new());
         NapkinHost {
             store: store.clone(),
-            session: Session::new(store),
+            // A browser tab has one user and no tenancy, so it acts as the
+            // local human, exactly as the desktop does.
+            session: Session::with_ctx(store, Ctx::local()),
         }
     }
 

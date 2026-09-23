@@ -15,8 +15,8 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use napkin_host::{
-    export, library, proxy, session::Session, DocId, FsConfig, FsStore, HostRequest, HostResponse,
-    InstalledApp, OpenResult,
+    export, library, proxy, session::Session, Ctx, DocId, FsConfig, FsStore, HostRequest,
+    HostResponse, InstalledApp, OpenResult,
 };
 use serde_json::Value;
 use tauri::{Emitter, Manager, State};
@@ -48,7 +48,8 @@ impl AppState {
             let data_dir = app.path().app_data_dir().unwrap_or_default();
             let config_dir = app.path().app_config_dir().unwrap_or_default();
             HostCtx {
-                session: Session::new(Arc::new(FsStore::new(data_dir))),
+                // One person on their own machine: every write is theirs.
+                session: Session::with_ctx(Arc::new(FsStore::new(data_dir)), Ctx::local()),
                 config: FsConfig::new(config_dir),
             }
         })

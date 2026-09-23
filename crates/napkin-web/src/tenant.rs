@@ -49,6 +49,21 @@ impl fmt::Display for TenantId {
     }
 }
 
+impl TenantId {
+    /// Who a request from this tenant runs as inside the host. The demo's
+    /// tenant is one anonymous person, so the actor is that person and the org
+    /// scope is their workspace. Real auth changes what goes in here, not who
+    /// builds it: the host never derives either from a request body.
+    pub fn ctx(&self) -> napkin_host::Ctx {
+        let actor = napkin_host::Actor::human(self.as_str())
+            .expect("a parsed tenant id is a well-formed actor id");
+        napkin_host::Ctx::new(actor).with_scope(napkin_host::Scope {
+            org: Some(self.0.clone()),
+            brand: None,
+        })
+    }
+}
+
 /// The tenant this request acts as. Handlers take this rather than reading the
 /// `{tenant}` path segment, so a request can never act on a workspace its
 /// session does not own.
@@ -137,6 +152,14 @@ pub async fn layer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tenant_acts_as_a_human_scoped_to_its_own_workspace() {
+        let t = TenantId::mint();
+        let ctx = t.ctx();
+        assert_eq!(ctx.actor.as_str(), format!("human:{t}"));
+        assert_eq!(ctx.scope.org.as_deref(), Some(t.as_str()));
+    }
 
     #[test]
     fn only_well_formed_uuids_are_accepted_as_tenants() {

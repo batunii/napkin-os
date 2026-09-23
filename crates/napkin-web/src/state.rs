@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use napkin_host::{DocId, DocStore, HostConfig, HostResult, Session};
+use napkin_host::{Ctx, DocId, DocStore, HostConfig, HostResult, Session};
 
 use crate::events::EventBus;
 use crate::exports::ExportStore;
@@ -37,13 +37,16 @@ struct SessionCache {
 
 pub struct Workspace {
     pub store: Arc<dyn DocStore>,
+    /// Who every session of this workspace acts as by default: its tenant.
+    ctx: Ctx,
     sessions: Mutex<SessionCache>,
 }
 
 impl Workspace {
-    fn new(store: Arc<dyn DocStore>) -> Self {
+    fn new(store: Arc<dyn DocStore>, ctx: Ctx) -> Self {
         Self {
             store,
+            ctx,
             sessions: Mutex::new(SessionCache::default()),
         }
     }
@@ -55,7 +58,7 @@ impl Workspace {
         }
         // Open outside the lock: reading and validating an archive is real work
         // and must not block every other document of this tenant.
-        let session = Arc::new(Session::new(self.store.clone()));
+        let session = Arc::new(Session::with_ctx(self.store.clone(), self.ctx.clone()));
         session.open(doc.clone())?;
 
         let mut cache = self.sessions.lock().unwrap();
@@ -125,7 +128,7 @@ impl AppCtx {
         if let Some(seed) = &self.seed {
             seed_library(&*store, seed);
         }
-        let workspace = Arc::new(Workspace::new(store));
+        let workspace = Arc::new(Workspace::new(store, tenant.ctx()));
         workspaces.insert(tenant.clone(), workspace.clone());
         workspace
     }

@@ -84,7 +84,9 @@ async fn dispatch(
     };
 
     let req = HostRequest::new(path, query.unwrap_or_default(), body.to_vec());
-    let resp = napkin_host::handle_async(&session, &*ctx.config, req).await;
+    // The grant, not the request, says who this is: an app frame cannot name
+    // its own actor or scope.
+    let resp = napkin_host::dispatch_async(&grant.tenant.ctx(), &session, &*ctx.config, req).await;
     ctx.events.publish_all(&grant.tenant, &resp.events);
     into_response(resp)
 }

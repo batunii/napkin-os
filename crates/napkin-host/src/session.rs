@@ -17,6 +17,7 @@ use clan_sdk::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::ctx::Ctx;
 use crate::error::{HostError, HostResult};
 use crate::html::{
     apply_patches, auto_inject_adf_ids, inject_clan_data, inject_styles, resolve_bindings,
@@ -103,6 +104,10 @@ pub struct LoadedClan {
 /// together with the transient view state that belongs to it.
 pub struct Session {
     store: Arc<dyn DocStore>,
+    /// Who this shell acts as when a caller does not say otherwise: the one
+    /// local user on the desktop and in the browser. A server passes its own
+    /// per-request [`Ctx`] to the `_as` operations instead.
+    ctx: Ctx,
     current: Mutex<Option<LoadedClan>>,
     edit_mode: Mutex<bool>,
     preview_html: Mutex<String>,
@@ -113,9 +118,16 @@ pub(crate) static SAVE_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
 impl Session {
+    /// A session acting as the local user — what the desktop and browser
+    /// shells want, and what every existing caller got before `Ctx` existed.
     pub fn new(store: Arc<dyn DocStore>) -> Self {
+        Self::with_ctx(store, Ctx::local())
+    }
+
+    pub fn with_ctx(store: Arc<dyn DocStore>, ctx: Ctx) -> Self {
         Self {
             store,
+            ctx,
             current: Mutex::new(None),
             edit_mode: Mutex::new(false),
             preview_html: Mutex::new(String::new()),
@@ -124,6 +136,11 @@ impl Session {
 
     pub fn store(&self) -> &Arc<dyn DocStore> {
         &self.store
+    }
+
+    /// The context this session acts under by default.
+    pub fn ctx(&self) -> &Ctx {
+        &self.ctx
     }
 
     /// Run `f` against the open document, or fail with "no file open".
@@ -412,6 +429,12 @@ impl Session {
     /// recorded in the decision chain (the provenance-native human/AI co-author
     /// write path).
     pub fn patch_data(&self, body: &str) -> HostResult<Value> {
+        self.patch_data_as(&self.ctx, body)
+    }
+
+    /// [`Self::patch_data`] under an explicit context — the server's path, where
+    /// the actor is whoever authenticated this request.
+    pub fn patch_data_as(&self, ctx: &Ctx, body: &str) -> HostResult<Value> {
         let json: Value = serde_json::from_str(body)
             .map_err(|e| HostError::bad_request(format!("invalid JSON: {e}")))?;
         let patch = json
@@ -434,30 +457,23 @@ impl Session {
                     .collect()
             })
             .unwrap_or_default();
-        // Attribution: when an agent (or "human") is named, record an attributed
-        // decision over exactly the patched keys (F15).
-        let decision = json
-            .get("agent")
-            .and_then(|v| v.as_str())
-            .map(|agent| DecisionEntry {
-                agent_name: agent.to_string(),
-                action: json
-                    .get("action")
+        // Attribution: when the body names an agent (or "human"), record a
+        // decision over exactly the patched keys (F15). The name is the app's
+        // claim; who actually asked comes from `ctx`.
+        let decision = json.get("agent").and_then(|v| v.as_str()).map(|claimed| {
+            attribute(
+                ctx,
+                claimed,
+                json.get("action")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("edit")
-                    .to_string(),
-                rationale: json
-                    .get("rationale")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                pinned: json
-                    .get("pinned")
+                    .unwrap_or("edit"),
+                json.get("rationale").and_then(|v| v.as_str()).unwrap_or(""),
+                json.get("pinned")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
-                fields_changed: Some(keys.clone()),
-                typed: None,
-            });
+                Some(keys.clone()),
+            )
+        });
 
         let mut guard = self.current.lock().unwrap();
         let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
@@ -530,17 +546,29 @@ impl Session {
         agent: Option<&str>,
         body: Vec<u8>,
     ) -> HostResult<Value> {
+        self.upload_asset_as(&self.ctx, name, agent, body)
+    }
+
+    pub fn upload_asset_as(
+        &self,
+        ctx: &Ctx,
+        name: &str,
+        agent: Option<&str>,
+        body: Vec<u8>,
+    ) -> HostResult<Value> {
         let name = sanitize_asset_name(name)
             .ok_or_else(|| HostError::bad_request("invalid asset name"))?;
         let mut guard = self.current.lock().unwrap();
         let loaded = guard.as_mut().ok_or_else(HostError::no_file_open)?;
-        let decision = agent.map(|a| DecisionEntry {
-            agent_name: a.to_string(),
-            action: "upload-asset".into(),
-            rationale: format!("added asset {name}"),
-            pinned: false,
-            fields_changed: None,
-            typed: None,
+        let decision = agent.map(|claimed| {
+            attribute(
+                ctx,
+                claimed,
+                "upload-asset",
+                &format!("added asset {name}"),
+                false,
+                None,
+            )
         });
         // Extract text BEFORE the bytes are moved into the repack.
         let extracted = extract_text(&name, &body);
@@ -686,6 +714,38 @@ impl Session {
             "context": clan.read_entry_string("agent/context.md").unwrap_or_default(),
             "lineage": m.lineage.as_ref().map(|l| serde_json::json!({ "parent_id": l.parent_id, "delta": l.delta })),
         })
+    }
+}
+
+/// The decision an attributed write records.
+///
+/// `agent` keeps what the caller *claimed* — `human`, `analysis-model` — because
+/// that is what apps use to tell an AI draft from a person's edit, and what the
+/// SDK and every existing chain reader match on. The actor who actually asked
+/// comes from `ctx` and is recorded ahead of the rationale, until `Decision`
+/// grows `actor` and `claimed_agent` fields of its own (W1P-I5): `clan-sdk`'s
+/// `Decision` has no catch-all, so any other key would be dropped by the next
+/// SDK read-modify-write.
+pub fn attribute(
+    ctx: &Ctx,
+    claimed: &str,
+    action: &str,
+    rationale: &str,
+    pinned: bool,
+    fields_changed: Option<Vec<String>>,
+) -> DecisionEntry {
+    let tag = ctx.attribution();
+    DecisionEntry {
+        agent_name: claimed.to_string(),
+        action: action.to_string(),
+        rationale: if rationale.is_empty() {
+            tag
+        } else {
+            format!("{tag} {rationale}")
+        },
+        pinned,
+        fields_changed,
+        typed: None,
     }
 }
 

@@ -15,6 +15,7 @@
 use serde_json::Value;
 
 use crate::config::{agent_base_url, HostConfig};
+use crate::ctx::Ctx;
 use crate::error::HostError;
 use crate::event::HostEvent;
 #[cfg(feature = "native")]
@@ -147,8 +148,27 @@ pub fn is_async(path: &str) -> bool {
     cfg!(feature = "native") && path == "/api-proxy"
 }
 
-/// Dispatch any route, including the async ones.
+/// Dispatch any route, including the async ones, as the session's own
+/// context — the local user, on the desktop and in the browser.
 pub async fn handle_async(
+    session: &Session,
+    cfg: &dyn HostConfig,
+    req: HostRequest,
+) -> HostResponse {
+    dispatch_async(session.ctx(), session, cfg, req).await
+}
+
+/// Dispatch every synchronous route as the session's own context. `/api-proxy`
+/// is the one route this cannot serve — see [`handle_async`].
+pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> HostResponse {
+    dispatch(session.ctx(), session, cfg, req)
+}
+
+/// [`handle_async`] under a context the shell resolved for this request. A
+/// server that authenticates each request calls this; nothing in the request
+/// can change who it runs as.
+pub async fn dispatch_async(
+    ctx: &Ctx,
     session: &Session,
     cfg: &dyn HostConfig,
     req: HostRequest,
@@ -160,12 +180,16 @@ pub async fn handle_async(
             Err(e) => e.into(),
         };
     }
-    handle(session, cfg, req)
+    dispatch(ctx, session, cfg, req)
 }
 
-/// Dispatch every synchronous route. `/api-proxy` is the one route this cannot
-/// serve — see [`handle_async`].
-pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> HostResponse {
+/// [`handle`] under a context the shell resolved for this request.
+pub fn dispatch(
+    ctx: &Ctx,
+    session: &Session,
+    cfg: &dyn HostConfig,
+    req: HostRequest,
+) -> HostResponse {
     let path = req.path.as_str();
     match path {
         #[cfg(feature = "native")]
@@ -199,7 +223,7 @@ pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> Host
             None => HostResponse::empty(),
         },
 
-        "/patch-data" => match session.patch_data(&req.body_str()) {
+        "/patch-data" => match session.patch_data_as(ctx, &req.body_str()) {
             Ok(v) => HostResponse::json(200, &v).with_event(HostEvent::DataChanged(v)),
             Err(e) => e.into(),
         },
@@ -212,7 +236,7 @@ pub fn handle(session: &Session, cfg: &dyn HostConfig, req: HostRequest) -> Host
         "/upload-asset" => {
             let name = query_param(&req.query, "name").unwrap_or_default();
             let agent = query_param(&req.query, "agent");
-            match session.upload_asset(&name, agent.as_deref(), req.body) {
+            match session.upload_asset_as(ctx, &name, agent.as_deref(), req.body) {
                 Ok(v) => HostResponse::json(200, &v),
                 Err(e) => e.into(),
             }
