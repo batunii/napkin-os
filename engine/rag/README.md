@@ -1,133 +1,218 @@
-# Planner / Effectiveness RAG — Loops 3–7 retrieval layer
+# Napkin RAG module (Track C)
 
-The "green lane" of the architecture. Build a knowledge base from the planner
-playbooks + IPA/Effie cases once, retrieve from it at runtime. **Kept separate
-from `parse_brief.py` on purpose — Loop 1 capture stays RAG-free.** This only
-serves Loops 3–7 (research / insight / single-minded proposition / substantiation).
+Retrieval for the brief. The middleware sends one request per brief — the campaign, the
+brand record, who the run is authorised for — and gets back budgeted, citable evidence
+in prompt reading order. The brief model synthesises; this module selects, checks and
+orders what it reads.
 
-## Build
+Owner: Sai. Build record and reasoning: `project_plan.clan` at the repo root.
+Loop-1 capture never calls this module — retrieved text must not enter the no-loss
+record of the client's own brief.
 
-```bash
-# 1) drop the corpus (.md playbooks etc.) into ../reference/rag/
-# 2) build the index with real NIM embeddings (reads ../.env for NVIDIA_API_KEY)
-./build_rag.sh
-#    dry-run with no key / no spend:
-RAG_EMBED=offline python3 rag.py build --corpus ../reference/rag --index ./index
+---
+
+## The flow
+
+```
+middleware ──request──▶ rag_io.handle()
+                          │  validate against schema/rag_io.v1.json
+                          ▼
+                        brief_context.build()
+                          │  plan: pairs → query, keywords, filters
+                          │  scopes_for / tenants_for: authority → boundary
+                          │  per bucket: hybrid search → collapse → budget
+                          │  egress check: drop anything outside the boundary
+                          ▼
+middleware ◀─response── rag_io.response_from()
 ```
 
-## Query
+| Stage | Status | Component |
+|---|---|---|
+| Input contract | **live** | `rag_io.py`, `../schema/rag_io.v1.json` |
+| Extraction (hybrid BM25 + dense, filters, widening) | **live** | `brief_context.py`, `rag.py`, `lexical.py`, `filters.py` |
+| Confidentiality boundary (scope, tenant, egress) | **live** | `brief_context.scopes_for / tenants_for / build` |
+| Validation (relevance gate, jev ↔ fallback switch) | planned | — |
+| Pool width set by the live validator | planned | — |
+| Rerank | partial — LLM rerank in `parse_brief.loops_3_7` only | `parse_brief._rerank_hits` |
+| Edge ordering (strongest at both ends) | planned | — |
+| Output: structured chunks + rendered prompt text | **live** | `rag_io.response_from`, `BriefContext.prompt_text` |
+
+Two retrieval paths exist today: `brief_context.build()` (behind `rag_io`) and
+`parse_brief.loops_3_7()`, which is the one currently generating briefs. They are being
+consolidated onto the first — see decision record 0001.
+
+---
+
+## Quick start
 
 ```bash
-python3 rag.py query --index ./index "challenger brand, nervous CMO" -k 5
-python3 rag.py query --index ./index "focus the message" --where type=proposition
+cd engine/rag
+RAG_STORE=local RAG_INDEX=./_index_v3 python3 -m pytest -q     # full suite, no network
+python3 rag_io.py request.json                                  # validate a request file
 ```
 
-## How it works (matches `00-rag-ingestion-guide.md`)
+```python
+import sys; sys.path.insert(0, "engine/rag")
+from rag_io import handle, RequestInvalid
 
-- **Chunk** — per-source strategies in `chunking.py`: IPA/Effie cases = one whole-case
-  *parent* + one *child* per section; Cannes = whole case; playbooks = one chunk per section
-  (split at paragraphs above 400 words); templates = ~300-word windows with 15% overlap;
-  D&AD = skipped (title-only entries). Every chunk is embedded behind a **context header**
-  (`title (year) · tier · sector · effectiveness type`) and carries `metadata.level`,
-  `doc_id`, `parent_id`, `strategy`. Retrieval Queries attach to every chunk of a file.
-  Loops 4/6 retrieve `level=parent` so k=2 means two cases.
-- **Metadata** — YAML frontmatter parsed *generically* (any keys) and attached to
-  every chunk, so it fits your real frontmatter without hard-coding fields.
-  `RETRIEVAL_QUERIES` (frontmatter key or section) is folded in for recall.
-- **Embed** — NVIDIA NIM (`nvidia/nemotron-3-embed-1b`, 2048-d; replaced the retired `nv-embedqa-e5-v5`) via the
-  OpenAI-compatible `/embeddings` endpoint, your Inception key. Deterministic
-  **offline** fallback (`RAG_EMBED=offline`) so it runs/tests with no key or spend.
-- **Store** — local JSON index (`index/chunks.jsonl` + `manifest.json`). Swappable
-  to Qdrant later via one adapter; nothing else changes.
+resp = handle({
+    "run_id": "r-1",
+    "authority": {"tenant": "acme", "brand": "bmw",
+                  "references": [{"name": "Mercedes", "role": "competitor"}]},
+    "brand": {"name": "BMW", "categories": ["automotive"], "markets": ["UK"]},
+    "campaign": {"problem": "hybrids read as a compromise",
+                 "objective": "shift consideration without discounting",
+                 "audience": "urban professionals 30-45", "campaign_type": "launch"},
+})
+resp["prompt_text"]   # drop into the prompt prefix
+resp["blocks"]        # the same content, structured
+resp["trace"]         # LOG THIS per brief
+```
 
-Override the model/endpoint with `RAG_EMBED_MODEL` / `RAG_EMBED_BASE`.
+**Trap:** `engine/.env` sets `RAG_STORE=qdrant` and `rag.py` loads it, so anything run
+without an explicit store goes over the network. Use `RAG_STORE=local
+RAG_INDEX=./_index_v3` for local work.
 
-## Corpora & the `source` schema
+---
 
-Every chunk carries a top-level **`source`** frontmatter key so retrieval can target one
-corpus (`--where source=cannes`) or blend across all of them (no filter). `category` stays
-for sub-type. All corpora live under `../reference/rag/<source>/` and are built into one index.
+## Components
 
-| `source` | What | Ingest script | Input → `reference/_raw/` |
-|---|---|---|---|
-| `playbook` | 130 planner/strategy frameworks | (corpus is source-of-truth) | — |
-| `template` | briefing templates | — | — |
-| `ipa` | IPA effectiveness cases | `ingest_ipa.py` | `archive/ipa-award-winners-dataset/intelligence_layer.json` |
-| `cannes` | Cannes Lions winners | `ingest_cannes.py` | `cannes.json` (scraped from lovethework) |
-| `effie` | Effie effectiveness cases (incl. `effie_cautionary`) | `ingest_effie.py` | `effie.csv` / `effie.json` |
-| `dandad` | D&AD Pencil winners | `ingest_dandad.py` | `dandad.json` (scraped from dandad.org) |
+### RAG I/O contract — `rag_io.py`, `../schema/rag_io.v1.json`
 
-Add/refresh a corpus: run its `ingest_*.py` (writes markdown under `reference/rag/<source>/`),
-then `./build_rag.sh` to re-embed the whole index. New `source` frontmatter needs no code change
-(frontmatter is parsed generically). `scripts/backfill_source.py` retro-tags pre-existing files.
+**What it is.** The module's front door. Validates a middleware request against a JSON
+Schema contract, maps it onto `brief_context.build()`, and shapes the result as a
+contract response. Contract v1.0.0, `locked: false` until the middleware owner signs off
+the request shape.
 
-Loops 4 (insight) & 6 (substantiation) in `parse_brief.py` pull precedent **cases** from each
-award corpus (`ipa·cannes·effie·dandad`) via the `source` filter — corpora with no data are no-ops.
+**Interface.**
 
-## Store layer — switch backends whenever needed
+| Call | Returns | Notes |
+|---|---|---|
+| `handle(request, *, index_dir=None)` | response dict | Raises `RequestInvalid` (with `.problems`, every violation) on a bad request |
+| `validate(instance, definition="request")` | `list[str]` | `[]` when valid; `definition="response"` checks a response |
+| `to_build_args(request)` | `(kwargs, notes)` | The mapping onto `build()`, exposed for tests and debugging |
+| `response_from(ctx, run_id, notes)` | response dict | Shapes any `BriefContext` |
+| `version()` | `"1.0.0"` | The contract version this code speaks |
 
-The brain is **one logical vector store**; where it lives is a config choice. `rag.py`,
-`retrieve.py` and `parse_brief.py` only talk to the `VectorStore` contract in
-`store_base.py`. Backends are registered by name and selected with `RAG_STORE`:
+**Request** (`$defs/request`). Required: `run_id`, `authority`, `campaign`.
 
-| `RAG_STORE` | File | Config | Notes |
-|---|---|---|---|
-| `local` (default) | `store_local.py` | `RAG_INDEX` (dir) | canonical artefact; `build` always writes it |
-| `qdrant` | `store_qdrant.py` | `QDRANT_URL`/`QDRANT_CLUSTER_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | Qdrant Cloud or self-hosted, REST on 443 |
-| *(add yours)* | copy `store_template.py` | — | pgvector on AWS, OpenSearch, Milvus on Nebius… |
+| Field | Status | Meaning |
+|---|---|---|
+| `authority.tenant` | live | The agency. Unlocks its own material; null = house corpus only |
+| `authority.brand` | live | The authorised SUBJECT, snake_case. The only thing that unlocks brand scope |
+| `authority.references[]` | live | Other brands with a role: `comparator` / `competitor` become exact search terms; `parent` does not. All are public-material-only |
+| `brand.name`, `brand.aliases` | live | Exact lexical terms. Descriptive, never authorising |
+| `brand.categories` | live | Ranked, max 2, values from the metadata contract's `category` enum. First is the filter; second is recorded, not yet used |
+| `brand.markets` | live | Joins the query text |
+| `campaign.*` | live | Campaign-clan pairs. Unknown keys are accepted and join the query text |
+| `limits.token_budget` | live | Per-bucket token targets over the defaults |
+| `campaign.effectiveness_type`, `brand.parent`, `target`, `research`, `attachments`, `memory`, `limits.latency_ms / target_model / recency_years` | planned | Validated, not acted on yet |
+
+**Response** (`$defs/response`). `blocks` in prompt reading order (instructions, rules,
+craft, exemplars), each hit with `cite`, `doc_id`, `source`, `text`, `retrieval_score`,
+`scope`, `tenant`, `category`, `year`, `weight` (`constraint` = a reviewer rejected it,
+`advice` = textbook pitfall, `evidence` = everything else) and `relevance` (null until
+the validation stage exists). Plus `prompt_text`, `tokens`, `validation` (null for now),
+`notes` and `trace`.
+
+**Guarantees.**
+- Scope, tenant and brand authorisation come from `authority` only. Brand names, campaign
+  pairs and attachments are search text at most.
+- `authority` rejects unknown keys; `campaign` accepts them. The boundary cannot grow a
+  field nobody reviewed, and the campaign clan can grow without breaking callers.
+- Enum values are resolved from `rag_metadata.v1.json` at check time (`x-enum-from`),
+  never copied.
+- Every field marked `live` provably changes what `build()` receives
+  (`test_every_live_request_field_reaches_build`). A field cannot be advertised before it
+  is wired.
+
+**Failure behaviour.** An invalid request raises before any retrieval, listing every
+problem. A major-version mismatch in `contract_version` is a validation error. Retrieval
+errors propagate from `brief_context` unchanged.
+
+**Tests.** `test_rag_io.py` — 23 tests: contract integrity, validation, the adapter
+mapping, the live-field guard, response shape.
+
+**Decision record.** [0001 — RAG I/O contract](docs/adr/0001-rag-io-contract.md).
+
+### Brief retrieval — `brief_context.py`
+
+Campaign pairs in, four budgeted citable blocks out: `exemplars` (precedent), `craft`
+(how planners think), `rules` (never/always — selected by filter, never by similarity),
+`instructions` (what a good brief contains). Budgets are token targets (~8k total,
+`DEFAULT_BUDGET`); the top hit in a bucket is always kept. `plan()` turns pairs into a
+query, exact keywords and contract filters deterministically. The widening ladder drops
+`effectiveness_type` before `category`, on the creative director's ruling. The egress
+check removes any hit outside the authorised scopes or tenants and records it in the
+trace. Retrieve once per brief and freeze the result: it is the shared prompt prefix.
+
+### Retrieval primitives — `rag.py`, `retrieve.py`, `lexical.py`, `filters.py`
+
+`rag.py` builds the index, embeds (`nvidia/nemotron-3-embed-1b`, 2048-d) and searches.
+`lexical.py` adds BM25 and reciprocal rank fusion (tuned: BM25 `b=0.3`, RRF `k=10`).
+`filters.py` is one filter language with two renderers (local and Qdrant).
+`retrieve.retrieve()` excludes production-stage and superseded material by default and
+applies scope and tenant with a fail-closed default. `check_grounding()` verifies cited
+ids against what was retrieved — string matching, no model.
+
+### Chunking and metadata — `chunking.py`, `normalise.py`, `contract.py`
+
+Chunker v2 follows document shape: IPA and Cannes get a parent per case and a child per
+section or entry-form answer; playbooks a chunk per section; D&AD is grouped by
+discipline and year and marked `stage=production`; templates keep tables whole.
+`contract.py` reads `../schema/rag_metadata.v1.json` (v1.3.0, locked) and defines nothing
+itself. `normalise.py` holds every spelling table and returns a contract value or None —
+it never guesses.
+
+### Stores — `store_base.py`, `store_local.py`, `store_qdrant.py`
+
+One `VectorStore` contract, backends selected by `RAG_STORE`. `local` is the canonical
+artefact `build` always writes; `qdrant` (collection `Napkin_OS`, 7,315 points, sparse
+vectors live) is production. Add a backend by copying `store_template.py` and adding one
+line to `REGISTRY`. Bulk evals do not run against the hosted Qdrant tier — it sheds
+connections under burst load. Tune local, serve remote.
 
 ```bash
-python3 rag.py stores                       # every backend: configured? populated? rows
-python3 rag.py store-check qdrant           # contract test against a backend (offline vectors)
-
-# build once (writes ./index; also mirrors to RAG_STORE if it isn't local)
-./build_rag.sh
-
-# move the brain between stores — copies rows WITH vectors, never re-embeds
-# (refuses if the source was embedded with a different model than RAG_EMBED_MODEL; --force overrides)
-python3 rag.py migrate --from local  --to qdrant
-python3 rag.py migrate --from qdrant --to local --to-index ./index_backup
-python3 rag.py migrate --from qdrant --to pgvector --replace      # once pgvector is registered
-
-# then run everything off the chosen store
-RAG_STORE=qdrant python3 rag.py query "challenger brand" --where source=cannes
-RAG_STORE=qdrant BRIEF_LOOPS37=1 python3 parse_brief.py <brief> --out outputs/run
+python3 rag.py stores                                        # every backend: configured? rows?
+python3 rag.py migrate --from local --to qdrant --replace    # copies vectors, never re-embeds
+python3 rag.py retag --corpus <corpus>/rag --index ./_index_v3 --apply   # metadata only
 ```
 
-`rag.py` loads `briefing/.env` itself, so none of this needs `source .env` first.
+`migrate --replace` is destructive to a shared collection — ask first.
 
-Rules the contract guarantees:
-- **Never crashes the brief.** A misconfigured or unreachable store makes `index_available()`
-  return `False`; the run records `meta.rag.store` and `meta.rag.index` so a silent fallback is visible.
-- **Idempotent.** Rows are keyed by chunk id (Qdrant: a deterministic UUID), so re-push/migrate upserts.
-- **Same embedding everywhere.** `manifest.json` records `embed_model`/`embed_mode`/`dim`; all stores
-  must hold vectors from the same model — changing the model means rebuild, then migrate.
-- **Filters** are `{metadata_key: value}`; Qdrant needs payload indexes (created by `ensure`) on
-  `metadata.source / category / award_tier / year`.
+### Evaluation — `golden.py`, `golden_check.py`, `tune.py`, `simulate.py`
 
-Adding a backend: copy `store_template.py` → `store_<name>.py`, implement six methods, add one line to
-`REGISTRY` in `store_base.py`, run `rag.py store-check <name>`.
+`golden.py` builds 11,651 cases from the corpus's own "Retrieval Queries" with a 1-in-5
+held-out split (held-out recall@5 0.974, recall@10 1.000). `tune.py` sweeps knobs on the
+held-out set only. `simulate.py` shows what a model would actually receive — the golden
+set measures whether the right document is found; only this shows whether it is worth
+reading. Read the misses, not just the number.
 
-## Config knobs
+---
+
+## Configuration
 
 | Env | Default | Purpose |
 |---|---|---|
-| `NVIDIA_API_KEY` | — | NIM embeddings (from `briefing/.env`) |
-| `RAG_EMBED` | (unset) | `offline` = deterministic hash embedder, no network |
-| `RAG_EMBED_MODEL` | `nvidia/nemotron-3-embed-1b` | embedding model id (2048-d) |
-| `RAG_EMBED_BASE` | `https://integrate.api.nvidia.com/v1` | endpoint base |
-| `RAG_STORE` | `local` | backend name (`local`, `qdrant`, …) |
-| `RAG_INDEX` | `rag/index` | local index dir |
+| `RAG_STORE` | `local` — **but `engine/.env` sets `qdrant`** | store backend |
+| `RAG_INDEX` | `./index` next to `rag.py` | local index dir; the current one is `_index_v3` |
+| `RAG_SEARCH` | `hybrid` | `hybrid` or `dense` |
+| `RAG_EMBED` | unset | `offline` = deterministic hash embedder, no network |
+| `RAG_EMBED_MODEL` | `nvidia/nemotron-3-embed-1b` | must match the index's manifest |
+| `RAG_EMBED_BASE` | `https://integrate.api.nvidia.com/v1` | embedding endpoint |
+| `NVIDIA_API_KEY` | — | embeddings |
+| `QDRANT_CLUSTER_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | — | Qdrant backend |
+| `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
 
-## Smoke test
+`rag.py` loads `engine/.env` itself.
 
-`_testcorpus/` holds two tiny sample playbooks and `_testindex/` a prebuilt
-offline index — a working example of the expected file shape. Safe to ignore or
-overwrite once your real corpus is indexed.
+---
 
-## Next
+## Decision records
 
-Once the index is built, wire retrieval into the runtime tool at Loops 3–7
-(the dashed arrow in the architecture diagram): classify intent → retrieve
-top-k playbooks + effectiveness evidence → ground strategy/insight/proof.
-Capture (Loop 1) never calls this.
+Non-obvious choices are recorded in `docs/adr/`: context, decision, alternatives
+rejected, consequences.
+
+| # | Decision |
+|---|---|
+| [0001](docs/adr/0001-rag-io-contract.md) | RAG I/O contract: JSON Schema, authority as the only boundary input, live/planned field status |

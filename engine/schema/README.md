@@ -62,3 +62,19 @@ list of problems rather than raising, so the backfill audit can count failures.
 python3 engine/rag/contract.py          # print the contract as a table
 python3 -m pytest engine/rag/test_contract.py -q
 ```
+
+## `rag_io.v1.json` — the RAG module's call contract (2026-09-23)
+
+A second contract, separate from the chunk metadata above: what the middleware sends the
+RAG module and what it gets back. JSON Schema (draft 2020-12), so any language validates
+the same bytes. v1.0.0, `locked: false` until the middleware owner signs off.
+
+- `authority` (tenant, authorised brand, reference brands with roles) is the only input
+  that can reach the confidentiality boundary, and it rejects unknown keys.
+- Enum values are referenced from this directory's metadata contract with `x-enum-from`,
+  never copied.
+- Every field is `x-status: live` (acted on) or `planned` (validated, not yet used); a
+  test fails if a field marked live does not reach retrieval.
+
+Reference: `engine/rag/README.md` → *RAG I/O contract*. Reasoning:
+`engine/rag/docs/adr/0001-rag-io-contract.md`. Python side: `engine/rag/rag_io.py`.
