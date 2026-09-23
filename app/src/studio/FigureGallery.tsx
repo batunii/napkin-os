@@ -7,7 +7,7 @@
 
 import ThemeToggle from '../components/ThemeToggle'
 import { AgentAvatar, AgentFigure } from './AgentFigure'
-import { AGENTS, AGENT_KEYS, SHAPE_OF } from './model'
+import { AGENTS, LOOK_OF, STAGES } from './model'
 
 const COLUMNS = [
   { label: 'idle', state: 'idle', walking: false },
@@ -28,6 +28,14 @@ export default function FigureGallery() {
         </div>
         <div style={{ marginLeft: 'auto' }}><ThemeToggle /></div>
       </div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 28 }}>
+        {STAGES.flatMap(s => s.agents).map(k => (
+          <div key={k} style={{ textAlign: 'center', width: 64 }}>
+            <AgentFigure agent={k} size={72} />
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink3)', marginTop: 4 }}>{AGENTS[k].name}</div>
+          </div>
+        ))}
+      </div>
       <table style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
@@ -36,21 +44,29 @@ export default function FigureGallery() {
             ))}
           </tr>
         </thead>
-        <tbody>
-          {AGENT_KEYS.map(k => (
-            <tr key={k}>
-              <td style={cell}>
-                <b>{AGENTS[k].name}</b>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink3)' }}>{AGENTS[k].dept} · {SHAPE_OF[k]}</div>
-              </td>
-              <td style={cell}><AgentAvatar agent={k} size={34} /></td>
-              {COLUMNS.map(c => (
-                <td key={c.label} style={cell}><AgentFigure agent={k} size={64} state={c.state} walking={c.walking} /></td>
-              ))}
-              <td style={cell}><AgentFigure agent={k} size={140} state="working" /></td>
-            </tr>
-          ))}
-        </tbody>
+        {STAGES.map(s => (
+          <tbody key={s.id}>
+            <tr><td colSpan={7} className="eyebrow" style={{ ...cell, paddingTop: 22 }}>{s.label}</td></tr>
+            {s.agents.map(k => {
+              const look = LOOK_OF[k]
+              return (
+                <tr key={k}>
+                  <td style={cell}>
+                    <b>{AGENTS[k].name}</b>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink3)' }}>
+                      {look.tone} · {look.shape}{look.emblem !== 'none' ? ` · ${look.emblem}` : ''} · {AGENTS[k].run}
+                    </div>
+                  </td>
+                  <td style={cell}><AgentAvatar agent={k} size={34} /></td>
+                  {COLUMNS.map(c => (
+                    <td key={c.label} style={cell}><AgentFigure agent={k} size={64} state={c.state} walking={c.walking} /></td>
+                  ))}
+                  <td style={cell}><AgentFigure agent={k} size={140} state="working" /></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        ))}
       </table>
     </div>
   )

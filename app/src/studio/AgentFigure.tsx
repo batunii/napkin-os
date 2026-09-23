@@ -4,14 +4,16 @@
 
 // The agents, drawn as small folded-paper characters with legs.
 //
-// A flat 2D port of the prototype's 3D origami figures: same six bodies, same
-// thin ink legs and feet, same two eyes. Everything is colour-by-token, so a
-// figure follows the theme; motion is plain CSS (AgentFigure.css), so
-// prefers-reduced-motion stops it without any JS.
+// A flat 2D port of the prototype's 3D origami figures: its six bodies plus a
+// dome and a hex, the same thin ink legs and feet, the same two eyes. Twelve
+// agents share eight bodies, so each also wears a small emblem and a tone
+// (model.ts LOOK_OF). Everything is colour-by-token, so a figure follows the
+// theme; motion is plain CSS (AgentFigure.css), so prefers-reduced-motion
+// stops it without any JS.
 
 import type { CSSProperties } from 'react'
-import { AGENTS, SHAPE_OF } from './model'
-import type { AgentKey, AgentState, ShapeName } from './model'
+import { AGENTS, LOOK_OF, TONE_VARS } from './model'
+import type { AgentKey, AgentState, Emblem, ShapeName } from './model'
 import './AgentFigure.css'
 
 // ── geometry ────────────────────────────────────────────────────────────────
@@ -36,6 +38,8 @@ interface Body {
   hipY: number
   eyeY: number
   eyeX: number
+  /** Centre of the emblem, on the body below the eyes. */
+  markY: number
 }
 
 const r1 = (n: number) => Math.round(n * 100) / 100
@@ -54,7 +58,7 @@ function starBody(): Body {
     const [tx, ty] = p[k], [vx, vy] = p[(k + 1) % 10]
     return `M${pt(CX, cy)} L${pt(tx, ty)} L${pt(vx, vy)}Z`
   })
-  return { fill: [star], folds, hipY: 36, eyeY: 25, eyeX: 3.2 }
+  return { fill: [star], folds, hipY: 36, eyeY: 25, eyeX: 3.2, markY: 30.5 }
 }
 
 function tubeBody(): Body {
@@ -68,7 +72,7 @@ function tubeBody(): Body {
   return {
     fill: [],
     strokes: [[arc(R), 9.6, false], [arc(R - 2.4), 4.8, true]],
-    hipY: 40, eyeY: 16, eyeX: 3.2,
+    hipY: 40, eyeY: 16, eyeX: 3.2, markY: 28,
   }
 }
 
@@ -80,7 +84,7 @@ function zigBody(): Body {
   return {
     fill: stack.map(([x, y]) => d(x, y)),
     folds: stack.map(([x, y]) => f(x, y)),
-    hipY: 37, eyeY: 23, eyeX: 3.2,
+    hipY: 37, eyeY: 23, eyeX: 3.2, markY: 30,
   }
 }
 
@@ -88,7 +92,7 @@ function pyramidBody(): Body {
   return {
     fill: [`M${pt(CX, 9)} L${pt(40, 41)} L${pt(8, 41)}Z`],
     folds: [`M${pt(CX, 9)} L${pt(40, 41)} L${pt(CX, 41)}Z`],
-    hipY: 38, eyeY: 27, eyeX: 3.2,
+    hipY: 38, eyeY: 25, eyeX: 3.2, markY: 33.5,
   }
 }
 
@@ -98,7 +102,7 @@ function blockBody(): Body {
     fill: [`M13 14 H31 V36 H13Z`, `M31 14 L36 11.5 V33.5 L31 36Z`, `M13 14 L18 11.5 H36 L31 14Z`],
     folds: [`M31 14 L36 11.5 V33.5 L31 36Z`],
     lights: [`M13 14 L18 11.5 H36 L31 14Z`],
-    hipY: 33, eyeY: 22, eyeX: 3.2,
+    hipY: 33, eyeY: 20.5, eyeX: 3.2, markY: 28.5,
   }
 }
 
@@ -108,13 +112,70 @@ function gemBody(): Body {
   return {
     fill: [`M${T} L${R} L${B} L${L}Z`],
     folds: [`M${T} L${R} L${B}Z`, `M${L} L${pt(CX, cy)} L${B}Z`],
-    hipY: 37, eyeY: 22, eyeX: 3.2,
+    hipY: 37, eyeY: 20, eyeX: 3.2, markY: 28,
+  }
+}
+
+function domeBody(): Body {
+  // An arch of folded card standing on its flat edge.
+  const L = 10, R = 38, top = 13, base = 40, r = (R - L) / 2, sy = top + r
+  return {
+    fill: [`M${L} ${base} V${sy} A${r} ${r} 0 0 1 ${R} ${sy} V${base}Z`],
+    folds: [`M${CX} ${top} A${r} ${r} 0 0 1 ${R} ${sy} V${base} H${CX}Z`],
+    hipY: 38, eyeY: 23, eyeX: 3.2, markY: 31,
+  }
+}
+
+function hexBody(): Body {
+  // A flat-topped hexagon: two lower facets in shadow, the top one lit.
+  const cy = 26, r = 14.5
+  const v = [0, 60, 120, 180, 240, 300].map(d => {
+    const a = (d * Math.PI) / 180
+    return [CX + Math.cos(a) * r, cy + Math.sin(a) * r] as const
+  })
+  // v: 0 right, 1 lower-right, 2 lower-left, 3 left, 4 upper-left, 5 upper-right
+  const P = v.map(([x, y]) => pt(x, y))
+  return {
+    fill: ['M' + P.join(' L') + 'Z'],
+    folds: [`M${pt(CX, cy)} L${P[0]} L${P[1]} L${P[2]}Z`],
+    lights: [`M${pt(CX, cy)} L${P[4]} L${P[5]}Z`],
+    hipY: 36, eyeY: 21.5, eyeX: 3.2, markY: 29.5,
   }
 }
 
 const BODIES: Record<ShapeName, Body> = {
   star: starBody(), tube: tubeBody(), zig: zigBody(),
   pyramid: pyramidBody(), block: blockBody(), gem: gemBody(),
+  dome: domeBody(), hex: hexBody(),
+}
+
+/** The emblem, centred on (CX, y), drawn in the tone's mark colour. */
+function emblemMarks(emblem: Emblem, y: number, c: string) {
+  const line = { stroke: c, strokeWidth: 1.5, strokeLinecap: 'round' as const, fill: 'none' }
+  switch (emblem) {
+    case 'none': return null
+    case 'bars': // market share, three rising bars
+      return <g fill={c}>{[0, 1, 2].map(i => {
+        const hgt = 3 + i * 2.2
+        return <rect key={i} x={CX - 4.6 + i * 3.4} y={y + 3 - hgt} width={2.2} height={hgt} rx={0.5} />
+      })}</g>
+    case 'target': // where the brand sits
+      return <g><circle cx={CX} cy={y + 0.6} r={4.2} {...line} strokeWidth={1.2} /><circle cx={CX} cy={y + 0.6} r={1.3} fill={c} /></g>
+    case 'dots': // people
+      return <g fill={c}>{[-3.6, 0, 3.6].map(dx => <circle key={dx} cx={CX + dx} cy={y} r={1.25} />)}</g>
+    case 'stripe': // a code, a band across the body
+      return <rect x={CX - 7} y={y - 1} width={14} height={2} rx={1} fill={c} />
+    case 'wave': // broadcast
+      return <path d={`M${CX - 6} ${y} q1.5 -2.6 3 0 t3 0 t3 0 t3 0`} {...line} />
+    case 'lines': // a page being read
+      return <g {...line}><path d={`M${CX - 4.5} ${y - 1.6} h9`} /><path d={`M${CX - 4.5} ${y + 1.6} h5.5`} /></g>
+    case 'seal': // a stamp
+      return <rect x={CX - 2} y={y - 2} width={4} height={4} rx={0.6} fill={c} transform={`rotate(45 ${CX} ${y})`} />
+    case 'spark': // a point made: a four-point star
+      return <path d={`M${CX} ${y - 4} Q${CX + 0.6} ${y - 0.6} ${CX + 4} ${y} Q${CX + 0.6} ${y + 0.6} ${CX} ${y + 4} Q${CX - 0.6} ${y + 0.6} ${CX - 4} ${y} Q${CX - 0.6} ${y - 0.6} ${CX} ${y - 4}Z`} fill={c} />
+    case 'tick': // checked
+      return <path d={`M${CX - 3.4} ${y} l2.3 2.3 l4.5 -4.6`} {...line} strokeWidth={1.7} />
+  }
 }
 
 /** Stable per-agent phase so a row of figures doesn't bob in lockstep. */
@@ -140,9 +201,9 @@ export interface AgentFigureProps {
 
 export function AgentFigure({ agent, size = 64, state = 'idle', walking = false, className, style }: AgentFigureProps) {
   const a = AGENTS[agent]
-  const body = BODIES[SHAPE_OF[agent]]
-  const fill = `var(--${a.dept})`
-  const eye = `var(--${a.dept}-eye)`
+  const look = LOOK_OF[agent]
+  const body = BODIES[look.shape]
+  const { body: fill, mark: eye } = TONE_VARS[look.tone]
   const label = `${a.name}, ${a.role}${state === 'needs-you' ? ' — needs you' : state === 'working' ? ' — working' : ''}`
   const delay = { '--af-phase': phaseOf(agent) } as CSSProperties
 
@@ -179,6 +240,7 @@ export function AgentFigure({ agent, size = 64, state = 'idle', walking = false,
         ))}
         {body.folds?.map((d, i) => <path key={i} className="af-fold" d={d} />)}
         {body.lights?.map((d, i) => <path key={i} className="af-light" d={d} />)}
+        <g className="af-emblem">{emblemMarks(look.emblem, body.markY, eye)}</g>
         <g className="af-eyes" fill={eye}>
           <rect x={CX - body.eyeX - 1.2} y={body.eyeY - 2} width={2.4} height={4} rx={1.2} />
           <rect x={CX + body.eyeX - 1.2} y={body.eyeY - 2} width={2.4} height={4} rx={1.2} />
@@ -195,8 +257,8 @@ export function AgentFigure({ agent, size = 64, state = 'idle', walking = false,
 }
 
 // ── AgentAvatar ─────────────────────────────────────────────────────────────
-// The prototype's flat circular face, for dense lists: a disc in the
-// department colour with a geometric face derived from the agent's key.
+// The prototype's flat circular face, for dense lists: a disc in the agent's
+// tone with a geometric face derived from the agent's key.
 
 export interface AgentAvatarProps {
   agent: AgentKey
@@ -210,9 +272,7 @@ export interface AgentAvatarProps {
 
 export function AgentAvatar({ agent, size = 38, decorative = false, className, style }: AgentAvatarProps) {
   const a = AGENTS[agent]
-  const c = `var(--${a.dept})`
-  // Desk's face is the accent, which is what makes it read as "the one in charge".
-  const fg = a.dept === 'desk' ? 'var(--create)' : `var(--${a.dept}-fg)`
+  const { body: c, mark: fg } = TONE_VARS[LOOK_OF[agent].tone]
   let h = 0
   for (const ch of agent) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   // `>>>` where the prototype had `>>`: for large hashes `>>` went negative and
