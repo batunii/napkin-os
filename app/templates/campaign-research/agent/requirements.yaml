@@ -1,0 +1,20 @@
+# Capability requirements (CLAN spec §22) for the Research Tool application.
+# This file travels verbatim into every document instantiated from this
+# template, so any orchestrator opening a Campaign Research .clan can check
+# capability fit before promising work.
+#
+# The app does no inference of its own. Every research task — extract_ask,
+# research_lens, synthesise_findings and polling them with job_status — goes
+# through ONE capability: the host's `clan://api-proxy` with
+# `request_kind: middleware`, speaking the `napkin.middleware/1` envelope. The
+# tasks and their handlers are declared in app/pipeline.yaml; retrieval, web
+# search and the models are the middleware's concern, never the document's.
+#
+# Orchestrators SHOULD warn, not fail: without the middleware the document is
+# still a complete, reviewable record — the ask, pins, findings and decisions
+# render and can be confirmed, verified or rejected. It just cannot extract or
+# research anything new.
+requires:
+  tools:
+    - name: middleware
+      why: "the campaign pipeline (app/pipeline.yaml): extract the ask from the prompt and attachments, research each lens x market, synthesise findings from pins — over request_kind middleware, envelope napkin.middleware/1. Long tasks are jobs the host polls with job_status."
