@@ -126,3 +126,18 @@ def test_response_carries_relevance_and_validation_in_contract_shape():
     assert resp["validation"]["backend_used"] == "fake"
     craft = next(b for b in resp["blocks"] if b["bucket"] == "craft")
     assert {h["relevance"]["kept"] for h in craft["hits"]} == {"floor"}
+
+
+def test_rejected_counts_only_hits_the_backend_actually_judged_and_dropped():
+    """Review finding: never-judged hits were counted as rejected. A total outage must
+    report 0 rejected, and a capacity cut must count only the real rejections."""
+    class Down(FakeBackend):
+        """Always unavailable."""
+        def score(self, query, passages, *, deadline_s):
+            """Raise a run-time failure."""
+            raise jb.BackendUnavailable("down", kind="http_error")
+    rec = bc._apply_validation(buckets(), judge.Chain([Down()]), query="q")
+    assert all(c.get("rejected", 0) == 0 for c in rec["per_bucket"].values())
+    rec = bc._apply_validation(buckets(), judge.Chain([FakeBackend(capacity=2, scores={"c1": 0.1})]), query="q")
+    assert rec["per_bucket"]["craft"]["rejected"] == 1          # c1 judged and failed
+    assert rec["per_bucket"]["exemplars"]["rejected"] == 0      # e2/e3 never sent

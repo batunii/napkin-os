@@ -736,7 +736,8 @@ def edge_order(items: list) -> list:
 @functools.lru_cache(maxsize=1)
 def default_chain():
     """The process-wide validation chain from RAG_VALIDATOR, built once so its breaker
-    state survives across briefs. Raises BackendNotConfigured if a named backend cannot
+    state survives across briefs. RAG_VALIDATOR is therefore read ONCE per process:
+    changing it needs a restart (or default_chain.cache_clear() in tests). Raises BackendNotConfigured if a named backend cannot
     be built — a configuration error is a hard error (judgement invariant M4)."""
     import judge
     return judge.chain_from_env()
@@ -817,8 +818,12 @@ def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, conte
         counts: dict[str, int] = {}
         for h in keep_first + chosen:
             counts[h.relevance["kept"]] = counts.get(h.relevance["kept"], 0) + 1
-        judged_here = min(share, sum(1 for h in hits if not exempt(h)))
-        counts["rejected"] = judged_here - sum(1 for h in chosen if h.relevance["kept"] != "unjudged")
+        # Counted directly from verdicts, never by subtraction: a hit the backend never saw
+        # (truncated at its real capacity, or nobody answered) is unjudged, not rejected.
+        # The subtraction version reported a total outage as a total rejection.
+        chosen_ids = {id(h) for h in chosen}
+        counts["rejected"] = sum(1 for h in hits if not exempt(h) and id(h) not in chosen_ids
+                                 and by_cite.get(h.cite) is not None)
         counts["beyond_share"] = max(0, sum(1 for h in hits if not exempt(h)) - share)
         per_bucket[bucket] = counts
         hits_by[bucket] = keep_first + chosen
