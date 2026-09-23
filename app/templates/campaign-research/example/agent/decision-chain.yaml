@@ -5,6 +5,21 @@
 # SDK read-modify-write drops the new fields — pack this file verbatim.
 # Addresses: <doc-id>#<entity-keyed path>; doc id 7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17.
 decisions:
+  - id: d_01JA0D12RPT
+    kind: edit
+    agent: compose_report/1.0
+    actor: process:job-3104
+    handler: compose_report@1.0
+    backend: "example-llm/2026-06"
+    version: "1.0"
+    action: compose_report
+    targets:
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#report"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A10A]"
+    cites: [f_01JA0B4A1B, f_01JA0B4A2C, f_01JA0B4B3D, f_01JA0B2K7M, f_01JA0B2K8N, f_01JA0B5C4E, f_01JA0B5C5F, f_01JA0B6D6G, f_01JA0B6D7H, f_01JA0B3R5S, f_01JA0C9V4X, f_01JA0B8F9K, f_01JA0B7E8J, f_01JA0B9G1L, fi_01JA0F1A, fi_01JA0F2B, fi_01JA0F3C, fi_01JA0F4D]
+    fields_changed: [report, intake.messages]
+    rationale: "Refresh report: recomposed from the document as it stands. The rejected finding fi_01JA0F5E is left out; the verified one is shown as verified; stale pins are marked."
+    timestamp: "2026-09-23T08:10:00Z"
   - id: d_01JA0D11CLS
     kind: classify
     agent: human
@@ -90,6 +105,16 @@ decisions:
     rationale: "Matches what we heard in both Dublin groups. Written to the brand layer as a synthesis fact and pinned."
     timestamp: "2026-09-22T16:05:31Z"
     pinned: true
+  - id: d_01JA0D07CNC
+    kind: edit
+    agent: human
+    actor: human:u_aoife
+    action: confirm
+    targets: ["7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.categories"]
+    cites: [f_01JA0B1C2D, f_01JA0B1C3E]
+    fields_changed: [campaign.categories]
+    rationale: "From the report's confirm list. Both roster categories apply; no/low leads because the product is 0.0."
+    timestamp: "2026-09-22T09:10:00Z"
   - id: d_01JA0D06RES
     kind: resolve
     agent: human
@@ -99,11 +124,26 @@ decisions:
     cites: [f_01JA0B4B3D, f_01JA0B4B9Z]
     rationale: "The retail panel covers on- and off-trade; the 0.68 trade-press figure is off-trade only. 0.68 kept as the loser."
     timestamp: "2026-09-21T14:20:55Z"
+  - id: d_01JA0D06RPT
+    kind: edit
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
+    backend: "example-llm/2026-06"
+    version: "1.0"
+    action: report
+    targets:
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#report"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A09A]"
+    cites: [f_01JA0B4A1B, f_01JA0B4A2C, f_01JA0B2K7M, f_01JA0B2K8N, fi_01JA0F2B, fi_01JA0F3C]
+    fields_changed: [report, intake.messages]
+    rationale: "The report stage: structured blocks over the pins and findings the document held once the synthesise stage had landed."
+    timestamp: "2026-09-21T12:10:30Z"
   - id: d_01JA0D06SYN
     kind: finding
-    agent: synthesise_findings/1.0
-    actor: process:job-2291
-    handler: synthesise_findings@1.0
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
     backend: "example-llm/2026-06"
     version: "1.0"
     action: synthesise
@@ -115,14 +155,17 @@ decisions:
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#findings[fi_01JA0F5E]"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.audience"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.in_market"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A08A]"
     cites: [f_01JA0B6D6G, f_01JA0B6D7H, f_01JA0B3R5S, f_01JA0B2K7M, f_01JA0B2K8N, f_01JA0B4A1B, f_01JA0B4A2C, f_01JA0B5C4E, f_01JA0B8F9K]
-    fields_changed: [campaign.audience, campaign.in_market]
+    fields_changed: [campaign.audience, campaign.in_market, intake.messages]
     rationale: "Five findings from the merged pins, each labelled derived by the agent. Proposed campaign.audience from the consumer pins and fi_01JA0F4D; proposed campaign.in_market from the cider peak and fi_01JA0F5E. Confidence computed from the cited pins."
     timestamp: "2026-09-21T12:10:00Z"
   - id: d_01JA0D05CTV
     kind: contest
-    agent: research_lens/1.0
-    actor: process:merge-2290
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
+    version: "1.0"
     action: contest
     targets: ["7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#selection.contested[ct_cider_top3_share]"]
     cites: [f_01JA0B4B3D, f_01JA0B4B9Z]
@@ -130,8 +173,10 @@ decisions:
     timestamp: "2026-09-21T11:42:10Z"
   - id: d_01JA0D05CTO
     kind: contest
-    agent: research_lens/1.0
-    actor: process:merge-2290
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
+    version: "1.0"
     action: contest
     targets: ["7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#selection.contested[ct_orchard_hill_abv]"]
     cites: [f_01JA0B5C6M, f_01JA0B5C7N]
@@ -139,42 +184,82 @@ decisions:
     timestamp: "2026-09-21T11:42:10Z"
   - id: d_01JA0D04MRG
     kind: pin
-    agent: research_lens/1.0
-    actor: process:merge-2290
-    handler: research_lens@1.0
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
     version: "1.0"
     action: merge_research
     targets:
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#selection"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.competitor_set"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.constraints"
-    fields_changed: [selection, campaign.competitor_set, campaign.constraints]
-    rationale: "Merged 16 branches (8 lenses x IE, GB) by entity+key+market. Pinned 13 facts; two gaps; one contest per identity with differing values; merged coverage per lens."
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A07A]"
+    fields_changed: [selection, campaign.competitor_set, campaign.constraints, intake.messages]
+    rationale: "Merged 15 branches (8 lenses x IE, 7 x GB — effectiveness_evidence skipped in GB) by entity+key+market. Pinned 13 facts; two gaps; one contest per identity with differing values; merged coverage per lens."
     timestamp: "2026-09-21T11:42:10Z"
     pinned: true
+  - id: d_01JA0D03SEL
+    kind: edit
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
+    version: "1.0"
+    action: select
+    targets:
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#selection.lenses_skipped[effectiveness_evidence/GB]"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A06A]"
+    cites: [mat_prompt01]
+    fields_changed: [selection.lenses_skipped, intake.messages]
+    rationale: "Selected every lens in both markets except effectiveness_evidence in GB, which the prompt rules out."
+    timestamp: "2026-09-21T09:05:03Z"
+  - id: d_01JA0D03IDN
+    kind: edit
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
+    version: "1.0"
+    action: identify
+    targets:
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.client_org"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.categories"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A05A]"
+    cites: [f_01JA0B1C2D, f_01JA0B1C3E, f_01JA0B1C4F]
+    fields_changed: [campaign.client_org, campaign.categories, intake.messages]
+    rationale: "Subject brand answered by the person (Lúnasa). Categories and client from Lúnasa's roster row, proposed citing the pins."
+    timestamp: "2026-09-21T09:05:02Z"
   - id: d_01JA0D03CNF
     kind: edit
     agent: human
     actor: human:u_aoife
-    action: confirm
+    action: answer_question
     targets:
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.brand"
-      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.categories"
-    fields_changed: [campaign.brand, campaign.categories]
-    rationale: "Lúnasa is the subject brand, Brightwater a comparator. Both roster categories apply; no/low leads because the product is 0.0."
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A04U]"
+    cites: [mat_email01]
+    fields_changed: [campaign.brand, intake.messages]
+    rationale: "Answered the intake question q_01JA0A03SUBJ: Lúnasa is the subject brand, Brightwater 0.0 a comparator."
     timestamp: "2026-09-21T09:05:00Z"
+  - id: d_01JA0D02ASK
+    kind: edit
+    agent: start_campaign/1.0
+    actor: process:job-2288
+    handler: start_campaign@1.0
+    version: "1.0"
+    action: identify
+    targets: ["7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A03A]"]
+    cites: [mat_email01]
+    fields_changed: [intake.messages]
+    rationale: "Two brands in the material and neither named as the client: asked which is the subject (needs_input). Never guessed."
+    timestamp: "2026-09-21T09:00:06Z"
   - id: d_01JA0D02EXT
     kind: edit
-    agent: extract_ask/1.0
+    agent: start_campaign/1.0
     actor: process:job-2288
-    handler: extract_ask@1.0
+    handler: start_campaign@1.0
     backend: "example-llm/2026-06"
     version: "1.0"
     action: extract
     targets:
-      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.brand"
-      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.client_org"
-      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.categories"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.markets"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.campaign_type"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.problem"
@@ -184,25 +269,26 @@ decisions:
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.channels_mandated"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.deliverables"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.success_measures[sm_ie_volume_share]"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A02A]"
     cites: [mat_prompt01, mat_email01, f_01JA0B1C2D, f_01JA0B1C3E, f_01JA0B1C4F]
     material_read: [mat_prompt01, mat_email01]
     abstained: [campaign.audience, campaign.in_market, campaign.competitor_set]
-    fields_changed: [campaign]
+    fields_changed: [campaign, intake.messages]
     rationale: "One structured-output extraction over the prompt, the client email and the Lúnasa roster row. Abstained on audience (a research field), in_market ('next spring' names no dates) and competitor_set beyond the one the email names (the category leaf supplies the rest)."
     timestamp: "2026-09-21T09:00:05Z"
     pinned: true
   - id: d_01JA0D02LKP
     kind: pin
-    agent: extract_ask/1.0
+    agent: start_campaign/1.0
     actor: process:job-2288
-    handler: extract_ask@1.0
+    handler: start_campaign@1.0
     version: "1.0"
     action: lookup
     targets:
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#facts[f_01JA0B1C2D]"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#facts[f_01JA0B1C3E]"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#facts[f_01JA0B1C4F]"
-    rationale: "Deterministic lookup of the brand roster row before extraction: two categories and the client org."
+    rationale: "Deterministic lookup, before extraction, of the roster row of every brand the material names. Only Lúnasa has one: two categories and the client org."
     timestamp: "2026-09-21T09:00:04Z"
   - id: d_01JA0D01CRT
     kind: edit
@@ -213,6 +299,9 @@ decisions:
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.id"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.name"
       - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.ask_source"
-    fields_changed: [campaign.id, campaign.name, campaign.ask_source]
-    rationale: "Opened a campaign from Niamh's launch email."
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#intake.messages[msg_01JA0A01U]"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#materials[mat_prompt01]"
+      - "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#materials[mat_email01]"
+    fields_changed: [campaign.id, campaign.name, campaign.ask_source, intake.messages, materials]
+    rationale: "Started a campaign in the chat: a prompt and Niamh's launch email."
     timestamp: "2026-09-21T08:58:40Z"

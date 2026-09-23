@@ -32,7 +32,7 @@ campaign:
     origin: proposed
     gate: created
     fact_ids: [f_01JA0B1C4F]
-    decision: d_01JA0D02EXT
+    decision: d_01JA0D03IDN
   categories:
     value: [drinks.no_low_alcohol, drinks.cider]
     origin: confirmed
@@ -40,7 +40,7 @@ campaign:
     gate: research
     by: human:u_aoife
     fact_ids: [f_01JA0B1C3E, f_01JA0B1C2D]
-    decision: d_01JA0D03CNF
+    decision: d_01JA0D07CNC
   markets:
     value: [IE, GB]
     origin: extracted
@@ -182,22 +182,27 @@ campaign:
 
 selection:
   lenses_run:
-    - { lens: market_structure,       market: IE, ran_at: 2026-09-21T10:02:11Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: market_structure,       market: GB, ran_at: 2026-09-21T10:02:13Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: brands_positioning,     market: IE, ran_at: 2026-09-21T10:02:15Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: brands_positioning,     market: GB, ran_at: 2026-09-21T10:02:16Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: consumer_culture,       market: IE, ran_at: 2026-09-21T10:02:18Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: consumer_culture,       market: GB, ran_at: 2026-09-21T10:02:20Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: category_codes,         market: IE, ran_at: 2026-09-21T10:02:22Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: category_codes,         market: GB, ran_at: 2026-09-21T10:02:23Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: rhythm_moments,         market: IE, ran_at: 2026-09-21T10:02:25Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: rhythm_moments,         market: GB, ran_at: 2026-09-21T10:02:27Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: media_spend,            market: IE, ran_at: 2026-09-21T10:02:29Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: media_spend,            market: GB, ran_at: 2026-09-21T10:02:30Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: regulation_clearance,   market: IE, ran_at: 2026-09-21T10:02:32Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: regulation_clearance,   market: GB, ran_at: 2026-09-21T10:02:34Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: effectiveness_evidence, market: IE, ran_at: 2026-09-21T10:02:36Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
-    - { lens: effectiveness_evidence, market: GB, ran_at: 2026-09-21T10:02:37Z, handler: research_lens@1.0, decision: d_01JA0D04MRG }
+    - { lens: market_structure,       market: IE, ran_at: 2026-09-21T10:02:11Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: market_structure,       market: GB, ran_at: 2026-09-21T10:02:13Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: brands_positioning,     market: IE, ran_at: 2026-09-21T10:02:15Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: brands_positioning,     market: GB, ran_at: 2026-09-21T10:02:16Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: consumer_culture,       market: IE, ran_at: 2026-09-21T10:02:18Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: consumer_culture,       market: GB, ran_at: 2026-09-21T10:02:20Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: category_codes,         market: IE, ran_at: 2026-09-21T10:02:22Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: category_codes,         market: GB, ran_at: 2026-09-21T10:02:23Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: rhythm_moments,         market: IE, ran_at: 2026-09-21T10:02:25Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: rhythm_moments,         market: GB, ran_at: 2026-09-21T10:02:27Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: media_spend,            market: IE, ran_at: 2026-09-21T10:02:29Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: media_spend,            market: GB, ran_at: 2026-09-21T10:02:30Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: regulation_clearance,   market: IE, ran_at: 2026-09-21T10:02:32Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: regulation_clearance,   market: GB, ran_at: 2026-09-21T10:02:34Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+    - { lens: effectiveness_evidence, market: IE, ran_at: 2026-09-21T10:02:36Z, handler: start_campaign@1.0, decision: d_01JA0D04MRG }
+  lenses_skipped:
+    # Skipped is not empty: no lenses_run entry, no coverage, and the report lists it under not_researched.
+    - lens: effectiveness_evidence
+      market: GB
+      reason: "The prompt asks for effectiveness cases for Ireland only (\"Effectiveness cases only matter for Ireland\")."
+      decision: d_01JA0D03SEL
   coverage:
     market_structure: filled
     brands_positioning: thin
@@ -225,7 +230,6 @@ selection:
       rhythm_moments: thin
       media_spend: filled
       regulation_clearance: filled
-      effectiveness_evidence: empty
   gaps:
     - id: g_nolo_launch_cases
       key: "category/drinks.no_low_alcohol:effectiveness.launch_case"
@@ -270,7 +274,7 @@ materials:
   mat_prompt01:
     kind: prompt
     name: "Planner prompt"
-    sha256: "sha256:867ae2d114132fb199f1dd3664668555f5287134ac822d093aa280969cc3226a"
+    sha256: "sha256:952a75c29bf57d0f444c23e86e2f9035a1364eb896ba414a3d5a29929b5958e3"
     media_type: text/plain
     received_at: 2026-09-21T08:58:40Z
     licence: client-confidential
@@ -283,11 +287,199 @@ materials:
     received_at: 2026-09-21T08:58:40Z
     licence: client-confidential
 
+# ---- the chat intake (Contract 3 §16) ----
+# A MAP keyed by message id: the person (through the view) and the middleware (through its
+# data_patch) each add keys, so neither write replaces the other. Order: at, then key.
+intake:
+  messages:
+    msg_01JA0A01U:
+      role: user
+      by: human:u_aoife
+      at: 2026-09-21T08:58:40Z
+      text: "Brief from Glenmore attached — they're launching in Ireland and GB next spring. Can you pull together the landscape and the audience before Thursday's kick-off? Effectiveness cases only matter for Ireland, where Niamh has to sell the budget in."
+      material_id: mat_prompt01
+      attachments: [mat_email01]
+    msg_01JA0A02A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: extract
+      at: 2026-09-21T09:00:05Z
+      text: "Read your note and Niamh's email. A launch in Ireland and GB: the problem, objective, audience, budget band, channels, deliverables and mandatories are quoted from the email. Nothing names dates, so the in-market window is left open."
+    msg_01JA0A03A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: identify
+      at: 2026-09-21T09:00:06Z
+      text: "The email names two brands, Lúnasa and Brightwater 0.0. Which one is your client's? The other is treated as a comparator. Research waits for your answer."
+      question:
+        id: q_01JA0A03SUBJ
+        text: "Which brand is the client's?"
+        address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.brand"
+        allow_text: true
+        options:
+          - id: lunasa
+            label: "Lúnasa"
+            value: { ref: brand/lunasa, name: "Lúnasa" }
+            origin: extracted
+            source: { material_id: mat_email01, locator: "¶1", quote: "we're launching Lúnasa 0.0, an alcohol-free version of Lúnasa" }
+          - id: brightwater
+            label: "Brightwater 0.0"
+            value: { ref: brand/brightwater, name: "Brightwater 0.0" }
+            origin: extracted
+            source: { material_id: mat_email01, locator: "¶6", quote: "We see Brightwater 0.0 as the one to beat." }
+          - id: none
+            label: "None of these"
+    msg_01JA0A04U:
+      role: user
+      by: human:u_aoife
+      at: 2026-09-21T09:05:00Z
+      text: "Lúnasa"
+      job_id: job_01JA0C2288
+      answer: { question_id: q_01JA0A03SUBJ, option_id: lunasa }
+    msg_01JA0A05A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: identify
+      at: 2026-09-21T09:05:02Z
+      text: "Lúnasa it is; Brightwater 0.0 is a comparator. Lúnasa's roster row gives two categories, cider and no/low alcohol, and the client, Glenmore Drinks. Both are proposed for you to confirm."
+    msg_01JA0A06A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: select
+      at: 2026-09-21T09:05:03Z
+      text: "Researching all eight lenses in Ireland and seven in GB. Effectiveness evidence is skipped in GB: you said it only matters for Ireland."
+    msg_01JA0A07A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: research
+      at: 2026-09-21T11:42:10Z
+      text: "Fifteen lens runs merged. Two things were looked for and not found, and two sources disagree on Orchard Hill Zero's strength — left open for you."
+    msg_01JA0A08A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: synthesise
+      at: 2026-09-21T12:10:00Z
+      text: "Five findings, each derived by the agent and waiting for a person to verify or reject."
+    msg_01JA0A09A:
+      role: agent
+      job_id: job_01JA0C2288
+      stage: report
+      at: 2026-09-21T12:10:30Z
+      text: "Report ready. The short list under it is what to confirm before the brief."
+    msg_01JA0A10A:
+      role: agent
+      job_id: job_01JA0C3104
+      stage: report
+      at: 2026-09-23T08:10:00Z
+      text: "Report refreshed from the document as it stands: one finding verified, one rejected and left out, two pins stale."
+
+# ---- report (Contract 3 §17; WRITTEN BY THE MIDDLEWARE ONLY, rendered read-only — never patch) ----
+report:
+  built_at: 2026-09-23T08:10:00Z
+  handler: compose_report@1.0
+  based_on:
+    version: "sha256:3b9d0c41e7a25f86d1c07e4a9b3f5d28c6e1a70b94d2f38e5c61a0b7d9e4f213"
+    facts_sha256: "sha256:196b20d0dedb57d122f41578b8ec7c83d3a272b28a0c07caf8c47168348cc0de"
+    findings_sha256: "sha256:a8296f5e089ebbf7889e48c04320c4cc7c211ec288f21c16bb20ff49b1372eea"
+  headline:
+    text: "Lúnasa 0.0 lands in Ireland with permission and in GB as a stranger, and Ireland is where no/low is growing faster."
+    cites: [fi_01JA0F2B, fi_01JA0F3C]
+  summary:
+    - text: "No/low value is growing about twice as fast in Ireland as in GB."
+      cites: [f_01JA0B4A1B, f_01JA0B4A2C, fi_01JA0F3C]
+    - text: "For Irish moderators the alcohol-free occasion is social: weeknights at home with friends, where being seen with a cider still matters."
+      cites: [f_01JA0C9V4X, fi_01JA0F1A]
+    - text: "Few Irish no/low drinkers consider Lúnasa today."
+      cites: [f_01JA0B3R5S]
+    - text: "Work in the parent brand's livery clears as alcohol advertising in Ireland — and the pinned rule has since been superseded, so check the current version."
+      cites: [f_01JA0B7E8J]
+  sections:
+    - id: s_market
+      title: "The market"
+      lens: market_structure
+      blocks:
+        - { kind: claim, text: "No/low is growing faster in Ireland than in GB.", cites: [f_01JA0B4A1B, f_01JA0B4A2C] }
+        - { kind: pins, fact_ids: [f_01JA0B4A1B, f_01JA0B4A2C] }
+        - { kind: finding, finding_id: fi_01JA0F3C }
+        - { kind: claim, text: "Three brands hold most of Irish cider volume.", cites: [f_01JA0B4B3D] }
+        - { kind: pins, fact_ids: [f_01JA0B4B3D] }
+        - { kind: contest, contest_id: ct_cider_top3_share }
+    - id: s_brands
+      title: "Lúnasa and its comparators"
+      lens: brands_positioning
+      blocks:
+        - { kind: claim, text: "Lúnasa is well known in Ireland and barely known in GB.", cites: [f_01JA0B2K7M, f_01JA0B2K8N] }
+        - { kind: pins, fact_ids: [f_01JA0B2K7M, f_01JA0B2K8N] }
+        - { kind: finding, finding_id: fi_01JA0F2B }
+        - { kind: claim, text: "Orchard Hill Zero launched in Ireland this March; Kestrel Press claims the grown-up alcohol-free position.", cites: [f_01JA0B5C4E, f_01JA0B5C5F] }
+        - { kind: pins, fact_ids: [f_01JA0B5C4E, f_01JA0B5C5F] }
+        - { kind: contest, contest_id: ct_orchard_hill_abv }
+        - { kind: gap, gap_id: g_gb_spontaneous_awareness }
+    - id: s_audience
+      title: "Who it is for"
+      lens: consumer_culture
+      market: IE
+      blocks:
+        - { kind: claim, text: "A large share of Irish adults say they are moderating, and their top alcohol-free occasion is weeknight socialising at home.", cites: [f_01JA0B6D6G, f_01JA0B6D7H] }
+        - { kind: pins, fact_ids: [f_01JA0B6D6G, f_01JA0B6D7H, f_01JA0B3R5S] }
+        - { kind: finding, finding_id: fi_01JA0F1A }
+        - { kind: finding, finding_id: fi_01JA0F4D }
+    - id: s_rhythm
+      title: "Timing"
+      lens: rhythm_moments
+      market: IE
+      blocks:
+        - { kind: claim, text: "Irish cider peaks in the summer months.", cites: [f_01JA0B8F9K] }
+        - { kind: pins, fact_ids: [f_01JA0B8F9K] }
+    - id: s_clearance
+      title: "Clearance"
+      lens: regulation_clearance
+      market: IE
+      blocks:
+        - { kind: claim, text: "An ad for a 0.0 variant in the parent brand's livery is assessed as alcohol advertising. The pinned rule is stale.", cites: [f_01JA0B7E8J] }
+        - { kind: pins, fact_ids: [f_01JA0B7E8J] }
+    - id: s_media
+      title: "Media"
+      lens: media_spend
+      market: GB
+      blocks:
+        - { kind: claim, text: "Most no/low media spend in GB is digital.", cites: [f_01JA0B9G1L] }
+        - { kind: pins, fact_ids: [f_01JA0B9G1L] }
+    - id: s_effectiveness
+      title: "Effectiveness"
+      lens: effectiveness_evidence
+      market: IE
+      blocks:
+        - { kind: gap, gap_id: g_nolo_launch_cases }
+  confirm:
+    - address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.markets"
+      label: "Markets: Ireland and GB"
+      why: "Read from Niamh's email; research ran once per market."
+    - address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.competitor_set"
+      label: "Comparators: Brightwater 0.0, Orchard Hill Zero, Kestrel Press"
+      why: "Brightwater is named in the email; the other two come from the category layer."
+    - address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.client_org"
+      label: "Client: Glenmore Drinks"
+      why: "From Lúnasa's roster row."
+    - address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.audience"
+      label: "The researched audience"
+      why: "Proposed from pins and a finding nobody has verified yet."
+    - address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.in_market"
+      label: "In market May to August"
+      why: "It cites a rejected finding and needs revising."
+    - address: "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#campaign.constraints"
+      label: "Constraints"
+      why: "The livery rule came from the category layer, and its pin is stale."
+  not_researched:
+    - lens: effectiveness_evidence
+      market: GB
+      reason: "The prompt asks for effectiveness cases for Ireland only (\"Effectiveness cases only matter for Ireland\")."
+
 # ---- projection (HOST-WRITTEN, READ-ONLY — rebuilt from shared/facts.yaml and shared/findings.yaml; never patch) ----
 projection:
   built_from:
     facts_sha256: sha256:196b20d0dedb57d122f41578b8ec7c83d3a272b28a0c07caf8c47168348cc0de
-    findings_sha256: sha256:79fc19f5eee508331a39bf1e5db112085b32b13dcd690c0be7a5af1f7ea08f87
+    findings_sha256: sha256:a8296f5e089ebbf7889e48c04320c4cc7c211ec288f21c16bb20ff49b1372eea
     built_at: '2026-09-23T08:02:01Z'
   pins:
     f_01JA0B1C2D:
