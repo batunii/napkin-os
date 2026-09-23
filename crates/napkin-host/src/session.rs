@@ -100,17 +100,33 @@ pub struct Applied {
     pub noop: bool,
 }
 
-/// The document a shell (or one browser session) currently has open, together
-/// with the transient view state that belongs to it.
+/// What one shell is looking at: the snapshot it has open and how it is
+/// showing it.
+///
+/// Shell-local by design. None of it is document state — two viewers of one
+/// document each have their own — and none of it is an operation's input
+/// except the snapshot, which an operation borrows and never keeps. A shell
+/// that runs the operations itself can hold one of these directly; `Session`
+/// holds one behind a lock for the shells that want the old object.
+#[derive(Default)]
+pub struct ViewState {
+    /// The document this view has open, at the version it last read or wrote.
+    pub open: Option<Document>,
+    /// Whether the edit bridge is live (`clan://edit-mode`).
+    pub edit_mode: bool,
+    /// The legacy preview the shell last rendered (`clan://document`).
+    pub preview_html: String,
+}
+
+/// The thin wrapper the desktop and browser shells use: a store, the context
+/// they act as, and one [`ViewState`].
 pub struct Session {
     store: Arc<dyn DocStore>,
     /// Who this shell acts as when a caller does not say otherwise: the one
     /// local user on the desktop and in the browser. A server passes its own
     /// per-request [`Ctx`] to the `_as` operations instead.
     ctx: Ctx,
-    current: Mutex<Option<Document>>,
-    edit_mode: Mutex<bool>,
-    preview_html: Mutex<String>,
+    view: Mutex<ViewState>,
 }
 
 /// Counts the legacy patches that reached the store, so tests can assert that
@@ -130,9 +146,7 @@ impl Session {
         Self {
             store,
             ctx,
-            current: Mutex::new(None),
-            edit_mode: Mutex::new(false),
-            preview_html: Mutex::new(String::new()),
+            view: Mutex::new(ViewState::default()),
         }
     }
 
@@ -147,8 +161,8 @@ impl Session {
 
     /// Run a read against the open snapshot, or fail with "no file open".
     pub fn read<T>(&self, f: impl FnOnce(&Document) -> HostResult<T>) -> HostResult<T> {
-        let guard = self.current.lock().unwrap();
-        f(guard.as_ref().ok_or_else(HostError::no_file_open)?)
+        let view = self.view.lock().unwrap();
+        f(view.open.as_ref().ok_or_else(HostError::no_file_open)?)
     }
 
     /// Run a write operation against the open snapshot and apply what it
@@ -163,13 +177,13 @@ impl Session {
         ctx: &Ctx,
         op: impl FnOnce(&Ctx, &Document) -> HostResult<Outcome>,
     ) -> HostResult<Applied> {
-        let mut guard = self.current.lock().unwrap();
-        let doc = guard.as_ref().ok_or_else(HostError::no_file_open)?;
+        let mut view = self.view.lock().unwrap();
+        let doc = view.open.as_ref().ok_or_else(HostError::no_file_open)?;
         let outcome = op(ctx, doc)?;
         let events = outcome.events();
         let noop = outcome.is_noop();
         for change in &outcome.changes {
-            self.commit(&mut guard, change)?;
+            self.commit(&mut view.open, change)?;
         }
         Ok(Applied {
             reply: outcome.reply,
@@ -192,31 +206,34 @@ impl Session {
     }
 
     pub fn is_open(&self) -> bool {
-        self.current.lock().unwrap().is_some()
+        self.view.lock().unwrap().open.is_some()
     }
 
     pub fn trusted(&self) -> bool {
-        self.current
+        self.view
             .lock()
             .unwrap()
+            .open
             .as_ref()
             .map(Document::trusted)
             .unwrap_or(false)
     }
 
     pub fn current_id(&self) -> Option<DocId> {
-        self.current
+        self.view
             .lock()
             .unwrap()
+            .open
             .as_ref()
             .map(|d| d.id().clone())
     }
 
     /// The version the open snapshot is at — what a write from it is based on.
     pub fn current_version(&self) -> Option<Version> {
-        self.current
+        self.view
             .lock()
             .unwrap()
+            .open
             .as_ref()
             .map(|d| d.version().clone())
     }
@@ -233,9 +250,10 @@ impl Session {
     /// The open document's app id, when it is an instance of one. What decides
     /// which apps will accept it as a spin-off source.
     pub fn app_id(&self) -> Option<String> {
-        self.current
+        self.view
             .lock()
             .unwrap()
+            .open
             .as_ref()
             .and_then(|d| d.app_id().map(String::from))
     }
@@ -247,7 +265,7 @@ impl Session {
         // One read: the snapshot holds the bytes it was built from (#10).
         let doc = Document::load(self.store.parts(), id)?;
         let result = read::describe(&doc);
-        *self.current.lock().unwrap() = Some(doc);
+        self.view.lock().unwrap().open = Some(doc);
         Ok(result)
     }
 
@@ -283,16 +301,17 @@ impl Session {
     /// Splice each attachment's cached extracted text into `payload`. A no-op
     /// with nothing open.
     pub fn attach_extracted_text(&self, payload: &mut Value) {
-        if let Some(d) = self.current.lock().unwrap().as_ref() {
+        if let Some(d) = self.view.lock().unwrap().open.as_ref() {
             read::attach_extracted_text(d, payload);
         }
     }
 
     /// The provenance bundle an agent reads; `null` with nothing open.
     pub fn clan_context_for_agent(&self) -> Value {
-        self.current
+        self.view
             .lock()
             .unwrap()
+            .open
             .as_ref()
             .map(read::clan_context_for_agent)
             .unwrap_or(Value::Null)
@@ -301,19 +320,19 @@ impl Session {
     // ── Transient view state ────────────────────────────────────────────────
 
     pub fn set_edit_mode(&self, active: bool) {
-        *self.edit_mode.lock().unwrap() = active;
+        self.view.lock().unwrap().edit_mode = active;
     }
 
     pub fn edit_mode(&self) -> bool {
-        *self.edit_mode.lock().unwrap()
+        self.view.lock().unwrap().edit_mode
     }
 
     pub fn set_preview_html(&self, html: String) {
-        *self.preview_html.lock().unwrap() = html;
+        self.view.lock().unwrap().preview_html = html;
     }
 
     pub fn preview_html(&self) -> String {
-        self.preview_html.lock().unwrap().clone()
+        self.view.lock().unwrap().preview_html.clone()
     }
 
     // ── Writing ─────────────────────────────────────────────────────────────
@@ -464,14 +483,14 @@ mod tests {
     }
 
     // Regression for #10: opening must not read the file from disk twice.
-    // The loaded ClanFile's own raw bytes are the single source of truth and
-    // must match what is on disk.
+    // The snapshot's own bytes are the ones that were read, and must match
+    // what is on disk at the version it was opened at.
     #[test]
     fn open_populates_state_from_single_read() {
         let (_dir, session, id) = open_temp_clan();
 
-        let guard = session.current.lock().unwrap();
-        let loaded = guard.as_ref().expect("state must hold the opened file");
+        let view = session.view.lock().unwrap();
+        let loaded = view.open.as_ref().expect("state must hold the opened file");
         assert_eq!(loaded.title(), "Viewer Test");
         assert_eq!(
             loaded.bytes(),
