@@ -50,7 +50,10 @@ class BM25:
     # normalisation: at 0.75 a long document is penalised hard for being long. This
     # corpus spans 80-token D&AD overviews to 1000-token whole IPA cases, and the default
     # was pushing complete award cases — the most useful precedent — down the ranking.
-    # Sweep on 310 held-out golden cases: b=0.75 -> 0.906 recall@5, b=0.3 -> 0.958.
+    # Re-measured 2026-09-23 on 150 held-out golden cases with every configuration's index
+    # built holdout-safe (store_local.build_bm25): b=0.75 -> 0.927 recall@5, b=0.3 -> 0.940.
+    # The first sweep reported 0.906 -> 0.958; its variants were scored on an index that
+    # leaked the held-out questions' text, so the gain was overstated about 3x.
     # k1 (term-frequency saturation) stays at the textbook 1.5: lowering it to 1.2 looked
     # like a +0.026 gain on its own, but scored IDENTICALLY to b=0.3 alone when combined,
     # so it was correcting the same length bias twice rather than adding anything.
@@ -152,7 +155,8 @@ def rrf(rankings: Sequence[Sequence[Hashable]], k: int = 10,
     `k` controls how much a top rank is worth relative to merely appearing: a small k
     makes rank 1 dominant, a large k flattens the curve so agreement across lists matters
     more. k=10 rather than the paper's 60, measured: on top of the b=0.3 change it adds
-    a further +0.016 held-out recall@5. With two retrievers that are each already good,
+    a further +0.007 held-out recall@5 (re-measured holdout-safe, 0.940 -> 0.947 on 150 cases;
+    the first, leaky sweep said +0.016). A small gain — three cases — but not a loss. With two retrievers that are each already good,
     a confident top-ranked hit deserves to win more often than pure agreement does.
     `weights` stays 1:1 — tilting it either way scored flat or worse, which is the point
     of rank fusion: the two lists need no calibrating against each other."""

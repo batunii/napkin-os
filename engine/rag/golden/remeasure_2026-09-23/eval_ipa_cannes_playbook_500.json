@@ -1,0 +1,351 @@
+{
+ "n": 1365,
+ "ks": [
+  5,
+  10
+ ],
+ "filtered": true,
+ "groups": {
+  "all": {
+   "n": 1365,
+   "recall@5": 0.98,
+   "recall@10": 0.988
+  },
+  "bucket/craft": {
+   "n": 500,
+   "recall@5": 0.984,
+   "recall@10": 0.992
+  },
+  "bucket/exemplars": {
+   "n": 865,
+   "recall@5": 0.978,
+   "recall@10": 0.986
+  },
+  "kind/specific": {
+   "n": 173,
+   "recall@5": 0.988,
+   "recall@10": 1.0
+  },
+  "kind/templated": {
+   "n": 1192,
+   "recall@5": 0.979,
+   "recall@10": 0.987
+  },
+  "source/cannes": {
+   "n": 365,
+   "recall@5": 0.992,
+   "recall@10": 0.997
+  },
+  "source/ipa": {
+   "n": 500,
+   "recall@5": 0.968,
+   "recall@10": 0.978
+  },
+  "source/playbook": {
+   "n": 500,
+   "recall@5": 0.984,
+   "recall@10": 0.992
+  },
+  "source+kind+split/cannes/specific/holdout": {
+   "n": 13,
+   "recall@5": 1.0,
+   "recall@10": 1.0
+  },
+  "source+kind+split/cannes/specific/seen": {
+   "n": 60,
+   "recall@5": 0.967,
+   "recall@10": 1.0
+  },
+  "source+kind+split/cannes/templated/holdout": {
+   "n": 52,
+   "recall@5": 0.981,
+   "recall@10": 0.981
+  },
+  "source+kind+split/cannes/templated/seen": {
+   "n": 240,
+   "recall@5": 1.0,
+   "recall@10": 1.0
+  },
+  "source+kind+split/ipa/specific/holdout": {
+   "n": 20,
+   "recall@5": 1.0,
+   "recall@10": 1.0
+  },
+  "source+kind+split/ipa/specific/seen": {
+   "n": 80,
+   "recall@5": 1.0,
+   "recall@10": 1.0
+  },
+  "source+kind+split/ipa/templated/holdout": {
+   "n": 80,
+   "recall@5": 0.825,
+   "recall@10": 0.863
+  },
+  "source+kind+split/ipa/templated/seen": {
+   "n": 320,
+   "recall@5": 0.994,
+   "recall@10": 1.0
+  },
+  "source+kind+split/playbook/templated/holdout": {
+   "n": 125,
+   "recall@5": 0.952,
+   "recall@10": 0.968
+  },
+  "source+kind+split/playbook/templated/seen": {
+   "n": 375,
+   "recall@5": 0.995,
+   "recall@10": 1.0
+  },
+  "source+split/cannes/holdout": {
+   "n": 65,
+   "recall@5": 0.985,
+   "recall@10": 0.985
+  },
+  "source+split/cannes/seen": {
+   "n": 300,
+   "recall@5": 0.993,
+   "recall@10": 1.0
+  },
+  "source+split/ipa/holdout": {
+   "n": 100,
+   "recall@5": 0.86,
+   "recall@10": 0.89
+  },
+  "source+split/ipa/seen": {
+   "n": 400,
+   "recall@5": 0.995,
+   "recall@10": 1.0
+  },
+  "source+split/playbook/holdout": {
+   "n": 125,
+   "recall@5": 0.952,
+   "recall@10": 0.968
+  },
+  "source+split/playbook/seen": {
+   "n": 375,
+   "recall@5": 0.995,
+   "recall@10": 1.0
+  },
+  "split/holdout": {
+   "n": 290,
+   "recall@5": 0.928,
+   "recall@10": 0.945
+  },
+  "split/seen": {
+   "n": 1075,
+   "recall@5": 0.994,
+   "recall@10": 1.0
+  }
+ },
+ "misses": [
+  {
+   "query": "Cannes Grand Prix Cannes Lions case study general Direct 2025",
+   "expected": "cannes_0035",
+   "accept_n": 1,
+   "source": "cannes",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "cannes_0046",
+    "cannes_0040",
+    "cannes_0038"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Retail 2022",
+   "expected": "ipa_0036",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0071",
+    "ipa_0089",
+    "ipa_0049"
+   ]
+  },
+  {
+   "query": "How did brands use Cultural Tension to win in Food & Drink?",
+   "expected": "ipa_0038",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0074",
+    "ipa_0349",
+    "ipa_0414"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Alcohol 2018",
+   "expected": "ipa_0047",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0177",
+    "ipa_0163",
+    "ipa_0177"
+   ]
+  },
+  {
+   "query": "How did brands use Purpose to win in Charity & NFP?",
+   "expected": "ipa_0056",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0188",
+    "ipa_0188",
+    "ipa_0487"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Retail 2014",
+   "expected": "ipa_0067",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0400",
+    "ipa_0400",
+    "ipa_0066"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Financial Services 2012",
+   "expected": "ipa_0072",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0406",
+    "ipa_0411",
+    "ipa_0406"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Travel & Tourism 2012",
+   "expected": "ipa_0076",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0139",
+    "ipa_0407",
+    "ipa_0139"
+   ]
+  },
+  {
+   "query": "How did brands use Cultural Tension to win in FMCG?",
+   "expected": "ipa_0081",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0349",
+    "ipa_0164",
+    "ipa_0359"
+   ]
+  },
+  {
+   "query": "IPA Gold case study FMCG 2012",
+   "expected": "ipa_0081",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0413",
+    "ipa_0408",
+    "ipa_0408"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Government & Public Sector 2008",
+   "expected": "ipa_0096",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0446",
+    "ipa_0446",
+    "ipa_0446"
+   ]
+  },
+  {
+   "query": "IPA Gold case study Government & Public Sector 2007",
+   "expected": "ipa_0099",
+   "accept_n": 1,
+   "source": "ipa",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "ipa_0248",
+    "ipa_0248",
+    "ipa_0102"
+   ]
+  },
+  {
+   "query": "5. Where can I find the JWT Account Planning Guide?",
+   "expected": "08",
+   "accept_n": 1,
+   "source": "playbook",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "10",
+    "10",
+    "10"
+   ]
+  },
+  {
+   "query": "3.  Who created the concept of Netnography?",
+   "expected": "100",
+   "accept_n": 1,
+   "source": "playbook",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "99",
+    "16",
+    "58"
+   ]
+  },
+  {
+   "query": "5. What are the alternatives to rigid, process-driven brand strategy frameworks?",
+   "expected": "115",
+   "accept_n": 1,
+   "source": "playbook",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "116",
+    "116",
+    "116"
+   ]
+  },
+  {
+   "query": "5. Is there a practitioner guide to using laddering for brand equity?",
+   "expected": "14",
+   "accept_n": 1,
+   "source": "playbook",
+   "kind": "templated",
+   "holdout": true,
+   "got": [
+    "15",
+    "15",
+    "15"
+   ]
+  }
+ ],
+ "mode": "hybrid"
+}

@@ -183,7 +183,10 @@ python3 rag.py retag --corpus <corpus>/rag --index ./_index_v3 --apply   # metad
 ### Evaluation — `golden.py`, `golden_check.py`, `tune.py`, `simulate.py`
 
 `golden.py` builds 11,651 cases from the corpus's own "Retrieval Queries" with a 1-in-5
-held-out split (held-out recall@5 0.974, recall@10 1.000). `tune.py` sweeps knobs on the
+held-out split. Held-out recall@5 **0.928**, recall@10 **0.945** (290 cases, re-measured
+2026-09-23; the weak spot is templated IPA queries at 0.825). The earlier published 0.974 /
+1.000 came from a tuning sweep whose keyword index leaked held-out question text — fixed in
+`tune.py`, which now builds every configuration's index through `LocalStore.build_bm25()`. `tune.py` sweeps knobs on the
 held-out set only. `simulate.py` shows what a model would actually receive — the golden
 set measures whether the right document is found; only this shows whether it is worth
 reading. Read the misses, not just the number.
@@ -216,3 +219,4 @@ rejected, consequences.
 | # | Decision |
 |---|---|
 | [0001](docs/adr/0001-rag-io-contract.md) | RAG I/O contract: JSON Schema, authority as the only boundary input, live/planned field status |
+| [0002](docs/adr/0002-tuning-rebaseline.md) | Tuning re-baseline after a holdout leak: defaults kept, gain is +2.0 points not +6.8 |

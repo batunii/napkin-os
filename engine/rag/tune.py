@@ -31,7 +31,6 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import golden  # noqa: E402
-import lexical  # noqa: E402
 import rag  # noqa: E402
 
 # name -> kwargs for LocalStore.search_hybrid, plus optional bm25 params.
@@ -40,7 +39,7 @@ def focus_configs() -> dict[str, dict]:
     """Round two: confirm the round-one winners on a bigger sample, sweep the one
     parameter that moved most (BM25 `b`) more finely, and test the winners TOGETHER —
     single-knob sweeps cannot tell you whether two gains are the same gain counted twice."""
-    base = {"n": 50, "rrf_k": 60, "weights": (1.0, 1.0)}
+    base = {"n": 50, "rrf_k": 60, "weights": (1.0, 1.0), "_bm25": {"b": 0.75, "k1": 1.5}}
     out: dict[str, dict] = {"baseline (b0.75 k1.5 rrf60)": dict(base)}
     for b in (0.1, 0.3, 0.5):
         out[f"b={b}"] = {**base, "_bm25": {"b": b}}
@@ -55,16 +54,16 @@ def configs() -> dict[str, dict]:
     (the RRF constant, the dense:lexical weighting, the candidate pool `n`, or one BM25
     parameter). Keys starting with `_` are not search_hybrid() arguments: main() uses
     `_bm25` to rebuild the keyword index for that run."""
-    base = {"n": 50, "rrf_k": 60, "weights": (1.0, 1.0)}
-    out: dict[str, dict] = {"baseline (n50 k60 1:1)": dict(base)}
+    base = {"n": 50, "rrf_k": 60, "weights": (1.0, 1.0), "_bm25": {"b": 0.75, "k1": 1.5}}
+    out: dict[str, dict] = {"baseline (n50 k60 1:1 b0.75)": dict(base)}
     for k in (10, 30, 120):
         out[f"rrf_k={k}"] = {**base, "rrf_k": k}
     for w in ((2.0, 1.0), (1.0, 2.0)):
         out[f"weights dense:lex={w[0]:g}:{w[1]:g}"] = {**base, "weights": w}
     for n in (20, 100):
         out[f"n={n}"] = {**base, "n": n}
-    out["bm25 b=0.3"] = {**base, "_bm25": {"b": 0.3}}
-    out["bm25 k1=1.2"] = {**base, "_bm25": {"k1": 1.2}}
+    out["bm25 b=0.3"] = {**base, "_bm25": {"b": 0.3, "k1": 1.5}}
+    out["bm25 k1=1.2"] = {**base, "_bm25": {"b": 0.75, "k1": 1.2}}
     return out
 
 
@@ -90,10 +89,10 @@ def main() -> None:
     recall@5 against the first row. Needs a store with search_hybrid() and bm25(), i.e.
     the local store.
 
-    A `_bm25` configuration swaps a freshly built BM25 onto the store for its run, and the
-    store's own index is put back at the end. That rebuild passes an empty holdout set to
-    _lexical_text(), so unlike LocalStore.bm25() it indexes the holdout documents'
-    retrieval queries too."""
+    A `_bm25` configuration swaps a BM25 built by store.build_bm25() onto the store for its
+    run — holdout-excluded, exactly like the store's own index — and the store's own index
+    is put back at the end. Baselines state their BM25 parameters too, so every row is
+    scored on an index built the same way."""
     ap = argparse.ArgumentParser()
     ap.add_argument("index")
     ap.add_argument("--golden", default="golden")
@@ -118,11 +117,19 @@ def main() -> None:
         qvecs.update({q: rag._norm(v) for q, v in zip(chunk, vecs)})
         print(f"  embedded {min(i+64, len(uniq))}/{len(uniq)}", file=sys.stderr, flush=True)
 
+    # Every configuration states its BM25 parameters and gets an index built the same way,
+    # holdout excluded (store.build_bm25). An earlier version rebuilt variants with an
+    # empty holdout set while the baseline used the store's holdout-safe index, so every
+    # BM25 variant was scored on the held-out questions' own text and the baseline was not.
     rows, base_bm25 = [], store.bm25()
+    built: dict[tuple, object] = {}
     for name, cfg in cfgs.items():
-        if cfg.get("_bm25"):
-            store._bm25 = lexical.BM25(
-                ((r["id"], store._lexical_text(r, set())) for r in store.scroll()), **cfg["_bm25"])
+        params = cfg.get("_bm25")
+        if params:
+            key = tuple(sorted(params.items()))
+            if key not in built:
+                built[key] = store.build_bm25(**params)
+            store._bm25 = built[key]
         else:
             store._bm25 = base_bm25
         rep = score(store, cases, qvecs, cfg)

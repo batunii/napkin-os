@@ -77,8 +77,9 @@ def test_rrf_weights_let_one_retriever_count_for_more():
 
 def test_tuned_defaults_are_locked_to_the_measured_winners():
     """These two values were chosen by sweeping the golden set, not by convention. If
-    someone restores the textbook defaults, held-out recall@5 drops from 0.974 to 0.906,
-    so the change should be deliberate and re-measured rather than tidy-looking."""
+    someone restores the textbook defaults, held-out recall@5 drops from 0.947 to 0.927
+    (re-measured holdout-safe 2026-09-23, 150 cases), so the change should be deliberate and
+    re-measured rather than tidy-looking."""
     import inspect
     assert inspect.signature(BM25.__init__).parameters["b"].default == 0.3
     assert inspect.signature(BM25.__init__).parameters["k1"].default == 1.5

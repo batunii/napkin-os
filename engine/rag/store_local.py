@@ -177,14 +177,28 @@ class LocalStore(VectorStore):
             parts.append(r["retrieval_queries"])
         return "\n".join(parts)
 
+    def holdout_ids(self) -> set[str]:
+        """Doc ids in the golden holdout this index was built against (manifest
+        `holdout_file`), or an empty set when the index has none. The one place that reads
+        it, so every keyword index built over this store excludes the same documents'
+        retrieval queries."""
+        hf = self.manifest().get("holdout_file")
+        if hf and Path(hf).exists():
+            return set(json.loads(Path(hf).read_text()))
+        return set()
+
+    def build_bm25(self, **params) -> BM25:
+        """A fresh keyword index over every row, holdout-safe, with BM25 `params` (k1, b)
+        overriding the defaults. Used by bm25() and by tune.py, which sweeps parameters —
+        a sweep that built its own index without the holdout exclusion would score its
+        variants on leaked question text while the baseline did not."""
+        holdout = self.holdout_ids()
+        return BM25(((r["id"], self._lexical_text(r, holdout)) for r in self._rows()), **params)
+
     def bm25(self) -> BM25:
         """Built lazily from the rows on first use; rebuilt after any write."""
         if self._bm25 is None:
-            holdout: set[str] = set()
-            hf = self.manifest().get("holdout_file")
-            if hf and Path(hf).exists():
-                holdout = set(json.loads(Path(hf).read_text()))
-            self._bm25 = BM25((r["id"], self._lexical_text(r, holdout)) for r in self._rows())
+            self._bm25 = self.build_bm25()
         return self._bm25
 
     def search_hybrid(self, qvec: list[float], qtext: str, k: int = 5, where: dict | None = None,

@@ -91,3 +91,25 @@ def test_retag_updates_metadata_only_when_text_is_unchanged(tmp_path, monkeypatc
 
     (corpus / "c1.md").write_text(body.replace("Long enough body sentence here.", "Completely different text now."))
     assert rag.retag(corpus, idx)["text_changed_needs_rebuild"] > 0   # refuses: vector would be stale
+
+
+def test_rebuilt_keyword_index_still_excludes_holdout_questions(tmp_path):
+    """tune.py sweeps BM25 parameters by rebuilding the index. A rebuild that skipped the
+    holdout exclusion scored every variant on the held-out questions' own text while the
+    baseline was not — the defect that inflated the original sweep."""
+    import json as _json
+    from store_local import LocalStore
+    hold = tmp_path / "holdout.json"
+    hold.write_text(_json.dumps(["held"]))
+    st = LocalStore(tmp_path / "ix")
+    st._rows_cache = None
+    rows = [{"id": "held#0", "text": "body", "retrieval_queries": "zebra quokka",
+             "metadata": {"doc_id": "held"}},
+            {"id": "seen#0", "text": "body", "retrieval_queries": "zebra quokka",
+             "metadata": {"doc_id": "seen"}}]
+    st._rows = lambda: rows
+    st.manifest = lambda: {"holdout_file": str(hold)}
+    assert st.holdout_ids() == {"held"}
+    for params in ({}, {"b": 0.75, "k1": 1.5}, {"b": 0.1}):
+        hits = [d for _, d in st.build_bm25(**params).search("zebra quokka", k=5)]
+        assert hits == ["seen#0"], (params, hits)
