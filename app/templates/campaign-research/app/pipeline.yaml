@@ -7,7 +7,7 @@
 # No handler code exists for these yet. Contract: docs/contracts/campaign-clan.md.
 pipeline: napkin-campaign-research
 version: 1
-request_kind: agent
+request_kind: middleware
 contract: campaign-clan/1          # docs/contracts/campaign-clan.md
 
 tasks:
