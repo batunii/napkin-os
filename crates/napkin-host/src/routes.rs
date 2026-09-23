@@ -192,8 +192,8 @@ pub async fn dispatch_async(
 ) -> HostResponse {
     #[cfg(feature = "native")]
     if req.path == "/api-proxy" {
-        return match api_proxy(session, cfg, &req.body_str()).await {
-            Ok(v) => HostResponse::json(200, &v),
+        return match api_proxy(ctx, session, cfg, &req.body_str()).await {
+            Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
             Err(e) => e.into(),
         };
     }

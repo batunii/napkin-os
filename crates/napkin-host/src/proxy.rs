@@ -8,7 +8,10 @@
 use serde_json::Value;
 
 use crate::config::{resolve_proxy, HostConfig};
+use crate::ctx::Ctx;
 use crate::error::{HostError, HostResult};
+use crate::event::HostEvent;
+use crate::ops::middleware;
 use crate::session::Session;
 
 /// POST `payload` verbatim to the endpoint resolved for `request_kind`, add
@@ -52,7 +55,16 @@ pub async fn proxy_call(cfg: &dyn HostConfig, request_kind: &str, payload: Value
 /// route. Keys stay host-side; `payload` is forwarded verbatim, enriched with
 /// the open artifact's intelligence layer so lineage, decisions, schema and
 /// context travel to the agent — not just what the iframe sent.
-pub async fn api_proxy(session: &Session, cfg: &dyn HostConfig, body: &str) -> HostResult<Value> {
+///
+/// `request_kind: "middleware"` is the one kind whose reply the host acts on:
+/// see [`Session::settle_middleware`]. Every other kind comes back to the app
+/// exactly as the endpoint answered, with no events.
+pub async fn api_proxy(
+    ctx: &Ctx,
+    session: &Session,
+    cfg: &dyn HostConfig,
+    body: &str,
+) -> HostResult<(Value, Vec<HostEvent>)> {
     let req: Value = serde_json::from_str(body)
         .map_err(|e| HostError::bad_request(format!("invalid JSON: {e}")))?;
     let kind = req
@@ -67,7 +79,11 @@ pub async fn api_proxy(session: &Session, cfg: &dyn HostConfig, body: &str) -> H
     let clan_ctx = session.clan_context_for_agent();
     let outgoing =
         serde_json::json!({ "request_kind": kind, "payload": payload, "clan": clan_ctx });
-    Ok(proxy_call(cfg, &kind, outgoing).await)
+    let reply = proxy_call(cfg, &kind, outgoing).await;
+    if kind == middleware::REQUEST_KIND {
+        return Ok(session.settle_middleware(ctx, reply));
+    }
+    Ok((reply, Vec::new()))
 }
 
 /// Home-screen prompt → the unified proxy with `request_kind = "agent"`.
