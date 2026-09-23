@@ -758,3 +758,265 @@ fn an_ordinary_patch_data_afterwards_keeps_the_members() {
         .unwrap_err();
     assert_eq!(err.status, 400);
 }
+
+// ── Chat intake: one long job that stages its changes ───────────────────────
+
+/// A `start_campaign` poll: the job in `state` at `stage`, carrying `change`.
+fn campaign_poll(state: &str, stage: &str, change: Value) -> Value {
+    json!({
+        "api": "napkin.middleware/1",
+        "task": "start_campaign",
+        "handler": "start_campaign@1.0",
+        "job": { "id": "job_intake1", "state": state, "stage": stage,
+                 "progress": { "done": 1, "total": 6 },
+                 "started_at": "2026-09-24T10:00:00Z", "finished_at": null, "error": null },
+        "result": { "summary": format!("at {stage}"),
+                    "messages": [{ "id": "msg_a1", "text": "Reading the brief", "stage": stage }] },
+        "change": change,
+        "trace": { "scope": { "org": "dev", "brand": "dev" }, "backend": "mock-backend",
+                   "model": null, "hits": [], "usage": { "input_tokens": 0, "output_tokens": 0 } }
+    })
+}
+
+fn field(value: &str, decision: &str) -> Value {
+    json!({ "value": value, "origin": "extracted", "gate": "brief",
+            "source": { "material_id": "mat_email01", "locator": "¶1" }, "decision": decision })
+}
+
+fn edit(clan: &Value, id: &str, path: &str) -> Value {
+    json!({ "id": id, "kind": "edit", "agent": "start_campaign@1.0", "action": "staged",
+            "rationale": "from the brief",
+            "targets": [format!("{}#{path}", clan["id"].as_str().unwrap())], "cites": ["mat_email01"] })
+}
+
+/// What `identify` finished: the brand, one pin, one decision — computed for
+/// `clan` as the job read it when it started.
+fn identify_change(clan: &Value) -> Value {
+    json!({
+        "doc": clan["id"], "base_version": clan["version"],
+        "read": { "campaign.brand": null },
+        "data_patch": { "campaign": { "brand": field("Lúnasa", "d_01JB0IDENT1") } },
+        "facts_append": [ fact("f_01JB0PIN001", 0.61, false) ],
+        "decisions": [ edit(clan, "d_01JB0IDENT1", "campaign.brand") ],
+    })
+}
+
+/// The same job one stage later: everything `identify` delivered, repeated,
+/// plus what `select` added. Same base — the job read the document once.
+fn select_change(clan: &Value) -> Value {
+    let mut c = identify_change(clan);
+    c["read"]["campaign.objective"] = Value::Null;
+    c["data_patch"]["campaign"]["objective"] = field("win midweek", "d_01JB0SELCT2");
+    c["facts_append"]
+        .as_array_mut()
+        .unwrap()
+        .push(fact("f_01JB0PIN002", 0.44, false));
+    c["decisions"]
+        .as_array_mut()
+        .unwrap()
+        .push(edit(clan, "d_01JB0SELCT2", "campaign.objective"));
+    c
+}
+
+#[test]
+fn a_running_reply_applies_its_staged_change() {
+    for state in ["queued", "running", "needs_input"] {
+        let f = fixture();
+        let clan = f.session.clan_context_for_agent();
+        let poll = campaign_poll(state, "identify", identify_change(&clan));
+
+        let (out, events) = settle(&f, poll.clone());
+        let settled = &out["data"]["change"];
+        assert_eq!(settled["applied"], true, "{state}: {out}");
+        assert_eq!(settled["applied_fields"], json!(["campaign.brand"]));
+        assert_eq!(events.len(), 1, "{state}");
+        // The job is the app's to read, as the middleware sent it.
+        assert_eq!(out["data"]["job"], poll["job"], "{state}");
+        assert_eq!(out["data"]["result"], poll["result"]);
+        assert_eq!(out["clan"]["version"], settled["version"]);
+
+        let after = on_disk(&f);
+        let data = yaml(&after, "shared/data.yaml");
+        assert_eq!(data["campaign"]["brand"]["value"], "Lúnasa");
+        assert_eq!(yaml(&after, FACTS_PATH)["facts"][0]["id"], "f_01JB0PIN001");
+        assert!(chain(&after).ids().contains("d_01JB0IDENT1"));
+    }
+}
+
+#[test]
+fn a_later_poll_adds_only_what_is_new() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(
+        &f,
+        campaign_poll("running", "identify", identify_change(&clan)),
+    );
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    let chain_len = chain(&on_disk(&f)).decisions.len();
+
+    // The next poll repeats identify's part over the base the job started
+    // from — stale now, by the job's own first write.
+    let (out, events) = settle(&f, campaign_poll("running", "select", select_change(&clan)));
+    let settled = &out["data"]["change"];
+    assert_eq!(settled["applied"], true, "{out}");
+    assert_eq!(settled["base_stale"], true);
+    assert_eq!(
+        settled["applied_fields"],
+        json!(["campaign.objective"]),
+        "the repeated field is not applied again"
+    );
+    assert_eq!(settled["contested_fields"], json!([]));
+    assert_eq!(events.len(), 1);
+
+    let after = on_disk(&f);
+    let data = yaml(&after, "shared/data.yaml");
+    assert_eq!(data["campaign"]["brand"]["value"], "Lúnasa");
+    assert_eq!(data["campaign"]["objective"]["value"], "win midweek");
+    let facts = yaml(&after, FACTS_PATH)["facts"].clone();
+    let ids: Vec<&str> = facts
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["f_01JB0PIN001", "f_01JB0PIN002"], "each pin once");
+    let c = chain(&after);
+    assert_eq!(c.decisions.len(), chain_len + 1, "only the new decision");
+    for id in ["d_01JB0IDENT1", "d_01JB0SELCT2"] {
+        assert_eq!(
+            c.decisions
+                .iter()
+                .filter(|d| d.id.as_deref() == Some(id))
+                .count(),
+            1,
+            "{id} once"
+        );
+    }
+    assert!(clan_sdk::validate(&after).is_valid());
+
+    // The done poll repeats it all: nothing new.
+    let before = std::fs::read(f.id.as_str()).unwrap();
+    let (out, events) = settle(&f, campaign_poll("done", "report", select_change(&clan)));
+    assert_eq!(
+        out["data"]["change"],
+        json!({ "applied": false, "reason": "already applied" })
+    );
+    assert!(events.is_empty());
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
+}
+
+// A person confirms what an earlier stage proposed; the next poll repeats that
+// stage. The repeat was judged when it arrived — it does not come back as a
+// contest against the person's confirmation.
+#[test]
+fn a_repeated_stage_does_not_contest_what_a_person_did_since() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    settle(
+        &f,
+        campaign_poll("needs_input", "identify", identify_change(&clan)),
+    );
+    f.session
+        .patch_data(r#"{"patch":{"campaign":{"brand":{"value":"Lúnasa","origin":"confirmed","gate":"brief","by":"human:local","decision":"d_01JB0HUMAN1"}}},"agent":"human","action":"confirmed the brand"}"#)
+        .unwrap();
+
+    let (out, _) = settle(&f, campaign_poll("running", "select", select_change(&clan)));
+    let settled = &out["data"]["change"];
+    assert_eq!(settled["applied"], true, "{out}");
+    assert_eq!(settled["contested_fields"], json!([]));
+    assert_eq!(settled["applied_fields"], json!(["campaign.objective"]));
+
+    let after = on_disk(&f);
+    let data = yaml(&after, "shared/data.yaml");
+    assert_eq!(
+        data["campaign"]["brand"]["origin"], "confirmed",
+        "the person's stands"
+    );
+    assert_eq!(data["campaign"]["objective"]["value"], "win midweek");
+    assert!(chain(&after)
+        .decisions
+        .iter()
+        .all(|d| d.kind.as_deref() != Some("contest")));
+}
+
+#[test]
+fn needs_input_reaches_the_app_untouched() {
+    let question = json!({
+        "id": "q_brand", "text": "Which of these is the client?",
+        "options": [ { "id": "o1", "label": "Lúnasa", "value": "brand/lunasa" },
+                     { "id": "o2", "label": "Samhain", "value": "brand/samhain" },
+                     { "id": "o3", "label": "None of these", "value": null } ],
+        "allow_text": true, "address": "campaign.brand",
+    });
+
+    // Without a change: the envelope is the middleware's, byte for byte.
+    let f = fixture();
+    let before = std::fs::read(f.id.as_str()).unwrap();
+    let mut asking = campaign_poll("needs_input", "identify", Value::Null);
+    asking["job"]["question"] = question.clone();
+    let (out, events) = settle(&f, asking.clone());
+    assert_eq!(out, envelope(asking));
+    assert!(events.is_empty());
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before);
+
+    // With one: the change lands and the question still reaches the app.
+    let clan = f.session.clan_context_for_agent();
+    let mut asking = campaign_poll("needs_input", "identify", identify_change(&clan));
+    asking["job"]["question"] = question.clone();
+    let (out, _) = settle(&f, asking.clone());
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    assert_eq!(out["data"]["job"]["state"], "needs_input");
+    assert_eq!(out["data"]["job"]["stage"], "identify");
+    assert_eq!(out["data"]["job"]["question"], question);
+    assert_eq!(out["data"]["job"], asking["job"]);
+}
+
+// `intake.messages` is a map two parties add to. A person's message and the
+// middleware's land side by side: different keys, no stale-base contest.
+#[test]
+fn messages_added_by_both_parties_do_not_contest() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    // The person writes while the job runs, so the job's base goes stale.
+    f.session
+        .patch_data(r#"{"patch":{"intake":{"messages":{"msg_u2":{"role":"user","text":"also Portugal","at":"2026-09-24T10:00:05Z"}}}},"agent":"human","action":"sent a message"}"#)
+        .unwrap();
+
+    let doc_id = clan["id"].as_str().unwrap();
+    let change = json!({
+        "doc": doc_id, "base_version": clan["version"],
+        "read": { "intake.messages.msg_a1": null },
+        "data_patch": { "intake": { "messages": { "msg_a1": {
+            "role": "agent", "text": "Reading the brief", "at": "2026-09-24T10:00:04Z",
+            "job_id": "job_intake1", "stage": "extract" } } } },
+    });
+    let (out, _) = settle(&f, campaign_poll("running", "extract", change.clone()));
+    let settled = &out["data"]["change"];
+    assert_eq!(settled["applied"], true, "{out}");
+    assert_eq!(settled["base_stale"], true);
+    assert_eq!(settled["applied_fields"], json!(["intake.messages.msg_a1"]));
+    assert_eq!(settled["contested_fields"], json!([]));
+
+    let data = yaml(&on_disk(&f), "shared/data.yaml");
+    let messages = data["intake"]["messages"].as_object().unwrap();
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert_eq!(messages["msg_u2"]["role"], "user");
+    assert_eq!(messages["msg_a1"]["role"], "agent");
+    assert_eq!(
+        out["clan"]["data"]["intake"]["messages"]["msg_u2"]["text"],
+        "also Portugal"
+    );
+
+    // Another person's message, then the same agent message again on a later
+    // poll: still nothing to contest, nothing new to write.
+    f.session
+        .patch_data(r#"{"patch":{"intake":{"messages":{"msg_u3":{"role":"user","text":"and Spain","at":"2026-09-24T10:00:09Z"}}}},"agent":"human","action":"sent a message"}"#)
+        .unwrap();
+    let (out, _) = settle(&f, campaign_poll("running", "identify", change));
+    assert_eq!(
+        out["data"]["change"],
+        json!({ "applied": false, "reason": "already applied" })
+    );
+    let data = yaml(&on_disk(&f), "shared/data.yaml");
+    assert_eq!(data["intake"]["messages"].as_object().unwrap().len(), 3);
+}

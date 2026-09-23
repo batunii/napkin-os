@@ -33,6 +33,10 @@ use super::edit::attributed;
 use super::members::{self, Member, FACTS, FINDINGS, PROJECTION_KEY};
 use super::{json_merge, Outcome};
 
+/// The transport verb that reads a job without starting work: the one
+/// middleware task the web product does not charge to the agent quota.
+pub const JOB_STATUS: &str = "job_status";
+
 /// The one API version this host speaks.
 pub const API: &str = "napkin.middleware/1";
 
@@ -109,6 +113,11 @@ pub fn refused(reason: impl Into<String>) -> Value {
 /// a store has applied it, so the caller adds it. A stale base is judged field
 /// by field against the change's read-set (`split_patch`); a change of
 /// which nothing is new is refused as `already applied`.
+///
+/// The job's state is not consulted: a `queued`, `running` or `needs_input`
+/// reply may carry the change for the stages finished so far, and it applies
+/// exactly as a `done` one. A later poll that repeats part of it adds only
+/// what is new (see [`delivered_before`]). The envelope — the job's `state`, `stage` and `question` reach the app untouched.
 pub fn apply(outer: &Ctx, doc: &Document, reply: &Value) -> HostResult<Outcome> {
     check_api(reply)?;
     let change = match reply.get("change") {
@@ -190,17 +199,18 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     if stale && read.is_none() && !leaves.is_empty() {
         return Err(HostError::conflict("stale base and no read-set; rerun"));
     }
-    let split = split_patch(&leaves, read, &current, stale)?;
-
-    // 4. What is already in the document is not added again: a pin or finding
-    //    with the same id and content, a decision with the same id, a contest
-    //    already open over the same value.
     let chain_before = if clan.has_entry(CHAIN) {
         DecisionChain::from_yaml(&clan.read_entry(CHAIN)?)?
     } else {
         DecisionChain::default()
     };
     let known = known_decision_ids(&chain_before);
+    let delivered = |field: &str| delivered_before(&decisions, &known, field);
+    let split = split_patch(&leaves, read, &current, stale, &delivered)?;
+
+    // 4. What is already in the document is not added again: a pin or finding
+    //    with the same id and content, a decision with the same id, a contest
+    //    already open over the same value.
     let handler = ctx.handler.clone().unwrap_or_else(|| JOB.to_string());
     let base = change
         .get("base_version")
@@ -433,8 +443,35 @@ fn covering<'a>(read: &'a serde_json::Map<String, Value>, leaf: &[String]) -> Op
         .map(String::as_str)
 }
 
-/// Sort the patch's leaves by the stale-base rule. On a current base every
-/// leaf applies. On a stale one each leaf is judged by the read-set key that
+/// True when this change already reached the document for `field`: some of
+/// its decisions are about that field, and every one of them is already in
+/// the chain (recorded, or held in a contest).
+///
+/// A long job's polls repeat what earlier stages delivered (`start_campaign`
+/// answers each poll with the stages finished so far). The repeated part was
+/// judged when it first arrived — applied or contested — and a person may have
+/// acted on it since, confirming the field or resolving the contest. Judging
+/// it again against the stale base would contest the person's value with the
+/// job's own earlier write, so it is skipped: neither applied again nor
+/// contested. A field no decision speaks for is judged as usual (a repeat of
+/// it is a no-op there because the document already holds what it writes).
+fn delivered_before(
+    decisions: &[Value],
+    known: &std::collections::BTreeSet<String>,
+    field: &str,
+) -> bool {
+    let mut about = decisions.iter().filter(|d| touches(d, field)).peekable();
+    about.peek().is_some()
+        && about.all(|d| {
+            d.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| known.contains(id))
+        })
+}
+
+/// Sort the patch's leaves by the stale-base rule. A field this change
+/// already delivered (`delivered`) is skipped whole. On a current base every
+/// other leaf applies. On a stale one each leaf is judged by the read-set key that
 /// covers it, all of a key's leaves together: if the document still holds
 /// there what the job read — or already holds what the job would write — they
 /// apply; if not, that key becomes one contest and none of its leaves is
@@ -444,6 +481,7 @@ fn split_patch(
     read: Option<&serde_json::Map<String, Value>>,
     current: &Value,
     stale: bool,
+    delivered: &dyn Fn(&str) -> bool,
 ) -> HostResult<Split> {
     let mut patch = Value::Object(Default::default());
     let mut applied: Vec<String> = Vec::new();
@@ -469,6 +507,9 @@ fn split_patch(
     }
 
     for (key, group) in groups {
+        if delivered(&key) {
+            continue;
+        }
         let apply_group = |patch: &mut Value| {
             for (path, value) in &group {
                 set_path(patch, path, value.clone());
