@@ -6,6 +6,12 @@
       "name": "Brief Maker",
       "version": "0.2.0",
       "url": "apps/brief-maker.app.clan"
+    },
+    {
+      "app_id": "ie.napkin.campaign-research",
+      "name": "Research Tool",
+      "version": "0.1.0",
+      "url": "apps/campaign-research.app.clan"
     }
   ]
 }
