@@ -2,12 +2,21 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Where `.clan` bytes live.
+//! Where documents live, split by what a caller needs from them.
 //!
-//! The host never touches the filesystem directly — it asks a [`DocStore`].
-//! On the desktop that store is the filesystem itself ([`FsStore`]) and a
-//! [`DocId`] is a path; a hosted deployment can back the same trait with
-//! per-tenant object storage without any handler changing.
+//! The host never touches the filesystem directly. It asks two ports:
+//!
+//! - a [`PartStore`] holds document bytes: read one as it stands, and apply a
+//!   [`Change`]. `apply` is the only way anything is written — creating a
+//!   document is a change too — so the version check (W2-A4) and the seal
+//!   check (W5-Z1) have exactly one place to live.
+//! - a [`Library`] knows the layout: which documents are installed apps, which
+//!   are instances, where the home app and a fork branch go. It names things;
+//!   it never writes them.
+//!
+//! On the desktop both are the filesystem ([`FsStore`]) and a [`DocId`] is a
+//! path; a hosted deployment backs the same traits with per-tenant storage and
+//! no handler changes.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -15,6 +24,8 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "native")]
 use crate::error::HostError;
 use crate::error::HostResult;
+
+pub use crate::document::{Base, Change, Version};
 
 /// Opaque identity of one document within a store.
 ///
@@ -52,20 +63,33 @@ impl From<PathBuf> for DocId {
     }
 }
 
-pub trait DocStore: Send + Sync {
+/// Document bytes, and the single write funnel.
+pub trait PartStore: Send + Sync {
+    /// The document as it stands now.
     fn read(&self, id: &DocId) -> HostResult<Vec<u8>>;
-    fn write(&self, id: &DocId, bytes: &[u8]) -> HostResult<()>;
+
     fn exists(&self, id: &DocId) -> bool;
 
+    /// The version `id` is at now. For a packed archive, its hash.
+    fn version(&self, id: &DocId) -> HostResult<Version> {
+        Ok(Version::of_archive(&self.read(id)?))
+    }
+
+    /// Make `change` true, and report the version the document is now at.
+    ///
+    /// The only write path in the host. Every operation returns a [`Change`]
+    /// and a shell (or a library helper acting for one) hands it here.
+    fn apply(&self, change: &Change) -> HostResult<Version>;
+}
+
+/// The app library's layout. Names documents; never writes them.
+pub trait Library: Send + Sync {
     /// Every `.clan` in the app library that might be an installed template.
     /// The caller opens each and keeps the ones whose manifest says so.
     fn app_candidates(&self) -> Vec<DocId>;
 
     /// Where the template for `app_id` lives (whether or not it is installed).
     fn app_template(&self, app_id: &str) -> DocId;
-
-    /// Install template `bytes` for `app_id`, returning where it landed.
-    fn install_template(&self, app_id: &str, bytes: &[u8]) -> HostResult<DocId>;
 
     /// Every document instance in the library, in no particular order.
     fn documents(&self) -> Vec<DocId>;
@@ -80,6 +104,24 @@ pub trait DocStore: Send + Sync {
 
     /// Where a fork branch for `agent` belongs, relative to `parent`.
     fn fork_branch(&self, parent: &DocId, agent: &str) -> DocId;
+}
+
+/// A store that is both — what every shell actually has, and what the library
+/// helpers take. Implemented for anything that implements the two halves.
+pub trait DocStore: PartStore + Library {
+    /// This store as its byte half, for code that must not see the layout.
+    fn parts(&self) -> &dyn PartStore;
+    /// This store as its layout half, for code that must not see the bytes.
+    fn library(&self) -> &dyn Library;
+}
+
+impl<T: PartStore + Library> DocStore for T {
+    fn parts(&self) -> &dyn PartStore {
+        self
+    }
+    fn library(&self) -> &dyn Library {
+        self
+    }
 }
 
 /// The desktop store: the filesystem, plus the two well-known library dirs.
@@ -119,19 +161,32 @@ fn path_of(id: &DocId) -> PathBuf {
 }
 
 #[cfg(feature = "native")]
-impl DocStore for FsStore {
+impl PartStore for FsStore {
     fn read(&self, id: &DocId) -> HostResult<Vec<u8>> {
         std::fs::read(path_of(id)).map_err(|e| HostError::not_found(e.to_string()))
-    }
-
-    fn write(&self, id: &DocId, bytes: &[u8]) -> HostResult<()> {
-        std::fs::write(path_of(id), bytes).map_err(|e| HostError::internal(e.to_string()))
     }
 
     fn exists(&self, id: &DocId) -> bool {
         path_of(id).exists()
     }
 
+    /// A file write. Deliberately unchecked for now: `change.base` says what
+    /// the writer expected to find, and comparing it with
+    /// `self.version(&change.doc)` right here — re-read from disk, not
+    /// remembered from open — is the whole of W2-A4.
+    fn apply(&self, change: &Change) -> HostResult<Version> {
+        let path = path_of(&change.doc);
+        // An install lands in a directory nobody has made yet.
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(|e| HostError::internal(e.to_string()))?;
+        }
+        std::fs::write(&path, &change.bytes).map_err(|e| HostError::internal(e.to_string()))?;
+        Ok(change.archive_version())
+    }
+}
+
+#[cfg(feature = "native")]
+impl Library for FsStore {
     fn app_candidates(&self) -> Vec<DocId> {
         let mut out = Vec::new();
         let Ok(rd) = std::fs::read_dir(&self.apps_dir) else {
@@ -150,14 +205,6 @@ impl DocStore for FsStore {
 
     fn app_template(&self, app_id: &str) -> DocId {
         DocId::from(self.apps_dir.join(app_id).join("app.clan"))
-    }
-
-    fn install_template(&self, app_id: &str, bytes: &[u8]) -> HostResult<DocId> {
-        let dir = self.apps_dir.join(app_id);
-        std::fs::create_dir_all(&dir).map_err(|e| HostError::internal(e.to_string()))?;
-        let dest = DocId::from(dir.join("app.clan"));
-        self.write(&dest, bytes)?;
-        Ok(dest)
     }
 
     fn documents(&self) -> Vec<DocId> {

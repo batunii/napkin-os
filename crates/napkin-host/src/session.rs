@@ -24,7 +24,7 @@ use crate::html::{
     strip_scripts,
 };
 use crate::log::log;
-use crate::store::{DocId, DocStore};
+use crate::store::{Change, DocId, DocStore, Version};
 
 /// Napkin's app-signing public key (ed25519, base64). Safe to embed and ship
 /// open-source: it can only VERIFY signatures, never forge them. Apps signed by
@@ -152,7 +152,8 @@ impl Session {
     /// Replace the open document's bytes: write through the store, then reload
     /// so the in-memory archive and the stored one can never diverge.
     fn commit(loaded: &mut LoadedClan, store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<()> {
-        store.write(&loaded.id, &bytes)?;
+        let base = Version::of_archive(loaded.clan.raw_bytes());
+        store.apply(&Change::replace(loaded.id.clone(), base, bytes.clone()))?;
         loaded.clan = ClanFile::from_bytes(bytes)?;
         Ok(())
     }
@@ -532,7 +533,8 @@ impl Session {
                         "refusing to overwrite {branch}"
                     )));
                 }
-                self.store.write(&branch, bytes)?;
+                self.store
+                    .apply(&Change::create(branch.clone(), bytes.clone()))?;
                 written.push(serde_json::json!({ "agent": agent_id, "path": branch.to_string() }));
             }
             Ok(serde_json::json!({ "ok": true, "branches": written }))

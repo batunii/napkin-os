@@ -10,12 +10,12 @@
 //! visitor downloads. A demo anyone can open should not quietly accumulate
 //! other people's client briefs in their browser.
 //!
-//! Persistence would be an OPFS-backed `DocStore` and nothing else would move.
+//! Persistence would be an OPFS-backed `PartStore` and nothing else would move.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use napkin_host::{DocId, DocStore, HostError, HostResult};
+use napkin_host::{Change, DocId, HostError, HostResult, Library, PartStore, Version};
 
 /// The id shapes the rest of the host expects: `doc-…`, `app-…`, `home-…`.
 /// With no paths involved there is nothing to sanitise — a key is a key.
@@ -47,7 +47,7 @@ impl MemStore {
     }
 }
 
-impl DocStore for MemStore {
+impl PartStore for MemStore {
     fn read(&self, id: &DocId) -> HostResult<Vec<u8>> {
         self.docs
             .lock()
@@ -57,15 +57,22 @@ impl DocStore for MemStore {
             .ok_or_else(|| HostError::not_found(format!("no such document: {id}")))
     }
 
-    fn write(&self, id: &DocId, bytes: &[u8]) -> HostResult<()> {
-        self.docs.lock().unwrap().insert(id.clone(), bytes.to_vec());
-        Ok(())
-    }
-
     fn exists(&self, id: &DocId) -> bool {
         self.docs.lock().unwrap().contains_key(id)
     }
 
+    /// One tab, one thread, one writer: there is nothing for the version check
+    /// (W2-A4) to catch here yet, but this is where it would go.
+    fn apply(&self, change: &Change) -> HostResult<Version> {
+        self.docs
+            .lock()
+            .unwrap()
+            .insert(change.doc.clone(), change.bytes.clone());
+        Ok(change.archive_version())
+    }
+}
+
+impl Library for MemStore {
     fn app_candidates(&self) -> Vec<DocId> {
         self.ids()
             .into_iter()
@@ -75,12 +82,6 @@ impl DocStore for MemStore {
 
     fn app_template(&self, app: &str) -> DocId {
         DocId::new(format!("app-{}", slug(app)))
-    }
-
-    fn install_template(&self, app: &str, bytes: &[u8]) -> HostResult<DocId> {
-        let id = self.app_template(app);
-        self.write(&id, bytes)?;
-        Ok(id)
     }
 
     fn documents(&self) -> Vec<DocId> {

@@ -16,6 +16,7 @@
 
 pub mod config;
 pub mod ctx;
+pub mod document;
 pub mod error;
 pub mod event;
 #[cfg(feature = "native")]
@@ -34,6 +35,7 @@ pub mod store;
 pub use config::FsConfig;
 pub use config::{agent_base_url, resolve_proxy, HostConfig, NoConfig, WorkspaceConfig};
 pub use ctx::{Actor, Ctx, Scope};
+pub use document::{Base, Change, Document, Version};
 pub use error::{HostError, HostResult};
 pub use event::HostEvent;
 pub use library::{
@@ -47,4 +49,4 @@ pub use routes::{
 pub use session::{AppMeta, LineageInfo, ManifestInfo, OpenResult, Session};
 #[cfg(feature = "native")]
 pub use store::FsStore;
-pub use store::{DocId, DocStore};
+pub use store::{DocId, DocStore, Library, PartStore};

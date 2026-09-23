@@ -20,7 +20,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_core::Stream;
 use napkin_host::{
-    export, library, proxy, DocId, InstalledApp, OpenResult, RecentDoc, SpinoffTarget,
+    export, library, proxy, Change, DocId, InstalledApp, OpenResult, RecentDoc, SpinoffTarget,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -203,12 +203,14 @@ async fn upload_document(
     }
     let ws = ctx.workspace(&tenant);
     let doc = doc_id(&format!("upload-{}", uuid::Uuid::new_v4().simple()));
-    ws.store.write(&doc, &body)?;
     // Refuse anything that is not a readable archive, rather than leaving a
-    // corrupt document in the library.
+    // corrupt document in the library — so check before writing, not after.
     if let Err(e) = clan_sdk::ClanFile::from_bytes(body.to_vec()) {
         return Err(ApiError::new(400, format!("not a readable .clan: {e}")));
     }
+    // A fresh uuid: this is a new document, never a replacement.
+    ws.store
+        .apply(&Change::create(doc.clone(), body.to_vec()))?;
     Ok(Json(open_view(&ctx, &tenant, &ws, doc)?))
 }
 

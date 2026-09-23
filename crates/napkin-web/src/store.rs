@@ -17,11 +17,12 @@
 //! <root>/<tenant>/home-<version>.clan       home-<version>
 //! ```
 //!
-//! That the same handlers serve both shapes is the whole point of `DocStore`.
+//! That the same handlers serve both shapes is the whole point of splitting
+//! storage into a `PartStore` and a `Library`.
 
 use std::path::PathBuf;
 
-use napkin_host::{DocId, DocStore, HostError, HostResult};
+use napkin_host::{Change, DocId, HostError, HostResult, Library, PartStore, Version};
 
 pub struct TenantStore {
     root: PathBuf,
@@ -89,24 +90,29 @@ pub fn app_id(app: &str) -> DocId {
     DocId::new(format!("app-{}", slugify(app)))
 }
 
-impl DocStore for TenantStore {
+impl PartStore for TenantStore {
     fn read(&self, id: &DocId) -> HostResult<Vec<u8>> {
         let path = self.path_for(id)?;
         std::fs::read(&path).map_err(|e| HostError::not_found(format!("{id}: {e}")))
-    }
-
-    fn write(&self, id: &DocId, bytes: &[u8]) -> HostResult<()> {
-        let path = self.path_for(id)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| HostError::internal(e.to_string()))?;
-        }
-        std::fs::write(&path, bytes).map_err(|e| HostError::internal(e.to_string()))
     }
 
     fn exists(&self, id: &DocId) -> bool {
         self.path_for(id).map(|p| p.exists()).unwrap_or(false)
     }
 
+    /// The only write. Unchecked until W2-A4: `change.base` against
+    /// `self.version(&change.doc)` belongs here.
+    fn apply(&self, change: &Change) -> HostResult<Version> {
+        let path = self.path_for(&change.doc)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| HostError::internal(e.to_string()))?;
+        }
+        std::fs::write(&path, &change.bytes).map_err(|e| HostError::internal(e.to_string()))?;
+        Ok(change.archive_version())
+    }
+}
+
+impl Library for TenantStore {
     fn app_candidates(&self) -> Vec<DocId> {
         let Ok(rd) = std::fs::read_dir(self.apps_dir()) else {
             return Vec::new();
@@ -120,12 +126,6 @@ impl DocStore for TenantStore {
 
     fn app_template(&self, app: &str) -> DocId {
         app_id(app)
-    }
-
-    fn install_template(&self, app: &str, bytes: &[u8]) -> HostResult<DocId> {
-        let id = app_id(app);
-        self.write(&id, bytes)?;
-        Ok(id)
     }
 
     fn documents(&self) -> Vec<DocId> {
@@ -221,7 +221,8 @@ mod tests {
         let b = TenantStore::new(dir.path().join("b"));
         let id = doc_id("shared-name");
 
-        a.write(&id, b"tenant a's bytes").unwrap();
+        a.apply(&Change::create(id.clone(), b"tenant a's bytes".to_vec()))
+            .unwrap();
         assert!(
             !b.exists(&id),
             "the same id in another tenant must not resolve"
@@ -242,10 +243,12 @@ mod tests {
     fn listings_round_trip_through_ids() {
         let (_d, s, _root) = store();
         let id = doc_id("brief-1a2b");
-        s.write(&id, b"x").unwrap();
+        s.apply(&Change::create(id.clone(), b"x".to_vec())).unwrap();
         assert_eq!(s.documents(), vec![id]);
 
-        let app = s.install_template("ie.napkin.home", b"y").unwrap();
+        let app = s.app_template("ie.napkin.home");
+        s.apply(&Change::create(app.clone(), b"y".to_vec()))
+            .unwrap();
         assert_eq!(s.app_candidates(), vec![app.clone()]);
         assert_eq!(s.read(&app).unwrap(), b"y");
     }

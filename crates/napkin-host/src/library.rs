@@ -12,7 +12,7 @@ use clan_sdk::{
 use serde::Serialize;
 
 use crate::error::{HostError, HostResult};
-use crate::store::{DocId, DocStore};
+use crate::store::{Change, DocId, DocStore};
 
 #[derive(Serialize)]
 pub struct InstalledApp {
@@ -105,7 +105,14 @@ pub fn install_app(store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<Installed
         .app
         .clone()
         .ok_or_else(|| HostError::bad_request("template has no app block"))?;
-    let dest = store.install_template(&a.app_id, &bytes)?;
+    let dest = store.app_template(&a.app_id);
+    // Reinstalling replaces the copy that is there, and says which one.
+    let change = if store.exists(&dest) {
+        Change::replace(dest.clone(), store.version(&dest)?, bytes)
+    } else {
+        Change::create(dest.clone(), bytes)
+    };
+    store.apply(&change)?;
     Ok(InstalledApp {
         app_id: a.app_id,
         name: a.name,
@@ -143,7 +150,7 @@ pub fn create_instance(
         .take(8)
         .collect::<String>();
     let out = store.new_document(app_id, &id_short)?;
-    store.write(&out, &bytes)?;
+    store.apply(&Change::create(out.clone(), bytes))?;
     Ok(out)
 }
 
@@ -223,7 +230,7 @@ pub fn spinoff_document(
         .take(8)
         .collect::<String>();
     let out = store.new_document(target_app_id, &id_short)?;
-    store.write(&out, &bytes)?;
+    store.apply(&Change::create(out.clone(), bytes))?;
     Ok(out)
 }
 
@@ -280,7 +287,7 @@ pub fn ensure_home(store: &dyn DocStore) -> HostResult<DocId> {
         },
         MakeTemplateOptions::default(),
     )?;
-    store.write(&id, &tpl)?;
+    store.apply(&Change::create(id.clone(), tpl))?;
     Ok(id)
 }
 
@@ -288,6 +295,7 @@ pub fn ensure_home(store: &dyn DocStore) -> HostResult<DocId> {
 mod tests {
     use super::*;
     use crate::session::Session;
+    use crate::store::{Library, PartStore, Version};
     use clan_sdk::{MakeTemplateOptions as MtOpts, SpinoffSpec};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -302,7 +310,7 @@ mod tests {
         files: Mutex<HashMap<String, Vec<u8>>>,
     }
 
-    impl DocStore for MemStore {
+    impl PartStore for MemStore {
         fn read(&self, id: &DocId) -> HostResult<Vec<u8>> {
             self.files
                 .lock()
@@ -311,16 +319,19 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| HostError::not_found(format!("no such document: {id}")))
         }
-        fn write(&self, id: &DocId, bytes: &[u8]) -> HostResult<()> {
-            self.files
-                .lock()
-                .unwrap()
-                .insert(id.to_string(), bytes.to_vec());
-            Ok(())
-        }
         fn exists(&self, id: &DocId) -> bool {
             self.files.lock().unwrap().contains_key(id.as_str())
         }
+        fn apply(&self, change: &Change) -> HostResult<Version> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(change.doc.to_string(), change.bytes.clone());
+            Ok(change.archive_version())
+        }
+    }
+
+    impl Library for MemStore {
         fn app_candidates(&self) -> Vec<DocId> {
             let mut v: Vec<DocId> = self
                 .files
@@ -336,11 +347,6 @@ mod tests {
         }
         fn app_template(&self, app_id: &str) -> DocId {
             DocId::new(format!("apps/{app_id}/app.clan"))
-        }
-        fn install_template(&self, app_id: &str, bytes: &[u8]) -> HostResult<DocId> {
-            let dest = self.app_template(app_id);
-            self.write(&dest, bytes)?;
-            Ok(dest)
         }
         fn documents(&self) -> Vec<DocId> {
             self.files
@@ -419,7 +425,10 @@ mod tests {
             "shared/data.yaml",
             b"project_name: Acme\ninsight: people forget\n".to_vec(),
         );
-        store.write(&id, &b.build().unwrap()).unwrap();
+        let base = store.version(&id).unwrap();
+        store
+            .apply(&Change::replace(id.clone(), base, b.build().unwrap()))
+            .unwrap();
         id
     }
 

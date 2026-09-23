@@ -20,7 +20,7 @@ mod store;
 
 use std::sync::Arc;
 
-use napkin_host::{library, Ctx, DocId, DocStore, HostRequest, NoConfig, Session};
+use napkin_host::{library, Change, Ctx, DocId, HostRequest, NoConfig, PartStore, Session};
 use wasm_bindgen::prelude::*;
 
 use crate::store::MemStore;
@@ -145,7 +145,12 @@ impl NapkinHost {
         clan_sdk::ClanFile::from_bytes(bytes.to_vec())
             .map_err(|e| err(format!("not a readable .clan: {e}")))?;
         let id = DocId::new(format!("doc-{suggested_id}"));
-        self.store.write(&id, bytes).map_err(err)?;
+        // The same id uploaded twice is the visitor replacing their copy.
+        let change = match self.store.version(&id) {
+            Ok(v) => Change::replace(id.clone(), v, bytes.to_vec()),
+            Err(_) => Change::create(id.clone(), bytes.to_vec()),
+        };
+        self.store.apply(&change).map_err(err)?;
         self.session.open(id).map(|o| to_js(&o)).map_err(err)
     }
 
