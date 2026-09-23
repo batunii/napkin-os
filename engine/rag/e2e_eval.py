@@ -46,7 +46,8 @@ def _pick() -> list[str]:
             if ln.strip() and not ln.startswith("#")] if f.exists() else []
 
 
-PRICES = {"claude-opus-4-6": (5, 25), "claude-opus-5": (5, 25), "claude-sonnet-5": (2, 10),
+# Order matters: matching is by substring, so "claude-opus-5-5" must precede "claude-opus-5".
+PRICES = {"claude-opus-4-6": (5, 25), "claude-opus-5-5": (4, 20), "claude-opus-5": (5, 25), "claude-sonnet-5": (2, 10),
           "claude-haiku-4-5": (1, 5), "claude-fable-5-1": (10, 50)}
 JUDGE_MODEL = "claude-sonnet-5"
 
@@ -127,17 +128,18 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     import parse_brief as pb
     import judge
     import labelset
+    prev_path = os.environ.get("RAG_PATH")
     os.environ["RAG_PATH"] = path
     events, lock, tl = [], threading.Lock(), threading.local()
     t0 = time.time()
     orig_json, orig_usage, orig_call = pb._json_call, pb._stats_usage, pb._stats_call
     orig_embed, orig_req, orig_judge = rag._nim_embed, q._req, judge.Chain.judge
-    skip = {"traced_json", "_json_call", "wrapper"}
+    skip = {"traced_json", "_json_call", "wrapper", "<lambda>"}
 
     def step_name():
         """The pipeline function that made this call (first frame outside the plumbing)."""
         for fr in inspect.stack()[2:12]:
-            if fr.function not in skip and fr.filename.endswith("parse_brief.py"):
+            if fr.function not in skip and fr.filename.endswith(("parse_brief.py", "golden_critic.py")):
                 return fr.function
         return "?"
 
@@ -180,14 +182,39 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     try:
         text = labelset._doc_text({f.stem: f for f in BRIEFS.iterdir()}[stem]).strip()
         brief = pb.run(None, loops37=True, golden=True, raw_text=text, source_name=stem)
+        t_brief = round(time.time() - t0, 1)
+        # Score it in the same process so the independent judge call is traced too.
+        import golden_critic as gc
+        schema = json.loads(gc.SCHEMA_PATH.read_text())
+        gb = gc.from_brief_object(brief)
+        v = gc.validate(schema, gb)
+        unjudged = v["health"]
+        v, judged_n = gc.run_critic_one_call(schema, gb, v)
+        qsplit = gc.quality_split(schema, gb, v)
+        score = {"health": v["health"], "health_unjudged": unjudged, "judged_checks": judged_n,
+                 "quality": qsplit["quality"], "client_gaps": qsplit["client_gaps"],
+                 "failed_checks": [f"{fr['id']}.{c['id']}" for fr in v["fields"] for c in fr["checks"]
+                                   if c["status"] == "fail"],
+                 "signoff_fails": [d["id"] for d in v["definition_of_done"] if d["status"] == "fail"],
+                 "coverage_pct": brief["loop1_capture"]["no_loss_ledger"]["coverage_pct"],
+                 "capture_format": brief["meta"].get("capture_format")}
+        d = OUT / f"trace_{path}_{stem}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "brief_object.json").write_text(json.dumps(brief, indent=1, ensure_ascii=False), encoding="utf-8")
+        (d / "client_brief.md").write_text(pb.render_client_brief(brief), encoding="utf-8")
     finally:
         pb._json_call, pb._stats_usage, pb._stats_call = orig_json, orig_usage, orig_call
         rag._nim_embed, q._req, judge.Chain.judge = orig_embed, orig_req, orig_judge
+        if prev_path is None:
+            os.environ.pop("RAG_PATH", None)
+        else:
+            os.environ["RAG_PATH"] = prev_path
     for e in events:
         if e["kind"] == "llm":
             pi, po = _price(e["model"])
             e["usd"] = round(e["in"] / 1e6 * pi + e["out"] / 1e6 * po, 5)
-    out = {"brief": stem, "path": path, "wall_secs": round(time.time() - t0, 1), "events": events}
+    out = {"brief": stem, "path": path, "brief_secs": t_brief, "wall_secs": round(time.time() - t0, 1),
+           "score": score, "events": sorted(events, key=lambda e: e["start"])}
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"trace_{path}_{stem}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     return out
@@ -196,14 +223,19 @@ def trace_one(stem: str, path: str = "mix") -> dict:
 def _quality(brief_json: Path, brief: dict) -> dict:
     """golden_critic health and failures, plus the BetterBriefs scorecard tally."""
     import subprocess
-    out = subprocess.run([sys.executable, str(ENGINE / "golden_critic.py"), str(brief_json), "--judge"],
-                         capture_output=True, text=True).stdout
+    proc = subprocess.run([sys.executable, str(ENGINE / "golden_critic.py"), str(brief_json), "--judge"],
+                          capture_output=True, text=True)
+    out = proc.stdout
     hs = re.findall(r"health:\s*(\d+)/100", out)       # first = unjudged, last = judged
+    jm = re.search(r"judged (\d+) checks", out)
+    if proc.returncode != 0 or not jm or int(jm.group(1)) == 0:
+        hs = hs[:1] + [None]                           # the judge did not run: no judged score
     qm = re.search(r"quality:\s*(\d+)/100 · client gaps: (.*?) ·", out)
     dims = (brief.get("betterbriefs_scorecard") or {}).get("dimensions") or []
     verdicts = [d.get("verdict") for d in dims]
     gf = (brief.get("loop2_golden") or {}).get("fields") or {}
-    return {"health": int(hs[-1]) if hs else None, "health_unjudged": int(hs[0]) if hs else None,
+    return {"health": int(hs[-1]) if hs and hs[-1] is not None else None,
+            "health_unjudged": int(hs[0]) if hs and hs[0] is not None else None,
             "quality": int(qm.group(1)) if qm else None, "client_gaps": qm.group(2) if qm else None, "checks_pass": out.count(":PASS"),
             "checks_fail": out.count(":FAIL"),
             "betterbriefs": {v: verdicts.count(v) for v in ("pass", "vague", "missing")},

@@ -225,7 +225,11 @@ def _derive_open_questions(schema, brief):
                 and _is_filled(e.get("value")):
             out.append({"question": f"Low confidence on {f['label']} — confirm.",
                         "blocks_field": f["id"], "severity": "medium"})
-    out.extend(brief.get("open_questions") or [])
+    # A carried question about a field that already has a derived one would charge the
+    # same gap twice.
+    derived = {q["blocks_field"] for q in out}
+    out.extend(q for q in (brief.get("open_questions") or [])
+               if not q.get("blocks_field") or q["blocks_field"] not in derived)
     return out
 
 
@@ -400,15 +404,15 @@ def from_brief_object(bo: dict) -> dict:
     # has none does the client's own key_message / proof_points stand in. Before
     # 2026-09-24 this read the capture first, so health scored the CLIENT's key message
     # (often two sentences) instead of the generated SMP.
-    _gv = lambda fid: lg.get(fid) if isinstance(lg.get(fid), dict) and _is_filled(lg[fid].get("value")) else None
-    if _gv("smp"):
-        fields["smp"] = _gv("smp")
-    else:
-        put("smp", l2.get("key_message"), l1.get("key_message"))
-    if _gv("reasons_to_believe"):
-        fields["reasons_to_believe"] = _gv("reasons_to_believe")
-    else:
-        put("reasons_to_believe", l1.get("proof_points"))
+    # A field the finished brief CONSIDERED (present in loop2_golden) is its verdict, even
+    # when generation rejected it: then it stays missing rather than scoring the client's
+    # line as ours. Only a golden brief with no such key falls back to the capture.
+    for fid, cap_node, fallback in (("smp", l2.get("key_message"), l1.get("key_message")),
+                                    ("reasons_to_believe", l1.get("proof_points"), None)):
+        if fid in lg:
+            fields[fid] = _finished_entry(fid, lg[fid]) or {"value": None, "source": "missing"}
+        else:
+            put(fid, cap_node, fallback)
     _ins = lg.get("insight", {})
     if _ins and _is_filled(_ins.get("value")):
         fields["insight"] = _ins
@@ -441,20 +445,40 @@ def from_brief_object(bo: dict) -> dict:
         "fields": {**fields, **_finished(lg, fields)},
         # carry our Loop-2 open questions through
         "open_questions": [
-            {"question": q.get("question", ""), "blocks_field": "",
-             "severity": {"blocker": "high", "important": "medium"}.get(q.get("priority"), "low")}
+            {"question": q.get("question", ""), "blocks_field": q.get("blocks_field") or "",
+             "severity": {"blocker": "high", "important": "medium", "high": "high",
+                          "medium": "medium"}.get(q.get("priority"), "low")}
             for q in l2.get("open_questions", [])
         ],
     }
     return brief
 
 
+_FIELD_TYPES = {f["id"]: f.get("type", "text") for f in json.loads(SCHEMA_PATH.read_text())["fields"]}
+
+
+def _finished_entry(fid: str, e) -> "dict | None":
+    """A loop2_golden entry usable as the scored value: filled, not marked missing, and in
+    the schema's shape (objectives / tfd a dict, list a list or string, text a string).
+    Anything else returns None so a malformed or placeholder value never gets scored."""
+    if not isinstance(e, dict) or e.get("source") == "missing" or not _is_filled(e.get("value")):
+        return None
+    v, t = e["value"], _FIELD_TYPES.get(fid, "text")
+    ok = (isinstance(v, dict) if t in ("objectives", "tfd")
+          else isinstance(v, (list, str)) if t == "list" else isinstance(v, str))
+    return e if ok else None
+
+
 def _finished(lg: dict, fields: dict) -> dict:
     """Every field the finished brief (loop2_golden) filled replaces the capture-derived
     value: the golden extraction and the Loop 4/5 fills are what the brief actually says."""
-    ids = {f["id"] for f in json.loads(SCHEMA_PATH.read_text())["fields"]}
-    return {fid: e for fid, e in lg.items()
-            if fid in ids and isinstance(e, dict) and _is_filled(e.get("value"))}
+    out = {}
+    for fid, e in lg.items():
+        if fid in _FIELD_TYPES and fid not in ("smp", "reasons_to_believe"):   # handled above
+            ok = _finished_entry(fid, e)
+            if ok:
+                out[fid] = ok
+    return out
 
 
 # --------------------------------------------------------- critic prompts
@@ -594,7 +618,8 @@ def run_critic_one_call(schema, brief, validation, judge=None):
     if not batches:
         return validation, 0
     if judge is None:
-        sys.path.insert(0, str(Path(__file__).parent))
+        if str(Path(__file__).parent) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).parent))
         import parse_brief
         judge = lambda prompt: parse_brief._json_call(
             prompt, system="You are a rigorous, fair brief-quality critic. JSON only.",
@@ -608,14 +633,18 @@ def run_critic_one_call(schema, brief, validation, judge=None):
         'Return ONLY raw JSON: {"<field_id>": {"<test_id>": {"verdict": "pass"|"fail", '
         '"reason": "one line", "fix": "one line, only when fail"}}}')
     result = result if isinstance(result, dict) else {}
+    if isinstance(result.get("fields"), dict):                  # {"fields": {...}} wrapper
+        result = result["fields"]
     index = {(fr["id"], c["id"]): c for fr in validation["fields"] for c in fr["checks"]}
     ran = 0
     for b in batches:
         got = result.get(b["field"]) if isinstance(result.get(b["field"]), dict) else {}
         for cid in b["checks"]:
-            res, c = got.get(cid), index.get((b["field"], cid))
-            if c and isinstance(res, dict) and res.get("verdict") in (PASS, FAIL):
-                c["status"] = res["verdict"]
+            # A flat {check_id: …} reply is safe to read: llm check ids are unique across fields.
+            res, c = got.get(cid) or result.get(cid), index.get((b["field"], cid))
+            verdict = str(res.get("verdict", "")).strip().lower() if isinstance(res, dict) else ""
+            if c and verdict in (PASS, FAIL):
+                c["status"] = verdict
                 c["note"] = str(res.get("reason", ""))[:200]
                 if res.get("fix"):
                     c["fix"] = str(res["fix"])[:300]
@@ -644,8 +673,13 @@ def quality_split(schema, brief, validation) -> dict:
     gaps = [by_id[fr["id"]]["label"] for fr in validation["fields"]
             if not fr["filled"] and fr["id"] not in OUR_FIELDS]
     fields = [fr for fr in validation["fields"] if fr["filled"] or fr["id"] in OUR_FIELDS]
+    if "competitor_context" in [fr["id"] for fr in validation["fields"] if not fr["filled"]]:
+        # 'ownable' fails with "needs competitor_context" when the CLIENT gave none: not ours.
+        fields = [{**fr, "checks": [c for c in fr["checks"] if c.get("note") != "needs competitor_context"]}
+                  for fr in fields]
     ours_q = [q for q in validation["open_questions"] if q.get("blocks_field") in OUR_FIELDS]
-    client_q = [q for q in validation["open_questions"] if q not in ours_q and q.get("severity") == "high"]
+    client_q = [q for q in validation["open_questions"]
+                if q.get("blocks_field") not in OUR_FIELDS and q.get("severity") == "high"]
     dod = []
     for d in validation["definition_of_done"]:
         if d["id"] == "evaluation_present":

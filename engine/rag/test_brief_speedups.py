@@ -329,3 +329,106 @@ def test_quality_split_does_not_charge_us_for_the_clients_gaps():
     q = gc.quality_split(CRITIC_SCHEMA, brief, v)
     assert "Budget & scope" in q["client_gaps"] or any("udget" in x for x in q["client_gaps"])
     assert q["quality"] >= v["health"]
+
+
+def test_an_explicit_model_reaches_the_claude_call(monkeypatch):
+    """model= (the judges) is the model actually requested, not the pipeline default."""
+    sent = {}
+    class Msgs:
+        """Records the model of each create()."""
+        def create(self, **kw):
+            """Fake reply."""
+            sent["model"] = kw["model"]
+            class T:
+                type, text = "text", "{}"
+            class R:
+                content, usage = [T()], None
+            return R()
+    class Client:
+        """Fake Anthropic client."""
+        def __init__(self, **kw):
+            """One messages endpoint."""
+            self.messages = Msgs()
+    import types
+    monkeypatch.setitem(sys.modules, "anthropic", types.SimpleNamespace(Anthropic=Client))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    pb._call_link("anthropic", "claude-sonnet-5", "hi")
+    assert sent["model"] == "claude-sonnet-5"
+
+
+def test_a_rejected_smp_stays_missing_not_the_clients_line():
+    """Generation rejected the SMP: the checker must not score the client's key message."""
+    g = gc.from_brief_object(_bo({"smp": {"value": None, "source": "missing"}}))
+    assert g["fields"]["smp"]["value"] is None
+
+
+def test_malformed_or_placeholder_golden_values_are_not_scored():
+    """A string where the schema wants the objectives dict, or a 'missing' placeholder, is ignored."""
+    assert gc._finished_entry("objectives", {"value": "Grow 10%", "source": "client_stated"}) is None
+    assert gc._finished_entry("insight", {"value": "Not stated", "source": "missing"}) is None
+    assert gc._finished_entry("objectives", {"value": {"commercial": "x"}, "source": "inferred"})
+
+
+def test_judge_parser_accepts_casing_flat_and_wrapped_replies():
+    """'Pass', a flat {check: …} reply and a {"fields": …} wrapper all count."""
+    brief = gc.from_brief_object(_bo({"smp": {"value": "Only Acme treats under-30s as adults",
+                                              "source": "inferred"}}))
+    for shape in ("case", "flat", "wrapped"):
+        v = gc.validate(CRITIC_SCHEMA, brief)
+        b = gc.critic_prompts_batched(CRITIC_SCHEMA, brief, v)
+        nested = {x["field"]: {c: {"verdict": "Pass"} for c in x["checks"]} for x in b}
+        reply = (nested if shape == "case" else {"fields": nested} if shape == "wrapped"
+                 else {c: {"verdict": "pass"} for x in b for c in x["checks"]})
+        _v, ran = gc.run_critic_one_call(CRITIC_SCHEMA, brief, v, judge=lambda p, r=reply: r)
+        assert ran == sum(len(x["checks"]) for x in b), shape
+
+
+def test_generation_open_questions_keep_their_severity_and_field():
+    """A failed hero-field question (priority high, blocks smp) is penalised as ours."""
+    bo = _bo({"smp": {"value": None, "source": "missing"}})
+    bo["loop2_brief"]["open_questions"] = [{"question": "Agree the SMP.", "priority": "high", "blocks_field": "smp"}]
+    brief = gc.from_brief_object(bo)
+    assert brief["open_questions"][0] == {"question": "Agree the SMP.", "blocks_field": "smp", "severity": "high"}
+
+
+def test_pinned_provider_keeps_the_chains_model(monkeypatch):
+    """BRIEF_PROVIDER=anthropic must not swap the chain's claude-opus-5-5 for the default."""
+    monkeypatch.setenv("BRIEF_PROVIDER", "anthropic")
+    monkeypatch.setenv("BRIEF_MODEL_CHAIN", "anthropic:claude-opus-5-5,nim:openai/gpt-oss-20b")
+    monkeypatch.delenv("BRIEF_MODEL", raising=False)
+    assert pb._model_chain()[0] == ("anthropic", "claude-opus-5-5")
+    assert pb._model_chain("claude-sonnet-5")[0] == ("anthropic", "claude-sonnet-5")
+    assert pb._provider_for_model("claude-haiku-4-5") == "anthropic"
+
+
+def test_numeric_toon_value_does_not_crash_the_run(monkeypatch):
+    """`value: 50000` is read as a number by TOON; the captured field must be text."""
+    _one_link(monkeypatch, "fields:\n  budget:\n    value: 50000\n    status: fact\n    src: 1\n")
+    out = pb.capture_toon(SEGS)
+    assert out["fields"]["budget"]["value"] == "50000"
+
+
+def test_inline_scalar_fields_are_kept_and_empty_capture_fails(monkeypatch):
+    """`key_message: Be modern` is kept; a reply with no usable field returns None."""
+    _one_link(monkeypatch, "fields:\n  key_message: Be modern\n")
+    assert pb.capture_toon(SEGS)["fields"]["key_message"]["value"] == "Be modern"
+    _one_link(monkeypatch, "fields:\n  budget:\nopen_questions[0]:\n")
+    assert pb.capture_toon(SEGS) is None
+
+
+def test_src_takes_whole_numbers_only():
+    """A confidence shifted into src (0.9) is not read as sentence 9."""
+    assert pb._refs("0.9", 20) == [] and pb._refs("4 7", 20) == [4, 7]
+
+
+def test_batch_judge_bad_shapes_do_not_crash(monkeypatch):
+    """A verdict that is a string instead of an object is ignored, not an AttributeError."""
+    _verdicts(monkeypatch, {"results": {"0": "pass"}, "ranking": [True, "0"]})
+    out = pb._judge_and_gate(HERO, [{"value": "a"}, {"value": "b"}])
+    assert [c["value"] for c, _ok, _f in out] == ["a", "b"]
+
+
+def test_spaced_table_header_is_its_own_table_not_a_wrapped_row():
+    """'unstated needs[1|]{point|src}:' starts a new table (as unstated_needs)."""
+    d = toon_lite.decode("themes[1|]{point|src}:\n  A|1\nunstated needs[1|]{point|src}:\n  B|2\n")
+    assert d["themes"] == [{"point": "A", "src": 1}] and d["unstated_needs"] == [{"point": "B", "src": 2}]

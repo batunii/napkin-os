@@ -741,7 +741,8 @@ def _judge_hero_candidates(field, candidates, brand_lines: str = ""):
     return candidates
 
 
-MAXTOK_BATCH_JUDGE = 1500   # one verdict per candidate x test, plus the ranking
+MAXTOK_BATCH_JUDGE = 3000   # one verdict per candidate x test (reasons on failures only) + ranking.
+                            # 1500 could truncate on 6 SMP drafts x 5 tests; a ceiling, not a cost.
 
 
 def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", territory=None) -> list:
@@ -772,6 +773,7 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
             + f"FIELD: {field['label']}\nGOOD shape (different brand, do not copy): {field.get('good_example','')}\n"
             f"BAD: {field.get('bad_example','')} ({field.get('bad_reason','')})\n\n"
             f"TESTS (judge EVERY candidate on each):\n{tests}\n\nCANDIDATES:\n{listing}",
+            accept=lambda o: isinstance(o, dict) and isinstance(o.get("results"), dict),
             system=("You are a strategy director judging candidate '" + field["label"] + "' lines for a "
                     "creative brief — fair but rigorous. Judge each candidate on each test on its own "
                     "merits, using the upstream context where given (do not fail derivation merely because "
@@ -779,11 +781,14 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
                     "single-mindedness (one idea, never a list or an 'and'), ownable territory, and a real "
                     "human tension specific to THIS brand; penalise category truths, restated taglines and "
                     "lines that try to say two things. Return ONLY raw JSON: "
-                    '{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short"}}}, '
-                    '"ranking": [candidate indexes, best first], "why": "one line on the winner"}'),
+                    '{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short, '
+                    'ONLY when pass is false"}}}, "ranking": [candidate indexes, best first], '
+                    '"why": "one line on the winner"}'),
             retries=1, max_tokens=MAXTOK_BATCH_JUDGE)
     judge = judge if isinstance(judge, dict) else {}
-    order = [i for i in (judge.get("ranking") or []) if isinstance(i, int) and 0 <= i < len(candidates)]
+    order = [int(i) for i in (judge.get("ranking") or [])
+             if (isinstance(i, int) and not isinstance(i, bool)) or (isinstance(i, str) and i.isdigit())]
+    order = [i for i in order if 0 <= i < len(candidates)]
     order = list(dict.fromkeys(order)) + [i for i in range(len(candidates)) if i not in order]
     results = judge.get("results") if isinstance(judge.get("results"), dict) else {}
     out = []
@@ -792,6 +797,7 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
         if rank == 0 and many and isinstance(judge.get("why"), str):
             c = {**c, "_judge_why": judge["why"]}
         res = results.get(str(i)) or results.get(i) or {}
+        res = res if isinstance(res, dict) else {}
         verdict = lambda tid: res.get(tid) if isinstance(res.get(tid), dict) else {"pass": res.get(tid)}
         hard = _rubric_hard(field, c["value"], brand_lines)
         soft = [f'{r["id"]}: {verdict(r["id"]).get("why", "failed")}' for r in llm_tests
@@ -1094,7 +1100,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         # exactly those, re-checked, before the field is given up as missing.
         if chosen_fail:
             hard = _rubric_hard(field, chosen["value"], brand_blob)
-            if hard and len(hard) == len(chosen_fail):
+            if hard and len(chosen_fail) - len(hard) < 2:     # fixing the code rules would pass
                 resc = _refine_field(field, chosen["value"],
                                      note="Fix exactly this and keep everything else: " + "; ".join(hard))
                 if resc and gate_one(field, resc["value"], ctx, territory if fid == "smp" else None):
@@ -1407,7 +1413,7 @@ def list_models(provider="nim"):
     return ids
 
 
-def _chat_anthropic(user, system=None, max_tokens=None, schema=None):
+def _chat_anthropic(user, system=None, max_tokens=None, schema=None, model=None):
     """The Anthropic link. `schema` turns on structured outputs — the API constrains the
     response to that JSON Schema rather than the prompt merely asking for JSON.
 
@@ -1420,19 +1426,24 @@ def _chat_anthropic(user, system=None, max_tokens=None, schema=None):
     no-signal case that returned prose five times out of five."""
     import anthropic
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    _stats_call("anthropic", len(system or EXTRACTION_SYSTEM) + len(user))
+    _stats_call(f"anthropic:{model or model_for('anthropic')}", len(system or EXTRACTION_SYSTEM) + len(user))
     kw = {}
     if schema:
         kw["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
     # max_tokens was hardcoded at 4000, which ignored every caller's ceiling — a judge
     # call asking for 500 was allocated 4000.
-    msg = client.messages.create(model=model_for("anthropic"),
+    # `model` is the chain link's model. Before 2026-09-24 this always sent
+    # model_for("anthropic"), so an explicit model= (the Sonnet judges) silently ran on Opus.
+    msg = client.messages.create(model=model or model_for("anthropic"),
                                  max_tokens=int(max_tokens or MAXTOK_EXTRACT),
                                  system=system or EXTRACTION_SYSTEM,
                                  messages=[{"role": "user", "content": user}], **kw)
     # Take the first TEXT block rather than content[0]: a model configured with thinking
     # returns a thinking block first, and indexing blindly would read the wrong one.
     text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
+    if not text:
+        print(f"[i] anthropic:{model or model_for('anthropic')} returned no text "
+              f"(stop_reason={getattr(msg, 'stop_reason', '?')}); next link…", file=sys.stderr)
     u = getattr(msg, "usage", None)
     _stats_usage({"prompt_tokens": getattr(u, "input_tokens", 0),
                   "completion_tokens": getattr(u, "output_tokens", 0)} if u else None, len(text))
@@ -1479,6 +1490,8 @@ def _cooldown(provider, model):
 def _provider_for_model(m: str) -> "str | None":
     """Best-guess host for an explicitly-pinned model id (a wrong guess self-heals — the
     chain falls through to the next link if the pinned link errors)."""
+    if m.startswith("claude-"):
+        return "anthropic"
     if m.startswith(("nvidia/", "meta/")):
         return "nim"
     if m in ("gpt-oss-120b", "zai-glm-4.7"):
@@ -1504,7 +1517,12 @@ def _model_chain(model=None) -> list:
     pin_p = os.environ.get("BRIEF_PROVIDER", "").lower().strip()
     pin_m = model or os.environ.get("BRIEF_MODEL", "")
     if pin_p:
-        lead = (pin_p, pin_m or model_for(pin_p))
+        # With no explicit model, the pinned provider's model comes from the chain itself
+        # (BRIEF_MODEL_CHAIN), not model_for()'s default. Before 2026-09-24 a pin replaced
+        # "anthropic:claude-opus-5-5" in the chain with the default claude-opus-4-6.
+        pin_m = pin_m or next((m for p, m in chain if p == pin_p), "")
+        host = _provider_for_model(model) if model else None     # e.g. gpt-oss under an anthropic pin
+        lead = (host or pin_p, pin_m or model_for(pin_p))
         chain = [lead] + [l for l in chain if l != lead]
     elif model:
         prov = _provider_for_model(model) or (chain[0][0] if chain else resolve_provider())
@@ -1526,7 +1544,7 @@ def _call_link(provider: str, model: str, user, system=None, max_tokens=None,
     """Call exactly ONE (provider, model) link. Raises on failure so the chain advances."""
     if provider == "anthropic":
         return _chat_anthropic(user, system=system, max_tokens=max_tokens,
-                               schema=schema if json_mode else None)
+                               schema=schema if json_mode else None, model=model)
     cfg = PROVIDERS.get(provider)
     if not cfg:
         raise RuntimeError(f"unknown provider '{provider}'")
@@ -1694,7 +1712,7 @@ Reply in TOON (not JSON), nothing before or after, e.g.:
 stated_evaluation_criteria[1|]{point|src}:
   Must prove the app is simpler than the challenger banks|12
 unstated_needs[0|]{point|src}:
-(an empty table is a header with no rows)"""
+An empty table is its header line with no rows below it, as unstated_needs above."""
 
 
 def _numbered(segs: list[str], limit: int) -> str:
@@ -1719,7 +1737,8 @@ def _loads_toon(raw: str):
 
 def _refs(src, n_segs: int) -> list[int]:
     """Sentence numbers from a `src` cell (`4 7`, `4,7`, 4, None), kept to 1..n_segs."""
-    nums = [int(x) for x in re.findall(r"\d+", str(src if src is not None else ""))]
+    # Whole numbers only: a short table row can shift `0.9` (a confidence) into src.
+    nums = [int(x) for x in re.findall(r"(?<![\d.])\d+(?![\d.])", str(src if src is not None else ""))]
     return list(dict.fromkeys(i for i in nums if 1 <= i <= n_segs))
 
 
@@ -1732,9 +1751,11 @@ def _capture_item(it: dict, segs: list[str]) -> dict:
     """One captured value in the pipeline's shape: value/status/source_quote/confidence,
     plus source_refs (the cited sentence numbers) and objective_type where given."""
     refs = _refs(it.get("src"), len(segs))
-    out = {"value": it.get("value"), "status": it.get("status") or ("gap" if it.get("value") is None else "fact"),
+    v = it.get("value")
+    v = None if v is None else str(v)            # TOON reads `50000` as a number; fields are text
+    out = {"value": v, "status": it.get("status") or ("gap" if v is None else "fact"),
            "source_quote": _quote(refs, segs), "confidence": it.get("confidence"), "source_refs": refs}
-    if it.get("objective_type"):
+    if it.get("objective_type") in ("commercial", "behavioural", "attitudinal"):
         out["objective_type"] = it["objective_type"]
     return out
 
@@ -1753,9 +1774,14 @@ def capture_toon(segs: list[str]) -> "dict | None":
     fields = {}
     for k, v in obj["fields"].items():
         if isinstance(v, list):
-            fields[k] = [_capture_item(it, segs) for it in v if isinstance(it, dict)]
+            fields[k] = [_capture_item(it if isinstance(it, dict) else {"value": it}, segs)
+                         for it in v if it is not None]
         elif isinstance(v, dict):
             fields[k] = _capture_item(v, segs)
+        elif v is not None:                          # inline `key: text`
+            fields[k] = _capture_item({"value": v}, segs)
+    if not fields:
+        return None                                  # nothing usable: run() falls back to JSON
     qs = obj.get("open_questions") or []
     return _normalize_llm({"fields": fields, "how_to_win": {},
                            "open_questions": [q for q in qs if isinstance(q, (str, dict))]})
@@ -2441,7 +2467,7 @@ def _synthesize_loops37(gist, intent, loops) -> str:
     return "evidence-only"
 
 
-def _loops37_from_digests(loop2, fields) -> dict | None:
+def _loops37_from_digests(loop2, fields, synthesize=True) -> dict | None:
     """Digest mode: no vector store, but pack digests (packs_dist/<id>/digest.md,
     written offline by scripts/distil_pack.py) exist. Ground Loops 3–7 on those —
     static per pack rather than query-matched, but the synthesis, citations and
@@ -2466,7 +2492,7 @@ def _loops37_from_digests(loop2, fields) -> dict | None:
     loops = {key: {"title": title, "query": "(digest mode — no retrieval)",
                    "evidence": list(entries)}
              for key, title, _q in LOOP37_SPECS}
-    synthesis_mode = _synthesize_loops37(gist, intent, loops)
+    synthesis_mode = _synthesize_loops37(gist, intent, loops) if synthesize else "deferred"
     return {
         "enabled": True,
         "index": "digests:packs_dist",
@@ -2503,7 +2529,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True) -> dict:
         return {"enabled": False,
                 "reason": f"retriever import failed: {e.__class__.__name__}: {e}"}
     if not retriever.index_available(index_dir):
-        digest_loops = _loops37_from_digests(loop2, fields)
+        digest_loops = _loops37_from_digests(loop2, fields, synthesize=synthesize)
         if digest_loops:
             return digest_loops
         return {"enabled": False,

@@ -47,7 +47,7 @@ consolidated onto the first — see decision record 0001.
 
 ```bash
 cd engine/rag
-RAG_STORE=local RAG_INDEX=./_index_v3 python3 -m pytest -q     # full suite, no network
+RAG_STORE=local RAG_INDEX=./_index_v4 python3 -m pytest -q     # full suite, no network
 python3 rag_io.py request.json                                  # validate a request file
 ```
 
@@ -71,7 +71,7 @@ resp["trace"]         # LOG THIS per brief
 
 **Trap:** `engine/.env` sets `RAG_STORE=qdrant` and `rag.py` loads it, so anything run
 without an explicit store goes over the network. Use `RAG_STORE=local
-RAG_INDEX=./_index_v3` for local work.
+RAG_INDEX=./_index_v4` for local work.
 
 ---
 
@@ -464,7 +464,7 @@ At the chosen threshold, local's playbook recall on held-out cases is 0.37; nemo
 
 ```bash
 cd engine/rag && set -a && . ../.env && set +a
-RAG_STORE=local RAG_INDEX=./_index_v3 python3 calibrate.py nemotron local \
+RAG_STORE=local RAG_INDEX=./_index_v4 python3 calibrate.py nemotron local \
     --pools-cache /tmp/.../pools.json --save-raws /tmp/.../   # both flags point at scratch
 ```
 
@@ -507,6 +507,10 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `RAG_LOCAL_RERANKER`, `RAG_LOCAL_DEVICE` | `BAAI/bge-reranker-v2-m3`, mps/cpu | Local cross-encoder |
 | `RAG_NEMOTRON_CHARS`, `RAG_NEMOTRON_QUERY_CHARS` | `1500`, `1000` | Nemotron input clipping (a calibration file refuses a mismatch) |
 | `TYPESAFE_API_KEY`, `RAG_JEV_MODEL`, `RAG_JEV_THRESHOLD` | —, `jev-latest`, `0.5` | jev backend |
+| `RAG_EMBED_FALLBACK` | `local,keyword` | Query-embedding fallback order when the hosted endpoint fails: `local` = the same model on this machine (weights fetched once with `embed_local.py --download`, never at run time), `keyword` = BM25 only |
+| `QDRANT_URL` | — | Alias for `QDRANT_CLUSTER_ENDPOINT` |
+
+The brief generator's own switches (`BRIEF_CAPTURE`, `BRIEF_PARALLEL`, `BRIEF_BATCH_GATES`, model chain, clipping) are in `engine/README.md` → Keys & config.
 
 `rag.py` loads `engine/.env` itself.
 

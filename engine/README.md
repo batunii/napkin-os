@@ -57,6 +57,15 @@ markdown with headless Chrome: `--headless=new --print-to-pdf`).
 | `BRIEF_CAPTURE` | `toon` (default): Loop 1 capture in TOON citing sentence numbers, how_to_win in its own call; `json`: the one-call JSON capture |
 | `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |
 | `BRIEF_BATCH_GATES` | `1` (default): one judge call ranks + gates all hero drafts; `0`: one gate call per draft |
+| `ANTHROPIC_API_KEY` | Claude (the default lead link; also the independent critic) |
+| `BRIEF_PROVIDER` | pin one provider as the lead link (the rest stay as fallback) |
+| `BRIEF_SMP_CANDIDATES` / `BRIEF_GOLDEN` | SMP draft count (default 6) / run the golden-brief pass |
+| `BRIEF_MAX_TOKENS` | override every call's output ceiling |
+| `BRIEF_CLIP_CHARS` / `BRIEF_CLIP_EXTRACT_CHARS` | brief clip for judge calls (6500) / for the capture (12000) |
+| `BRIEF_BASE_URL` / `BRIEF_LINK_COOLDOWN` | custom OpenAI-compatible endpoint / seconds a rate-limited link rests |
+| `BRIEF_VISION_*` | image-brief transcription model settings |
+| `GEMINI_API_KEY` / `OPENAI_API_KEY` | optional further chat links, auto-detected |
+| `CRITIC_MODEL` | model for `golden_critic.py --judge` (default `claude-sonnet-5`) |
 
 The tool is **model-agnostic**: every LLM step walks a best→reliable provider chain
 (Cerebras → Groq → NVIDIA NIM by default) and degrades to heuristic mode with no keys

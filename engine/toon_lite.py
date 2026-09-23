@@ -42,6 +42,11 @@ __all__ = ["decode", "ToonError"]
 
 _HEADER = re.compile(r"^(?P<key>[^\s:\[\]{}]+)\s*(?:\[(?P<n>\d*)(?P<delim>[|,\t]?)\])?"
                      r"\s*(?:\{(?P<fields>[^}]*)\})?\s*:\s?(?P<rest>.*)$")
+# An array/table header whose key has spaces ("unstated needs[1|]{point|src}:"): a model
+# slip, read as the underscored key. Plain `key: value` lines never take spaces, so a
+# wrapped row containing ": " is not mistaken for a key.
+_SPACED_HEADER = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9 _]*?)\s*\[(?P<n>\d*)(?P<delim>[|,\t]?)\]"
+                            r"\s*(?:\{(?P<fields>[^}]*)\})?\s*:\s?(?P<rest>.*)$")
 _NUMBER = re.compile(r"^-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$")
 
 
@@ -115,8 +120,9 @@ def decode(text: str) -> dict:
             if ind > indent:                         # stray deeper line: skip it
                 pos += 1
                 continue
-            m = _HEADER.match(ln)
-            if not m and last_table and last_table[0]:
+            m = _HEADER.match(ln) or _SPACED_HEADER.match(ln)
+            looks_like_header = ln.endswith(":") or "]{" in ln
+            if not m and last_table and last_table[0] and not looks_like_header:
                 rows, fields, delim, raw = last_table   # a wrapped row: join it back on
                 raw = f"{raw} {ln}"
                 rows[-1] = _row(raw, fields, delim)
@@ -127,7 +133,7 @@ def decode(text: str) -> dict:
                 raise ToonError(f"line {pos + 1}: not 'key: value' — {ln[:60]!r}")
             last_table = None
             pos += 1
-            key, rest = m["key"], m["rest"].strip()
+            key, rest = m["key"].strip().replace(" ", "_"), m["rest"].strip()
             is_array = m["n"] is not None or m["delim"] or m["fields"] is not None
             child = lines[pos][0] if pos < len(lines) and lines[pos][0] > ind else None
             if m["fields"] is not None:              # table
