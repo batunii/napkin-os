@@ -26,10 +26,13 @@ from contract import SCHEMA  # noqa: E402
     (None, ""),
 ])
 def test_clean(raw, expected):
+    """clean() strips quotes and surrounding whitespace and lower-cases, turning None into
+    an empty string."""
     assert n.clean(raw) == expected
 
 
 def test_snake():
+    """snake() turns "&"-joined phrases into lower snake_case."""
     assert n.snake("Social & Environmental Change") == "social_environmental_change"
     assert n.snake("Travel & Tourism") == "travel_tourism"
 
@@ -56,10 +59,13 @@ def test_snake():
     ("Book Design, Typography", None),   # D&AD discipline is not a client category
 ])
 def test_category_from_sector(sector, expected):
+    """category_from_sector() maps each known IPA sector label to its contract category,
+    and returns None for unusable or unknown sectors rather than guessing."""
     assert n.category_from_sector(sector) == expected
 
 
 def test_every_sector_target_is_a_contract_category():
+    """Every value category_from_sector() can produce is a real contract category."""
     allowed = set(SCHEMA.enum_values("category"))
     assert set(n.SECTOR_TO_CATEGORY.values()) <= allowed
 
@@ -73,10 +79,14 @@ def test_every_sector_target_is_a_contract_category():
     ("", None), (None, None), ("not recorded", None),
 ])
 def test_award_tier(raw, expected):
+    """award_tier() maps each raw award-tier label to its contract value, an unrecognised
+    named tier to "other", and blank or "not recorded" input to None."""
     assert n.award_tier(raw) == expected
 
 
 def test_award_tier_values_are_in_contract():
+    """Every value award_tier() can produce, including for an unrecognised label, is a
+    real contract enum value."""
     allowed = set(SCHEMA.enum_values("award_tier"))
     for raw in ("Gold", "Grand Prix Cannes Lions", "WOOD Pencil", "Shortlist", "weird"):
         assert n.award_tier(raw) in allowed
@@ -89,6 +99,8 @@ def test_award_tier_values_are_in_contract():
     ("Activation", "activation"), ("Challenger", "challenger"), ("Other", "other"), ("", None), ("Made up", None),
 ])
 def test_effectiveness_type(raw, expected):
+    """effectiveness_type() maps each known IPA effectiveness label to its contract value
+    and returns None for blank or unrecognised input."""
     assert n.effectiveness_type(raw) == expected
 
 
@@ -97,6 +109,8 @@ def test_effectiveness_type(raw, expected):
     ("Humor", "humor"), ("Humour", "humor"), ("Community", "community"), ("Purpose", "purpose"), ("Other", "other"),
 ])
 def test_strategic_territory(raw, expected):
+    """strategic_territory() maps each label to its contract value, folding the British
+    and American spellings of humour/humor to the same result."""
     assert n.strategic_territory(raw) == expected
 
 
@@ -107,6 +121,8 @@ def test_strategic_territory(raw, expected):
     ("Trends Foresight", "trends_foresight"), ("Something New", "other"), ("", None),
 ])
 def test_discipline(raw, expected):
+    """discipline() maps each known playbook discipline label to its contract value, an
+    unrecognised one to "other", and blank input to None."""
     assert n.discipline(raw) == expected
 
 
@@ -114,6 +130,8 @@ def test_discipline(raw, expected):
     ("Film", "film"), ("PR", "pr"), ("Creative Strategy", "creative_strategy"), ("Glass", "other"), ("", None),
 ])
 def test_lions_category(raw, expected):
+    """lions_category() maps each known Cannes Lions category to its contract value, an
+    unrecognised one to "other", and blank input to None."""
     assert n.lions_category(raw) == expected
 
 
@@ -148,6 +166,9 @@ def test_lions_category(raw, expected):
     ("ipa", "2. Sector & Category Trends", "chunk", "synthesis"),
 ])
 def test_section_role(source, heading, level, expected):
+    """section_role() maps each source/heading/level combination to the expected role,
+    including numbered and re-worded playbook section headings and an unmatched heading
+    falling to "other"."""
     assert n.section_role(source, heading, level) == expected
 
 
@@ -165,10 +186,13 @@ def test_section_role(source, heading, level, expected):
     ("template", "other", None, "instructions"),
 ])
 def test_bucket(source, role, doc_kind, expected):
+    """bucket() maps each source/role/doc_kind combination to the correct prompt bucket."""
     assert n.bucket(source, role, doc_kind) == expected
 
 
 def test_role_and_bucket_values_are_in_contract():
+    """The role-to-bucket and source-to-bucket lookup tables, and the not-embedded roles
+    set, only use values the contract actually defines."""
     roles = set(SCHEMA.enum_values("section_role")); buckets = set(SCHEMA.enum_values("bucket"))
     assert set(n._ROLE_BUCKET) <= roles
     assert set(n._ROLE_BUCKET.values()) <= buckets
@@ -191,14 +215,21 @@ def test_role_and_bucket_values_are_in_contract():
     ("SOME BRAND WE HAVE NEVER SEEN", None), ("", None), (None, None),
 ])
 def test_category_from_client(client, expected):
+    """category_from_client() maps each known Cannes client name to its contract category,
+    including the two the creative director changed on 2026-09-17, and returns None for an
+    unrecognised or blank client rather than guessing."""
     assert n.category_from_client(client) == expected
 
 
 def test_every_client_target_is_a_contract_category():
+    """Every value category_from_client() can produce is a real contract category."""
     assert set(n.CLIENT_TO_CATEGORY.values()) <= set(SCHEMA.enum_values("category"))
 
 
 def test_category_for_prefers_sector_then_client():
+    """category_for() prefers a usable sector over the client lookup, falls back to client
+    when the sector is unusable ("general") or absent, and never guesses when neither
+    resolves."""
     assert n.category_for("Food & Drink", "APPLE") == "food_drink"   # sector wins when usable
     assert n.category_for("general", "APPLE") == "technology"        # Cannes: sector unusable
     assert n.category_for("", "IKEA") == "retail"

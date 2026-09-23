@@ -36,12 +36,16 @@ def test_the_contract_is_locked_only_after_creative_director_sign_off():
 
 
 def test_contract_file_parses_and_names_its_version():
+    """The schema file's version matches what SCHEMA loaded, and is a comparable semver
+    string."""
     raw = json.loads(contract.SCHEMA_PATH.read_text())
     assert raw["version"] == SCHEMA.version
     assert re.match(r"^\d+\.\d+\.\d+$", SCHEMA.version), "semver, so a reader can compare"
 
 
 def test_every_field_and_enum_value_is_lower_snake_case():
+    """Every field name and every enum value in the contract is lower snake_case, so
+    `FMCG` and `fmcg` can never diverge."""
     # The reason category is a closed list is that `FMCG` / `fmcg` must not diverge.
     # Enforce the casing rule on the contract itself, not just on incoming data.
     for f in SCHEMA.fields.values():
@@ -51,6 +55,8 @@ def test_every_field_and_enum_value_is_lower_snake_case():
 
 
 def test_plan_fields_are_present_and_indexed():
+    """The fields the retrieval plan relies on are all indexed, run_id exists but is not
+    indexed, and parent_id is defined."""
     plan_indexed = {"scope", "category", "campaign_type", "stage", "verdict",
                     "reason_code", "status", "as_of", "reviewer_role"}
     assert plan_indexed <= set(indexed_fields())
@@ -59,12 +65,16 @@ def test_plan_fields_are_present_and_indexed():
 
 
 def test_existing_corpus_fields_survive():
+    """The fields chunking.py already writes for the awards corpus remain in the contract,
+    so it is never orphaned."""
     # chunking.py writes these today; the contract must not orphan the awards corpus.
     for k in ("source", "doc_id", "level", "parent_id", "strategy"):
         assert k in SCHEMA.fields, k
 
 
 def test_required_fields_either_have_a_default_or_are_always_written():
+    """The set of required fields with no default (which the writer must supply itself)
+    stays small and deliberate; everything else fails safe via apply_defaults()."""
     # A required field with no default is one the writer MUST supply. Keep that set
     # small and deliberate; everything else fails safe via apply_defaults().
     must_supply = {f.name for f in SCHEMA.fields.values() if f.required and f.default is None}
@@ -72,11 +82,14 @@ def test_required_fields_either_have_a_default_or_are_always_written():
 
 
 def test_firmographics_are_excluded():
+    """Firmographic fields such as revenue_band are on the contract's excluded list."""
     assert {"revenue_band", "headcount_band", "audience_age_band"} <= set(SCHEMA.excluded)
 
 
 # ---- apply_defaults -------------------------------------------------------
 def test_defaults_fill_missing_and_none_but_never_overwrite():
+    """apply_defaults() fills a missing field and replaces an explicit None, but never
+    overwrites a value that was actually supplied."""
     md = apply_defaults({"status": None, "verdict": "rejected"})
     assert md["status"] == "active"
     assert md["verdict"] == "rejected"
@@ -85,6 +98,7 @@ def test_defaults_fill_missing_and_none_but_never_overwrite():
 
 
 def test_apply_defaults_returns_a_copy():
+    """apply_defaults() does not mutate the dict it is given."""
     src = {"source": "ipa"}
     apply_defaults(src)
     assert "status" not in src
@@ -92,6 +106,7 @@ def test_apply_defaults_returns_a_copy():
 
 # ---- validate --------------------------------------------------------------
 def _corpus_chunk(**over) -> dict:
+    """Build a defaults-applied corpus-chunk metadata dict, overridable field by field."""
     base = {"source": "ipa", "doc_id": "xero-2024", "level": "child", "parent_id": "abc",
             "strategy": "case_parent_child", "as_of": "2024-01-01",
             "client": "Xero", "award_tier": "bronze"}          # extra frontmatter rides along
@@ -100,16 +115,20 @@ def _corpus_chunk(**over) -> dict:
 
 
 def test_valid_corpus_chunk_passes():
+    """A well-formed corpus chunk validates with no problems."""
     assert validate(_corpus_chunk()) == []
 
 
 def test_enum_is_case_sensitive():
+    """An enum value with the wrong case is rejected; the correctly cased value passes."""
     problems = validate(_corpus_chunk(category="FMCG"))
     assert any(p.startswith("category:") for p in problems)
     assert validate(_corpus_chunk(category="fmcg")) == []
 
 
 def test_scope_pattern():
+    """scope accepts "brand:<slug>" and "category:<slug>" but rejects anything not lower
+    snake_case, including a bare name or an unslugged brand suffix."""
     assert validate(_corpus_chunk(scope="brand:acme")) == []
     assert validate(_corpus_chunk(scope="category:fmcg")) == []
     assert any("scope" in p for p in validate(_corpus_chunk(scope="Acme")))
@@ -117,11 +136,14 @@ def test_scope_pattern():
 
 
 def test_as_of_must_be_a_real_iso_date():
+    """as_of rejects a bare year and a calendar-invalid date."""
     assert any("as_of" in p for p in validate(_corpus_chunk(as_of="2024")))
     assert any("as_of" in p for p in validate(_corpus_chunk(as_of="2024-13-01")))
 
 
 def test_reason_code_requires_rejected_verdict():
+    """A reason_code is valid alongside a rejected verdict, but flagged when the verdict
+    is accepted."""
     ok = _corpus_chunk(verdict="rejected", reason_code="cliche")
     assert validate(ok) == []
     bad = _corpus_chunk(verdict="accepted", reason_code="cliche")
@@ -129,16 +151,21 @@ def test_reason_code_requires_rejected_verdict():
 
 
 def test_excluded_keys_are_reported():
+    """Setting an excluded key such as revenue_band is flagged by validate()."""
     assert any("revenue_band" in p for p in validate(_corpus_chunk(revenue_band="100m_500m")))
 
 
 def test_strict_keys_flags_unknown_frontmatter_only_when_asked():
+    """Extra frontmatter such as `client` passes validate() by default, and is only
+    flagged when strict_keys is requested."""
     md = _corpus_chunk()
     assert validate(md) == []
     assert any("client" in p for p in validate(md, strict_keys=True))
 
 
 def test_require_valid_raises_with_all_problems_listed():
+    """require_valid() raises ValueError whose message lists every problem, not just the
+    first one found."""
     with pytest.raises(ValueError) as e:
         require_valid({"source": "ipa", "level": "child", "as_of": "nope"})
     msg = str(e.value)
@@ -147,6 +174,8 @@ def test_require_valid_raises_with_all_problems_listed():
 
 # ---- chunker integration ---------------------------------------------------
 def test_chunker_output_validates_against_contract(tmp_path):
+    """Every chunk produced by the chunker from an IPA fixture validates against the
+    contract, with normalised fields (doc_kind, award_tier, as_of, defaults) all correct."""
     import chunking
     f = tmp_path / "ipa" / "xero.md"
     f.parent.mkdir()
@@ -172,6 +201,8 @@ def test_chunker_output_validates_against_contract(tmp_path):
 
 
 def test_qdrant_index_list_comes_from_contract():
+    """store_qdrant's payload index list is derived from the contract's indexed fields,
+    with the right Qdrant field type for datetime and keyword fields."""
     import store_qdrant
     idx = dict(store_qdrant._index_fields())
     assert set(idx) == {f"metadata.{n}" for n in indexed_fields()}
@@ -180,6 +211,8 @@ def test_qdrant_index_list_comes_from_contract():
 
 
 def test_as_of_falls_back_to_file_date_for_non_case_sources(tmp_path):
+    """For a source with no case date (a playbook), as_of falls back to the file's
+    modification date while the frontmatter year is kept unused as payload."""
     import os, chunking
     from datetime import date
     f = tmp_path / "playbooks" / "fcb.md"
@@ -194,6 +227,8 @@ def test_as_of_falls_back_to_file_date_for_non_case_sources(tmp_path):
 
 
 def test_v1_1_fields_present_and_indexed():
+    """The v1.1 enum fields are all present, indexed and correctly typed; award_tier_raw
+    is present but not indexed; bucket defaults to exemplars."""
     for f in ("bucket", "section_role", "effectiveness_type", "strategic_territory", "discipline", "lions_category", "award_tier"):
         assert SCHEMA.fields[f].type == "enum" and SCHEMA.fields[f].indexed, f
     assert not SCHEMA.fields["award_tier_raw"].indexed
@@ -202,6 +237,8 @@ def test_v1_1_fields_present_and_indexed():
 
 
 def test_playbook_sections_get_roles_and_buckets(tmp_path):
+    """Each named playbook section gets the right role/bucket pairing, with identity card
+    and bibliography sections dropped entirely since they carry no retrievable lesson."""
     import chunking
     f = tmp_path / "playbooks" / "01-fcb-grid.md"
     f.parent.mkdir()

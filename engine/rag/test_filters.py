@@ -12,12 +12,15 @@ MD = {"source": "ipa", "status": "active", "scope": "brand:bmw", "as_of": "2022-
 
 
 def test_plain_value_still_means_equality():
+    """A bare value normalises to an "eq" operator and matches accordingly."""
     assert F.normalise({"source": "ipa"}) == {"source": ("eq", "ipa")}
     assert F.matches(MD, {"source": "ipa"})
     assert not F.matches(MD, {"source": "cannes"})
 
 
 def test_equality_is_exact_not_substring():
+    """Equality matching is exact. The old local filter substring-matched, so
+    category=retail also matched 'retailer'; that regression is closed here."""
     # the old local filter substring-matched, so category=retail also matched 'retailer'
     assert not F.matches({"category": "automotive"}, {"category": "auto"})
     assert F.matches({"category": "automotive"}, {"category": "automotive"})
@@ -38,10 +41,14 @@ def test_equality_is_exact_not_substring():
     ({"source": "ipa", "category": "retail"}, False),
 ])
 def test_operators(where, expected):
+    """Each operator (ne, in, nin, gte, lt, exists, and implicit AND across keys) matches
+    or excludes the fixture as expected."""
     assert F.matches(MD, where) is expected
 
 
 def test_absent_field_asymmetry_is_deliberate():
+    """A missing field passes a "ne"/negative-style filter (it is not that value) but
+    fails a positive one (it cannot claim to be that value) or a range check."""
     old = {"source": "ipa"}                      # a chunk written before `status` existed
     assert F.matches(old, {"status": {"ne": "superseded"}})    # not-superseded includes it
     assert not F.matches(old, {"status": "active"})           # but it cannot claim to be active
@@ -50,12 +57,16 @@ def test_absent_field_asymmetry_is_deliberate():
 
 
 def test_bad_filters_raise_rather_than_silently_pass():
+    """A filter with conflicting operators, an unknown operator, or a wrongly typed value
+    raises FilterError rather than matching (or failing to match) silently."""
     for bad in ({"a": {"ne": 1, "eq": 2}}, {"a": {"nope": 1}}, {"a": {"in": "not-a-list"}}):
         with pytest.raises(F.FilterError):
             F.matches(MD, bad)
 
 
 def test_qdrant_translation():
+    """to_qdrant() translates each operator into the matching Qdrant clause, and passes
+    None through unchanged."""
     q = F.to_qdrant({"source": "ipa", "status": {"ne": "superseded"},
                      "scope": {"in": ["global", "brand:bmw"]}, "as_of": {"gte": "2020-01-01"}})
     assert {"key": "metadata.source", "match": {"value": "ipa"}} in q["must"]
@@ -66,5 +77,6 @@ def test_qdrant_translation():
 
 
 def test_describe_is_readable():
+    """describe() renders a filter dict as a single human-readable AND expression."""
     s = F.describe({"source": "ipa", "status": {"ne": "superseded"}, "scope": {"in": ["global", "brand:bmw"]}})
     assert s == "source=ipa AND status ne superseded AND scope in (global, brand:bmw)"

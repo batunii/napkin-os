@@ -11,6 +11,8 @@ from lexical import BM25, rrf, tokenize  # noqa: E402
 
 
 def test_tokenize_keeps_brand_tokens_and_digits():
+    """tokenize() lower-cases, keeps digits and brand tokens like adam&eveDDB intact, and
+    strips punctuation."""
     assert tokenize("McCain 'We are family' (2024) — adam&eveDDB, FCB Grid") == \
         ["mccain", "we", "are", "family", "2024", "adam", "eveddb", "fcb", "grid"]
 
@@ -24,6 +26,7 @@ DOCS = [
 
 
 def test_bm25_exact_brand_token_wins():
+    """BM25 ranks the document containing an exact brand or framework name token first."""
     idx = BM25(DOCS)
     assert idx.search("McCain chips", k=2)[0][1] == "mccain"
     assert idx.search("FCB grid", k=1)[0][1] == "fcb"
@@ -31,6 +34,7 @@ def test_bm25_exact_brand_token_wins():
 
 
 def test_bm25_rare_tokens_outweigh_common_ones():
+    """A rare token like "Vaughn" outweighs a common one like "campaign" in the ranking."""
     idx = BM25(DOCS)
     # "campaign" appears in two docs, "Vaughn" in one: the rare token should dominate
     top = idx.search("campaign Vaughn", k=1)[0][1]
@@ -38,12 +42,17 @@ def test_bm25_rare_tokens_outweigh_common_ones():
 
 
 def test_bm25_allowed_restricts_results():
+    """The allowed set restricts search() to those document ids, and a token matching
+    nothing returns an empty result."""
     idx = BM25(DOCS)
     assert [d for _, d in idx.search("campaign", k=5, allowed={"generic"})] == ["generic"]
     assert idx.search("nonexistenttoken", k=5) == []
 
 
 def test_rrf_rewards_agreement_and_top_ranks():
+    """rrf() ranks docs both lists agree are top ahead of docs only one list ranks highly,
+    and at k=10 (the tuned default) a confident single-list top rank beats mere agreement,
+    while a large k=60 flattens the curve so agreement wins instead."""
     fused = rrf([["a", "b", "c"], ["b", "a", "d"]])
     order = [d for _, d in fused]
     assert order[:2] == ["a", "b"] or order[:2] == ["b", "a"]     # both agree a,b are top
@@ -58,6 +67,8 @@ def test_rrf_rewards_agreement_and_top_ranks():
 
 
 def test_rrf_k_controls_how_much_a_top_rank_is_worth():
+    """A small k makes a rank-1 finish in a single list beat mid-table agreement in both
+    lists; a large k flattens the curve so agreement wins instead."""
     # small k: rank 1 in one list beats mid-table agreement in both
     small = [d for _, d in rrf([["solo"] + [f"x{i}" for i in range(40)],
                                 [f"y{i}" for i in range(30)] + ["x20"]], k=1)]
@@ -69,6 +80,8 @@ def test_rrf_k_controls_how_much_a_top_rank_is_worth():
 
 
 def test_rrf_weights_let_one_retriever_count_for_more():
+    """With equal weight either doc may lead; weighting one retriever higher makes its
+    top pick win the tie."""
     even = [d for _, d in rrf([["a"], ["b"]])]
     assert set(even[:2]) == {"a", "b"}
     tilted = [d for _, d in rrf([["a"], ["b"]], weights=[3.0, 1.0])]
@@ -88,6 +101,8 @@ def test_tuned_defaults_are_locked_to_the_measured_winners():
 
 # ---- sparse form: same scoring, computed by the store ------------------------
 def test_term_ids_are_stable_and_fit_u32():
+    """term_id() is stable for the same token, distinct across tokens, and always fits in
+    an unsigned 32-bit integer (as Qdrant sparse indices require)."""
     from lexical import term_id
     a, b = term_id("mccain"), term_id("mccain")
     assert a == b and 0 <= a < 2**32
@@ -103,6 +118,7 @@ def test_sparse_document_and_query_reproduce_bm25_ranking():
     avg = idx.avg_len
     # emulate what the store does: dot product of doc weights and query terms, times idf
     def sparse_score(text, query):
+        """Score text against query the way the store would, from sparse vectors alone."""
         d = sparse_document(text, avg)
         q = sparse_query(query)
         dv = dict(zip(d["indices"], d["values"]))
@@ -117,6 +133,8 @@ def test_sparse_document_and_query_reproduce_bm25_ranking():
 
 
 def test_sparse_vectors_are_sorted_and_empty_text_is_safe():
+    """sparse_document() returns indices sorted with matching values, and both it and
+    sparse_query() return empty vectors for empty or all-punctuation input."""
     from lexical import sparse_document, sparse_query
     d = sparse_document("McCain frozen chips", 10.0)
     assert d["indices"] == sorted(d["indices"]) and len(d["indices"]) == len(d["values"])

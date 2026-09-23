@@ -13,9 +13,12 @@ import store_qdrant as q  # noqa: E402
 class _Fake:
     """Records requests and replays canned responses."""
     def __init__(self, sparse=True, dense_ids=("a", "b"), lex_ids=("b", "c")):
+        """Configure whether the fake collection has a sparse vector and what each search
+        endpoint returns."""
         self.sparse, self.dense_ids, self.lex_ids, self.seen = sparse, dense_ids, lex_ids, []
 
     def __call__(self, method, path, body=None, timeout=60):
+        """Record the call and reply as the real Qdrant HTTP API would for that path."""
         self.seen.append((method, path, body))
         if method == "GET" and path.startswith("/collections/"):
             cfg = {"sparse_vectors": {q.SPARSE_NAME: {"modifier": "idf"}}} if self.sparse else {}
@@ -29,12 +32,15 @@ class _Fake:
 
 
 def _patch(monkeypatch, fake):
+    """Point store_qdrant at the fake HTTP layer and a fixed collection name."""
     monkeypatch.setattr(q, "_req", fake)
     monkeypatch.setattr(q, "collection_name", lambda: "test")
     q.has_sparse.__wrapped__ if hasattr(q.has_sparse, "__wrapped__") else None
 
 
 def test_collection_is_created_with_the_bm25_sparse_vector(monkeypatch):
+    """ensure_collection() creates a new collection with a BM25 (idf-modifier) sparse
+    vector configured."""
     fake = _Fake(sparse=False)
     _patch(monkeypatch, fake)
     monkeypatch.setattr(q, "_req", lambda m, p, b=None, timeout=60: (_ for _ in ()).throw(RuntimeError())
@@ -46,6 +52,8 @@ def test_collection_is_created_with_the_bm25_sparse_vector(monkeypatch):
 
 
 def test_upsert_attaches_a_sparse_vector_per_point(monkeypatch):
+    """upsert() attaches both the dense and a sparse vector to each point when the
+    collection supports sparse."""
     fake = _Fake(sparse=True)
     _patch(monkeypatch, fake)
     rows = [{"id": "c1", "vector": [0.1, 0.2], "header": "Xero UK", "section": "Insight",
@@ -59,6 +67,8 @@ def test_upsert_attaches_a_sparse_vector_per_point(monkeypatch):
 
 
 def test_upsert_stays_dense_on_a_collection_without_sparse(monkeypatch):
+    """upsert() sends a plain dense vector, unchanged, for an old collection with no sparse
+    vector configured."""
     fake = _Fake(sparse=False)
     _patch(monkeypatch, fake)
     q.upsert([{"id": "c1", "vector": [0.1, 0.2], "text": "t", "metadata": {}}])
@@ -67,6 +77,8 @@ def test_upsert_stays_dense_on_a_collection_without_sparse(monkeypatch):
 
 
 def test_hybrid_fuses_both_lists_the_same_way_the_local_store_does(monkeypatch):
+    """search_hybrid() runs one dense and one sparse search and fuses them with the same
+    rrf() the local store uses, so remote and local ranking agree."""
     fake = _Fake(sparse=True, dense_ids=("a", "b"), lex_ids=("b", "c"))
     _patch(monkeypatch, fake)
     out = q.search_hybrid([0.1, 0.2], "xero accountants", k=3)
@@ -80,6 +92,8 @@ def test_hybrid_fuses_both_lists_the_same_way_the_local_store_does(monkeypatch):
 
 
 def test_hybrid_falls_back_to_dense_when_the_collection_has_no_sparse_vector(monkeypatch):
+    """search_hybrid() runs only a dense search, with a single HTTP call, when the
+    collection has no sparse vector configured."""
     fake = _Fake(sparse=False, dense_ids=("a", "b"))
     _patch(monkeypatch, fake)
     out = q.search_hybrid([0.1, 0.2], "xero", k=2)
@@ -93,6 +107,7 @@ def test_get_looks_a_chunk_up_by_payload_id_so_parents_can_be_expanded(monkeypat
     seen = []
 
     def fake(method, path, body=None, timeout=60):
+        """Record the call and answer a scroll-by-payload-id lookup with the parent chunk."""
         seen.append((method, path, body))
         if path.endswith("/points/scroll"):
             return {"result": {"points": [{"payload": {"id": "p1", "text": "the whole case"}}]}}
@@ -107,12 +122,15 @@ def test_get_looks_a_chunk_up_by_payload_id_so_parents_can_be_expanded(monkeypat
 
 
 def test_get_returns_none_when_the_chunk_is_absent(monkeypatch):
+    """get() returns None when the scroll finds no matching point."""
     monkeypatch.setattr(q, "_req", lambda m, p, b=None, timeout=60: {"result": {"points": []}})
     monkeypatch.setattr(q, "collection_name", lambda: "test")
     assert q.get("nope") is None
 
 
 def test_the_chunk_id_is_indexed_so_parent_expansion_is_not_a_scan(monkeypatch):
+    """ensure_payload_indexes() indexes the chunk id field get() filters on, alongside the
+    contract's own filtered metadata fields."""
     seen = []
     monkeypatch.setattr(q, "_req", lambda m, p, b=None, timeout=60: seen.append((m, p, b)) or {"result": {}})
     monkeypatch.setattr(q, "collection_name", lambda: "test")
@@ -124,17 +142,26 @@ def test_the_chunk_id_is_indexed_so_parent_expansion_is_not_a_scan(monkeypatch):
 
 # ---- transient failures must not abort a migration ---------------------------
 def test_connection_errors_are_retried_then_succeed(monkeypatch):
+    """_req() retries a connection error and returns the eventual successful response."""
     import urllib.error
     calls = {"n": 0}
 
     def flaky(req, timeout=60):
+        """Raise a connection error on the first two calls, then succeed."""
         calls["n"] += 1
         if calls["n"] < 3:
             raise urllib.error.URLError("Connection refused")
         class R:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def read(self): return b'{"result": {"ok": true}}'
+            """A context-manager response object wrapping a canned JSON body."""
+            def __enter__(self):
+                """Return self as the context value."""
+                return self
+            def __exit__(self, *a):
+                """Do not suppress exceptions."""
+                return False
+            def read(self):
+                """Return the canned successful JSON body."""
+                return b'{"result": {"ok": true}}'
         return R()
 
     monkeypatch.setattr(q.urllib.request, "urlopen", flaky)
@@ -146,10 +173,13 @@ def test_connection_errors_are_retried_then_succeed(monkeypatch):
 
 
 def test_a_client_error_is_not_retried_because_retrying_hides_the_bug(monkeypatch):
+    """A 400 response raises immediately with no retry, since retrying a client error
+    would mask a genuine bug (a malformed filter) as a transient failure."""
     import urllib.error, io, pytest
     calls = {"n": 0}
 
     def bad_request(req, timeout=60):
+        """Always raise HTTP 400, as for a malformed request."""
         calls["n"] += 1
         raise urllib.error.HTTPError("u", 400, "Bad Request", {}, io.BytesIO(b"malformed filter"))
 
@@ -162,17 +192,27 @@ def test_a_client_error_is_not_retried_because_retrying_hides_the_bug(monkeypatc
 
 
 def test_a_rate_limit_is_retried(monkeypatch):
+    """A 429 rate-limit response is retried and the eventual successful response is
+    returned."""
     import urllib.error, io
     calls = {"n": 0}
 
     def limited(req, timeout=60):
+        """Raise HTTP 429 on the first call, then succeed."""
         calls["n"] += 1
         if calls["n"] < 2:
             raise urllib.error.HTTPError("u", 429, "Too Many", {}, io.BytesIO(b"slow down"))
         class R:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def read(self): return b'{"result": 1}'
+            """A context-manager response object wrapping a canned JSON body."""
+            def __enter__(self):
+                """Return self as the context value."""
+                return self
+            def __exit__(self, *a):
+                """Do not suppress exceptions."""
+                return False
+            def read(self):
+                """Return the canned successful JSON body."""
+                return b'{"result": 1}'
         return R()
 
     monkeypatch.setattr(q.urllib.request, "urlopen", limited)

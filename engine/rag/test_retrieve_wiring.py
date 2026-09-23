@@ -12,6 +12,8 @@ import filters as F  # noqa: E402
 
 
 def _row(i, doc, vec, text, **md):
+    """Build a store row for doc with the given vector and text, defaulting scope=global
+    and tenant=house as apply_defaults() would on a real write."""
     # scope=global mirrors what contract.apply_defaults() stamps on every real write
     # (chunking.py:261). Pass scope=... to override, or scope=None for the pathological
     # row that never went through the contract at all.
@@ -30,6 +32,8 @@ def _local(monkeypatch):
 
 
 def _index(tmp_path):
+    """Build a local index with an active row, a production-stage row, a superseded row
+    and a legacy row with neither field, for the brief-safe default tests."""
     st = store_local.LocalStore(tmp_path); st.ensure(2)
     st.replace_all([
         _row(0, "keep", [1.0, 0.0], "a strategy case about challenger brands", status="active"),
@@ -42,6 +46,8 @@ def _index(tmp_path):
 
 
 def test_brief_safe_hides_production_and_superseded_but_keeps_legacy_chunks(tmp_path, monkeypatch):
+    """The brief_safe default excludes production and superseded chunks but keeps a legacy
+    chunk that predates both fields; turning it off returns everything."""
     _local(monkeypatch); idx = _index(tmp_path)
     got = {h["doc_id"] for h in retrieve.retrieve("challenger", k=10, index_dir=idx)}
     assert got == {"keep", "legacy"}          # legacy has neither field and must survive
@@ -50,6 +56,8 @@ def test_brief_safe_hides_production_and_superseded_but_keeps_legacy_chunks(tmp_
 
 
 def test_an_explicit_filter_still_wins_over_the_safe_default(tmp_path, monkeypatch):
+    """An explicit stage filter overrides the brief-safe default, so a production-only
+    caller can still see its own material."""
     _local(monkeypatch); idx = _index(tmp_path)
     got = {h["doc_id"] for h in retrieve.retrieve("x", k=10, index_dir=idx,
                                                   where={"stage": "production"})}
@@ -57,11 +65,14 @@ def test_an_explicit_filter_still_wins_over_the_safe_default(tmp_path, monkeypat
 
 
 def test_brief_safe_narrows_nothing_that_predates_the_fields():
+    """The BRIEF_SAFE filter still matches a chunk with neither stage nor status set."""
     assert F.matches({"source": "ipa"}, retrieve.BRIEF_SAFE)
 
 
 # ---- scope: the confidentiality boundary -------------------------------------
 def _scoped_index(tmp_path):
+    """Build a local index with a global house row, two brand-scoped dossiers and one row
+    with scope=None that never went through the contract, for scope-boundary tests."""
     st = store_local.LocalStore(tmp_path); st.ensure(2)
     st.replace_all([
         _row(0, "house", [1.0, 0.0], "a licensed craft lesson"),                 # scope=global
@@ -82,6 +93,8 @@ def test_a_caller_that_says_nothing_gets_the_house_corpus_only(tmp_path, monkeyp
 
 
 def test_a_brand_scoped_caller_gets_house_plus_its_own_and_nothing_else(tmp_path, monkeypatch):
+    """A caller authorised for global plus its own brand sees the house corpus and its own
+    dossier, but never another brand's."""
     _local(monkeypatch); idx = _scoped_index(tmp_path)
     got = {h["doc_id"] for h in retrieve.retrieve("learned", k=10, index_dir=idx,
                                                   scopes=["global", "brand:bmw"])}
@@ -115,6 +128,8 @@ def test_an_unlabelled_row_is_withheld_rather_than_assumed_public(tmp_path, monk
 
 # ---- tenant: the agency boundary ---------------------------------------------
 def _tenanted_index(tmp_path):
+    """Build a local index with a house-tenant row and one row each for two different
+    agency tenants, for tenant-boundary tests."""
     st = store_local.LocalStore(tmp_path); st.ensure(2)
     st.replace_all([
         _row(0, "licensed", [1.0, 0.0], "an IPA case everyone has licensed"),      # tenant=house
@@ -126,12 +141,15 @@ def _tenanted_index(tmp_path):
 
 
 def test_a_caller_naming_no_agency_gets_the_licensed_corpus_only(tmp_path, monkeypatch):
+    """A caller that names no tenant sees only the house-licensed corpus."""
     _local(monkeypatch); idx = _tenanted_index(tmp_path)
     got = {h["doc_id"] for h in retrieve.retrieve("learned", k=10, index_dir=idx)}
     assert got == {"licensed"}
 
 
 def test_an_agency_gets_the_licensed_corpus_plus_its_own(tmp_path, monkeypatch):
+    """An agency named as a tenant sees the licensed corpus plus its own work, but never
+    a rival agency's."""
     _local(monkeypatch); idx = _tenanted_index(tmp_path)
     got = {h["doc_id"] for h in retrieve.retrieve("learned", k=10, index_dir=idx,
                                                   tenants=["house", "acme"])}
@@ -156,6 +174,8 @@ def test_tenant_and_scope_are_independent_boundaries(tmp_path, monkeypatch):
 
 # ---- grounding check ---------------------------------------------------------
 def test_grounding_flags_invented_citations():
+    """check_grounding() marks text grounded when every citation is allowed, and flags a
+    citation not in the allowed set as invented while still listing all cited ids."""
     allowed = {"ipa_0409", "pb_fcb-grid#process"}
     good = retrieve.check_grounding("Pre-selling worked for [ipa_0409].", allowed)
     assert good["grounded"] and good["cited"] == ["ipa_0409"] and not good["invented"]
@@ -166,17 +186,21 @@ def test_grounding_flags_invented_citations():
 
 
 def test_grounding_notices_a_confident_paragraph_with_no_citation_at_all():
+    """A confident claim with no citation at all is flagged uncited and not grounded."""
     r = retrieve.check_grounding("Award-winning launches always pre-sell.", {"ipa_0409"})
     assert r["uncited"] and not r["grounded"] and r["cited"] == []
 
 
 def test_grounding_handles_section_suffixes_and_repeats():
+    """A citation with a section suffix is recognised, and citing it twice still lists it
+    once and counts as grounded."""
     allowed = {"pb_fcb-grid#process"}
     r = retrieve.check_grounding("See [pb_fcb-grid#process], and again [pb_fcb-grid#process].", allowed)
     assert r["cited"] == ["pb_fcb-grid#process"] and r["grounded"]
 
 
 def test_grounding_accepts_a_context_object_citations_map():
+    """check_grounding() accepts a BriefContext's own citations() as the allowed set."""
     import brief_context as bc
     hit = bc.Hit(cite="ipa_0409", doc_id="ipa_0409", source="ipa", bucket="exemplars",
                  title="t", section="s", header="h", text="x", score=1.0)

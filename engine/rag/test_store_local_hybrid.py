@@ -8,11 +8,14 @@ import store_local  # noqa: E402
 
 
 def _row(i, vec, text, doc, rq=""):
+    """Build a store row with the given vector, text and optional retrieval queries."""
     return {"id": f"c{i}", "source": f"f{i}.md", "section": "S", "chunk_index": 0, "vector": vec,
             "metadata": {"source": "ipa", "doc_id": doc, "level": "child"}, "text": text, "header": "", "retrieval_queries": rq}
 
 
 def _store(tmp_path, holdout=None):
+    """Build a LocalStore of three fixture rows (two generic, one McCain), optionally with
+    a holdout manifest, and return a fresh instance reading it back from disk."""
     st = store_local.LocalStore(tmp_path)
     st.ensure(3)
     st.replace_all([
@@ -28,6 +31,8 @@ def _store(tmp_path, holdout=None):
 
 
 def test_dense_alone_misses_the_brand_hybrid_finds_it(tmp_path):
+    """A query whose vector points at a generic doc but whose words name a brand is missed
+    by dense search alone but found by search_hybrid()."""
     st = _store(tmp_path)
     q = [1.0, 0.0, 0.0]                      # vector says "generic"; words say "McCain"
     dense = [r["metadata"]["doc_id"] for _, r in st.search(q, k=1)]
@@ -37,6 +42,8 @@ def test_dense_alone_misses_the_brand_hybrid_finds_it(tmp_path):
 
 
 def test_numpy_and_python_paths_agree(tmp_path):
+    """search() gives identical ranked results whether the numpy-accelerated path or the
+    pure-Python fallback is used."""
     st = _store(tmp_path)
     q = [0.7, 0.7, 0.1]
     fast = [(round(s, 5), r["id"]) for s, r in st.search(q, k=3)]
@@ -49,6 +56,8 @@ def test_numpy_and_python_paths_agree(tmp_path):
 
 
 def test_where_filter_applies_to_both_sides(tmp_path):
+    """search_hybrid()'s where filter is applied to both the dense and lexical results,
+    even when both would otherwise agree on a doc it excludes."""
     st = _store(tmp_path)
     # vector AND words both point at McCain, but the filter excludes it (local filter = substring match)
     hits = st.search_hybrid([0.0, 0.0, 1.0], "McCain chips", k=3, where={"doc_id": "generic"})
@@ -57,6 +66,8 @@ def test_where_filter_applies_to_both_sides(tmp_path):
 
 
 def test_bm25_respects_holdout_from_manifest(tmp_path):
+    """bm25() excludes a held-out document's retrieval-query text from the index, and
+    includes it once the manifest names no holdout."""
     st = _store(tmp_path, holdout=["mccain"])
     # the RQ text "results" is only in the held-out doc's retrieval_queries: BM25 must not see it
     assert st.bm25().search("results", k=3) == []
@@ -66,6 +77,9 @@ def test_bm25_respects_holdout_from_manifest(tmp_path):
 
 # ---- retag: metadata refresh without re-embedding ------------------------------------------
 def test_retag_updates_metadata_only_when_text_is_unchanged(tmp_path, monkeypatch):
+    """rag.retag() previews and then applies a metadata-only refresh (leaving vectors
+    untouched) when the source text is unchanged, and refuses when the text has changed
+    since a rebuild would be needed to keep the vector current."""
     import rag, chunking
     corpus = tmp_path / "corpus" / "cannes"; corpus.mkdir(parents=True)
     body = ("---\nsource: cannes\nframework_id: cannes_0001\nframework_name: \"X (2026)\"\ncategory: cannes_case\n"

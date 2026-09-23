@@ -17,6 +17,8 @@ PAIRS = {"brand": "BMW", "category": "Automotive", "campaign_type": "launch",
 
 # ---- planning ----------------------------------------------------------------
 def test_plan_maps_filters_keywords_and_query():
+    """plan() turns pairs into a filter dict, a keyword list and free query text, translating
+    review-origin fields into corpus vocabulary while keeping unmapped ones searchable."""
     q, kw, f, _ = bc.plan(PAIRS)
     # campaign_type is review-origin (no corpus chunk has it) so it is translated into
     # the awarding body's vocabulary, which the corpus does carry
@@ -28,6 +30,8 @@ def test_plan_maps_filters_keywords_and_query():
 
 
 def test_plan_survives_empty_and_unknown_category():
+    """An empty pairs dict yields empty results, and an unresolvable category is dropped
+    rather than guessed, with a note recorded to say so."""
     q, kw, f, _ = bc.plan({})
     assert (q, kw, f) == ("", [], {})
     _, _, f2, notes2 = bc.plan({"category": "Underwater Basket Weaving"})
@@ -36,6 +40,8 @@ def test_plan_survives_empty_and_unknown_category():
 
 
 def test_unmapped_campaign_type_becomes_query_text_not_a_filter():
+    """A campaign_type with no equivalent in the effectiveness taxonomy is kept as query
+    text instead of being silently dropped; one that does map becomes a filter."""
     q, _, f, _n = bc.plan({"campaign_type": "always_on", "problem": "keep the brand present"})
     assert "effectiveness_type" not in f and "campaign_type" not in f
     assert "always on campaign" in q          # not dropped: it is meaningful query text
@@ -55,11 +61,14 @@ def test_unmapped_campaign_type_becomes_query_text_not_a_filter():
     ({"source": "ipa", "level": "child", "section_role": "insight"}, "ipa_0007", "ipa_0007#insight"),
 ])
 def test_citations_are_short_readable_and_stable(md, doc_id, expected):
+    """cite_for() produces the expected short form for each source/level/role combination,
+    always within the 46-character display limit."""
     assert bc.cite_for(md, doc_id) == expected
     assert len(bc.cite_for(md, doc_id)) <= 46
 
 
 def test_scopes_or_across_global_category_and_brand():
+    """An authorised brand's scope list ORs together global, category and brand scopes."""
     _, _, f, _ = bc.plan(PAIRS)
     assert bc.scopes_for(PAIRS, f, brand="BMW") == ["global", "category:automotive", "brand:bmw"]
 
@@ -74,6 +83,8 @@ def test_pairs_alone_cannot_unlock_brand_scope():
 
 
 def test_an_unauthorised_run_says_so_rather_than_failing_quietly():
+    """With no authority passed in, the brand scope is withheld and a note records why,
+    instead of the caller silently losing access."""
     _, _, f, _ = bc.plan(PAIRS)
     notes: list[str] = []
     bc.scopes_for(PAIRS, f, notes=notes)
@@ -100,6 +111,8 @@ def test_provenance_is_not_authorisation():
 
 
 def test_bucket_filters_always_exclude_superseded_and_production():
+    """Every bucket's filters exclude superseded and production stages; only exemplars is
+    further narrowed by category and effectiveness type."""
     _, _, f, _ = bc.plan(PAIRS)
     scopes = bc.scopes_for(PAIRS, f, brand="BMW")
     ex = bc.bucket_filters("exemplars", f, scopes)
@@ -114,12 +127,14 @@ def test_bucket_filters_always_exclude_superseded_and_production():
 
 # ---- budgeting ---------------------------------------------------------------
 def _hit(cite, chars, bucket="exemplars", score=1.0, scope="global"):
+    """Build a bc.Hit of the given length, bucket, score and scope for budgeting tests."""
     return bc.Hit(cite=cite, doc_id=cite, source="ipa", bucket=bucket, title=cite,
                   section="S", header="H", text="x" * chars, score=score,
                   metadata={"scope": scope})
 
 
 def test_fill_stops_at_the_budget_and_counts_what_it_dropped():
+    """_fill() keeps hits until the budget is exhausted and counts the rest as dropped."""
     hits = [_hit("a", 350), _hit("b", 350), _hit("c", 350)]
     per = hits[0].tokens
     block = bc._fill(hits, per * 2 + 1)
@@ -136,22 +151,33 @@ def test_a_later_hit_that_does_not_fit_is_skipped_not_truncated():
 
 
 def test_token_estimate_is_conservative():
+    """estimate_tokens() budgets at 3.5 chars/token rather than the looser 4, so it never
+    under-counts what a hit will cost."""
     assert bc.estimate_tokens("x" * 350) >= 100           # 3.5 chars/token, not 4
 
 
 # ---- collapse ----------------------------------------------------------------
 class _FakeStore:
-    def __init__(self, rows): self._rows = {r["id"]: r for r in rows}
-    def get(self, cid): return self._rows.get(cid)
+    """An in-memory chunk store keyed by id, standing in for the real backing store."""
+    def __init__(self, rows):
+        """Index the given rows by their id."""
+        self._rows = {r["id"]: r for r in rows}
+
+    def get(self, cid):
+        """Return the row for cid, or None if it is not present."""
+        return self._rows.get(cid)
 
 
 def _row(cid, doc, level, parent=None, text="body"):
+    """Build a raw chunk-store row at the given level (parent/child) of doc."""
     return {"id": cid, "source": f"{doc}.md", "section": level, "text": text,
             "header": f"{doc} header", "metadata": {"doc_id": doc, "level": level, "source": "ipa",
                                                     "parent_id": parent, "section_role": level}}
 
 
 def test_collapse_keeps_one_hit_per_document_and_presents_the_parent():
+    """_collapse() reduces multiple hits from one document to a single entry, keeping the
+    highest score but presenting the parent's full text."""
     parent = _row("p1", "ipa_0001", "parent", text="the whole case")
     child = _row("c1", "ipa_0001", "child", parent="p1", text="just the results section")
     other = _row("p2", "ipa_0002", "parent", text="another case")
@@ -163,6 +189,8 @@ def test_collapse_keeps_one_hit_per_document_and_presents_the_parent():
 
 
 def test_citations_are_stable_and_carry_the_section_for_children():
+    """_to_hit() cites a parent by its document id alone, and a child by document id plus
+    section, with the parent's citation also rendered in its text."""
     parent_hit = bc._to_hit(0.9, _row("p1", "ipa_0001", "parent"), "exemplars")
     child_hit = bc._to_hit(0.8, _row("c1", "ipa_0001", "child", parent="p1"), "exemplars")
     assert parent_hit.cite == "ipa_0001"
@@ -172,6 +200,8 @@ def test_citations_are_stable_and_carry_the_section_for_children():
 
 # ---- rules ordering ----------------------------------------------------------
 def test_client_scoped_constraints_outrank_house_rules():
+    """Ranking by scope specificity then score puts brand rules first, then category, then
+    global house rules, regardless of raw score."""
     hits = [_hit("house", 100, "rules", score=0.9, scope="global"),
             _hit("brand", 100, "rules", score=0.1, scope="brand:bmw"),
             _hit("cat", 100, "rules", score=0.5, scope="category:automotive")]
@@ -181,6 +211,8 @@ def test_client_scoped_constraints_outrank_house_rules():
 
 # ---- assembled context -------------------------------------------------------
 def test_context_renders_citations_and_a_trace():
+    """BriefContext collects every hit's citation, renders pitfalls before precedent in the
+    prompt text, and its trace records per-block cites and total tokens."""
     ctx = bc.BriefContext(
         blocks={"exemplars": bc.Block("exemplars", [_hit("ipa_0001", 60)], 1000),
                 "rules": bc.Block("rules", [_hit("pb_22", 40, "rules")], 500)},
@@ -195,12 +227,15 @@ def test_context_renders_citations_and_a_trace():
 
 # ---- hard constraints vs advisory pitfalls -----------------------------------
 def _rule(cite, verdict=None, chars=100):
+    """Build a rules-bucket hit carrying the given verdict metadata."""
     h = _hit(cite, chars, "rules")
     h.metadata = {"scope": "global", "verdict": verdict}
     return h
 
 
 def test_reviewer_rejections_and_textbook_advice_are_rendered_separately():
+    """A rejected verdict becomes a hard constraint, unlabelled advice becomes a pitfall, and
+    the prompt text renders constraints before pitfalls with distinct headings."""
     ctx = bc.BriefContext(
         blocks={"rules": bc.Block("rules", [_rule("run_12#tone", "rejected"), _rule("pb_9#common_mistakes")], 1200)},
         query="q", keywords=[], filters={})
@@ -212,6 +247,8 @@ def test_reviewer_rejections_and_textbook_advice_are_rendered_separately():
 
 
 def test_no_constraints_section_when_there_are_no_rejections():
+    """With no rejected verdicts, the CONSTRAINTS heading is omitted while PITFALLS still
+    renders."""
     ctx = bc.BriefContext(blocks={"rules": bc.Block("rules", [_rule("pb_9#common_mistakes")], 1200)},
                           query="q", keywords=[], filters={})
     txt = ctx.prompt_text()
@@ -229,12 +266,15 @@ def test_the_best_hit_is_never_dropped_for_being_long():
 
 
 def test_the_per_hit_cap_still_applies_to_everything_after_the_first():
+    """The max_hit cap still drops an over-length hit that is not top-ranked."""
     hits = [_hit("a", 200, "rules"), _hit("essay", 2000, "rules"), _hit("b", 200, "rules")]
     block = bc._fill(hits, 1200, max_hit=260)
     assert [h.cite for h in block.hits] == ["a", "b"] and block.dropped == 1
 
 
 def test_going_over_target_is_recorded_not_hidden():
+    """_fill() flags over_target when the served hit exceeds its budget, and leaves it
+    False when it does not."""
     block = bc._fill([_hit("huge", 8000)], 1000)
     assert block.hits and block.over_target is True
     assert bc._fill([_hit("small", 100)], 1000).over_target is False
@@ -259,6 +299,8 @@ def test_a_brief_that_genuinely_needs_more_gets_more():
 
 
 def test_thin_precedent_is_declared_rather_than_passed_off_as_a_shortlist():
+    """When nothing was dropped, the prompt says these are every case in the corpus rather
+    than implying a curated shortlist; once hits are dropped, that line disappears."""
     thin = bc.Block("exemplars", [_hit("ipa_1", 200), _hit("ipa_2", 200)], 3500, dropped=0)
     ctx = bc.BriefContext(blocks={"exemplars": thin}, query="q", keywords=[], filters={})
     assert "every case in the corpus" in ctx.prompt_text()
@@ -268,7 +310,10 @@ def test_thin_precedent_is_declared_rather_than_passed_off_as_a_shortlist():
 
 
 def test_precedent_shows_one_case_per_client_so_four_brands_beat_two_twice():
+    """With one_per_client set, _fill() keeps at most one hit per client so distinct brands
+    are represented instead of one client's cases crowding out the rest; off by default."""
     def h(cite, client):
+        """Build an exemplars hit tagged with the given client."""
         x = _hit(cite, 80)
         x.metadata = {"client": client}
         return x
@@ -280,6 +325,8 @@ def test_precedent_shows_one_case_per_client_so_four_brands_beat_two_twice():
 
 
 def test_precedent_heading_does_not_claim_everything_is_award_winning():
+    """A playbook worked example in the exemplars block does not trigger "award-winning"
+    wording, which applies only to genuine award-case precedent."""
     ctx = bc.BriefContext(blocks={"exemplars": bc.Block("exemplars", [_hit("pb_x#worked_example", 50)], 500)},
                           query="q", keywords=[], filters={})
     assert "award-winning" not in ctx.prompt_text()
@@ -310,6 +357,8 @@ def test_every_contract_category_survives_plan():
 
 
 def test_a_free_text_sector_still_resolves():
+    """A free-text sector label such as "Food & Drink" still resolves to its contract
+    category, food_drink."""
     _, _, f, _n = bc.plan({"sector": "Food & Drink", "problem": "x"})
     assert f["category"] == "food_drink"
 
