@@ -494,7 +494,9 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function isObj(o){ return o!==null && typeof o==='object' && !Array.isArray(o); }
   function D(){ var c=window.__CLAN__||{}; return isObj(c.data)?c.data:{}; }
-  function docId(){ var m=(window.__CLAN__||{}).manifest; return (m&&m.id)||'unsaved'; }
+  // Addresses use the document's identity, which every revision keeps; the
+  // manifest's `id` is the revision's and changes on every write.
+  function docId(){ var m=(window.__CLAN__||{}).manifest; return (m&&(m.document_id||m.id))||'unsaved'; }
   function camp(){ var c=D().campaign; return isObj(c)?c:{}; }
   function sel(){ var s=D().selection; return isObj(s)?s:{}; }
   function proj(){ var p=D().projection; return isObj(p)?p:null; }

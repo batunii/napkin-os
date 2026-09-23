@@ -162,6 +162,29 @@ fn the_agent_context_names_the_document_and_carries_the_members() {
     assert_ne!(clan["revision"], open.manifest().id.as_str());
 }
 
+/// `window.__CLAN__` as the view is handed it.
+fn view_context(f: &Fixture) -> Value {
+    let html = f.session.human_html().unwrap();
+    let start = html.find("window.__CLAN__ = ").unwrap() + "window.__CLAN__ = ".len();
+    let end = start + html[start..].find(";</script>").unwrap();
+    serde_json::from_str(&html[start..end]).unwrap()
+}
+
+#[test]
+fn the_view_is_told_the_document_id_as_well_as_the_revision() {
+    let f = fixture();
+    let before = view_context(&f)["manifest"].clone();
+    let clan = f.session.clan_context_for_agent();
+    settle(&f, reply_for(&clan));
+    let after = view_context(&f)["manifest"].clone();
+
+    // A view addresses what it writes by `document_id`; reopened after a
+    // write, it must not be handed the revision in its place.
+    assert_eq!(after["document_id"], on_disk(&f).document_id());
+    assert_eq!(after["document_id"], before["document_id"]);
+    assert_ne!(after["id"], before["id"]);
+}
+
 #[test]
 fn an_uploaded_attachment_reaches_a_middleware_task_as_text() {
     let f = fixture();

@@ -280,8 +280,12 @@ fn build_clan_context(clan: &ClanFile, data: &serde_yaml::Value) -> Value {
         }
     }
 
+    // `id` is this revision's, fresh on every write; `document_id` is the
+    // document's, the same on every revision, and the prefix of every address
+    // a view writes (`<document_id>#campaign.problem`).
     let manifest_json = serde_json::json!({
         "id": m.id,
+        "document_id": clan.document_id(),
         "title": m.title,
         "document_type": m.document_type,
         "app": m.app.as_ref().map(|a| serde_json::json!({
