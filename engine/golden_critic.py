@@ -381,6 +381,10 @@ def from_brief_object(bo: dict) -> dict:
     if obj_conf is not None:
         entry["confidence"] = obj_conf
     fields["objectives"] = entry
+    # The golden extraction writes all three levels; prefer it when it filled any level.
+    _go = lg.get("objectives") if isinstance(lg.get("objectives"), dict) else None
+    if _go and isinstance(_go.get("value"), dict) and any(_is_filled(x) for x in _go["value"].values()):
+        fields["objectives"] = _go
 
     # Zone 2 — who & what we have
     put("audience", l2.get("audience"), l1.get("target_audience"))
@@ -391,10 +395,20 @@ def from_brief_object(bo: dict) -> dict:
     if bud_conf is not None:
         fields["budget_scope"]["confidence"] = bud_conf
 
-    # Zone 3 — the spark. SMP <- key_message; RTB <- proof_points; the rest
-    # has no producing loop yet (Loops 3-5) and stays missing on purpose.
-    put("smp", l2.get("key_message"), l1.get("key_message"))
-    put("reasons_to_believe", l1.get("proof_points"))
+    # Zone 3 — the spark. The FINISHED brief's value wins: loop2_golden holds the golden
+    # extraction plus the Loop 4/5 fills (generated SMP / RTB, rubric-gated). Only when it
+    # has none does the client's own key_message / proof_points stand in. Before
+    # 2026-09-24 this read the capture first, so health scored the CLIENT's key message
+    # (often two sentences) instead of the generated SMP.
+    _gv = lambda fid: lg.get(fid) if isinstance(lg.get(fid), dict) and _is_filled(lg[fid].get("value")) else None
+    if _gv("smp"):
+        fields["smp"] = _gv("smp")
+    else:
+        put("smp", l2.get("key_message"), l1.get("key_message"))
+    if _gv("reasons_to_believe"):
+        fields["reasons_to_believe"] = _gv("reasons_to_believe")
+    else:
+        put("reasons_to_believe", l1.get("proof_points"))
     _ins = lg.get("insight", {})
     if _ins and _is_filled(_ins.get("value")):
         fields["insight"] = _ins

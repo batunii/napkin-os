@@ -57,3 +57,19 @@ Each is switchable: `BRIEF_CAPTURE=json`, `BRIEF_PARALLEL=0`, `BRIEF_BATCH_GATES
 - Open questions per finished brief fell from 11–14 to 5–7; not yet reviewed item by item.
 - Found during the check: one wrapped table row made a how_to_win reply unreadable; the
   decoder now joins wrapped rows back (test: `test_toon_wrapped_row_is_joined_back`).
+
+## Addendum 2026-09-24 — the health score was scoring the client's text
+
+`golden_critic.from_brief_object` read the SMP from the capture's `key_message` and the
+RTBs from `proof_points` — the CLIENT's own words — never the generated, gated fields in
+`loop2_golden`, and took one objective level instead of the golden extraction's three. So
+"SMP is two sentences" was the client's key message. It now prefers `loop2_golden` and falls
+back to the capture. Re-scored on the same outputs: 51 / 36 / 67 -> **60 / 57 / 67**
+(old pipeline on the corrected checker: 60 / 53 / 67). The ceiling is 74 while the 14 llm
+rubric checks stay unjudged (half credit each); what remains is mostly client gaps
+(no budget, objectives not at three levels, a client RTB list over 5 items).
+
+The generator was also never told the schema's code rules, and its gate did not run them;
+`_rubric_hard` now runs golden_critic's own AUTO checks (strict word limit, one sentence,
+item cap, a stated 'why', think/feel/do filled), `_gen_field_system` states them, and a draft
+that breaks only those rules gets one repair rewrite before the field is given up.

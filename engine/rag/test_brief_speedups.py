@@ -192,9 +192,9 @@ def _fake_models(monkeypatch, calls, gate=None):
         if system.startswith("You map strategic white space"):
             kind, out = "territory", {"rival": "R", "own": "O", "avoid": "A"}
         elif '"candidates"' in system:
-            kind, out = "gen_batch", {"candidates": [{"value": f"draft {i}", "confidence": 0.9} for i in range(4)]}
+            kind, out = "gen_batch", {"candidates": [{"value": f"draft {i}, because it holds", "confidence": 0.9} for i in range(4)]}
         elif "REFINE MODE" in system:
-            kind, out = "refine", {"value": "refined line", "confidence": 0.9}
+            kind, out = "refine", {"value": "refined line, because it holds", "confidence": 0.9}
         elif "judging candidate" in system:
             kind, out = "judge_batch", {"ranking": [0], "why": "w", "results": {}}
         elif "ranking candidate" in system:
@@ -203,10 +203,12 @@ def _fake_models(monkeypatch, calls, gate=None):
             kind, out = "gate", {}
         elif "enforcing ownable territory" in system:
             kind, out = "terr_gate", {"own_territory": True, "competitor_could_run": False}
+        elif '"think"' in system:
+            kind, out = "gen", {"value": {"think": "a", "feel": "b", "do": "open the app"}, "confidence": 0.9}
         else:
             kind, out = "gen", {"value": "one line", "confidence": 0.9}
-            if gate and any(f"'{label[f]}'" in user for f in ("reasons_to_believe", "desired_response")):
-                gate.wait()                  # both in flight at once, or this times out
+        if kind == "gen" and gate and any(f"'{label[f]}'" in user for f in ("reasons_to_believe", "desired_response")):
+            gate.wait()                      # both in flight at once, or this times out
         calls.append(kind)
         return out
     monkeypatch.setattr(pb, "_json_call", fake)
@@ -230,7 +232,7 @@ def test_hero_fields_batched_calls_and_parallel_waves(monkeypatch):
         monkeypatch.delenv(v, raising=False)
     fills, _qs = _fill(monkeypatch)
     assert set(fills) == set(pb.GEN_ZONE3_ORDER)
-    assert fills["insight"]["value"] == "refined line"
+    assert fills["insight"]["value"] == "refined line, because it holds"
     assert len(calls) == 13, calls
 
 
@@ -243,3 +245,33 @@ def test_hero_fields_per_candidate_path_still_works(monkeypatch):
     fills, _qs = _fill(monkeypatch)
     assert set(fills) == set(pb.GEN_ZONE3_ORDER)
     assert "judge_batch" not in calls and calls.count("terr_gate") == 2 and len(calls) == 17, calls
+
+
+def test_gate_runs_the_critics_code_checks():
+    """The generator's gate fails exactly what golden_critic fails: a two-sentence SMP,
+    an SMP over 20 words, more than 5 reasons to believe, an insight with no 'why'."""
+    f = {x["id"]: x for x in GOLDEN_SCHEMA["fields"]}
+    assert any("single_sentence" in h for h in pb._rubric_hard(f["smp"], "Own the choice. Be bold."))
+    assert any("within_limit" in h for h in pb._rubric_hard(f["smp"], " ".join(["word"] * 21)))
+    assert any("max_items" in h for h in pb._rubric_hard(f["reasons_to_believe"], [str(i) for i in range(6)]))
+    assert any("reveals_why" in h for h in pb._rubric_hard(f["insight"], "People like banks"))
+    assert pb._rubric_hard(f["smp"], "Only Acme treats under-30s as adults with money") == []
+
+
+def test_code_rule_failure_gets_one_repair(monkeypatch):
+    """Every draft breaks only a code rule: one rewrite fixing it, re-checked, is kept."""
+    calls = []
+    _fake_models(monkeypatch, calls)
+    real = pb._json_call
+    def fake(user, system=None, **kw):
+        """Drafts come back as two sentences; the repair returns one."""
+        out = real(user, system=system, **kw)
+        if isinstance(out, dict) and "candidates" in out:
+            out = {"candidates": [{"value": "Two ideas here. Because both.", "confidence": 0.9}] * 4}
+        if "Fix exactly this" in (user or ""):
+            out = {"value": "One idea, because it holds", "confidence": 0.9}
+        return out
+    monkeypatch.setattr(pb, "_json_call", fake)
+    monkeypatch.setenv("BRIEF_PARALLEL", "0")
+    fills, _qs = _fill(monkeypatch)
+    assert "smp" in fills and "Two ideas here" not in fills["smp"]["value"]

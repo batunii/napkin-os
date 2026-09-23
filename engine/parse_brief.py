@@ -466,6 +466,18 @@ def _field_by_id(schema, fid):
     return None
 
 
+# The schema's code (auto) rubric checks, said in words to the generator. golden_critic
+# scores a brief with these exact checks; before 2026-09-23 the generator was never told
+# them, and its gate did not run them, so SMPs of two sentences won their tournaments
+# and then failed the critic.
+_HARD_RULE_TEXT = {
+    "single_sentence": "ONE sentence only.",
+    "max_items": "at most {max_items} items.",
+    "reveals_why": "state the motivation explicitly ('because …' / 'which means …').",
+    "all_three": "fill think, feel AND do.",
+}
+
+
 def _gen_field_system(field, n: int = 1) -> str:
     """Build a generation system prompt for ONE golden field straight from the schema
     — no hard-coded sentence template. The schema's good_example carries the shape;
@@ -474,6 +486,9 @@ def _gen_field_system(field, n: int = 1) -> str:
     context is sent once instead of n times)."""
     mw = field.get("max_words")
     lim = f"Hard limit: {mw} words.\n" if mw else ""
+    lim += "".join(f"Hard rule: {_HARD_RULE_TEXT[c['id']].format(**field)}\n"
+                   for c in field.get("rubric") or []
+                   if c.get("method") == "auto" and c["id"] in _HARD_RULE_TEXT)
     own = ""
     if field.get("id") in ("insight", "smp"):
         own = ("\nOWNABLE TENSION: claim territory the named competitor does NOT own. If every rival "
@@ -641,13 +656,20 @@ def _brand_boilerplate(text: str) -> str:
 
 
 def _rubric_hard(field, value, brand_lines: str = "") -> list:
-    """The rubric's code tests (no model call): word limit, a 'do' that is not an observable
-    behaviour, an SMP that echoes the masterbrand line. Any failure here is final."""
-    mw = field.get("max_words")
+    """The rubric's code tests (no model call): the schema's auto checks exactly as
+    golden_critic runs them (word limit, one sentence, item cap, a stated 'why', think/feel/
+    do all filled), a 'do' that is not an observable behaviour, an SMP that echoes the
+    masterbrand line. Any failure here is final."""
+    from golden_critic import AUTO, FAIL
     blob = (json.dumps(value).lower() if not isinstance(value, str) else value.lower())
     hard = []
-    if mw and _word_count(value) > mw * 1.2:
-        hard.append(f"over the {mw}-word limit ({_word_count(value)} words)")
+    ids = [c["id"] for c in field.get("rubric") or [] if c.get("method") == "auto" and c["id"] in AUTO]
+    if field.get("max_words") and "within_limit" not in ids:
+        ids.append("within_limit")                   # a word limit applies whether or not listed
+    for cid in ids:
+        status, note = AUTO[cid](field, value)
+        if status == FAIL:
+            hard.append(f"{cid}: {note}")
     if field.get("type") == "tfd" and any(v in blob for v in FORBIDDEN_DO_VERBS):
         hard.append("'do' is not an observable behaviour (engage/explore/interact)")
     # The SMP must be a campaign choice, not a restatement of the masterbrand vision.
@@ -1067,6 +1089,17 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     break
                 if chosen is None:
                     chosen, chosen_fail = c, fails
+        # Code-rule repair: the best draft broke ONLY the schema's code rules (two sentences,
+        # over the word limit, too many items, no stated 'why') — one rewrite that fixes
+        # exactly those, re-checked, before the field is given up as missing.
+        if chosen_fail:
+            hard = _rubric_hard(field, chosen["value"], brand_blob)
+            if hard and len(hard) == len(chosen_fail):
+                resc = _refine_field(field, chosen["value"],
+                                     note="Fix exactly this and keep everything else: " + "; ".join(hard))
+                if resc and gate_one(field, resc["value"], ctx, territory if fid == "smp" else None):
+                    chosen = {**resc, "_judge_why": chosen.get("_judge_why", "")}
+                    chosen_fail = []
         # SMP territory rescue: if no candidate could both pass the rubric AND hold the white
         # space, push the best draft off the competitor's ground once before giving up.
         if fid == "smp" and territory and chosen_fail:
