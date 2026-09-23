@@ -489,7 +489,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | Env | Default | Purpose |
 |---|---|---|
 | `RAG_STORE` | `local` — **but `engine/.env` sets `qdrant`** | store backend |
-| `RAG_INDEX` | `./index` next to `rag.py` | local index dir; the current one is `_index_v3` |
+| `RAG_INDEX` | `./index` next to `rag.py` | local index dir; the current one is `_index_v4` (7,392 chunks, with BetterBriefs; migrated to Qdrant 2026-09-23). `_index_v3` is the previous build |
 | `RAG_SEARCH` | `hybrid` | `hybrid` or `dense` |
 | `RAG_EMBED` | unset | `offline` = deterministic hash embedder, no network |
 | `RAG_EMBED_MODEL` | `nvidia/nemotron-3-embed-1b` | must match the index's manifest |
