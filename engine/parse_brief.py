@@ -2250,11 +2250,27 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
                         })
         return key, {"title": title, "query": q, "evidence": evidence}
 
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=len(LOOP37_SPECS)) as pool_ex:
-        results = dict(pool_ex.map(_one_loop, LOOP37_SPECS))
-    # Preserve the canonical loop order regardless of completion order.
-    loops = {key: results[key] for key, _t, _q in LOOP37_SPECS}
+    # RAG_PATH: `mix` (default, Sai's decision 2026-09-23) runs each loop's query through
+    # brief_context.build_multi() — the per-field queries that make this path good, with
+    # brief_context's scope, admission, budgets, thin-bucket widening and validation.
+    # `loops` is the previous path (per-loop retrieve + rerank + case packs), kept one
+    # environment variable away until Shrey's finished-brief test confirms the choice.
+    # Blind-judged on 6 real briefs: B 23, MIX 20, A 14 (B and MIX within judge noise).
+    rag_path = (os.environ.get("RAG_PATH") or "mix").strip().lower()
+    loops, retrieval_trace = None, None
+    if rag_path == "mix":
+        try:
+            loops, retrieval_trace = _loops_via_mix(gist, fields, index_dir)
+        except Exception as e:                        # never crash the run over RAG
+            print(f"[!] RAG_PATH=mix failed ({e.__class__.__name__}: {e}); using the loops path",
+                  file=sys.stderr)
+            rag_path = "loops (mix failed)"
+    if loops is None:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(LOOP37_SPECS)) as pool_ex:
+            results = dict(pool_ex.map(_one_loop, LOOP37_SPECS))
+        # Preserve the canonical loop order regardless of completion order.
+        loops = {key: results[key] for key, _t, _q in LOOP37_SPECS}
     citations_all = [e["citation"] for d in loops.values() for e in d["evidence"]]
 
     # Run-level scope record, alongside the per-hit one on every evidence entry. Two
@@ -2281,7 +2297,42 @@ def loops_3_7(loop2, fields, k=5, index_dir=None) -> dict:
         "loops": loops,
         "sources_used": sorted(set(citations_all)),
         "synthesis_mode": synthesis_mode,
+        "rag_path": rag_path,
+        "retrieval_trace": retrieval_trace,
     }
+
+
+def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
+    """Loops 3-7 evidence from the mix path: each LOOP37_SPECS query through
+    brief_context.build_multi() in one pass. Returns (loops, trace) in exactly the shape
+    the loops path produces — citation "doc › section", framework, category (doc_kind,
+    which _precedent_blocks keys IPA precedent on), score, scope, snippet, text — so
+    fill_derivable_fields, the synthesis and review.md read it unchanged. Scope comes
+    from the same scopes_for() as _retrieval_scopes (no brand authorised here, as there)."""
+    _load_retriever()
+    import brief_context
+    pairs = {k: _val(fields, k) for k in (fields or {})}
+    pairs = {k: v for k, v in pairs.items() if v}
+    pairs.update({k: v for k, v in (("problem", gist["problem"]), ("objective", gist["objective"]),
+                                    ("audience", gist["audience"])) if v and k not in pairs})
+    queries = {key: re.sub(r"\s+", " ", qfn(gist)).strip() for key, _t, qfn in LOOP37_SPECS}
+    mc = brief_context.build_multi(pairs, queries, index_dir=index_dir)
+    loops = {}
+    for key, title, _q in LOOP37_SPECS:
+        ev = []
+        for h in mc.fields.get(key, []):
+            md = h.metadata or {}
+            head = (h.header + " — ") if h.header else ""
+            # doc_id, not Hit.source: Hit.source is the corpus name ("ipa"), and a citation
+            # must name the document ("ipa_0003 › Insight") as the loops path's file names do.
+            ev.append({"citation": f"{h.doc_id} › {h.section}", "cite": h.cite,
+                       "framework": md.get("framework_name") or h.title or h.source,
+                       "category": md.get("doc_kind") or md.get("category"),
+                       "score": h.score, "scope": str(md.get("scope") or "global"),
+                       "snippet": re.sub(r"\s+", " ", head + h.text)[:280],
+                       "text": (h.text or "")[:EVIDENCE_MAX_CHARS]})
+        loops[key] = {"title": title, "query": queries[key], "evidence": ev}
+    return loops, mc.trace
 
 
 def render_loops37(L, brief):

@@ -84,3 +84,25 @@ def test_fulltext_arm_feeds_the_generator_the_evidence_span(monkeypatch):
     assert len(pb._precedent_blocks(loops, "loop4_insight")[0]) == len("- short")
     monkeypatch.setenv("BRIEF_FULLTEXT", "1")
     assert len(pb._precedent_blocks(loops, "loop4_insight")[0]) == len("- ") + pb.FULLTEXT_IPA_CHARS
+
+
+def test_rag_path_mix_is_the_default_and_keeps_the_generator_shape(monkeypatch):
+    """Default RAG_PATH=mix: loops_3_7 evidence comes from build_multi, in the shape
+    fill_derivable_fields reads (citation, framework, category=doc_kind, snippet, text)."""
+    monkeypatch.delenv("RAG_PATH", raising=False)
+    calls = {}
+    def fake_multi(pairs, queries, index_dir=None):
+        """Record the queries; return one IPA hit for loop4 only."""
+        calls["queries"] = queries
+        hit = brief_context.Hit(cite="ipa_0003", doc_id="ipa_0003", source="ipa", bucket="exemplars",
+                                title="Case", section="Insight", header="H", text="insight text", score=0.9,
+                                metadata={"doc_kind": "ipa_effectiveness_case", "scope": "global"})
+        return brief_context.MultiContext(fields={"loop4_insight": [hit]}, trace={"calls": {"embed": 1}})
+    monkeypatch.setattr(brief_context, "build_multi", fake_multi)
+    gist = {"problem": "p", "objective": "o", "audience": "a", "key_message": ""}
+    loops, trace = pb._loops_via_mix(gist, {}, None)
+    assert set(calls["queries"]) == {k for k, _t, _q in pb.LOOP37_SPECS}
+    ev = loops["loop4_insight"]["evidence"][0]
+    assert ev["citation"] == "ipa_0003 › Insight" and ev["category"] == "ipa_effectiveness_case"
+    assert "insight text" in pb._precedent_blocks(loops, "loop4_insight")[0]    # reaches the generator
+

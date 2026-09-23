@@ -499,6 +499,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
 | `BRIEF_FULLTEXT` | unset | `1` = A/B arm: the brief generator reads evidence spans (capped 1200 / 800 chars) instead of 220 / 160-char snippets |
 | `BRIEF_SYNTH_MODEL` | model chain default | model for the per-loop synthesis paragraphs (now one call per loop, in parallel) |
+| `RAG_PATH` | `mix` | Which retrieval feeds the brief generator (`loops_3_7`): `mix` = each loop's per-field query through `brief_context.build_multi()` (scope, admission, budgets, widening, validation; ~1.4s warm); `loops` = the previous per-loop retrieve + rerank + case packs. Chosen 2026-09-23; `loops` stays one switch away until Shrey's finished-brief test |
 | `RAG_VALIDATION_MODE` | `order` | `order` re-sorts by validator score and drops nothing; `gate` also drops what fails the threshold (measured unsafe for briefs: keeps 1/24 useful client exemplars) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
 | `RAG_VALIDATOR` | unset (off) | Validation chain in priority order, e.g. `nemotron,local`; `jev` first once `TYPESAFE_API_KEY` is set |
