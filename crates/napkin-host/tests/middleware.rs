@@ -67,7 +67,7 @@ fn fact(id: &str, value: f64, stale: bool) -> Value {
     });
     if stale {
         f["stale"] = json!({ "detected_at": "2026-09-22T10:00:00Z", "current_version": 3,
-                             "current_fact_id": "f_01JA0B9Z9Z" });
+                             "current_fact_id": "f_01JA0B9Z9Z", "current_value": 0.52 });
     }
     f
 }
@@ -174,6 +174,15 @@ fn a_change_lands_once_as_the_middleware_with_members_and_projection() {
     // The rest of the envelope is passed through for the app to display.
     assert_eq!(out["ok"], true);
     assert_eq!(out["data"]["result"]["summary"], "extracted the problem");
+    // And the document as it now stands rides beside it, for the view to swap
+    // into window.__CLAN__.data.
+    assert_eq!(out["clan"]["version"], settled["version"]);
+    assert_eq!(out["clan"]["id"], on_disk(&f).manifest().id.as_str());
+    assert_eq!(
+        out["clan"]["data"],
+        yaml(&on_disk(&f), "shared/data.yaml"),
+        "exactly what is on disk"
+    );
 
     // One generation: its parent is exactly what was on disk before.
     assert_eq!(
@@ -249,9 +258,17 @@ fn a_change_lands_once_as_the_middleware_with_members_and_projection() {
     assert_eq!(pin["market"], "IE");
     assert_eq!(pin["stale"], false);
     assert!(pin.get("current_version").is_none());
-    assert!(pin.get("pin_reason").is_none(), "only the scalar view keys");
-    assert_eq!(p["pins"]["f_01JA0B3P5R"]["stale"], true);
-    assert_eq!(p["pins"]["f_01JA0B3P5R"]["current_version"], 3);
+    assert!(pin.get("origin").is_none(), "only the view's keys");
+    assert_eq!(pin["retrieved_at"], "2026-09-12");
+    assert_eq!(pin["sources"], json!(["src_4f2a"]));
+    assert_eq!(pin["version"], 2);
+    assert_eq!(pin["status"], "active");
+    assert_eq!(pin["pin_reason"], "cited in the problem");
+    assert!(pin.get("current_value").is_none());
+    let stale = &p["pins"]["f_01JA0B3P5R"];
+    assert_eq!(stale["stale"], true);
+    assert_eq!(stale["current_version"], 3);
+    assert_eq!(stale["current_value"], 0.52);
     assert_eq!(p["findings"]["fi_01JA0F2B"]["status"], "proposed");
     assert_eq!(
         p["findings"]["fi_01JA0F2B"]["cites"],
@@ -295,6 +312,10 @@ fn a_change_for_another_document_is_refused() {
     let reason = out["data"]["change"]["reason"].as_str().unwrap();
     assert!(reason.contains("00000000-0000"), "{reason}");
     assert!(events.is_empty());
+    assert!(
+        out.get("clan").is_none(),
+        "nothing landed, nothing to refresh"
+    );
     assert_eq!(
         std::fs::read(f.id.as_str()).unwrap(),
         before,

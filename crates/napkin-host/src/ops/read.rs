@@ -118,6 +118,17 @@ pub fn human_html(doc: &Document) -> HostResult<String> {
     Ok(inject_clan_data(&styled_html, &context_json))
 }
 
+/// `shared/data.yaml` as JSON — what a view holds as `window.__CLAN__.data`.
+/// `null` when the document has none or it does not parse.
+pub fn data_json(doc: &Document) -> Value {
+    doc.clan()
+        .read_entry("shared/data.yaml")
+        .ok()
+        .and_then(|b| serde_yaml::from_slice::<serde_yaml::Value>(&b).ok())
+        .and_then(|y| serde_json::to_value(y).ok())
+        .unwrap_or(Value::Null)
+}
+
 /// `GET /assets/<rel>` — a binary asset from inside the archive.
 pub fn serve_asset(doc: &Document, rel: &str) -> HostResult<(String, Vec<u8>)> {
     let full = format!("human/assets/{rel}");

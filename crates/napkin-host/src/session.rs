@@ -465,9 +465,12 @@ impl Session {
     /// (M4 — see [`middleware::check_api`]). A reply with a `change` has it
     /// applied here, by the host, and the app gets the envelope back with
     /// `change` replaced by `{applied: true, version, base_stale}` or
-    /// `{applied: false, reason}`. The app never writes middleware output
-    /// itself; what it is handed is informational. Returns the events the
-    /// apply fans out.
+    /// `{applied: false, reason}`. When a change landed, the envelope also
+    /// carries `clan: {id, version, data}` — the document as it now stands —
+    /// so the view can refresh without writing anything. The app never writes
+    /// middleware output itself; what it is handed is informational. Returns
+    /// the events the apply fans out: the same `clan-data-changed` a
+    /// patch-data emits.
     pub fn settle_middleware(&self, ctx: &Ctx, mut envelope: Value) -> (Value, Vec<HostEvent>) {
         // The upstream call itself failed: already an error, nothing to settle.
         if envelope.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -503,7 +506,27 @@ impl Session {
             }
             Err(e) => (middleware::refused(e.message), Vec::new()),
         };
+        let landed = settled.get("applied").and_then(Value::as_bool) == Some(true)
+            && settled.get("noop").is_none();
         envelope["data"]["change"] = settled;
+        // The view holds its own copy of the data (`window.__CLAN__.data`) and
+        // nothing re-reads the archive into it after a host-side write — a
+        // patch-data refreshes it from the patch the page itself sent. So the
+        // document as it now stands rides back beside the middleware's reply,
+        // in the same shape the request's `clan` had, for the bridge to swap
+        // in and announce with `clan:dataupdated`. Outside `data`: that is the
+        // middleware's body, and this is the host's.
+        if landed {
+            if let Ok(clan) = self.read(|d| {
+                Ok(serde_json::json!({
+                    "id": d.clan().manifest().id,
+                    "version": d.version().as_str(),
+                    "data": read::data_json(d),
+                }))
+            }) {
+                envelope["clan"] = clan;
+            }
+        }
         (envelope, events)
     }
 }

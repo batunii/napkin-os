@@ -153,9 +153,15 @@ pub fn register(manifest: &mut Manifest, m: Member) {
     });
 }
 
-/// The projection of the two members, exactly as Contract 3 §5 lays it out:
-/// pins by fact id (with the stale flag and, when stale, the version the layer
-/// is now at), findings by id, and the sha256 of each member's bytes.
+/// The projection of the two members, as Contract 3 §5 lays it out: pins by
+/// fact id, findings by id, and the sha256 of each member's bytes.
+///
+/// A pin carries what a view shows beside the value — where and when it was
+/// learned (`retrieved_at`, `sources`), the layer row it froze (`version`,
+/// `status`) and why it was pinned (`pin_reason`) — plus the stale flag and,
+/// when stale, the version and value the layer is at now (`current_version`,
+/// `current_value`), so the view can offer the current one without a second
+/// read.
 ///
 /// Only keys the entry actually has are copied — a pin missing its `layer` is
 /// left without one for the schema to reject, never given an invented value.
@@ -182,6 +188,11 @@ pub fn projection(
             "confidence",
             "licence",
             "method",
+            "retrieved_at",
+            "sources",
+            "version",
+            "status",
+            "pin_reason",
         ] {
             if let Some(v) = f.get(k).filter(|v| !v.is_null()) {
                 pin.insert(k.into(), v.clone());
@@ -189,8 +200,10 @@ pub fn projection(
         }
         let stale = f.get("stale").filter(|v| !v.is_null());
         pin.insert("stale".into(), Value::Bool(stale.is_some()));
-        if let Some(cv) = stale.and_then(|s| s.get("current_version")) {
-            pin.insert("current_version".into(), cv.clone());
+        for k in ["current_version", "current_value"] {
+            if let Some(v) = stale.and_then(|s| s.get(k)).filter(|v| !v.is_null()) {
+                pin.insert(k.into(), v.clone());
+            }
         }
         pins.insert(id.to_string(), Value::Object(pin));
     }
