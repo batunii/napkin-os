@@ -275,3 +275,57 @@ def test_code_rule_failure_gets_one_repair(monkeypatch):
     monkeypatch.setenv("BRIEF_PARALLEL", "0")
     fills, _qs = _fill(monkeypatch)
     assert "smp" in fills and "Two ideas here" not in fills["smp"]["value"]
+
+
+# ---------- golden_critic: finished brief, independent judge, quality split ----------
+
+import golden_critic as gc  # noqa: E402
+
+CRITIC_SCHEMA = json.loads(gc.SCHEMA_PATH.read_text())
+
+
+def _bo(golden: dict) -> dict:
+    """A minimal brief_object whose capture disagrees with its finished golden brief."""
+    return {"loop1_capture": {"fields": {"key_message": {"value": "Client line one. Client line two.",
+                                                          "status": "fact"}}},
+            "loop2_brief": {"open_questions": []}, "loop2_golden": {"fields": golden}}
+
+
+def test_checker_reads_the_finished_brief_not_the_capture():
+    """The generated SMP is scored, not the client's two-sentence key message."""
+    g = gc.from_brief_object(_bo({"smp": {"value": "Only Acme treats under-30s as adults", "source": "inferred"},
+                                  "tone_world_assets": {"value": "warm, direct", "source": "client_stated"}}))
+    assert g["fields"]["smp"]["value"] == "Only Acme treats under-30s as adults"
+    assert g["fields"]["tone_world_assets"]["value"] == "warm, direct"
+
+
+def test_one_call_critic_replaces_half_credit_with_verdicts():
+    """Every pending llm check is judged in ONE call; a fail is written back as a fail."""
+    brief = gc.from_brief_object(_bo({"smp": {"value": "Only Acme treats under-30s as adults",
+                                              "source": "inferred"}}))
+    v = gc.validate(CRITIC_SCHEMA, brief)
+    calls = []
+    def judge(prompt):
+        """Pass everything except smp.ownable."""
+        calls.append(prompt)
+        out = {}
+        for b in gc.critic_prompts_batched(CRITIC_SCHEMA, brief, v):
+            out[b["field"]] = {c: {"verdict": "fail" if (b["field"], c) == ("smp", "ownable") else "pass",
+                                   "reason": "r"} for c in b["checks"]}
+        return out
+    before = v["health"]
+    v, ran = gc.run_critic_one_call(CRITIC_SCHEMA, brief, v, judge=judge)
+    smp = next(fr for fr in v["fields"] if fr["id"] == "smp")
+    assert len(calls) == 1 and ran > 0
+    assert {c["id"]: c["status"] for c in smp["checks"]}.get("ownable") in ("fail", None)
+    assert v["health"] != before
+
+
+def test_quality_split_does_not_charge_us_for_the_clients_gaps():
+    """No budget in the client brief: a client gap, not a quality loss."""
+    brief = gc.from_brief_object(_bo({"smp": {"value": "Only Acme treats under-30s as adults",
+                                              "source": "inferred"}}))
+    v = gc.validate(CRITIC_SCHEMA, brief)
+    q = gc.quality_split(CRITIC_SCHEMA, brief, v)
+    assert "Budget & scope" in q["client_gaps"] or any("udget" in x for x in q["client_gaps"])
+    assert q["quality"] >= v["health"]

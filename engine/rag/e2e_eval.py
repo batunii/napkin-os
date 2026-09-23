@@ -196,13 +196,15 @@ def trace_one(stem: str, path: str = "mix") -> dict:
 def _quality(brief_json: Path, brief: dict) -> dict:
     """golden_critic health and failures, plus the BetterBriefs scorecard tally."""
     import subprocess
-    out = subprocess.run([sys.executable, str(ENGINE / "golden_critic.py"), str(brief_json)],
+    out = subprocess.run([sys.executable, str(ENGINE / "golden_critic.py"), str(brief_json), "--judge"],
                          capture_output=True, text=True).stdout
-    m = re.search(r"health:\s*(\d+)/100", out)
+    hs = re.findall(r"health:\s*(\d+)/100", out)       # first = unjudged, last = judged
+    qm = re.search(r"quality:\s*(\d+)/100 · client gaps: (.*?) ·", out)
     dims = (brief.get("betterbriefs_scorecard") or {}).get("dimensions") or []
     verdicts = [d.get("verdict") for d in dims]
     gf = (brief.get("loop2_golden") or {}).get("fields") or {}
-    return {"health": int(m.group(1)) if m else None, "checks_pass": out.count(":PASS"),
+    return {"health": int(hs[-1]) if hs else None, "health_unjudged": int(hs[0]) if hs else None,
+            "quality": int(qm.group(1)) if qm else None, "client_gaps": qm.group(2) if qm else None, "checks_pass": out.count(":PASS"),
             "checks_fail": out.count(":FAIL"),
             "betterbriefs": {v: verdicts.count(v) for v in ("pass", "vague", "missing")},
             "golden_fields_filled": sum(1 for v in gf.values() if isinstance(v, dict) and v.get("source") != "missing"),
