@@ -220,3 +220,7 @@ rejected, consequences.
 |---|---|
 | [0001](docs/adr/0001-rag-io-contract.md) | RAG I/O contract: JSON Schema, authority as the only boundary input, live/planned field status |
 | [0002](docs/adr/0002-tuning-rebaseline.md) | Tuning re-baseline after a holdout leak: defaults kept, gain is +2.0 points not +6.8 |
+
+## Plans
+
+- [DGX Spark execution plan](docs/dgx-spark-plan.md) — self-hosting the embedder and reranker, full-scale evals, batch jobs, and the production licensing decision. Status in `project_plan.clan` → `dgx_spark_plan`.
