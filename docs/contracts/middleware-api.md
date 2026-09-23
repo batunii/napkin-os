@@ -31,15 +31,21 @@ name the stand-in, its port, or branch on which implementation answered.
   "request_kind": "middleware",
   "payload": { "task": "extract_ask | research_lens | synthesise_findings | job_status",
                "input": { "...": "task-specific, below" } },
-  "clan": { "id": "<manifest id>", "version": "<doc version the host holds>",
+  "clan": { "id": "<document_id>", "revision": "<manifest id>",
+            "version": "<doc version the host holds>",
             "app": { "app_id": "...", "version": "..." },
             "schema": {}, "data": {}, "facts": [], "findings": [], "pipeline": {},
             "decision_chain": {}, "context": "...", "lineage": {} }
 }
 ```
 
-- `clan.id` is required for every task, `clan.version` for every task except
-  `job_status`. `facts` / `findings` are the members' lists (a
+- `clan.id` is the document's identity — the manifest's `document_id`, which
+  every revision carries unchanged (a file written before it existed uses its
+  manifest `id`). It is the `<doc-id>` prefix of every address. `clan.revision`
+  is the manifest `id` of the revision the host read, fresh on every write;
+  informational. `clan.version` is the host's version of the archive (for the
+  desktop, `sha256:` of its bytes). `clan.id` is required for every task,
+  `clan.version` for every task except `job_status`. `facts` / `findings` are the members' lists (a
   `{facts: [...]}` / `{findings: [...]}` object is also accepted);
   `decision_chain` is `{decisions: [...]}`; `pipeline` is the parsed
   `app/pipeline.yaml`.
@@ -122,7 +128,7 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
 
 ```json
 {
-  "doc": "<manifest id it was computed for>",
+  "doc": "<the clan.id it was computed for — the document_id>",
   "base_version": "<the clan.version it read>",
   "data_patch": { "campaign": { "<field>": { "value": "...", "origin": "extracted", "gate": "...",
                                               "source": {}, "decision": "d_..." } },
@@ -206,11 +212,14 @@ under the field policies, or refuse. One that does hold it may answer `409`.
 The template never writes middleware output. When a `clan://api-proxy` reply for
 `request_kind: middleware` carries a `change`:
 
-1. the host checks `change.doc` equals the open document, else refuses;
+1. the host checks `change.doc` equals the open document's `document_id`, else
+   refuses;
 2. applies it through the single write funnel as ONE Change: `data_patch` →
    `shared/data.yaml`, `facts_append` → `shared/facts.yaml`, `findings_append` →
-   `shared/findings.yaml`, decisions appended with actor `process:middleware` and
-   the response's handler and backend;
+   `shared/findings.yaml`, decisions appended with `actor: process:middleware`,
+   `handler` and `backend` the response's, `scope` the one the host resolved,
+   and the decision's own `id`, `kind`, `targets`, `cites` and `rationale` as
+   fields (`claimed_agent` = its `agent` when that is not the actor);
 3. rebuilds `projection` (pins by fact id, findings by id, `built_from` hashes)
    per Contract 3 §5;
 4. emits the usual patch event so the view re-renders, and returns the envelope

@@ -24,7 +24,7 @@ use serde_json::Value;
 use crate::document::Change;
 use crate::event::HostEvent;
 
-pub use edit::attribute;
+pub use edit::{attribute, attributed};
 
 /// Cap on extracted text we cache + send, to bound the agent's token cost
 /// (~6k tokens). The full asset always stays in the archive; this only limits

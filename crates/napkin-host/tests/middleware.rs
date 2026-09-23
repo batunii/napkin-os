@@ -127,7 +127,8 @@ fn the_agent_context_names_the_document_and_carries_the_members() {
     let f = fixture();
     let clan = f.session.clan_context_for_agent();
     let open = on_disk(&f);
-    assert_eq!(clan["id"], open.manifest().id.as_str());
+    assert_eq!(clan["id"], open.document_id());
+    assert_eq!(clan["revision"], open.manifest().id.as_str());
     assert_eq!(
         clan["version"],
         f.session.current_version().unwrap().as_str()
@@ -151,7 +152,12 @@ fn the_agent_context_names_the_document_and_carries_the_members() {
     let clan = f.session.clan_context_for_agent();
     assert_eq!(clan["facts"].as_array().unwrap().len(), 2);
     assert_eq!(clan["findings"][0]["id"], "fi_01JA0F2B");
-    assert_eq!(clan["id"], on_disk(&f).manifest().id.as_str());
+    // The identity survives the write; the revision does not.
+    let after = on_disk(&f);
+    assert_eq!(clan["id"], after.document_id());
+    assert_eq!(clan["id"], open.document_id());
+    assert_eq!(clan["revision"], after.manifest().id.as_str());
+    assert_ne!(clan["revision"], open.manifest().id.as_str());
 }
 
 #[test]
@@ -177,7 +183,8 @@ fn a_change_lands_once_as_the_middleware_with_members_and_projection() {
     // And the document as it now stands rides beside it, for the view to swap
     // into window.__CLAN__.data.
     assert_eq!(out["clan"]["version"], settled["version"]);
-    assert_eq!(out["clan"]["id"], on_disk(&f).manifest().id.as_str());
+    assert_eq!(out["clan"]["id"], on_disk(&f).document_id());
+    assert_eq!(out["clan"]["revision"], on_disk(&f).manifest().id.as_str());
     assert_eq!(
         out["clan"]["data"],
         yaml(&on_disk(&f), "shared/data.yaml"),
@@ -211,32 +218,46 @@ fn a_change_lands_once_as_the_middleware_with_members_and_projection() {
     assert_eq!(findings["findings"][0]["status"], "proposed");
 
     // Decisions appended, newest first, as process:middleware with the
-    // reply's handler and backend; identity and targets kept verbatim.
+    // reply's handler and backend; identity, kind, targets and cites are the
+    // decision's own fields, and the rationale is the middleware's verbatim.
     let c = chain(&after);
     assert_eq!(c.decisions.len(), chain_before + 2);
     let (newest, first) = (&c.decisions[0], &c.decisions[1]);
+    let doc_id = clan["id"].as_str().unwrap();
+    assert_eq!(first.id.as_deref(), Some("d_01JA0D02EXT"));
+    assert_eq!(first.kind.as_deref(), Some("edit"));
     assert_eq!(first.agent, "extract_ask@1.0.0");
-    assert_eq!(first.action, "extracted the ask");
-    assert!(
-        first.rationale.starts_with(
-            "[actor process:middleware handler extract_ask@1.0.0 backend mock-backend] \
-             [decision d_01JA0D02EXT kind edit cites mat_email01] read from the client's email"
-        ),
-        "{}",
-        first.rationale
-    );
-    let tr = first.trace_ref.as_ref().unwrap();
-    assert_eq!(tr.store, "napkin.middleware/1");
-    assert_eq!(tr.entry, "d_01JA0D02EXT");
-    assert!(tr.content_hash.starts_with("sha256:"));
+    assert_eq!(first.claimed_agent.as_deref(), Some("extract_ask@1.0.0"));
+    assert_eq!(first.actor.as_deref(), Some("process:middleware"));
+    assert_eq!(first.handler.as_deref(), Some("extract_ask@1.0.0"));
     assert_eq!(
-        first.fields_changed,
-        vec![format!("{}#campaign.problem", clan["id"].as_str().unwrap())]
+        first.backend.as_deref(),
+        Some("mock-backend"),
+        "the reply's backend, not the decision's"
     );
-    assert_eq!(newest.trace_ref.as_ref().unwrap().entry, "d_01JA0D06SYN");
-    assert!(newest
-        .rationale
-        .contains("kind finding cites f_01JA0B3P4Q,f_01JA0B3P5R"));
+    assert!(first.scope.is_none(), "the local shell resolves no scope");
+    assert_eq!(first.action, "extracted the ask");
+    assert_eq!(first.rationale, "read from the client's email");
+    assert_eq!(first.targets, vec![format!("{doc_id}#campaign.problem")]);
+    assert_eq!(first.cites, vec!["mat_email01".to_string()]);
+    assert!(
+        first.fields_changed.is_empty(),
+        "targets are not changed keys"
+    );
+    assert!(
+        first.trace_ref.is_none(),
+        "identity is the id, not a trace-ref"
+    );
+    assert_eq!(newest.id.as_deref(), Some("d_01JA0D06SYN"));
+    assert_eq!(newest.kind.as_deref(), Some("finding"));
+    assert_eq!(
+        newest.cites,
+        vec!["f_01JA0B3P4Q".to_string(), "f_01JA0B3P5R".to_string()]
+    );
+    assert_eq!(
+        newest.targets,
+        vec![format!("{doc_id}#findings[fi_01JA0F2B]")]
+    );
 
     // Projection rebuilt from the members, hashed over their exact bytes.
     let p = &data["projection"];

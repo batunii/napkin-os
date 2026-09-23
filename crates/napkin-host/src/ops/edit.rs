@@ -11,8 +11,8 @@
 //! version, is decided by whoever applies it.
 
 use clan_sdk::{
-    apply_patch_and_repack, fork as sdk_fork, patch_asset_with, patch_context, patch_data_with,
-    ClanBuilder, DecisionEntry, PatchDataOptions,
+    apply_patch_and_repack, decision::DecisionScope, fork as sdk_fork, patch_asset_with,
+    patch_context, patch_data_with, ClanBuilder, Decision, DecisionEntry, PatchDataOptions,
 };
 use serde_json::Value;
 
@@ -31,11 +31,10 @@ use super::{extract_text, json_merge, sanitize_asset_name, Outcome};
 ///
 /// `agent` keeps what the caller *claimed* — `human`, `analysis-model` — because
 /// that is what apps use to tell an AI draft from a person's edit, and what the
-/// SDK and every existing chain reader match on. The actor who actually asked
-/// comes from `ctx` and is recorded ahead of the rationale (see
-/// [`Ctx::attribution`]), until `Decision` grows `actor` and `claimed_agent`
-/// fields of its own (W1P-I5): `clan-sdk`'s `Decision` has no catch-all, so any
-/// other key would be dropped by the next SDK read-modify-write.
+/// SDK and every existing chain reader match on. Who actually asked is the
+/// typed part ([`attributed`]): `actor`, `handler`, `backend` and `scope` from
+/// `ctx`, and `claimed_agent` when the claim is not the actor. The rationale is
+/// the caller's, untouched.
 pub fn attribute(
     ctx: &Ctx,
     claimed: &str,
@@ -44,18 +43,35 @@ pub fn attribute(
     pinned: bool,
     fields_changed: Option<Vec<String>>,
 ) -> DecisionEntry {
-    let tag = ctx.attribution();
     DecisionEntry {
         agent_name: claimed.to_string(),
         action: action.to_string(),
-        rationale: if rationale.is_empty() {
-            tag
-        } else {
-            format!("{tag} {rationale}")
-        },
+        rationale: rationale.to_string(),
         pinned,
         fields_changed,
-        typed: None,
+        typed: Some(attributed(ctx, claimed, "edit")),
+    }
+}
+
+/// The attribution every decision the layer records carries, as fields:
+/// `kind`, `actor`, `handler`, `backend`, `scope` (when the shell resolved
+/// one), and `claimed_agent` when what the body claimed differs from the
+/// actor. Everything else is left for the caller to fill.
+pub fn attributed(ctx: &Ctx, claimed: &str, kind: &str) -> Decision {
+    let scope = (!ctx.scope.is_empty()).then(|| DecisionScope {
+        org: ctx.scope.org.clone(),
+        brand: ctx.scope.brand.clone(),
+        ..Default::default()
+    });
+    Decision {
+        kind: Some(kind.to_string()),
+        actor: Some(ctx.actor.to_string()),
+        claimed_agent: (!claimed.is_empty() && claimed != ctx.actor.as_str())
+            .then(|| claimed.to_string()),
+        handler: ctx.handler.clone(),
+        backend: ctx.backend.clone(),
+        scope,
+        ..Default::default()
     }
 }
 

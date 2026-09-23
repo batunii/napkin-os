@@ -20,7 +20,7 @@
 
 use clan_sdk::{
     compress_chain, pack, AgentOutput, ClanBuilder, ClanFile, CompressionConfig, Decision,
-    DecisionChain, PackOptions, TraceRef,
+    DecisionChain, PackOptions,
 };
 use serde_json::Value;
 
@@ -29,6 +29,7 @@ use crate::document::{Change, Document};
 use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
 
+use super::edit::attributed;
 use super::members::{self, Member, FACTS, FINDINGS, PROJECTION_KEY};
 use super::{json_merge, Outcome};
 
@@ -124,9 +125,10 @@ pub fn apply(outer: &Ctx, doc: &Document, reply: &Value) -> HostResult<Outcome> 
 fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<Outcome> {
     let clan = doc.clan();
 
-    // 1. The change must be for the document that is open — not an earlier
-    //    generation of it, not another one.
-    let open_id = &clan.manifest().id;
+    // 1. The change must be for the document that is open, by its identity
+    //    (`document_id`, stable across revisions) — not another one. Which
+    //    revision it read is `base_version`'s to say.
+    let open_id = clan.document_id();
     match change.get("doc").and_then(Value::as_str) {
         Some(d) if d == open_id => {}
         Some(d) => {
@@ -341,24 +343,18 @@ fn check_findings(new: &[Value], facts: &[serde_yaml::Value]) -> HostResult<()> 
     Ok(())
 }
 
-/// One middleware decision as the SDK's `Decision` can hold it.
+/// One middleware decision as the SDK's `Decision` holds it.
 ///
-/// `Decision` has no `id`, `kind`, `targets` or `cites` yet (W1P-I5), and an
-/// unknown key would be dropped by the next SDK read-modify-write. So:
-///
-/// - `trace-ref` carries the decision's identity: `store: napkin.middleware/1`,
-///   `entry: <decision id>`, and the sha256 of the decision exactly as the
-///   middleware sent it. Compression never touches it.
-/// - `fields_changed` carries `targets` — the addresses it is about, verbatim.
-///   Also never compressed.
-/// - the rationale opens with the actor tag every attributed write carries
-///   ([`Ctx::attribution`]) and a second tag for the rest:
-///   `[decision <id> kind <kind> cites <a>,<b>]`. Rationales are the one field
-///   chain compression rewrites (older than the five newest, over 280 chars),
-///   so for a long rationale that far back the tags are best-effort; the
-///   decision's full record is recoverable from the id in `trace-ref`.
-/// - `agent` keeps the middleware's claim (its handler), as every other write
-///   keeps the claim the caller made.
+/// Identity, kind, targets and cites are the decision's own fields, taken as
+/// the middleware sent them. Attribution is the context's: `actor` is always
+/// `process:middleware`, `handler` and `backend` are the reply's (a decision
+/// that names its own fills in only what the reply left out), `scope` is the
+/// one the shell resolved. `agent` keeps the middleware's claim — the body's
+/// `agent`, else the reply's handler — and `claimed_agent` records it too when
+/// it is not the actor. The rationale is the middleware's, verbatim.
+/// `fields_changed` stays empty: a middleware decision says what it is about
+/// in `targets`, and the host does not know which of the patched keys each
+/// one accounts for.
 fn decision(ctx: &Ctx, reply: &Value, d: &Value, now: &str) -> HostResult<Decision> {
     let s = |k: &str| d.get(k).and_then(Value::as_str);
     let id = s("id")
@@ -375,10 +371,7 @@ fn decision(ctx: &Ctx, reply: &Value, d: &Value, now: &str) -> HostResult<Decisi
             })
             .unwrap_or_default()
     };
-    let cites = strings("cites");
 
-    // The reply names who computed the change; a decision that names its own
-    // handler or backend fills in only what the reply left out.
     let mut ctx = ctx.clone();
     if ctx.handler.is_none() {
         ctx.handler = s("handler").map(String::from);
@@ -387,37 +380,19 @@ fn decision(ctx: &Ctx, reply: &Value, d: &Value, now: &str) -> HostResult<Decisi
         ctx.backend = s("backend").map(String::from);
     }
 
-    let mut tag = format!("[decision {id} kind {kind}");
-    if !cites.is_empty() {
-        tag.push_str(&format!(" cites {}", cites.join(",")));
-    }
-    tag.push(']');
-    let rationale = s("rationale").unwrap_or_default();
-    let rationale = if rationale.is_empty() {
-        format!("{} {tag}", ctx.attribution())
-    } else {
-        format!("{} {tag} {rationale}", ctx.attribution())
-    };
-
-    let canonical = serde_json::to_vec(d).map_err(|e| HostError::internal(e.to_string()))?;
-    Ok(Decision {
-        agent: s("agent")
-            .or_else(|| reply.get("handler").and_then(Value::as_str))
-            .unwrap_or(JOB)
-            .to_string(),
-        version: None,
-        action: s("action").unwrap_or(kind).to_string(),
-        rationale,
-        timestamp: now.to_string(),
-        fields_changed: strings("targets"),
-        pinned: false,
-        trace_ref: Some(TraceRef {
-            store: API.to_string(),
-            entry: id.to_string(),
-            content_hash: clan_sdk::hash::sha256_prefixed(&canonical),
-        }),
-        ..Default::default()
-    })
+    let agent = s("agent")
+        .or_else(|| reply.get("handler").and_then(Value::as_str))
+        .unwrap_or(JOB)
+        .to_string();
+    let mut out = attributed(&ctx, &agent, kind);
+    out.id = Some(id.to_string());
+    out.agent = agent;
+    out.action = s("action").unwrap_or(kind).to_string();
+    out.rationale = s("rationale").unwrap_or_default().to_string();
+    out.timestamp = now.to_string();
+    out.targets = strings("targets");
+    out.cites = strings("cites");
+    Ok(out)
 }
 
 fn data_json(clan: &ClanFile) -> HostResult<Value> {

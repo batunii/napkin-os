@@ -519,7 +519,8 @@ impl Session {
         if landed {
             if let Ok(clan) = self.read(|d| {
                 Ok(serde_json::json!({
-                    "id": d.clan().manifest().id,
+                    "id": d.clan().document_id(),
+                    "revision": d.clan().manifest().id,
                     "version": d.version().as_str(),
                     "data": read::data_json(d),
                 }))
@@ -698,7 +699,33 @@ mod tests {
         let chain = clan_sdk::DecisionChain::from_yaml(&chain).unwrap();
         let newest = &chain.decisions[0];
         assert_eq!(newest.agent, "analysis-model", "the claim is kept");
-        assert_eq!(newest.rationale, "[actor human:u-42] drafted");
+        assert_eq!(newest.actor.as_deref(), Some("human:u-42"));
+        assert_eq!(newest.claimed_agent.as_deref(), Some("analysis-model"));
+        assert_eq!(newest.kind.as_deref(), Some("edit"));
+        assert_eq!(newest.rationale, "drafted", "the rationale is the caller's");
+        assert_eq!(newest.fields_changed, vec!["tone".to_string()]);
+        assert!(newest.scope.is_none(), "no tenancy, no scope");
+        assert!(newest.id.as_deref().unwrap().starts_with("d_"));
+
+        // A scoped context records its scope; a claim equal to the actor is
+        // not recorded twice.
+        let ctx = ctx.with_scope(crate::ctx::Scope {
+            org: Some("o1".into()),
+            brand: Some("b1".into()),
+        });
+        let body = r#"{"patch":{"tone":"cool"},"agent":"human:u-42"}"#;
+        session.patch_data_as(&ctx, body).unwrap();
+        let chain = ClanFile::open(id.as_str())
+            .unwrap()
+            .read_entry("agent/decision-chain.yaml")
+            .unwrap();
+        let chain = clan_sdk::DecisionChain::from_yaml(&chain).unwrap();
+        let newest = &chain.decisions[0];
+        let scope = newest.scope.as_ref().unwrap();
+        assert_eq!(scope.org.as_deref(), Some("o1"));
+        assert_eq!(scope.brand.as_deref(), Some("b1"));
+        assert!(newest.claimed_agent.is_none());
+        assert_eq!(newest.rationale, "");
     }
 
     #[test]

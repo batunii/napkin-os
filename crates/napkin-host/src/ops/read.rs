@@ -215,9 +215,10 @@ pub fn attach_extracted_text(doc: &Document, payload: &mut Value) {
 /// schema (what boxes exist), current data (the brief so far), the decision
 /// chain (what's been decided + by whom), the agent context, and lineage.
 ///
-/// It also says which document and which version it was read from (`id`, the
-/// manifest id, and `version`, the snapshot's) — what a middleware change must
-/// name to be applied — and carries the facts and findings members (empty
+/// It also says which document and which version it was read from — `id`, the
+/// document's identity (`document_id`, stable across revisions), `revision`,
+/// the manifest id of this revision, and `version`, the snapshot's — which is
+/// what a middleware change must name to be applied, and carries the facts and findings members (empty
 /// lists when the document has none) and the parsed `app/pipeline.yaml` (null
 /// when it has none), which the middleware resolves tasks against. Every key
 /// an existing agent reads is unchanged.
@@ -244,7 +245,8 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "decision_chain": yaml_to_json("agent/decision-chain.yaml"),
         "context": clan.read_entry_string("agent/context.md").unwrap_or_default(),
         "lineage": m.lineage.as_ref().map(|l| serde_json::json!({ "parent_id": l.parent_id, "delta": l.delta })),
-        "id": m.id,
+        "id": clan.document_id(),
+        "revision": m.id,
         "version": doc.version().as_str(),
         "facts": members::list_for_agent(clan, members::FACTS),
         "findings": members::list_for_agent(clan, members::FINDINGS),

@@ -138,27 +138,6 @@ impl Ctx {
         self.backend = Some(backend.into());
         self
     }
-
-    /// The attribution tag a decision carries until the decision struct has
-    /// fields of its own for it (W1P-I5): `[actor human:local]`, plus the
-    /// handler and backend when either is set.
-    ///
-    /// It goes at the front of the rationale because the rationale is the one
-    /// free-text field `clan-sdk`'s `Decision` has that survives every
-    /// read-modify-write — an unknown YAML key would be dropped by the next SDK
-    /// write, and the `agent` field keeps the claim the app made (see
-    /// [`crate::ops::attribute`]).
-    pub fn attribution(&self) -> String {
-        let mut tag = format!("[actor {}", self.actor);
-        if let Some(h) = &self.handler {
-            tag.push_str(&format!(" handler {h}"));
-        }
-        if let Some(b) = &self.backend {
-            tag.push_str(&format!(" backend {b}"));
-        }
-        tag.push(']');
-        tag
-    }
 }
 
 /// The one local user of a desktop or browser shell.
@@ -193,17 +172,6 @@ mod tests {
         let ctx = Ctx::local();
         assert!(ctx.actor.is_human());
         assert!(ctx.scope.is_empty());
-        assert_eq!(ctx.attribution(), "[actor human:local]");
-    }
-
-    #[test]
-    fn attribution_names_the_handler_and_backend_when_set() {
-        let ctx = Ctx::new(Actor::process("j1").unwrap())
-            .with_handler("draft@1.0")
-            .with_backend("nim");
-        assert_eq!(
-            ctx.attribution(),
-            "[actor process:j1 handler draft@1.0 backend nim]"
-        );
+        assert_eq!(ctx.actor.as_str(), LOCAL_HUMAN);
     }
 }
