@@ -21,10 +21,10 @@ agents. Each file has one owner; change someone else's file by asking them.
 in place:
 
 ```
-example/shared/data.yaml            campaign.*, selection.*, materials, projection
+example/shared/data.yaml            campaign.*, selection.*, materials, intake, report, projection
 example/shared/facts.yaml           18 pins, brand + category layers, 2 stale
 example/shared/findings.yaml        5 findings: 1 verified, 3 proposed, 1 rejected
-example/agent/decision-chain.yaml   17 decisions, newest first
+example/agent/decision-chain.yaml   23 decisions, newest first
 example/assets/client-email.txt     the ask source (mat_email01), hashed in data.yaml
 ```
 
@@ -43,3 +43,59 @@ uv run --with jsonschema --with pyyaml python app/templates/campaign-research/to
 ```
 
 Add `--write-projection` after editing `facts.yaml` or `findings.yaml`.
+
+## The view (`index.html`)
+
+One page, rendered from `window.__CLAN__.data` and the chain (`clan://chain`).
+Top to bottom: the report, the conversation, the gates, then the ask, facts,
+findings, selection and history. The page carries no platform brand: the OS
+shell's bar brands it; the page shows "Research Tool" as a small title.
+
+**Starting a campaign (Contract 3 §16, middleware-api §8).** An empty document
+opens on the intake, the way Brief Maker does: a prompt box, attach any number
+of files (picker or drop), one primary action, **Start research**. On it the
+view:
+
+1. uploads each file (`clan.uploadAsset(name, bytes, 'human')`) and hashes it
+   (`sha256:` of the bytes);
+2. writes, as ONE human `patch-data`, the prompt as a `kind: prompt` material
+   (sha256 of its UTF-8 text), one material per file, the user message
+   `intake.messages.<msg_id>` (`by`, `at`, `material_id`, `attachments`), and
+   `campaign.id` / `campaign.ask_source` (the first file) / `campaign.name`
+   (when typed) as `stated`;
+3. sends `start_campaign {prompt, attachments: [{material_id, name, sha256}]}`
+   (`name` is the asset name, so the host splices in the extracted text), then
+   polls `job_status` (free) until `done` or `failed`.
+
+`by` is the host's actor, read from the chain: the upload is attributed to the
+person, so with a file attached the id is known before the message is written.
+With no file and no earlier human decision the intake asks for the user id.
+
+**The conversation.** `intake.messages` in `at`-then-key order, plus the
+job's `result.messages` not written yet (marked *in flight*, de-duplicated by
+id). A stepper shows the six stages from `job.stage` / `job.progress`. Each
+agent message wears the stage's figure (static copies of the shell's
+`AgentFigure`). On open, the view polls the newest job once, unless its report
+has landed.
+
+**Questions.** A `needs_input` job's `job.question` shows as a bot message with
+one button per option: its origin ("You said this" with the quote, "We
+inferred this" with the pins, "You typed this"), the escape, and a text box
+when `allow_text`. A pick is the person's write, before `answer_question`
+(§16.3): the answer message and the field at `address`, `confirmed` from the
+option's origin (keeping `source` / `fact_ids`) or `stated`. Free text writes
+only the message; the middleware asks again with candidates.
+
+**The report (§17)** is read-only: headline, summary, sections of `claim`
+(cites as chips linking to the pin or finding), `pins`, `finding`, `gap` and
+`contest` blocks, the confirm list (each item jumps to its field's Confirm,
+or confirms in place), and `not_researched`. Every string is escaped. It is marked out of
+date when `based_on`'s hashes differ from `projection.built_from`, or a
+decision newer than `built_at` touches `campaign.*` / `selection.*`;
+**Refresh report** sends `compose_report`.
+
+The document title follows `campaign.name` (`clan.setTitle`) when the name
+first appears, or while the title is still the app's default. The export
+(`clan:export`, Path B) carries the report and the conversation and drops the
+intake and every control.
+
