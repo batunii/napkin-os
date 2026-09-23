@@ -215,11 +215,10 @@ def to_build_args(request: dict) -> tuple[dict, list[str]]:
         pairs["product"] = product
 
     cats = brand.get("categories") or []
+    alt = []
     if cats:
         pairs["category"] = cats[0]
-        if len(cats) > 1:
-            notes.append(f"rag_io: secondary category {cats[1]!r} recorded, not yet used "
-                         f"to widen (planned)")
+        alt = list(cats[1:])                     # widens a THIN bucket before any filter drops
 
     market = _join(campaign.get("market"), brand.get("markets") or [])
     if market:
@@ -234,6 +233,8 @@ def to_build_args(request: dict) -> tuple[dict, list[str]]:
         pairs["competitors"] = _join(others)
 
     kwargs = {"pairs": pairs, "brand": auth.get("brand"), "tenant": auth.get("tenant")}
+    if alt:
+        kwargs["alt_categories"] = alt
     # Brief context for the validator: research findings then attachments, each labelled.
     # Attachments are untrusted, which is exactly why they only ever reach this string —
     # a relevance judgement — and never pairs, scope or tenant.

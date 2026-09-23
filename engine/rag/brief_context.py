@@ -611,7 +611,8 @@ def _fill(hits: list[Hit], budget: int, max_hit: int | None = None,
 def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
           candidates: int = CANDIDATES, brand: str | None = None,
           tenant: str | None = None, context: str = "", admission: dict | None = None,
-          chain=None, query_override: str | None = None) -> BriefContext:
+          chain=None, query_override: str | None = None,
+          alt_categories: list[str] | tuple = ()) -> BriefContext:
     """The entry point. Campaign pairs in, four budgeted citable blocks out.
 
     `brand` is the authorised brand for this run and the only way to unlock brand-scoped
@@ -653,29 +654,9 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     hits_by: dict[str, list[Hit]] = {}
 
     for bucket in ("exemplars", "craft", "rules", "instructions"):
-        where = bucket_filters(bucket, filters, scopes, tenants)
-        rows = rag.search_vec(store, qvec, search_text, k=candidates, where=where)
-
-        # widen one step at a time rather than return an empty block
-        if not rows and bucket == "exemplars":
-            # Category before problem type, on the creative director's ruling: the best
-            # precedent for a bank brief is often a beer campaign that solved the same
-            # PROBLEM — a low-interest category, a distinctiveness deficit, a behaviour
-            # that needs a nudge. Sector is the weakest predictor of whether a case is
-            # useful, so it is the first thing to give up when the filter is too narrow.
-            for drop in ("category", "effectiveness_type"):
-                if drop in where:
-                    where = {k: v for k, v in where.items() if k != drop}
-                    widened.append(f"{bucket}: dropped {drop}")
-                    rows = rag.search_vec(store, qvec, search_text, k=candidates, where=where)
-                    if rows:
-                        break
-
-        used_filters[bucket] = where
-        rows = _collapse(rows, store)
-        hits = [_to_hit(s, r, bucket) for s, r in rows]
-        if bucket == "rules":
-            hits.sort(key=lambda h: (-_scope_rank(h.metadata), -h.score))
+        hits, used_filters[bucket] = _bucket_hits(
+            store, qvec, search_text, bucket, filters, scopes, tenants, candidates,
+            alt_categories, widened)
         hits_by[bucket] = hits
 
     validation = _apply_validation(hits_by, chain, query=search_text, context=context,
@@ -722,6 +703,172 @@ def build(pairs: dict, *, index_dir=None, budget: dict | None = None,
     return BriefContext(blocks=blocks, query=query, keywords=keywords,
                         filters=used_filters, widened=widened, scopes=list(scopes),
                         tenants=list(tenants), egress=egress, validation=validation)
+
+
+# ---- per-bucket retrieval, shared by build() and build_multi() ---------------------
+# A bucket is THIN when its candidates cover fewer distinct documents than this. Widening
+# used to fire only on an EMPTY bucket; a three-path test on real briefs showed a filtered
+# bucket returning 2 exemplars while the right cases sat one category away (Friskies,
+# tagged fmcg, missed food_drink cases). Thin buckets now widen too.
+MIN_DISTINCT_DOCS = {"exemplars": 4, "craft": 3}
+
+
+def _distinct_docs(rows: list) -> int:
+    """How many different corpus documents a list of (score, row) covers."""
+    return len({(r.get("metadata") or {}).get("doc_id") or r.get("id") for _, r in rows})
+
+
+def _merge_rows(rows: list, more: list, cap: int) -> list:
+    """rows first (the stricter filter's ranking is kept), then new rows from `more`."""
+    seen = {r.get("id") for _, r in rows}
+    return (rows + [(sc, r) for sc, r in more if r.get("id") not in seen])[:cap]
+
+
+def _bucket_hits(store, qvec, search_text: str, bucket: str, filters: dict, scopes, tenants,
+                 candidates: int, alt_categories, notes: list[str]) -> tuple[list[Hit], dict]:
+    """Retrieve, widen while thin, collapse and convert one bucket. Returns (hits, the
+    filter actually used last). Widening appends to the stricter results — it never
+    replaces them — one step at a time, each recorded in `notes`:
+      1. add the brand's other categories (category in [primary, *alt]) — broadening
+         within what the brand record says is true of the brand;
+      2. then the existing ladder: drop `category`, then `effectiveness_type`.
+    Only the similarity-ranked buckets widen; rules and instructions are filter-defined."""
+    import rag
+    where = bucket_filters(bucket, filters, scopes, tenants)
+    rows = rag.search_vec(store, qvec, search_text, k=candidates, where=where)
+    need = MIN_DISTINCT_DOCS.get(bucket)
+    if need and _distinct_docs(rows) < need:
+        steps = []
+        alts = [c for c in (alt_categories or ()) if c and c != where.get("category")]
+        if alts and isinstance(where.get("category"), str):
+            steps.append(("add categories " + ",".join(alts),
+                          {**where, "category": {"in": [where["category"], *alts]}}))
+        w = dict(steps[-1][1]) if steps else dict(where)
+        for drop in ("category", "effectiveness_type"):     # existing order, see ADR note
+            if drop in w:
+                w = {k: v for k, v in w.items() if k != drop}
+                steps.append((f"dropped {drop}", dict(w)))
+        for label, w in steps:
+            before = _distinct_docs(rows)
+            rows = _merge_rows(rows, rag.search_vec(store, qvec, search_text, k=candidates, where=w),
+                               candidates)
+            notes.append(f"{bucket}: {'empty' if before == 0 else f'thin ({before} docs)'} — {label}")
+            where = w
+            if _distinct_docs(rows) >= need:
+                break
+    rows = _collapse(rows, store)
+    hits = [_to_hit(sc, r, bucket) for sc, r in rows]
+    if bucket == "rules":
+        hits.sort(key=lambda h: (-_scope_rank(h.metadata), -h.score))
+    return hits, where
+
+
+# ---- the mix path: several field queries through this pipeline in one pass ---------
+MIX_BUCKETS = ("exemplars", "craft", "rules")
+MIX_BUDGET = {"exemplars": 1500, "craft": 1200, "rules": 500}
+MIX_SEARCH_WORKERS = 4
+
+
+@dataclass
+class MultiContext:
+    """build_multi()'s result: evidence per field (e.g. loops_3_7's insight / proposition /
+    proof), each hit citable and scoped, plus one trace for the whole brief."""
+    fields: dict[str, list[Hit]]
+    trace: dict
+
+    def citations(self) -> dict[str, Hit]:
+        """cite -> Hit across every field, for check_grounding()."""
+        return {h.cite: h for hs in self.fields.values() for h in hs}
+
+
+def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_field: int = 5,
+                brand: str | None = None, tenant: str | None = None, context: str = "",
+                admission: dict | None = None, chain=None, alt_categories=(),
+                candidates: int = CANDIDATES) -> MultiContext:
+    """The mix path, fast: every field query through brief_context's pipeline in one pass.
+
+    What build() does per brief, done once per brief here — plan, scopes, tenants, store,
+    ONE batched embedding call for all queries, ONE validator call across all fields'
+    candidates — with the field x bucket searches run concurrently. Each field keeps its
+    own query (the reason the mix beat path A on real briefs) and gets up to `per_field`
+    hits, deduplicated across fields in field order. Thin buckets widen as in build().
+    Egress: any hit outside the authorised scopes/tenants is removed and recorded."""
+    import rag
+    from concurrent.futures import ThreadPoolExecutor
+    t0 = __import__("time").time()
+    _q, keywords, filters, notes = plan(pairs)
+    scopes = scopes_for(pairs, filters, brand=brand, notes=notes)
+    tenants = tenants_for(tenant)
+    chain = default_chain() if chain is None else chain
+    if not chain.empty:
+        candidates = chain.pool_width(candidates)
+    store = rag.open_store(index_dir)
+    texts = {f: (" ".join([q] + keywords).strip() or "advertising strategy") for f, q in queries.items()}
+    try:
+        vecs, mode = rag.embed(list(texts.values()), "query")          # ONE call for all fields
+        qvecs = dict(zip(texts, (rag._norm(v) for v in vecs)))
+    except rag.EmbedUnavailable as e:
+        mode = "keyword-only"
+        notes.append(f"embedding unavailable ({e}) — keyword-only search")
+        qvecs = {f: None for f in texts}
+    field_notes: dict[str, list[str]] = {f: [] for f in texts}
+
+    def one(job):
+        """Retrieve one (field, bucket) pair."""
+        f, b = job
+        hits, _where = _bucket_hits(store, qvecs[f], texts[f], b, filters, scopes, tenants,
+                                    candidates, alt_categories, field_notes[f])
+        return job, hits
+    jobs = [(f, b) for f in texts for b in MIX_BUCKETS]
+    # Bounded: the hosted Qdrant free tier sheds connections under burst load (measured
+    # 2026-09-23: 8 concurrent searches -> "connection refused" mid-run).
+    with ThreadPoolExecutor(max_workers=min(MIX_SEARCH_WORKERS, len(jobs))) as ex:
+        found = dict(ex.map(one, jobs))
+
+    # One validator call PER FIELD, concurrently, each against that field's own query.
+    # A single call against the shared brief query was tried first: it re-sorted every
+    # field by the generic query and erased the per-field ranking that makes the mix
+    # better (blind-judged score fell from 4/4/4/4 to 2/4/3/3 on the same briefs).
+    groups = {f"{f}|{b}": found[(f, b)] for f, b in jobs}
+
+    def validate(f):
+        """Validate one field's buckets against that field's query."""
+        g = {k: v for k, v in groups.items() if k.startswith(f + "|")}
+        return f, _apply_validation(g, chain, query=texts[f], context=context, admission=admission)
+    with ThreadPoolExecutor(max_workers=len(texts)) as ex:
+        per_field_validation = dict(ex.map(validate, list(texts)))
+    validation = None if all(v is None for v in per_field_validation.values()) else {
+        "per_field": per_field_validation,
+        "calls": sum((v or {}).get("calls", 0) for v in per_field_validation.values())}
+    allowed, allowed_t = set(scopes), set(tenants)
+    egress, out, seen = [], {}, set()
+    for f in texts:
+        picked = []
+        for b in MIX_BUCKETS:
+            blk = _fill(groups[f"{f}|{b}"], MIX_BUDGET[b], MAX_HIT_TOKENS.get(b),
+                        one_per_client=(b == "exemplars"))
+            picked.append(blk.hits)
+        ordered = [h for tier in zip(*[p + [None] * (max(map(len, picked)) - len(p)) for p in picked])
+                   for h in tier if h is not None]                      # interleave buckets
+        field_hits = []
+        for h in ordered:
+            sc, tn = str(h.metadata.get("scope") or "global"), str(h.metadata.get("tenant") or "house")
+            if tn not in allowed_t or sc not in allowed:
+                egress.append({"cite": h.cite, "field": f, "scope": sc, "tenant": tn})
+                continue
+            if h.cite in seen or len(field_hits) >= per_field:
+                continue
+            seen.add(h.cite); field_hits.append(h)
+        out[f] = field_hits
+    trace = {"queries": texts, "keywords": keywords, "filters": {k: str(v) for k, v in filters.items()},
+             "scopes": list(scopes), "tenants": list(tenants), "embed": mode, "notes": notes,
+             "widened": {f: n for f, n in field_notes.items() if n}, "egress": egress,
+             "validation": validation, "calls": {"embed": 1 if mode != "keyword-only" else 0,
+                                                 "validator": (validation or {}).get("calls", 0),
+                                                 "searches": len(jobs)},
+             "seconds": round(__import__("time").time() - t0, 2),
+             "fields": {f: [h.cite for h in hs] for f, hs in out.items()}}
+    return MultiContext(fields=out, trace=trace)
 
 
 # ---- validation and ordering (plan steps 3-4) ------------------------------------

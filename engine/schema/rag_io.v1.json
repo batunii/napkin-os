@@ -149,7 +149,7 @@
           "type": "array",
           "maxItems": 2,
           "x-status": "live",
-          "description": "Ranked, most applicable first. The first is the retrieval filter; the second is planned as a widening step. Leave empty rather than guess — the widening ladder handles a missing filter, it cannot un-guess a wrong one.",
+          "description": "Ranked, most applicable first. The first is the retrieval filter; the rest widen a THIN bucket (fewer than 4 exemplar / 3 craft documents) before any filter is dropped. Leave empty rather than guess — the widening ladder handles a missing filter, it cannot un-guess a wrong one.",
           "items": {
             "type": "string",
             "x-enum-from": "category"

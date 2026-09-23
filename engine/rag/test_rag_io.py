@@ -158,13 +158,12 @@ def test_aliases_do_not_trigger_a_false_client_mismatch():
     assert notes == [], notes
 
 
-def test_secondary_category_is_declared_as_unused():
-    """Only the first category is used as a filter; a second, planned-but-unwired category
-    is reported in the notes as unused rather than silently dropped."""
+def test_secondary_category_widens_a_thin_bucket():
+    """The first category filters; the rest reach build() as alt_categories, used to widen
+    a thin bucket before any filter is dropped (Tesco is filed as retail AND telecoms)."""
     r = copy.deepcopy(REQ); r["brand"]["categories"] = ["retail", "telecoms"]
-    kw, notes = rag_io.to_build_args(r)
-    assert kw["pairs"]["category"] == "retail"
-    assert any("telecoms" in n and "planned" in n for n in notes)
+    kw, _ = rag_io.to_build_args(r)
+    assert kw["pairs"]["category"] == "retail" and kw["alt_categories"] == ["telecoms"]
 
 
 def test_planned_fields_are_not_half_used():

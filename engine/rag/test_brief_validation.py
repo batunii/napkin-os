@@ -161,3 +161,57 @@ def test_order_mode_sorts_by_score_and_drops_nothing(monkeypatch):
     blocks = {b: bc.Block(b, hs, budget=1000) for b, hs in hb.items()}
     ctx = bc.BriefContext(blocks=blocks, query="q", keywords=[], filters={}, validation=rec)
     assert rag_io.validate(rag_io.response_from(ctx, "r"), "response") == []
+
+
+# ---- thin-bucket widening and the fast mix path ------------------------------------
+def _fake_rag(monkeypatch, docs_by_category):
+    """Fake store search: rows per category filter; records every where clause used."""
+    import rag
+    calls = []
+    def search_vec(store, qvec, q, k=5, where=None, mode=None):
+        """Rows whose category matches the filter (all rows when category is absent)."""
+        calls.append(dict(where or {}))
+        cat = (where or {}).get("category")
+        cats = cat["in"] if isinstance(cat, dict) else ([cat] if cat else list(docs_by_category))
+        return [(1.0, {"id": f"{c}:{d}#0", "text": "t", "metadata": {"doc_id": f"{c}:{d}", "bucket": "exemplars",
+                "category": c, "scope": "global", "tenant": "house", "source": "ipa", "level": "parent"}})
+                for c in cats for d in range(docs_by_category.get(c, 0))][:k]
+    monkeypatch.setattr(rag, "search_vec", search_vec)
+    monkeypatch.setattr(bc, "_collapse", lambda rows, store: rows)
+    return calls
+
+
+def test_a_thin_bucket_widens_to_the_brands_other_category_first(monkeypatch):
+    """2 fmcg docs is thin (< 4): add food_drink before dropping any filter."""
+    calls = _fake_rag(monkeypatch, {"fmcg": 2, "food_drink": 5})
+    notes = []
+    hits, where = bc._bucket_hits(None, [1.0], "q", "exemplars", {"category": "fmcg"}, ["global"], ["house"],
+                                  40, ["food_drink"], notes)
+    assert calls[1]["category"] == {"in": ["fmcg", "food_drink"]}
+    assert [h.doc_id for h in hits[:2]] == ["fmcg:0", "fmcg:1"]          # stricter results stay first
+    assert len({h.doc_id for h in hits}) >= 4 and "thin (2 docs)" in notes[0]
+
+
+def test_a_bucket_that_is_not_thin_does_not_widen(monkeypatch):
+    """5 docs under the filter: one search, no widening."""
+    calls = _fake_rag(monkeypatch, {"fmcg": 5})
+    notes = []
+    bc._bucket_hits(None, [1.0], "q", "exemplars", {"category": "fmcg"}, ["global"], ["house"], 40, (), notes)
+    assert len(calls) == 1 and notes == []
+
+
+def test_build_multi_embeds_once_and_validates_each_field_against_its_own_query(monkeypatch):
+    """Five field queries: one embedding call, 15 searches, one validator call per field
+    (each against its own query — one shared call erased per-field ranking), evidence
+    deduplicated across fields."""
+    import rag
+    _fake_rag(monkeypatch, {"fmcg": 6})
+    embeds = []
+    monkeypatch.setattr(rag, "open_store", lambda *a, **k: None)
+    monkeypatch.setattr(rag, "embed", lambda texts, t="passage": (embeds.append(len(texts)) or [[1.0, 0.0]] * len(texts), "nim:x"))
+    be = FakeBackend()
+    queries = {f"f{i}": f"query {i}" for i in range(5)}
+    mc = bc.build_multi({"category": "fmcg", "problem": "p"}, queries, chain=judge.Chain([be]))
+    assert embeds == [5] and len(be.calls) == 5 and mc.trace["calls"]["searches"] == 15   # one call per field
+    all_cites = [h.cite for hs in mc.fields.values() for h in hs]
+    assert len(all_cites) == len(set(all_cites))                        # deduplicated across fields

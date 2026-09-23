@@ -337,7 +337,7 @@ def test_widening_gives_up_sector_before_problem_type():
     Sector is the weakest predictor of useful precedent (creative-director ruling,
     2026-09-17), so it is the first filter relaxed."""
     import inspect
-    src = inspect.getsource(bc.build)
+    src = inspect.getsource(bc._bucket_hits)            # the ladder lives in the shared helper
     order = src[src.index('for drop in ('):]
     assert order.index('"category"') < order.index('"effectiveness_type"')
 

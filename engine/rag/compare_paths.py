@@ -6,8 +6,8 @@ compare_paths.py — the same real briefs through the three retrieval paths, jud
 
     A    brief_context.build()        one query, four budgeted buckets (the rag_io path)
     B    parse_brief.loops_3_7()      five per-field queries (what the generator reads today)
-    MIX  loops_3_7's five per-field queries run through brief_context.build(query_override=)
-         so each keeps filters, scope, admission, budgets and validation
+    MIX  loops_3_7's five per-field queries through brief_context.build_multi(): one pass
+         with filters, scope, admission, budgets, thin-bucket widening and one validator call
 
 Retrieval only: loops_3_7's synthesis step is replaced by a no-op, so no generation cost.
 A Sonnet judge sees the three evidence sets labelled X / Y / Z in a per-brief shuffled
@@ -35,7 +35,6 @@ CLIENT = HERE / "golden" / "labels" / "client"
 JUDGE_MODEL = "claude-sonnet-5"
 PICK = ["client:friskies-engleza", "client:vwcv-pitch-brief", "client:betfair-romania-creative-campaign",
         "client:employer-awareness-campaign-brief", "client:mr-diy-engleza", "client:bord-gais-energy-media-agency-selection"]
-MIX_BUDGET = {"exemplars": 1500, "craft": 1200, "rules": 500, "instructions": 0}
 
 
 def _pairs(b: dict) -> dict:
@@ -66,21 +65,14 @@ def path_b(pb, b: dict) -> list[dict]:
 
 
 def path_mix(bc, pb, b: dict) -> list[dict]:
-    """Each of loops_3_7's per-field queries through brief_context's pipeline, top 5 per field."""
+    """The fast mix: loops_3_7's per-field queries through build_multi() in one pass
+    (one embedding call, one validator call, searches in parallel)."""
     cap = lambda v: {"value": v}
     gist = pb._brief_gist({"problem": cap(b["problem"]), "objective": cap(b["objective"]),
                            "audience": cap(b["audience"]), "key_message": cap("")}, {})
-    out, seen = [], set()
-    for key, _title, qfn in pb.LOOP37_SPECS:
-        ctx = bc.build(_pairs(b), query_override=qfn(gist), budget=MIX_BUDGET)
-        hits = [h for name in ("exemplars", "craft", "rules") for h in ctx.blocks[name].hits]
-        kept = 0
-        for h in hits:
-            if h.cite in seen or kept == 5:
-                continue
-            seen.add(h.cite); kept += 1
-            out.append(dict(_item(h.cite, h.header or h.title, h.text), bucket=key))
-    return out
+    mc = bc.build_multi(_pairs(b), {key: qfn(gist) for key, _t, qfn in pb.LOOP37_SPECS})
+    return [dict(_item(h.cite, h.header or h.title, h.text), bucket=f)
+            for f, hs in mc.fields.items() for h in hs]
 
 
 def judge(pb, b: dict, sets: dict[str, list[dict]], order: list[str]) -> dict:
@@ -112,6 +104,11 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=5)
     n = ap.parse_args().n
     import rag  # noqa: F401  (loads engine/.env)
+    import os
+    if (os.environ.get("RAG_STORE") or "").lower() != "local":
+        sys.exit("compare_paths: run with RAG_STORE=local — bulk evals never hit the hosted Qdrant")
+    store = rag.open_store(None)
+    rag.open_store = lambda *a, **k: store          # one index load, not one per build
     import brief_context as bc
     import parse_brief as pb
     pb._synthesize_loops37 = lambda *a, **k: "skipped (retrieval-only comparison)"
