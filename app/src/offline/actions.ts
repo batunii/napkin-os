@@ -31,7 +31,9 @@ export async function keepOffline(docId: string): Promise<OfflineCopy> {
     size: bytes.byteLength,
   }
   await putCopy(copy, bytes)
-  await persistStorage()
+  // Not awaited: Firefox answers with a permission prompt, and the copy is
+  // already saved whatever the answer — it just may not survive eviction.
+  void persistStorage()
   return copy
 }
 
