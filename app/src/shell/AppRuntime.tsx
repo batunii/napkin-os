@@ -3,9 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { host, inferenceAllowed } from '../host'
+import { host } from '../host'
 import type { ManifestInfo } from '../host'
-import { runInference } from '../agent/inference'
 import { getTheme, onThemeChange } from '../theme'
 import { setExportFrame } from './appExport'
 import { LEGACY_EDIT_BRIDGE } from '../bridge/legacyEditBridge'
@@ -57,10 +56,11 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 
   useEffect(() => onThemeChange(postScheme), [postScheme])
 
-  // The app asks for inference; the shell performs it. Only this side ever
-  // touches the key, and only requests from our own frame are answered.
+  // With no server to serve it, the frame's clan:// requests arrive here and
+  // go to the device host — `/api-proxy` included, which answers that no
+  // middleware is configured. Only requests from our own frame are answered.
   useEffect(() => {
-    if (host.inference !== 'page' && host.frameLoad !== 'srcdoc') return
+    if (host.frameLoad !== 'srcdoc') return
     const onMessage = async (e: MessageEvent) => {
       const frame = iframeRef.current?.contentWindow
       if (!frame || e.source !== frame) return
@@ -69,34 +69,7 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
         body?: string | Uint8Array
       }
       if (msg?.type !== 'clan:rpc') return
-
-      // Inference is the shell's to perform — it holds the key, the app must
-      // not. Everything else is a host call, which only the serverless build
-      // routes through here.
       const path = msg.path ?? (msg.op === 'api-proxy' ? '/api-proxy' : '')
-      if (path === '/api-proxy') {
-        let body: string
-        try {
-          if (!inferenceAllowed()) {
-            throw new Error('the agent is not available for a file opened on this device')
-          }
-          const raw = typeof msg.body === 'string' ? msg.body : '{}'
-          const request = JSON.parse(raw || '{}') as { payload?: unknown }
-          body = JSON.stringify(await runInference(request.payload ?? request))
-        } catch (err) {
-          body = JSON.stringify({ ok: false, status: 500, data: null, error: String(err) })
-        }
-        // The two shims differ: one wants a plain JSON string back, the other
-        // a full response. Sending both fields satisfies each.
-        frame.postMessage(
-          {
-            type: 'clan:rpc-reply', id: msg.id, body,
-            status: 200, headers: { 'content-type': 'application/json' },
-          },
-          '*',
-        )
-        return
-      }
 
       try {
         const raw = typeof msg.body === 'string' ? new TextEncoder().encode(msg.body)

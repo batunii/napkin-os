@@ -19,7 +19,6 @@
     "apps": "node scripts/agent-figures.mjs && cargo run -q -p clan-sdk --example make_brief_maker && mkdir -p public/apps && mv brief-maker.app.clan public/apps/ && cargo run -q -p clan-sdk --example make_campaign_research -- public/apps/campaign-research.app.clan public/apps/campaign-research.example.clan"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.124.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "esbuild": "^0.28.0",

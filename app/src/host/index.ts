@@ -22,7 +22,7 @@ export const isDesktop = '__TAURI_INTERNALS__' in window
 /**
  * The serverless build (`npm run build:static`): the same bundle with no
  * server behind it, where the device host is the only host and is allowed to
- * do everything the page can, inference included.
+ * do everything the page can.
  */
 export const serverless = import.meta.env.VITE_NAPKIN_HOST === 'wasm'
 
@@ -47,7 +47,6 @@ const deviceSync: Partial<Host> = {
   clanOrigin: () => 'clan://localhost',
   prepareAppHtml: prepareFrameHtml,
   frameLoad: 'srcdoc',
-  inference: 'page',
 }
 
 /** The device host, standing in for itself until its module has loaded. */
@@ -71,17 +70,6 @@ export const host: Host = new Proxy({} as Host, {
 /** True while the open document (or the home screen) is the device's. */
 export function onDevice(): boolean {
   return current === deviceHost
-}
-
-/**
- * Whether the page may spend the visitor's key for the open app.
- *
- * Not for a file from this device in the web app: that is a recipient's
- * viewer, or an offline copy for presenting, and an app in a file someone sent
- * you should not be able to run up a bill on your key.
- */
-export function inferenceAllowed(): boolean {
-  return !onDevice() || serverless
 }
 
 /** Hand the shell to the device host. The server's session is left as it was. */

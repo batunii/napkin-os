@@ -31,7 +31,6 @@ pub mod html;
 pub mod library;
 pub mod log;
 pub mod ops;
-pub mod prompt;
 #[cfg(feature = "native")]
 pub mod proxy;
 pub mod routes;
@@ -52,7 +51,6 @@ pub use library::{
     RecentDoc, SpinoffTarget,
 };
 pub use ops::Outcome;
-pub use prompt::{build as build_prompt, AgentPrompt};
 pub use routes::{
     dispatch, dispatch_async, handle, handle_async, is_async, HostRequest, HostResponse,
 };

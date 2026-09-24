@@ -315,17 +315,6 @@ export const wasmHost: Host = {
 
   agentEndpoint: async () => 'your browser',
   agentPrompt: async () => ({ ok: false, error: 'not available in the browser build' }),
-  inference: 'page',
-  buildAgentPrompt: async payload => {
-    const h = await boot()
-    const body = new TextEncoder().encode(JSON.stringify({ payload }))
-    const resp = h.handle('/agent-prompt', '', body) as RawResponse
-    return JSON.parse(new TextDecoder().decode(asBytes(resp.body))) as {
-      system: string
-      user: string
-    }
-  },
-
   on: async <K extends keyof HostEvents>(
     event: K,
     handler: (payload: HostEvents[K]) => void,

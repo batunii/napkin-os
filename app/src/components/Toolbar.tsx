@@ -4,7 +4,6 @@
 
 import { StudioLogo } from '../brand/StudioMark'
 import { LogoSpinner } from '../brand/LogoSpinner'
-import ApiKeyButton from './ApiKeyButton'
 import ContinueIn from './ContinueIn'
 import ThemeToggle from './ThemeToggle'
 import './chrome.css'
@@ -94,7 +93,6 @@ export default function Toolbar({
           <button className="ch-btn" aria-pressed={agentPanelOpen} onClick={onToggleAgent}>
             Agent
           </button>
-          <ApiKeyButton />
         </>
       )}
       <ThemeToggle />
