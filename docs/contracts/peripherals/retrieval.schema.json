@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "napkin.retrieval/1",
+  "title": "Retrieval port — napkin.retrieval/1 (docs/contracts/peripherals.md §3)",
+  "definitions": {
+    "tag": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "scope": { "type": "string", "enum": ["house", "agency"] },
+    "licence": { "type": "string", "enum": ["open", "licensed-internal", "client-confidential"] },
+    "version": { "type": "string", "pattern": "^sha256:[0-9a-f]{8,64}$" },
+    "scalar": { "type": ["string", "number", "boolean"] },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "id", "kind", "scope", "licence", "k", "loops", "passages", "filterable", "version"],
+      "properties": {
+        "tag": { "$ref": "#/definitions/tag" },
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["case", "playbook", "template", "digest"] },
+        "scope": { "$ref": "#/definitions/scope" },
+        "licence": { "$ref": "#/definitions/licence" },
+        "k": { "type": "integer", "minimum": 1 },
+        "loops": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "passages": { "type": ["integer", "null"], "minimum": 0 },
+        "filterable": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "version": { "$ref": "#/definitions/version" }
+      }
+    },
+    "packs_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packs", "embed_model", "backend"],
+      "properties": {
+        "packs": { "type": "array", "items": { "$ref": "#/definitions/pack" } },
+        "embed_model": { "type": ["string", "null"] },
+        "backend": { "type": "string", "minLength": 1 }
+      }
+    },
+    "retrieve_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "k"],
+      "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "k": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "packs": { "type": "array", "items": { "$ref": "#/definitions/tag" }, "minItems": 1, "uniqueItems": true },
+        "where": { "type": "object", "additionalProperties": { "$ref": "#/definitions/scalar" } },
+        "purpose": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }
+      }
+    },
+    "passage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "uri", "pack", "scope", "licence", "source", "section", "citation", "text", "text_sha256", "truncated", "rank", "score", "metadata"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^psg_[0-9a-f]{20}$" },
+        "uri": { "type": "string", "pattern": "^passage://[a-z0-9][a-z0-9_-]*/.+#[a-z0-9-]*@[0-9a-f]{16}$" },
+        "pack": { "$ref": "#/definitions/tag" },
+        "scope": { "$ref": "#/definitions/scope" },
+        "licence": { "$ref": "#/definitions/licence" },
+        "source": { "type": "string", "minLength": 1 },
+        "section": { "type": "string", "minLength": 1 },
+        "citation": { "type": "string", "minLength": 1, "description": "\"<source> › <section>\"" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000, "description": "Verbatim span of the section. Never generated." },
+        "text_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "truncated": { "type": "boolean" },
+        "rank": { "type": "integer", "minimum": 1 },
+        "score": { "type": "number", "description": "Comparable within one response only. Never confidence." },
+        "metadata": { "type": "object" }
+      }
+    },
+    "retrieve_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passages", "trace"],
+      "properties": {
+        "passages": { "type": "array", "maxItems": 20, "items": { "$ref": "#/definitions/passage" } },
+        "trace": {
+          "type": "object",
+          "required": ["backend", "packs"],
+          "properties": {
+            "backend": { "type": "string", "minLength": 1 },
+            "embed_model": { "type": ["string", "null"] },
+            "packs": { "type": "object", "additionalProperties": { "$ref": "#/definitions/version" } }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "message"],
+          "properties": {
+            "type": { "type": "string", "enum": ["invalid_input", "missing_scope", "unauthenticated", "unknown_pack", "not_found", "method_not_allowed", "rate_limited", "overloaded", "upstream_failed", "timeout", "internal"] },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
