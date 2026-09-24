@@ -1,0 +1,175 @@
+"""The category tree seed: the Planner Research Taxonomy (category tree v0.1),
+18 verticals / 108 sub-vertical leaves, plus leaves derived where the
+taxonomy lists none a planner needs (marked provisional).
+
+Codes are `<vertical>.<leaf>` (Contract 3 §2.3). `regulated` marks leaves
+with their own regulatory code (the taxonomy's amber chips, approximately:
+the vertical notes name them). Aliases are the words a person types for the
+leaf; `find()` matches them.
+"""
+
+from __future__ import annotations
+
+# (vertical code, vertical name, aliases, [(leaf code, leaf name, aliases, regulated, provisional)])
+TREE = [
+    ("automotive", "Automotive", ["cars", "motor", "motoring", "auto", "automobile", "vehicles"], [
+        ("mass_market", "Mass market new cars", ["new cars", "mass market cars"], False, False),
+        ("premium_luxury", "Premium and luxury cars", ["premium cars", "luxury cars", "premium", "luxury"], False, False),
+        ("ev_charging", "EV and charging", ["ev", "evs", "electric vehicles", "electric vehicle", "electric cars",
+                                           "electric car", "bev", "ev charging", "charging"], False, False),
+        ("hybrid", "Hybrid and plug-in hybrid cars", ["hybrid", "hybrids", "phev", "plug-in hybrid",
+                                                      "plug in hybrid", "hybrid cars", "self-charging hybrid"],
+         False, True),
+        ("used_dealer", "Used cars and dealer groups", ["used cars", "dealers", "dealer groups"], False, False),
+        ("finance_leasing", "Car finance and leasing", ["car finance", "leasing", "pcp"], True, False),
+        ("aftermarket", "Aftermarket, tyres, servicing", ["tyres", "servicing", "aftermarket"], False, False),
+        ("commercial", "Vans and commercial", ["vans", "commercial vehicles", "lcv"], False, False),
+    ]),
+    ("alcohol", "Alcohol", ["drinks", "alcoholic drinks", "booze"], [
+        ("beer_stout", "Beer and stout", ["beer", "stout", "lager", "ale"], True, False),
+        ("cider", "Cider", ["cider", "ciders"], True, False),
+        ("irish_whiskey", "Irish whiskey", ["whiskey", "whisky"], True, False),
+        ("white_spirits", "Gin, vodka, white spirits", ["gin", "vodka", "white spirits", "spirits", "rum"], True, False),
+        ("wine", "Wine", ["wine"], True, False),
+        ("rtd_seltzer", "RTD and hard seltzer", ["rtd", "hard seltzer", "ready to drink"], True, False),
+        ("low_no", "Low and no alcohol", ["low alcohol", "no alcohol", "alcohol free", "alcohol-free",
+                                          "non-alcoholic", "0.0", "no and low"], True, False),
+    ]),
+    ("soft_drinks", "Soft drinks and hot beverages", ["soft drinks", "beverages", "non-alcoholic drinks"], [
+        ("carbonates", "Carbonates", ["carbonates", "fizzy drinks", "soda", "sodas", "cola", "tonic", "mixers",
+                                      "lemonade"], False, False),
+        ("energy_drinks", "Energy drinks", ["energy drinks", "energy drink"], True, False),
+        ("water", "Water", ["water", "bottled water", "sparkling water"], False, False),
+        ("juice_smoothies", "Juice and smoothies", ["juice", "smoothies"], False, False),
+        ("tea_coffee", "Tea and coffee at home", ["tea", "coffee"], False, False),
+        ("milks", "Dairy and plant milks", ["milk", "plant milk", "oat milk"], False, False),
+    ]),
+    ("food", "Food and grocery brands", ["food", "grocery brands", "fmcg food"], [
+        ("snacks_confectionery", "Snacks and confectionery", ["snacks", "crisps", "chocolate", "confectionery",
+                                                              "sweets"], True, False),
+        ("dairy", "Dairy, cheese, butter", ["dairy", "cheese", "butter", "yoghurt"], False, False),
+        ("meat_plant_based", "Meat and plant-based", ["meat", "plant-based", "plant based"], False, False),
+        ("ready_meals_frozen", "Ready meals and frozen", ["ready meals", "frozen food"], False, False),
+        ("bakery_cereals", "Bakery and cereals", ["bread", "bakery", "cereal", "cereals"], False, False),
+        ("baby_infant", "Baby and infant", ["baby food", "infant formula"], True, False),
+        ("pet_food", "Pet food", ["pet food", "dog food", "cat food"], False, False),
+    ]),
+    ("household", "Household and personal care", ["household", "personal care"], [
+        ("laundry_cleaning", "Laundry and cleaning", ["laundry", "cleaning", "detergent"], False, False),
+        ("paper_tissue", "Paper and tissue", ["toilet paper", "tissue"], False, False),
+        ("oral_care", "Oral care", ["toothpaste", "oral care"], False, False),
+        ("skincare_body", "Skincare and body", ["skincare", "body care"], False, False),
+        ("haircare", "Haircare", ["shampoo", "haircare"], False, False),
+        ("deodorant_shaving", "Deodorant and shaving", ["deodorant", "shaving", "razors"], False, False),
+        ("feminine_incontinence", "Feminine and incontinence care", ["feminine care", "incontinence"], False, False),
+    ]),
+    ("beauty_fashion", "Beauty and fashion", ["beauty", "fashion"], [
+        ("cosmetics_fragrance", "Cosmetics and fragrance", ["cosmetics", "make-up", "makeup", "fragrance",
+                                                            "perfume"], True, False),
+        ("high_street_fashion", "High street fashion", ["high street", "clothing"], False, False),
+        ("luxury_designer", "Luxury and designer", ["designer", "luxury fashion"], False, False),
+        ("sportswear", "Sportswear and athleisure", ["sportswear", "athleisure"], False, False),
+        ("jewellery_watches", "Jewellery and watches", ["jewellery", "watches"], False, False),
+        ("aesthetic_procedures", "Aesthetic and cosmetic procedures", ["aesthetics", "botox", "cosmetic surgery"],
+         True, False),
+    ]),
+    ("retail", "Retail", ["retailers", "shops"], [
+        ("grocery_multiples", "Grocery multiples", ["supermarkets", "grocery", "grocers"], False, False),
+        ("discounters", "Discounters", ["discounters", "discount retail"], False, False),
+        ("convenience_forecourt", "Convenience and forecourt", ["convenience stores", "forecourt"], False, False),
+        ("department_stores", "Department stores", ["department stores"], False, False),
+        ("diy_home", "DIY, garden, homeware", ["diy", "garden centres", "homeware retail"], False, False),
+        ("ecommerce", "E-commerce and marketplaces", ["e-commerce", "ecommerce", "online retail", "marketplaces"],
+         False, False),
+        ("retail_media", "Retail media networks", ["retail media"], False, False),
+    ]),
+    ("qsr", "QSR and food service", ["qsr", "food service", "restaurants"], [
+        ("fast_food", "Fast food", ["fast food", "burgers"], True, False),
+        ("coffee_chains", "Coffee chains", ["coffee shops", "coffee chains"], False, False),
+        ("casual_dining", "Casual dining", ["casual dining"], False, False),
+        ("delivery_platforms", "Delivery platforms", ["food delivery", "delivery apps"], False, False),
+    ]),
+    ("finance", "Financial services", ["financial services", "finance", "banks", "banking"], [
+        ("banking", "Current accounts and banking", ["current accounts", "bank", "banking"], True, False),
+        ("cards_payments", "Cards, payments, BNPL", ["cards", "payments", "bnpl", "credit cards"], True, False),
+        ("mortgages", "Mortgages", ["mortgage", "mortgages"], True, False),
+        ("motor_home_insurance", "Motor and home insurance", ["car insurance", "home insurance", "motor insurance"],
+         True, False),
+        ("life_health_protection", "Life, health, income protection", ["life insurance", "income protection"],
+         True, False),
+        ("pensions_investments", "Pensions and investments", ["pensions", "investments"], True, False),
+        ("fintech_crypto", "Fintech and crypto", ["fintech", "crypto"], True, False),
+    ]),
+    ("telco", "Telco and connectivity", ["telco", "telecoms", "connectivity"], [
+        ("mobile_networks", "Mobile networks", ["mobile", "mobile networks", "phone networks"], True, False),
+        ("broadband_home", "Broadband and home", ["broadband", "fibre"], True, False),
+        ("tv_bundles", "TV bundles and streaming add-ons", ["tv bundles", "pay tv"], True, False),
+        ("handsets_devices", "Handsets and devices", ["handsets", "phones"], False, False),
+        ("b2b_connectivity", "B2B connectivity and cloud", ["b2b connectivity"], False, False),
+        ("mvnos", "MVNOs and challengers", ["mvno", "mvnos"], True, False),
+    ]),
+    ("energy", "Energy and utilities", ["energy", "utilities"], [
+        ("electricity_gas", "Electricity and gas supply", ["electricity", "gas", "energy supply"], True, False),
+        ("solar_retrofit", "Solar, heat pumps, retrofit", ["solar", "heat pumps", "retrofit"], True, False),
+        ("ev_charging_networks", "EV charging networks", ["charging networks", "public chargers",
+                                                          "charge points"], True, False),
+        ("green_claims", "Green claims and sustainability", ["green claims", "sustainability"], True, False),
+    ]),
+    ("technology", "Technology and electronics", ["technology", "electronics", "tech"], [
+        ("smartphones_wearables", "Smartphones and wearables", ["smartphones", "wearables"], False, False),
+        ("home_electronics", "TV, audio, home electronics", ["tvs", "audio", "home electronics"], False, False),
+        ("computing", "Computing and peripherals", ["computers", "laptops", "computing"], False, False),
+        ("gaming", "Gaming consoles and titles", ["gaming", "video games", "consoles"], True, False),
+        ("smart_home", "Smart home", ["smart home"], False, False),
+    ]),
+    ("software", "Software, apps and AI", ["software", "apps", "ai"], [
+        ("consumer_apps", "Consumer apps and subscriptions", ["consumer apps", "subscriptions"], False, False),
+        ("b2b_saas", "B2B SaaS and cloud", ["saas", "b2b software", "cloud"], False, False),
+        ("ai_products", "AI products and claims", ["ai products", "ai tools"], True, False),
+        ("developer_infra", "Developer and infrastructure", ["developer tools", "infrastructure"], False, False),
+        ("cybersecurity", "Cybersecurity", ["cybersecurity", "security software"], False, False),
+    ]),
+    ("media", "Media and entertainment", ["media", "entertainment"], [
+        ("streaming_broadcast", "Streaming and broadcast", ["streaming", "broadcast", "tv channels"], False, False),
+        ("publishing_news", "Publishing and news", ["publishing", "news", "newspapers"], False, False),
+        ("music_audio", "Music and audio", ["music", "podcasts"], False, False),
+        ("cinema_film", "Cinema and film", ["cinema", "film", "movies"], False, False),
+        ("live_events", "Live events and festivals", ["live events", "festivals", "concerts"], False, False),
+        ("sport_sponsorship", "Sport and sponsorship", ["sport", "sponsorship"], True, False),
+    ]),
+    ("travel", "Travel and hospitality", ["travel", "hospitality", "tourism"], [
+        ("airlines", "Airlines", ["airline", "airlines", "flights"], True, False),
+        ("tourism_destinations", "Tourism boards and destinations", ["tourism boards", "destinations"], False, False),
+        ("hotels_otas", "Hotels and OTAs", ["hotels", "ota", "booking sites"], False, False),
+        ("ferries_rail_coach", "Ferries, rail, coach", ["ferries", "rail", "trains", "coach"], False, False),
+        ("cruise_packages", "Cruise and packages", ["cruise", "package holidays"], True, False),
+        ("travel_insurance_fx", "Travel insurance and FX", ["travel insurance", "fx", "currency exchange"], True,
+         False),
+    ]),
+    ("health", "Health and pharma", ["health", "pharma", "healthcare"], [
+        ("otc_medicines", "OTC medicines", ["otc", "over the counter medicines", "painkillers"], True, False),
+        ("vitamins_supplements", "Vitamins and supplements", ["vitamins", "supplements"], True, False),
+        ("private_health_insurance", "Private health insurance", ["health insurance"], True, False),
+        ("hospitals_clinics", "Hospitals, clinics, dental", ["hospitals", "clinics", "dental"], True, False),
+        ("prescription", "Prescription (HCP only)", ["prescription medicines"], True, False),
+        ("public_health", "Public health campaigns", ["public health"], True, False),
+        ("medical_devices_hearing", "Medical devices and hearing", ["medical devices", "hearing aids"], True, False),
+    ]),
+    ("home_property", "Home, property and construction", ["property", "construction", "home"], [
+        ("developers_agents", "Developers and estate agents", ["estate agents", "property developers"], False, False),
+        ("property_portals", "Property portals", ["property portals"], False, False),
+        ("furniture_homeware", "Furniture and homeware", ["furniture", "homeware"], False, False),
+        ("building_materials", "Building materials and trade", ["building materials", "trade"], False, False),
+        ("agri_rural", "Agri and rural", ["agri", "agriculture", "farming", "rural"], False, False),
+    ]),
+    ("public", "Public, charity, betting and education", ["public sector", "charity", "education"], [
+        ("government_agencies", "Government and state agencies", ["government", "state agencies"], True, False),
+        ("political_referenda", "Political and referenda", ["political", "referendum", "elections"], True, False),
+        ("charities_ngos", "Charities and NGOs", ["charities", "ngo", "ngos"], False, False),
+        ("betting_gaming", "Betting, gaming, lottery", ["betting", "gambling", "lottery"], True, False),
+        ("universities_colleges", "Universities and colleges", ["universities", "colleges"], False, False),
+        ("recruitment_employer", "Recruitment and employer brand", ["recruitment", "employer brand"], False, False),
+    ]),
+]
+
+TAXONOMY_VERSION = "planner-research-taxonomy/0.1+derived"
