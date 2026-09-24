@@ -213,6 +213,8 @@
   .docband{padding:20px 24px 22px;display:grid;gap:14px}
   .dtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .spacer{flex:1}
+  .proj.derived{opacity:.82}
+  .dtitle{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.6;margin-top:6px}
   .proj{font-size:clamp(28px,4.2vw,44px);font-weight:800;letter-spacing:-.045em;line-height:1.04;text-wrap:balance;max-width:24ch}
   .cli{color:var(--zone-2);font-size:15px;margin-top:6px}
   .cli:empty{display:none}
@@ -462,7 +464,7 @@
         </div>
         <button class="bghost" id="newDraft" title="Start a fresh draft from a new prompt"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New draft</button>
       </div>
-      <div><div class="proj" id="hProj"></div><div class="cli" id="hCli"></div></div>
+      <div><div class="proj" id="hProj"></div><div class="dtitle" id="hDerived" hidden></div><div class="cli" id="hCli"></div></div>
       <div class="crewline" id="crewline"></div>
     </header>
 
@@ -1245,11 +1247,37 @@
     FIELDS.forEach(function(f){ var rid=stored(jobKey('regenerate_field', f.key)); if(rid) regenField(f, '', rid); });
   }
 
+  // A working title while project_name is empty: the product and the move the
+  // commercial objective names ("Relaunch Glenmore 12 to …" → "Glenmore 12
+  // relaunch"), else the client's name. Shown as derived, never written into
+  // project_name: Extract fills that only when the client's material names
+  // the project (capture.py), and a person names it otherwise.
+  var MOVES={relaunch:'relaunch',reintroduce:'relaunch',launch:'launch',introduce:'launch',reposition:'repositioning',
+    revitalise:'revival',revitalize:'revival',revive:'revival',grow:'growth',rebuild:'rebuild',defend:'defence'};
+  var NAME=/((?:[A-Z0-9][\w'’&.-]*)(?:\s+[A-Z0-9][\w'’&.-]*)*)/;
+  function derivedTitle(){
+    var obj=String(get('objectives.commercial')||'').trim(), client=String(get('client')||'').trim();
+    var base=client.replace(/\s+(distillery|distillers|brewery|ltd|limited|inc|plc|group|company|co)\.?$/i,'').trim();
+    var m=obj.match(new RegExp('^(\\w+)\\s+'+NAME.source));
+    if(m&&MOVES[m[1].toLowerCase()]) return m[2]+' '+MOVES[m[1].toLowerCase()];
+    // the product the objective names, when it carries the client's name
+    var first=base.split(/\s+/)[0];
+    if(first){
+      var at=obj.indexOf(first), n=at>=0?obj.slice(at).match(NAME):null;
+      if(n) return n[1]+' campaign';
+    }
+    return base?base+' campaign':'';
+  }
+
   // ---------- structured ----------
   var REGEN={};   // field key → true while its Drafter is redrafting it
   function renderStructured(){
     $('docIdent').innerHTML=IDENT;
-    $('hProj').textContent=get('project_name')||'Untitled campaign';
+    var pn=String(get('project_name')||'').trim(), dt=pn?'':derivedTitle();
+    $('hProj').textContent=pn||dt||'Untitled campaign';
+    $('hProj').classList.toggle('derived', !pn&&!!dt);
+    $('hDerived').hidden=!(!pn&&dt);
+    $('hDerived').textContent=!pn&&dt?'Working title, from the client and the commercial objective. The project name is empty.':'';
     $('hCli').textContent=get('client')||'';
     var s=style();
     document.querySelectorAll('#modes button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-style')===s); b.setAttribute('aria-pressed', String(b.getAttribute('data-style')===s)); });
