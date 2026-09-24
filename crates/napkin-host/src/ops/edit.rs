@@ -13,6 +13,7 @@
 use clan_sdk::{
     apply_patch_and_repack, decision::DecisionScope, fork as sdk_fork, patch_asset_with,
     patch_context, patch_data_with, ClanBuilder, Decision, DecisionEntry, PatchDataOptions,
+    Reasoning,
 };
 use serde_json::Value;
 
@@ -129,6 +130,9 @@ pub struct PatchData {
     append_keys: Vec<String>,
     /// `(agent, action, rationale, pinned)` when the body names an agent.
     claim: Option<(String, String, String, bool)>,
+    /// The body's structured `reasoning`, when it gives one (optional: a
+    /// person's edit usually has none). Recorded only with a claim.
+    reasoning: Option<Reasoning>,
 }
 
 impl PatchData {
@@ -171,11 +175,24 @@ impl PatchData {
                     .unwrap_or(false),
             )
         });
+        let reasoning = match json.get("reasoning") {
+            None | Some(Value::Null) => None,
+            Some(r) => {
+                let r: Reasoning = serde_json::from_value(r.clone())
+                    .map_err(|e| HostError::bad_request(format!("reasoning is malformed: {e}")))?;
+                let problems = r.problems();
+                if !problems.is_empty() {
+                    return Err(HostError::bad_request(problems.join("; ")));
+                }
+                Some(r)
+            }
+        };
         Ok(Self {
             patch,
             keys,
             append_keys,
             claim,
+            reasoning,
         })
     }
 }
@@ -214,15 +231,24 @@ pub fn patch_data(ctx: &Ctx, doc: &Document, input: PatchData) -> HostResult<Out
 
     // Attribution over exactly the patched keys (F15). The name is the app's
     // claim; who actually asked comes from `ctx`.
+    let reasoning = input.reasoning;
     let decision = input.claim.map(|(agent, action, rationale, pinned)| {
-        attribute(
+        let rationale = match (&reasoning, rationale.trim().is_empty()) {
+            (Some(r), true) => r.summary(),
+            _ => rationale,
+        };
+        let mut entry = attribute(
             ctx,
             &agent,
             &action,
             &rationale,
             pinned,
             Some(input.keys.clone()),
-        )
+        );
+        if let Some(typed) = entry.typed.as_mut() {
+            typed.reasoning = reasoning;
+        }
+        entry
     });
     let opts = PatchDataOptions {
         append_keys: input.append_keys,

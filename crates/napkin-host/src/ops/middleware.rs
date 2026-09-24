@@ -19,8 +19,8 @@
 //! without any HTTP.
 
 use clan_sdk::{
-    compress_chain, pack, AgentOutput, ClanBuilder, ClanFile, CompressionConfig, Decision,
-    DecisionChain, PackOptions,
+    compress_chain, pack, AgentOutput, Certainty, ClanBuilder, ClanFile, CompressionConfig,
+    Decision, DecisionChain, PackOptions, ReasonPoint, Reasoning, Rejected,
 };
 use serde_json::Value;
 
@@ -172,6 +172,9 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     let facts_append = entries(change, "facts_append")?;
     let findings_append = entries(change, "findings_append")?;
     let decisions = entries(change, "decisions")?;
+    for d in &decisions {
+        check_reasoning(d, open_id)?;
+    }
 
     if data_patch.is_none()
         && facts_append.is_empty()
@@ -708,6 +711,7 @@ fn contest_decision(
         .iter()
         .filter_map(|h| h.get("id").and_then(Value::as_str).map(String::from))
         .collect();
+    d.reasoning = Some(contest_reasoning(doc_id, handler, base, doc, c, &d.cites));
     d.extra.insert("status".into(), "open".into());
     let values = serde_json::json!([
         { "value": c.current, "from": "document", "version": doc.version().as_str() },
@@ -720,6 +724,127 @@ fn contest_decision(
             .insert("withheld".into(), yaml(&Value::Array(held))?);
     }
     Ok(d)
+}
+
+/// The host's own reasoning for a contest it opens: it is the one deciding
+/// here, so it says why in the same shape it asks of the middleware.
+fn contest_reasoning(
+    doc_id: &str,
+    handler: &str,
+    base: &str,
+    doc: &Document,
+    c: &Contest,
+    held: &[String],
+) -> Reasoning {
+    let field = format!("{doc_id}#{}", c.path);
+    let mut job_cites = vec![field.clone()];
+    job_cites.extend(held.iter().cloned());
+    Reasoning {
+        decided: format!(
+            "Held {handler}'s value for {} in a contest instead of writing it.",
+            c.path
+        ),
+        because: vec![
+            ReasonPoint {
+                point: format!(
+                    "{handler} computed its value from version {base}, where the field held what it read."
+                ),
+                cites: job_cites,
+                ..Default::default()
+            },
+            ReasonPoint {
+                point: format!(
+                    "The document changed the field before the change arrived; it now holds another value at version {}.",
+                    doc.version().as_str()
+                ),
+                cites: vec![field],
+                ..Default::default()
+            },
+        ],
+        rejected: vec![
+            Rejected {
+                option: "write the job's value".into(),
+                why: "it would silently overwrite a change made after the job read the field".into(),
+                ..Default::default()
+            },
+            Rejected {
+                option: "drop the job's value".into(),
+                why: "the job's evidence would be lost; the contest keeps it with its decisions".into(),
+                ..Default::default()
+            },
+        ],
+        certainty: Certainty {
+            level: "high".into(),
+            why: "the versions and both values are recorded as the host saw them".into(),
+            ..Default::default()
+        },
+        would_change_if: "a person resolves the contest, or the job reruns on the current version"
+            .into(),
+        attention: Some("a stale write met a newer value; a person should pick".into()),
+        ..Default::default()
+    }
+}
+
+/// Decision kinds whose reasoning `napkin.middleware/1` requires on every
+/// decision it sends (middleware-api.md §3). `edit` is required only when it
+/// writes an agent-written field ([`writes_agent_field`]).
+pub const REASONED_KINDS: &[&str] = &["pin", "contest", "finding"];
+
+/// The data paths a middleware `edit` writes that make it an agent decision
+/// someone will ask "why" of: a campaign field, the selection, the report.
+/// An edit that only posts a chat message or indexes a material does not
+/// need one (it may still carry one).
+const AGENT_FIELDS: &[&str] = &["campaign", "selection", "report"];
+
+/// True when a middleware decision must carry `reasoning`.
+pub fn requires_reasoning(d: &Value, doc_id: &str) -> bool {
+    let kind = d.get("kind").and_then(Value::as_str).unwrap_or("edit");
+    REASONED_KINDS.contains(&kind) || (kind == "edit" && writes_agent_field(d, doc_id))
+}
+
+fn writes_agent_field(d: &Value, doc_id: &str) -> bool {
+    target_paths(d, doc_id).iter().any(|t| {
+        let top = t.split('.').next().unwrap_or_default();
+        AGENT_FIELDS.contains(&top)
+    })
+}
+
+/// Refuse a decision whose reasoning is malformed, or absent where it is
+/// required.
+///
+/// Refusal rather than accept-and-flag: reasoning is what the decider knew
+/// when it decided, so it cannot be supplied later without being invented,
+/// and a chain that fills with unexplained agent writes is exactly what the
+/// viewer's decision blocks exist to prevent. The middleware is ours and the
+/// refusal names the decision and the gap, so the fix is at the source and a
+/// rerun lands it — the same rule as a finding citing a pin the document does
+/// not hold.
+fn check_reasoning(d: &Value, doc_id: &str) -> HostResult<()> {
+    let id = d.get("id").and_then(Value::as_str).unwrap_or("?");
+    let kind = d.get("kind").and_then(Value::as_str).unwrap_or("edit");
+    match d.get("reasoning") {
+        None | Some(Value::Null) if requires_reasoning(d, doc_id) => {
+            Err(HostError::bad_request(format!(
+                "decision {id} ({kind}) carries no reasoning; napkin.middleware/1 requires it on \
+                 pin, contest and finding decisions and on edits that write campaign, selection or report"
+            )))
+        }
+        None | Some(Value::Null) => Ok(()),
+        Some(r) => {
+            let r: Reasoning = serde_json::from_value(r.clone()).map_err(|e| {
+                HostError::bad_request(format!("decision {id}: reasoning is malformed ({e})"))
+            })?;
+            let problems = r.problems();
+            if problems.is_empty() {
+                Ok(())
+            } else {
+                Err(HostError::bad_request(format!(
+                    "decision {id} ({kind}): {}",
+                    problems.join("; ")
+                )))
+            }
+        }
+    }
 }
 
 /// A list the change may carry; absent and `null` are both empty.
@@ -806,7 +931,8 @@ fn check_findings(new: &[Value], facts: &[serde_yaml::Value]) -> HostResult<()> 
 /// that names its own fills in only what the reply left out), `scope` is the
 /// one the shell resolved. `agent` keeps the middleware's claim — the body's
 /// `agent`, else the reply's handler — and `claimed_agent` records it too when
-/// it is not the actor. The rationale is the middleware's, verbatim.
+/// it is not the actor. The rationale is the middleware's, verbatim, or the
+/// reasoning's one-line summary when it sent none; the reasoning is its own.
 /// `fields_changed` stays empty: a middleware decision says what it is about
 /// in `targets`, and the host does not know which of the patched keys each
 /// one accounts for.
@@ -843,7 +969,20 @@ fn decision(ctx: &Ctx, reply: &Value, d: &Value, now: &str) -> HostResult<Decisi
     out.id = Some(id.to_string());
     out.agent = agent;
     out.action = s("action").unwrap_or(kind).to_string();
-    out.rationale = s("rationale").unwrap_or_default().to_string();
+    out.reasoning = match d.get("reasoning") {
+        None | Some(Value::Null) => None,
+        Some(r) => Some(serde_json::from_value(r.clone()).map_err(|e| {
+            HostError::bad_request(format!("decision {id}: reasoning is malformed ({e})"))
+        })?),
+    };
+    out.rationale = match (
+        s("rationale").filter(|r| !r.trim().is_empty()),
+        &out.reasoning,
+    ) {
+        (Some(r), _) => r.to_string(),
+        (None, Some(r)) => r.summary(),
+        (None, None) => String::new(),
+    };
     out.timestamp = now.to_string();
     out.targets = strings("targets");
     out.cites = strings("cites");

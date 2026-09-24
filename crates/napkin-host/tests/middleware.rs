@@ -55,6 +55,15 @@ fn yaml(clan: &ClanFile, path: &str) -> Value {
     serde_json::to_value(y).unwrap()
 }
 
+/// Reasoning in the shape `napkin.middleware/1` requires (§3).
+fn reasoning(decided: &str, cites: &[&str]) -> Value {
+    json!({ "decided": decided,
+            "because": [{ "point": "the cited material says so", "cites": cites }],
+            "rejected": [{ "option": "leave it open", "why": "the material settles it" }],
+            "certainty": { "level": "high", "why": "a verbatim quote" },
+            "would_change_if": "the client says otherwise" })
+}
+
 fn fact(id: &str, value: f64, stale: bool) -> Value {
     let mut f = json!({
         "id": id, "entity": "brand/lunasa", "key": "awareness.prompted", "value": value,
@@ -102,11 +111,13 @@ fn reply_for(clan: &Value) -> Value {
                 { "id": "d_01JA0D02EXT", "kind": "edit", "agent": "extract_ask@1.0.0",
                   "action": "extracted the ask", "rationale": "read from the client's email",
                   "targets": [format!("{}#campaign.problem", clan["id"].as_str().unwrap())],
-                  "cites": ["mat_email01"], "handler": "extract_ask@1.0.0", "backend": "ignored" },
+                  "cites": ["mat_email01"], "handler": "extract_ask@1.0.0", "backend": "ignored",
+                  "reasoning": reasoning("Filled the problem from the email.", &["mat_email01"]) },
                 { "id": "d_01JA0D06SYN", "kind": "finding", "agent": "extract_ask@1.0.0",
                   "action": "proposed a finding", "rationale": "two pins agree",
                   "targets": [format!("{}#findings[fi_01JA0F2B]", clan["id"].as_str().unwrap())],
-                  "cites": ["f_01JA0B3P4Q", "f_01JA0B3P5R"] }
+                  "cites": ["f_01JA0B3P4Q", "f_01JA0B3P5R"],
+                  "reasoning": reasoning("Proposed a finding.", &["f_01JA0B3P4Q", "f_01JA0B3P5R"]) }
             ]
         },
         "trace": { "scope": { "org": "dev", "brand": "dev" }, "backend": "mock-backend",
@@ -286,6 +297,10 @@ fn a_change_lands_once_as_the_middleware_with_members_and_projection() {
     assert!(first.scope.is_none(), "the local shell resolves no scope");
     assert_eq!(first.action, "extracted the ask");
     assert_eq!(first.rationale, "read from the client's email");
+    let why = first.reasoning.as_ref().expect("the reasoning is typed");
+    assert_eq!(why.decided, "Filled the problem from the email.");
+    assert_eq!(why.because[0].cites, vec!["mat_email01".to_string()]);
+    assert_eq!(why.certainty.level, "high");
     assert_eq!(first.targets, vec![format!("{doc_id}#campaign.problem")]);
     assert_eq!(first.cites, vec!["mat_email01".to_string()]);
     assert!(
@@ -516,6 +531,16 @@ fn a_stale_base_contests_a_field_a_person_changed() {
     let doc_id = clan["id"].as_str().unwrap();
     assert_eq!(contest.targets, vec![format!("{doc_id}#campaign.problem")]);
     assert_eq!(contest.cites, vec!["d_01JA0D02EXT".to_string()]);
+    // The host decided this one, so it says why in the same shape.
+    let why = contest
+        .reasoning
+        .as_ref()
+        .expect("the host reasons its contest");
+    assert!(why.problems().is_empty(), "{:?}", why.problems());
+    assert!(why.because[0].cites.contains(&"d_01JA0D02EXT".to_string()));
+    assert_eq!(why.rejected.len(), 2);
+    assert!(why.attention.is_some());
+    assert!(clan_sdk::validate(&after).is_content_valid());
     assert_eq!(contest.extra["status"], serde_yaml::Value::from("open"));
     let values = serde_json::to_value(&contest.extra["values"]).unwrap();
     assert_eq!(values[0]["from"], "document");
@@ -675,6 +700,7 @@ fn decisions_already_in_the_chain_are_not_appended_again() {
     let mut r = reply_for(&clan);
     r["change"]["decisions"].as_array_mut().unwrap().push(
         json!({ "id": "d_01JA0D07NEW", "kind": "edit", "action": "noted",
+                "reasoning": reasoning("Noted it.", &["mat_email01"]),
                       "targets": [format!("{}#campaign.problem", clan["id"].as_str().unwrap())] }),
     );
     let (out, _) = settle(&f, r);
@@ -785,7 +811,7 @@ fn field(value: &str, decision: &str) -> Value {
 
 fn edit(clan: &Value, id: &str, path: &str) -> Value {
     json!({ "id": id, "kind": "edit", "agent": "start_campaign@1.0", "action": "staged",
-            "rationale": "from the brief",
+            "rationale": "from the brief", "reasoning": reasoning("Staged it.", &["mat_email01"]),
             "targets": [format!("{}#{path}", clan["id"].as_str().unwrap())], "cites": ["mat_email01"] })
 }
 
@@ -1044,6 +1070,7 @@ fn repeat_after_a_person_touched(
         "data_patch": patch,
         "decisions": [{ "id": "d_01JB0STAGE1", "kind": "edit", "agent": "start_campaign@1.0",
                         "action": "staged", "rationale": "the stage's entry",
+                        "reasoning": reasoning("Staged the entry.", &["mat_email01"]),
                         "targets": [target.replace("<doc>", &doc_id)] }],
     });
     let (out, _) = settle(&f, campaign_poll("running", "extract", change.clone()));
@@ -1147,4 +1174,132 @@ fn a_dotted_target_on_this_document_still_counts() {
     );
     assert_eq!(reply["reason"], "already applied", "{reply}");
     assert_eq!(contests, 0);
+}
+
+// ── reasoning (middleware-api.md §3) ─────────────────────────────────────
+
+fn refused_reason(f: &Fixture, r: Value) -> String {
+    let before = std::fs::read(f.id.as_str()).unwrap();
+    let (out, events) = settle(f, r);
+    assert_eq!(out["data"]["change"]["applied"], false, "{out}");
+    assert!(events.is_empty());
+    assert_eq!(
+        std::fs::read(f.id.as_str()).unwrap(),
+        before,
+        "nothing written"
+    );
+    out["data"]["change"]["reason"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn a_required_decision_without_reasoning_refuses_the_change() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+
+    // An edit that writes a campaign field.
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("reasoning");
+    let why = refused_reason(&f, r);
+    assert!(
+        why.contains("d_01JA0D02EXT (edit) carries no reasoning"),
+        "{why}"
+    );
+
+    // A finding.
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"][1]["reasoning"] = Value::Null;
+    let why = refused_reason(&f, r);
+    assert!(
+        why.contains("d_01JA0D06SYN (finding) carries no reasoning"),
+        "{why}"
+    );
+
+    // Malformed: no evidence, an unknown certainty, a figure with no cite.
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"][0]["reasoning"]["because"] = json!([]);
+    assert!(refused_reason(&f, r).contains("because has no point"));
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"][0]["reasoning"]["certainty"]["level"] = json!("0.9");
+    assert!(refused_reason(&f, r).contains("is not one of: high, medium, low"));
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"][0]["reasoning"]["because"] =
+        json!([{ "point": "41% say so", "cites": [] }]);
+    assert!(refused_reason(&f, r).contains("states a figure and cites nothing"));
+    let mut r = reply_for(&clan);
+    r["change"]["decisions"][0]["reasoning"] = json!("because");
+    assert!(refused_reason(&f, r).contains("reasoning is malformed"));
+}
+
+#[test]
+fn a_chat_message_needs_no_reasoning_and_an_empty_rationale_takes_the_summary() {
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    let doc_id = clan["id"].as_str().unwrap().to_string();
+    let mut r = reply_for(&clan);
+    // The extract decision sends reasoning and no rationale.
+    r["change"]["decisions"][0]["rationale"] = json!("");
+    // A narration: an edit that only posts a chat message.
+    r["change"]["data_patch"]["intake"] = json!({ "messages": { "msg_n1": {
+        "role": "agent", "text": "Read the email.", "at": "2026-09-24T10:00:00Z" } } });
+    r["change"]["read"]["intake.messages.msg_n1"] = Value::Null;
+    r["change"]["decisions"].as_array_mut().unwrap().push(json!({
+        "id": "d_01JA0D08NAR", "kind": "edit", "action": "narrate", "rationale": "the stage's message",
+        "targets": [format!("{doc_id}#intake.messages[msg_n1]")] }));
+    let (out, _) = settle(&f, r);
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    let c = chain(&on_disk(&f));
+    let by = |id: &str| {
+        c.decisions
+            .iter()
+            .find(|d| d.id.as_deref() == Some(id))
+            .unwrap()
+    };
+    assert!(by("d_01JA0D08NAR").reasoning.is_none());
+    assert_eq!(
+        by("d_01JA0D02EXT").rationale,
+        "Filled the problem from the email. Because: the cited material says so"
+    );
+}
+
+#[test]
+fn patch_data_records_a_persons_reasoning_when_given() {
+    let f = fixture();
+    let body = json!({
+        "patch": { "campaign": { "objective": { "value": "win midweek", "origin": "stated",
+                   "gate": "brief", "by": "human:local", "decision": "d_01JA0D09HUM" } } },
+        "agent": "human", "action": "set objective",
+        "reasoning": { "decided": "Set the objective to midweek.",
+                       "because": [{ "point": "the client said so on the call" }],
+                       "rejected": [], "only_option": "the client named one objective",
+                       "certainty": { "level": "high", "why": "the client's own words" },
+                       "would_change_if": "the client revises the ask" } });
+    f.session.patch_data(&body.to_string()).unwrap();
+    let c = chain(&on_disk(&f));
+    let d = &c.decisions[0];
+    assert_eq!(d.action, "set objective");
+    assert_eq!(
+        d.rationale,
+        "Set the objective to midweek. Because: the client said so on the call"
+    );
+    assert_eq!(
+        d.reasoning.as_ref().unwrap().only_option.as_deref(),
+        Some("the client named one objective")
+    );
+
+    // A malformed shape is refused before anything is written.
+    let mut bad = body.clone();
+    bad["reasoning"]["because"] = json!([]);
+    bad["patch"]["campaign"]["objective"]["value"] = json!("win weekends");
+    let err = f.session.patch_data(&bad.to_string()).unwrap_err();
+    assert!(
+        err.message.contains("because has no point"),
+        "{}",
+        err.message
+    );
 }
