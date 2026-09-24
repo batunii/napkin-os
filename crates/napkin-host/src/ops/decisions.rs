@@ -17,10 +17,11 @@
 //! - anything else that blocks the lock (D7): a field citing a rejected
 //!   finding, a bad verdict nobody has answered, an unmerged agent branch.
 //!
-//! The first two are cleared once a person has decided something about the
-//! same target since, or the decision has been superseded. The rest are the
-//! lock list, items 1–5 of Contract 3 §11; an app may add rules of its own
-//! (the campaign's gated fields are one), which this does not know about.
+//! The first two are cleared once a person has since decided about the
+//! decision itself or about every one of its targets, or it has been
+//! superseded. The rest are the lock list, items 1–5 of Contract 3 §11; an
+//! app may add rules of its own (the campaign's gated fields are one), which
+//! this does not know about.
 //!
 //! A read of one snapshot: nothing here writes.
 
@@ -712,11 +713,26 @@ fn asked_for(ctx: &Lookup) -> Vec<Attention> {
         if d.superseded_by.is_some() {
             continue;
         }
-        let answered = aims(d).any(|t| {
-            let address = ctx.qualify(t);
-            ctx.later(i, &address, is_person)
+        // A person has looked when they have since decided about the decision
+        // itself, or about everything it decided. One of five findings
+        // verified leaves the other four as unsure as they were.
+        let named = d.id.as_deref().is_some_and(|id| {
+            let refs = |e: &Decision| {
+                e.targets
+                    .iter()
+                    .chain(&e.cites)
+                    .any(|r| clan_sdk::decision::referenced_decision(r, &[id].into()).is_some())
+            };
+            ctx.chain
+                .decisions
+                .iter()
+                .enumerate()
+                .any(|(j, e)| ctx.after(j, i) && is_person(e) && refs(e))
         });
-        if answered {
+        let mut aimed = aims(d).peekable();
+        let every =
+            aimed.peek().is_some() && aimed.all(|t| ctx.later(i, &ctx.qualify(t), is_person));
+        if named || every {
             continue;
         }
         let first = aims(d).next().map(|t| ctx.qualify(t));

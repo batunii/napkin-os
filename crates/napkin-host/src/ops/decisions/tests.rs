@@ -105,6 +105,10 @@ fn the_example_lists_what_blocks_its_lock() {
     assert!(!c.contains(&("bad_verdict", Some("d_01JA0D07REJ"))));
     // The contest's reasoning asks for a person.
     assert!(c.contains(&("flagged", Some("d_01JA0D05CTO"))));
+    // Synthesis was unsure, and a person verifying one of its findings does
+    // not settle the rest; selection was sure.
+    assert!(c.contains(&("low_certainty", Some("d_01JA0D06SYN"))));
+    assert!(!c.iter().any(|x| x.1 == Some("d_01JA0D03SEL")));
 
     assert!(!v.lock.can_lock);
     assert_eq!(
@@ -209,6 +213,57 @@ const CHAIN: &str = "decisions:
   rationale: Opened.
   timestamp: 2026-09-24T09:00:00Z
 ";
+
+#[test]
+fn a_person_on_one_of_several_targets_does_not_clear_it_but_one_on_the_decision_does() {
+    let chain = |later: &str| {
+        format!(
+            "decisions:
+{later}- id: d_x
+  kind: finding
+  agent: synthesise_findings@1
+  action: synthesise
+  targets: ['{DOC}#findings[fi_a]', '{DOC}#findings[fi_b]']
+  rationale: Two findings.
+  reasoning:
+    decided: Proposed two findings.
+    because: [{{ point: the pins agree }}]
+    only_option: nothing else was asked
+    certainty: {{ level: low, why: fi_b rests on one pin }}
+    would_change_if: a second source
+  timestamp: 2026-09-24T10:00:00Z
+"
+        )
+    };
+    let one = format!(
+        "- id: d_v
+  kind: verify
+  agent: human
+  actor: human:u_a
+  action: verify
+  targets: ['{DOC}#findings[fi_a]']
+  rationale: Checked.
+  timestamp: 2026-09-24T11:00:00Z
+"
+    );
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &chain(&one))])).unwrap();
+    assert_eq!(codes(&v), [("low_certainty", Some("d_x"))]);
+
+    let on_it = format!(
+        "- id: d_g
+  kind: verdict
+  agent: human
+  actor: human:u_a
+  polarity: good
+  action: verdict
+  targets: ['{DOC}#decisions[d_x]']
+  rationale: Both hold.
+  timestamp: 2026-09-24T11:00:00Z
+"
+    );
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &chain(&on_it))])).unwrap();
+    assert!(v.attention.is_empty(), "{:?}", v.attention);
+}
 
 #[test]
 fn low_certainty_and_asked_for_attention_clear_once_a_person_decides() {
