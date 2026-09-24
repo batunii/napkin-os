@@ -14,8 +14,8 @@ import re
 from pathlib import Path
 
 from .capabilities import CAPABILITY_VERSION
-from .handlers import (answer_question, compose_report, extract_ask, research_lens, start_campaign,
-                       synthesise_findings)
+from .handlers import (answer_question, compose_report, draft_brief, extract_ask, regenerate_field, research_lens,
+                       start_campaign, synthesise_findings)
 from .util import bad
 
 REGISTRY = {
@@ -25,12 +25,15 @@ REGISTRY = {
     "start_campaign": {1: start_campaign},
     "answer_question": {1: answer_question},
     "compose_report": {1: compose_report},
+    "draft_brief": {1: draft_brief},
+    "regenerate_field": {1: regenerate_field},
 }
 # Used only when a document carries no pipeline: the declared built-in map.
 BUILTIN_PIPELINE = {
     "extract_ask": "extract_ask@1", "research_lens": "research_lens@1",
     "synthesise_findings": "synthesise_findings@1", "start_campaign": "start_campaign@1",
     "answer_question": "answer_question@1", "compose_report": "compose_report@1",
+    "draft_brief": "draft_brief@1", "regenerate_field": "regenerate_field@1",
 }
 TASKS = set(BUILTIN_PIPELINE) | {"job_status"}
 

@@ -86,6 +86,19 @@ class Middleware:
         return {"api": API, "task": task, "handler": handler, "job": job, "result": result, "change": change,
                 "trace": self.trace(caps, hits)}
 
+    def brief_envelope(self, job, change):
+        """Brief Maker's replies (§10.6): the job's own task and handler, the
+        stage, every field's state and worker, the proposals so far."""
+        return self.envelope(job.task, job.handler, job.view(), job.result(), change, job.caps,
+                             job.hits if job.state in ("done", "failed") else [])
+
+    def brief_conflict(self, task, inp, scope, doc):
+        """§10.11: one draft_brief at a time per document; a regenerate_field
+        waits for a draft_brief, or for a regenerate_field of the same field."""
+        for j in self.jobs.unfinished(scope, doc, ("draft_brief", "regenerate_field")):
+            if task == "draft_brief" or j.task == "draft_brief" or j.field == inp.get("field"):
+                raise TaskError(409, "job_state", f"a {j.task} job on this document is still running")
+
     def campaign_envelope(self, job, change):
         return self.envelope("start_campaign", job.handler, job.view(),
                              {"summary": job.summary(), "messages": job.messages()}, change, job.caps,
@@ -119,6 +132,8 @@ class Middleware:
             job = self.jobs.get(inp.get("job_id"), scope, doc)
             if job.task == "start_campaign":
                 return self.campaign_envelope(job, job.reply_change(clan))
+            if getattr(job, "kind", None) == "brief":
+                return self.brief_envelope(job, job.reply_change(clan))
             done = job.state == "done"
             return self.envelope(job.task, job.handler, job.view(),
                                  job.result if done else {"summary": _long_summary(job)},
@@ -146,6 +161,15 @@ class Middleware:
             self.jobs.add(job)
             job.start()
             return self.campaign_envelope(job, None)
+        if mod.KIND == "brief":
+            caps = self.caps(handler)
+            jid = self.jobs.new_id()
+            caps.bind_job(jid)
+            job = mod.start(req, caps, self.settings, jid)  # validates: a 400 before a 409
+            self.brief_conflict(task, inp, scope, doc)
+            self.jobs.add(job)
+            job.start()
+            return self.brief_envelope(job, None)
         if mod.KIND == "short":
             if task == "compose_report" and self.jobs.unfinished_campaign(scope, doc):
                 raise TaskError(409, "job_state", "a start_campaign job on this document is unfinished; one "
