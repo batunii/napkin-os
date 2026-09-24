@@ -301,6 +301,14 @@ ol.tl > li.hl::before{background:var(--ink);border-color:var(--ink)}
 .tlr{margin:4px 0 0;font-size:13.5px;color:var(--ink);max-width:80ch}
 .tlt{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .tlt code{font-family:var(--mono);font-size:10.5px;background:var(--soft);border-radius:6px;padding:1px 6px;color:var(--ink2)}
+/* a decision's reasoning, compact (the OS layer's viewer renders the full block) */
+.rsn{margin:6px 0 0;font-size:13px;color:var(--ink);max-width:80ch;display:grid;gap:4px}
+.rsn p{margin:0}
+.rsn .rl{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);margin-right:6px}
+.rsn ul{margin:0;padding-left:18px;display:grid;gap:3px}
+.rsn li .pins,.rsn li .cites{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:6px;vertical-align:middle}
+.rsn code{font-family:var(--mono);font-size:10.5px;background:var(--soft);border-radius:6px;padding:1px 6px;color:var(--ink2)}
+.rsn .muted{color:var(--ink2)}
 
 /* dialogs */
 dialog{border:0;padding:0;border-radius:18px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-lg);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px)}
@@ -1247,13 +1255,35 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   var TL={kind:'', actor:''};
   function kindOf(d){ return d.kind||'legacy'; }
   function actorOf(d){ return d.actor||d.agent||'unknown'; }
-  function decisionLi(d, hl){
+  // A cite as a chip: a pin or a finding links to it; anything else is its id.
+  function citeChip(c){
+    if(pins()[c]) return pinChip(c);
+    if(fnds()[c]) return findingChip(c);
+    return '<code title="cites">'+esc(pathOf(c))+'</code>';
+  }
+  // decided / because (with cite chips) / rejected / certainty / would change if.
+  function reasoningBlock(r){
+    var rej=arr(r.rejected);
+    return '<div class="rsn">'
+      +'<p><span class="rl">Decided</span>'+esc(r.decided)+'</p>'
+      +'<div><span class="rl">Because</span><ul>'+arr(r.because).map(function(b){ var cs=arr(b.cites);
+        return '<li>'+esc(b.point)+(cs.length?'<span class="cites">'+cs.map(citeChip).join('')+'</span>':'')+'</li>'; }).join('')+'</ul></div>'
+      +(rej.length?'<div><span class="rl">Rejected</span><ul>'+rej.map(function(x){ return '<li>'+esc(x.option)+' <span class="muted">— '+esc(x.why)+'</span></li>'; }).join('')+'</ul></div>'
+        :(r.only_option?'<p><span class="rl">Only option</span><span class="muted">'+esc(r.only_option)+'</span></p>':''))
+      +(r.certainty?'<p><span class="rl">Certainty</span><span class="pill'+(r.certainty.level==='high'?' ok':r.certainty.level==='low'?' alert':'')+'">'+esc(r.certainty.level)+'</span> <span class="muted">'+esc(r.certainty.why||'')+'</span></p>':'')
+      +(r.would_change_if?'<p><span class="rl">Would change if</span>'+esc(r.would_change_if)+'</p>':'')
+      +(r.attention?'<div class="flag amber"><div><b>Look at this:</b> '+esc(r.attention)+'</div></div>':'')
+      +'</div>';
+  }
+  function hasReasoning(d){ return d.reasoning&&typeof d.reasoning==='object'&&d.reasoning.decided; }
+  // `why`: the "why is this here" view shows the reasoning; the timeline keeps the one line.
+  function decisionLi(d, hl, why){
     var k=kindOf(d);
     return '<li class="k-'+esc(k)+(d.polarity?' '+esc(d.polarity):'')+(hl?' hl':'')+'">'
       +'<div class="tlh"><time datetime="'+esc(d.timestamp)+'">'+esc(fmtDate(d.timestamp))+'</time>'
       +'<span class="pill'+(k==='verdict'&&d.polarity==='bad'||k==='contest'?' alert':k==='verify'||k==='resolve'||(k==='verdict'&&d.polarity==='good')?' ok':'')+'">'+esc(k)+(d.polarity?' · '+esc(d.polarity):'')+'</span>'
       +'<span class="actor">'+esc(actorOf(d))+'</span><span class="muted">'+esc(d.action||'')+'</span>'+(d.id?'<span class="mono muted" style="font-size:10.5px">'+esc(d.id)+'</span>':'')+(hl?'<span class="pill solid">set the current value</span>':'')+'</div>'
-      +(d.rationale?'<p class="tlr">'+esc(d.rationale)+'</p>':'')
+      +(why&&hasReasoning(d)?reasoningBlock(d.reasoning):d.rationale?'<p class="tlr">'+esc(d.rationale)+'</p>':'')
       +((arr(d.targets).length||arr(d.cites).length)?'<div class="tlt">'+arr(d.targets).map(function(a){ return '<code title="target">→ '+esc(pathOf(a))+'</code>'; }).join('')+arr(d.cites).map(function(c){ return '<code title="cites">'+esc(c)+'</code>'; }).join('')+'</div>':'')
       +((!d.targets&&arr(d.fields_changed).length)?'<div class="tlt">'+arr(d.fields_changed).map(function(c){ return '<code title="fields changed">'+esc(c)+'</code>'; }).join('')+'</div>':'')
       +'</li>';
@@ -1502,7 +1532,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     openDialog('<h2 id="dlg-title">Why is this here?</h2><div class="addr">'+esc(A)+'</div>'
       +(env?'<div class="field o-'+esc(env.origin)+'" style="box-shadow:none"><div class="fh"><span class="lab">'+esc(lbl)+'</span>'+originBadge(env.origin)+'</div>'+renderValue(FIELD[m[1]], env)+'<div class="prov">'+provenance(env, FIELD[m[1]])+'</div></div>':'')
       +(setter?'<div class="wholine">Current value set by <span class="mono">'+esc(setter)+'</span>'+(decById(setter)?'':' <span class="muted">(not in the chain yet — entries written before W1P-I5 carry no id; see the rationale)</span>')+'</div>':'')
-      +(CHAIN.state!=='ok'?'<div class="empty-state">The decision chain is not available here.</div>':ds.length?'<ol class="tl">'+ds.map(function(d){ return decisionLi(d, d.id&&d.id===setter); }).join('')+'</ol>':'<div class="empty-state">No decision in the chain names this address.</div>')
+      +(CHAIN.state!=='ok'?'<div class="empty-state">The decision chain is not available here.</div>':ds.length?'<ol class="tl">'+ds.map(function(d){ return decisionLi(d, d.id&&d.id===setter, true); }).join('')+'</ol>':'<div class="empty-state">No decision in the chain names this address.</div>')
       +'<div class="foot"><span class="why">Read from agent/decision-chain.yaml. The OS layer’s /history adds each cited fact’s source and tier.</span><button type="button" class="btn primary" data-close>Done</button></div>');
   }
 

@@ -163,6 +163,40 @@ for src in (data, facts, findings):
         if d not in decision_ids:
             errors.append(f"unknown decision {d}")
 
+# a decision's reasoning, where it carries one, has the shape (OS-layer
+# contract §3) and every id it cites resolves in the example
+materials = set((data.get("materials") or {}).keys())
+sel = data.get("selection") or {}
+contested_ids = {v["fact_id"] for c in sel.get("contested") or [] for v in c.get("values") or []}
+source_ids = {s for f in facts["facts"] for s in f.get("sources") or []} | \
+    {s for c in sel.get("contested") or [] for v in c.get("values") or [] for s in v.get("sources") or []}
+resolvable = pin_ids | set(finding_by_id) | decision_ids | materials | contested_ids | source_ids | \
+    {c["id"] for c in sel.get("contested") or []} | {g["id"] for g in sel.get("gaps") or []}
+for d in load(os.path.join(EX, "agent/decision-chain.yaml"))["decisions"]:
+    r = d.get("reasoning")
+    if r is None:
+        continue
+    DOC_ID = str((d.get("targets") or ["#"])[0]).partition("#")[0]
+    where = f"decision {d.get('id')} reasoning"
+    if not str(r.get("decided") or "").strip():
+        errors.append(f"{where}: decided is empty")
+    if not r.get("because"):
+        errors.append(f"{where}: no because point")
+    for p in r.get("because") or []:
+        cs = p.get("cites") or []
+        if not cs and re.search(r"\d", p.get("point", "")):
+            errors.append(f"{where}: a point states a figure and cites nothing")
+        for c in cs:
+            if c not in resolvable and not str(c).startswith(DOC_ID + "#"):
+                errors.append(f"{where} cites {c}, which does not resolve")
+    if not r.get("rejected") and not str(r.get("only_option") or "").strip():
+        errors.append(f"{where}: nothing rejected and no only_option")
+    if (r.get("certainty") or {}).get("level") not in ("high", "medium", "low") or \
+            not str((r.get("certainty") or {}).get("why") or "").strip():
+        errors.append(f"{where}: certainty needs a level and a why")
+    if not str(r.get("would_change_if") or "").strip():
+        errors.append(f"{where}: would_change_if is empty")
+
 # origin URI consistent with entity/key/version/layer
 for f in facts["facts"]:
     ent = f["entity"]

@@ -181,6 +181,21 @@ decisions:
     targets: ["7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#selection.contested[ct_orchard_hill_abv]"]
     cites: [f_01JA0B5C6M, f_01JA0B5C7N]
     rationale: "The IE and GB runs of brands_positioning disagree on a market-independent key (brand/orchard-hill product.abv: 0.0 vs 0.5). Not a market difference — a contest. Left open."
+    reasoning:
+      decided: "Opened a contest on Orchard Hill's ABV; nothing is picked."
+      because:
+        - point: "The brands_positioning/IE run reads 0.0% ABV"
+          cites: [f_01JA0B5C6M, src_tr4d]
+        - point: "The brands_positioning/GB run reads 0.5% ABV"
+          cites: [f_01JA0B5C7N, src_rt9l]
+        - point: "ABV is a property of the product, not the market, so the two cannot both be right"
+          cites: ["7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17#selection.contested[ct_orchard_hill_abv]"]
+      rejected:
+        - { option: "pin either value silently", why: "nothing in the evidence says which run is right" }
+        - { option: "pin each value per market", why: "the key is market-independent; a per-market pin would hide the disagreement" }
+      certainty: { level: high, why: "the values differ as their sources state them; which is right is what is open" }
+      would_change_if: "the brand's own product page or label settles the ABV, or a person resolves the contest"
+      attention: "The runs disagree on Orchard Hill's ABV, which decides whether it is a no/low comparator."
     timestamp: "2026-09-21T11:42:10Z"
   - id: d_01JA0D04MRG
     kind: pin
