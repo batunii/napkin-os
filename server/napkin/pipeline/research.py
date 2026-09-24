@@ -400,7 +400,7 @@ class Researcher:
                 [s["sid"] for s in u["sources"]], timestamp=t_now,
                 fields_changed=["selection.lenses_run", "selection.coverage_by_market"]
                 + (["selection.gaps"] if u["gaps"] else []),
-                reasoning=run_reasoning(u, cov, self.reuse_days)))
+                reasoning=run_reasoning(u, cov, self.reuse_days, doc)))
         old_cbm = sel.get("coverage_by_market") or {}
         cbm_all = {m: dict(old_cbm.get(m) or {}) for m in old_cbm}
         for m, v in by_market.items():
@@ -498,11 +498,12 @@ def _fact_line(f) -> str:
     return f"{f['entity']} {f['key']}{_where(f.get('market'))} is {f['value']}{unit}"
 
 
-def run_reasoning(u, cov, reuse_days) -> dict:
+def run_reasoning(u, cov, reuse_days, doc) -> dict:
     """One lens x market run: what came back, what passed the quote check,
     what was not found. Certainty from coverage: every fact corroborated
     (filled) is high, some single-source (thin) medium, nothing (empty) low."""
     lens, market = u["lens"], u["market"]
+    run_addr = f"{doc}#selection.lenses_run[{lens}/{market}]"
     sids = [s["sid"] for s in u["sources"]]
     gids = [g["id"] for g in u["gaps"]]
     because, rejected = [], []
@@ -513,11 +514,13 @@ def run_reasoning(u, cov, reuse_days) -> dict:
         rejected.append(rsn.rej("research it again", f"the layers' facts are within the {reuse_days}-day reuse "
                                                      f"window, so a new call would spend for nothing"))
     elif u["error"]:
-        because.append(rsn.point(f"The research call failed: {u['error'][:160]}", gids or sids))
+        because.append(rsn.point(f"The research call failed: {u['error'][:160]}", gids or [run_addr]))
         rejected.append(rsn.rej("report the lens as covered", "a failed run is a gap, never a silent success"))
     else:
+        # The sources a run read live in the layer; the document holds the
+        # run's entry, and the sources of what it pinned or contested.
         because.append(rsn.point(f"{len(sids)} source(s) came back for {lens.replace('_', ' ')}{_where(market)}",
-                                 sids) if sids else rsn.point("No source came back for the lens here", gids))
+                                 run_addr) if sids else rsn.point("No source came back for the lens here", gids))
         passed = [c for c in u["cands"]]
         if passed:
             because.append(rsn.point(f"{len(passed)} fact(s) passed the quote check: the quote is verbatim in "

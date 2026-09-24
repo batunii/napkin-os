@@ -1254,8 +1254,144 @@ def poll(doc, inp):
 
 
 def envelope(task, handler, job, result, change, hits):
+    with_reasoning(change, result)
     return {"api": API, "task": task, "handler": handler, "job": job, "result": result,
             "change": change, "trace": trace(hits)}
+
+
+# ---------------------------------------------------------------------------
+# Reasoning (middleware-api.md §3): every decision says why, in the spec's
+# shape. The stand-in has no model, so it writes each one deterministically
+# from the decision and the change it rides in: the pins, findings, materials
+# and sources it cites, the derived confidence of what it pinned, and a fixed
+# table of the alternatives each kind of step turns down. Written once, on
+# the decision itself, so a repeated stage repeats it byte for byte.
+# ---------------------------------------------------------------------------
+
+REASON_TABLE = {
+    # action: (decided, rejected (option, why) | None, only_option, would_change_if)
+    "extract": ("Filled the campaign fields the material supports.",
+                ("fill a field the material does not support", "a field is absent rather than guessed"), None,
+                "the client's material says otherwise, or a person confirms a different value"),
+    "lookup": ("Pinned the brand's roster row from the brand layer.",
+               ("ask the person for the categories", "the brand layer already holds a roster row for the brand"),
+               None, "the roster row is revised in the brand layer"),
+    "select": ("Chose the lens and market pairs to research.",
+               ("skip lenses the prompt does not mention", "research covers every lens unless the prompt limits it"),
+               None, "the person asks for a skipped lens, or limits the research"),
+    "research_run": ("Ran one lens in one market.",
+                     ("keep what the source does not say", "only what a source states is kept"), None,
+                     "a new source states what was not found"),
+    "research_merge": ("Pinned the facts the runs agree on.",
+                       ("pick one of two disagreeing values", "a disagreement is a contest, never a silent pick"),
+                       None, "a higher-tier or corroborating source revises a value"),
+    "open_contest": ("Opened a contest; nothing is picked.",
+                     ("pick either value silently", "nothing in the evidence says which run is right"), None,
+                     "a primary source settles the value, or a person resolves the contest"),
+    "synthesise_finding": ("Proposed a finding for a person to verify.",
+                           ("state a figure the pins do not hold", "a finding restates no unpinned figure"), None,
+                           "a cited pin is revised, excluded or goes stale"),
+    "report": ("Composed the report from the pins and findings the document holds.",
+               ("state a figure the cited pins do not hold", "every claim is checked against what it cites"), None,
+               "new pins or findings land, or a contest is resolved"),
+    "narrate": ("Posted the stage's message in the chat.", None, "a stage always says what it did",
+                "the stage is rerun"),
+    "stage_failed": ("Stopped the campaign at the failed stage; what landed stays.",
+                     ("carry on past the failed stage", "later stages would build on what did not happen"), None,
+                     "the cause is fixed and the campaign is started again"),
+}
+REASON_TABLE["extract_ask"] = REASON_TABLE["extract"]
+REASON_TABLE["compose_report"] = REASON_TABLE["report"]
+
+
+def with_reasoning(change, result):
+    if not isinstance(change, dict):
+        return
+    for d in change.get("decisions") or []:
+        if "reasoning" not in d:
+            d["reasoning"] = mock_reasoning(d, change, result if isinstance(result, dict) else {})
+
+
+def mock_reasoning(d, change, result) -> dict:
+    facts = {f["id"]: f for f in change.get("facts_append") or []}
+    findings = {f["id"]: f for f in change.get("findings_append") or []}
+    dp = change.get("data_patch") or {}
+    contested = [v for c in (dp.get("selection") or {}).get("contested") or [] for v in c.get("values") or []]
+    srcs = ({x for f in facts.values() for x in f.get("sources") or []}
+            | {x for v in contested for x in v.get("sources") or []} | set(result.get("sources") or {}))
+    held = set(facts) | set(findings) | {v["fact_id"] for v in contested} | set(dp.get("materials") or {})
+    # What the decision cites and the document (or the reply) can resolve: what
+    # the change carries, what the document already held, the sources recorded.
+    cites = [c for c in d.get("cites") or [] if c in held or c in srcs
+             or re.match(r"(f|fi|d|mat|ct|gap)_", c)]
+    action, kind = d.get("action", ""), d.get("kind")
+    targets = d.get("targets") or []
+    asks = action == "identify" and not any("#campaign." in t for t in targets)
+
+    because = []
+    fcites = [c for c in cites if c.startswith("f_")]
+    for c in fcites[:8]:
+        f = facts.get(c)
+        if f:
+            because.append({"point": f"{f['entity']} {f['key']} is {json.dumps(f['value'])}",
+                            "cites": [c] + [x for x in f.get("sources") or [] if x in srcs]})
+    rest = [c for c in fcites if c not in facts or c in fcites[8:]]
+    groups = [("The pins it rests on", rest), ("The findings it rests on", [c for c in cites if c.startswith("fi_")]),
+              ("Read from the material", [c for c in cites if c.startswith("mat_")]),
+              ("The sources it rests on", [c for c in cites if c in srcs and not c.startswith(("f_", "mat_"))]),
+              ("The decisions it rests on", [c for c in cites if c.startswith("d_")])]
+    because += [{"point": t, "cites": list(dict.fromkeys(cs))} for t, cs in groups if cs]
+    if not because:
+        r0 = d.get("rationale") or ""
+        because = [{"point": r0, "cites": targets} if r0 else {"point": f"What the {action} step recorded",
+                                                               "cites": targets}]
+
+    if kind == "pin":
+        levels = [facts[t.partition("[")[2][:-1]]["confidence"] for t in targets
+                  if "#facts[" in t and t.partition("[")[2][:-1] in facts]
+        level = min(levels, key=CONF.index) if levels else "low"
+        why = ("the lowest derived confidence of the pins (source tier + corroboration)" if levels
+               else "nothing was pinned")
+    elif kind == "finding":
+        fi = next((findings[t.partition("[")[2][:-1]] for t in targets
+                   if "#findings[" in t and t.partition("[")[2][:-1] in findings), None)
+        level = fi["confidence"] if fi else "low"
+        why = "the finding's derived confidence: the lowest cited pin, one lower for a single or stale citation"
+    elif kind == "contest":
+        level, why = "high", "the values differ as their sources state them; which is right is what is open"
+    elif asks:
+        level, why = "low", "the material does not settle it; that is why the person is asked"
+    elif action == "research_run":
+        cov = (re.search(r"coverage (\w+)", d.get("rationale") or "") or [None, "empty"])[1]
+        level = {"filled": "high", "thin": "medium"}.get(cov, "low")
+        why = f"coverage {cov}: how many independent sources each fact rests on"
+    else:
+        level, why = "high", "each value rests on a verbatim quote or a pin"
+
+    decided, rej_, only, wci = REASON_TABLE.get(action, (None, None, None, None))
+    if asks:
+        decided, rej_, only, wci = ("Asked the person instead of guessing.",
+                                    ("guess one", "a wrong guess would steer every later stage"), None,
+                                    "the person answers, or the material names it plainly")
+    elif action == "identify":
+        decided, rej_, only, wci = ("Settled what the material and the roster support.",
+                                    ("guess the client's brand", "a wrong guess would steer every later stage"),
+                                    None, "the client names a different brand, or the roster changes")
+    r = {"decided": decided or (d.get("rationale") or action).split(". ")[0].rstrip(".") + ".",
+         "because": because,
+         "rejected": [{"option": rej_[0], "why": rej_[1]}] if rej_ else [],
+         "certainty": {"level": level, "why": why},
+         "would_change_if": wci or "new material or a person's edit says otherwise"}
+    if not rej_:
+        r["only_option"] = only or "the rules allow one course here"
+    attention = ("The runs disagree; a person should resolve it." if kind == "contest"
+                 else "Waiting for your answer." if asks
+                 else "It rests on thin evidence (low confidence)." if kind in ("pin", "finding") and level == "low"
+                 else "Coverage is thin or empty here." if action == "research_run" and level != "high"
+                 else "A stage failed." if action == "stage_failed" else None)
+    if attention:
+        r["attention"] = attention
+    return r
 
 
 # ---------------------------------------------------------------------------

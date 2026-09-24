@@ -40,6 +40,49 @@ LENSES = ["market_structure", "brands_positioning", "consumer_culture", "categor
 DECISION_KINDS = {"edit", "contest", "resolve", "verdict", "classify", "pin", "finding",
                   "verify", "approve", "lease", "backref"}
 CONF = ["low", "medium", "high"]
+# Decisions that must say why (middleware-api.md §3): these kinds always, and
+# an edit whenever it writes one of these fields.
+REASONED_KINDS = {"pin", "contest", "finding"}
+AGENT_FIELDS = {"campaign", "selection", "report"}
+
+
+def reasoning_problems(r) -> list:
+    """The shape of a decision's reasoning (OS-layer contract §3)."""
+    if not isinstance(r, dict):
+        return ["reasoning is not an object"]
+    out, blank = [], (lambda v: not isinstance(v, str) or not v.strip())
+    if blank(r.get("decided")):
+        out.append("reasoning.decided is empty")
+    because = r.get("because")
+    if not isinstance(because, list) or not because:
+        out.append("reasoning.because has no point")
+        because = []
+    for i, p in enumerate(because):
+        if not isinstance(p, dict) or blank(p.get("point")):
+            out.append(f"reasoning.because[{i}] is empty")
+            continue
+        cites = p.get("cites", [])
+        if not isinstance(cites, list) or any(blank(c) for c in cites):
+            out.append(f"reasoning.because[{i}] has an empty cite")
+        elif not cites and re.search(r"\d", p["point"]):
+            out.append(f"reasoning.because[{i}] states a figure and cites nothing")
+    rejected = r.get("rejected", [])
+    if not isinstance(rejected, list):
+        out.append("reasoning.rejected is not a list")
+        rejected = []
+    for i, x in enumerate(rejected):
+        if not isinstance(x, dict) or blank(x.get("option")) or blank(x.get("why")):
+            out.append(f"reasoning.rejected[{i}] needs an option and a why")
+    if not rejected and blank(r.get("only_option")):
+        out.append("reasoning.rejected is empty and only_option does not say why there was one option")
+    c = r.get("certainty")
+    if not isinstance(c, dict) or c.get("level") not in CONF or blank(c.get("why")):
+        out.append("reasoning.certainty needs a level (high, medium, low) and a why")
+    if blank(r.get("would_change_if")):
+        out.append("reasoning.would_change_if is empty")
+    if "attention" in r and r["attention"] is not None and blank(r["attention"]):
+        out.append("reasoning.attention is present but empty")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +431,7 @@ class Suite:
             check(isinstance(d.get("cites", []), list), "decision.cites must be a list")
             check(d.get("handler") == body["handler"], f"decision {d['id']} handler != response handler")
             check(d.get("backend") == body["trace"]["backend"], f"decision {d['id']} backend != trace.backend")
+        self.reasoning(body, clan, ch, data, facts, existing_fi + new_fi, dec_ids, chain_ids)
         for fname, env in (dp.get("campaign") or {}).items():
             if env is None:  # a removal
                 continue
@@ -408,6 +452,54 @@ class Suite:
                 check(any(d["kind"] == "contest" and addr in d["targets"] for d in ch["decisions"]),
                       f"contest {ct['id']} opened without a contest decision")
         return ch, data, facts
+
+    def reasoning(self, body, clan, ch, data, facts, findings, dec_ids, chain_ids):
+        """Every decision of a required kind says why (§3): pin, contest,
+        finding, and an edit that writes campaign, selection or report. Where
+        reasoning is given it has the shape, and every id it cites resolves in
+        the document as it stands after the change — a pin, a finding, a
+        decision, a material, a contest or a gap, a value a contest holds, a
+        source a pin or a contested value rests on — or is an address on it,
+        or a source the reply names in result.sources. For pins and findings the certainty is the
+        DERIVED confidence, never self-reported."""
+        doc = clan["id"]
+        withheld = {h.get("id") for d in chain_of(clan) for h in d.get("withheld") or [] if isinstance(h, dict)}
+        sel = data.get("selection") or {}
+        known = ({f["id"] for f in facts} | {s for f in facts for s in f.get("sources") or []}
+                 | {f["id"] for f in findings} | set(dec_ids) | chain_ids | withheld
+                 | set((data.get("materials") or {}).keys())
+                 | {c.get("id") for c in sel.get("contested") or []} | {g.get("id") for g in sel.get("gaps") or []}
+                 | {v.get("fact_id") for c in sel.get("contested") or [] for v in c.get("values") or []}
+                 | {x for c in sel.get("contested") or [] for v in c.get("values") or [] for x in v.get("sources") or []}
+                 | set((body.get("result") or {}).get("sources") or {}) | {doc})
+        conf = {f["id"]: f.get("confidence") for f in facts}
+        fi_conf = {f["id"]: f.get("confidence") for f in findings}
+        for d in ch["decisions"]:
+            paths = [t.partition("#")[2] for t in d.get("targets") or []]
+            required = d["kind"] in REASONED_KINDS or (
+                d["kind"] == "edit" and any(re.split(r"[.\[]", p)[0] in AGENT_FIELDS for p in paths))
+            r = d.get("reasoning")
+            if r is None:
+                check(not required, f"decision {d['id']} ({d['kind']}, {d.get('action')}) carries no reasoning")
+                continue
+            for problem in reasoning_problems(r):
+                check(False, f"decision {d['id']} ({d.get('action')}): {problem}")
+            for p in r["because"]:
+                for c in p.get("cites") or []:
+                    check(c in known or c.startswith(doc + "#"),
+                          f"decision {d['id']} ({d.get('action')}) reasoning cites {c!r}, which does not resolve")
+            level = r["certainty"]["level"]
+            if d["kind"] == "finding":
+                fis = [fi_conf[p[9:-1]] for p in paths if p.startswith("findings[") and p[9:-1] in fi_conf]
+                if fis:
+                    check(level == fis[0], f"decision {d['id']} certainty {level} != the finding's derived "
+                                           f"confidence {fis[0]}")
+            if d["kind"] == "pin":
+                pins = [conf[p[6:-1]] for p in paths if p.startswith("facts[") and conf.get(p[6:-1]) in CONF]
+                if pins:
+                    low = min(pins, key=CONF.index)
+                    check(level == low, f"decision {d['id']} certainty {level} != the lowest derived confidence "
+                                        f"of its pins ({low})")
 
     def poll(self, job_id, clan, task):
         deadline = time.monotonic() + self.job_timeout
