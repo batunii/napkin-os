@@ -1,0 +1,93 @@
+/* The loading sign: the studio mark, turning a quarter at a time — each
+   department lands where the last one was, rests, and moves on. Under
+   prefers-reduced-motion it does not turn; it breathes.
+
+   The plain-HTML copy of this (for pages with no React: the home CLAN app,
+   the boot screen, a recipient viewer) lives in logoSpinnerMarkup.ts and
+   must stay in step with this file. */
+
+.logo-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink2);
+  font-size: 13px;
+  line-height: 1;
+}
+.logo-spinner-stack { flex-direction: column; gap: 14px; }
+
+.logo-spinner-mark {
+  display: block;
+  flex-shrink: 0;
+  animation: logo-spinner-turn 1.6s var(--ease) infinite;
+  will-change: transform;
+}
+
+/* Rotating in quarters: the easing runs per segment, so each quarter-turn
+   eases in and out on its own. */
+@keyframes logo-spinner-turn {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(90deg); }
+  50%  { transform: rotate(180deg); }
+  75%  { transform: rotate(270deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes logo-spinner-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(0.86); opacity: 0.55; }
+}
+
+.logo-spinner-label { font-weight: 500; letter-spacing: -0.01em; }
+
+.logo-spinner-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* index.css switches every animation off under reduced motion; this one is
+   swapped for a gentle pulse instead, so there is still a sign of life. */
+@media (prefers-reduced-motion: reduce) {
+  .logo-spinner .logo-spinner-mark {
+    animation: logo-spinner-breathe 2.4s ease-in-out infinite !important;
+  }
+}
+
+/* Full-surface loading: centred in whatever it fills. */
+.logo-spinner-fill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 40px 24px;
+  background: var(--paper);
+}
+
+/* Floating over the current screen while something opens. */
+.logo-spinner-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--paper) 62%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  /* A short wait before showing, so a quick open does not flash. */
+  animation: logo-spinner-fade var(--dur) var(--ease) 0.15s both;
+}
+.logo-spinner-veil > .logo-spinner {
+  padding: 18px 22px;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--line-soft);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  color: var(--ink);
+}
+@keyframes logo-spinner-fade { from { opacity: 0; } }
