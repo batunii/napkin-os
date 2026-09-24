@@ -211,9 +211,6 @@ export const wasmHost: Host = {
 
   getHumanHtml: async () => (await boot()).humanHtml(),
   getData: async () => (await boot()).entry('shared/data.yaml'),
-  getChain: async () => (await boot()).entry('agent/decision-chain.yaml'),
-  getAgentState: async () => (await boot()).entry('agent/state.yaml'),
-  getContext: async () => (await boot()).entry('agent/context.md'),
   getDecisions: async () => {
     const resp = (await boot()).handle('/decisions', '', new Uint8Array()) as RawResponse
     const body = new TextDecoder().decode(asBytes(resp.body))

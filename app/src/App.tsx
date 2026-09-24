@@ -382,7 +382,6 @@ export default function App() {
           ) : undefined}
           onExport={exportCurrent}
           onSpinoff={spinOff}
-          agentAvailable={!(device && !serverless)}
         />
       ) : (
         <StudioShell

@@ -197,9 +197,6 @@ export const httpHost: Host = {
 
   getHumanHtml: () => text(`/d/${requireDoc()}/human-html`),
   getData: () => text(`/d/${requireDoc()}/entry/data`),
-  getChain: () => text(`/d/${requireDoc()}/entry/chain`),
-  getAgentState: () => text(`/d/${requireDoc()}/entry/state`),
-  getContext: () => text(`/d/${requireDoc()}/entry/context`),
   // A clan:// route, so it is the frame's token that reaches it.
   getDecisions: async () => {
     const resp = await fetch(`${httpHost.clanOrigin()}/decisions`)

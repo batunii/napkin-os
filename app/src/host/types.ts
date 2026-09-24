@@ -205,9 +205,6 @@ export interface Host {
   // ── Reading the open document ─────────────────────────────────────────────
   getHumanHtml(): Promise<string>
   getData(): Promise<string>
-  getChain(): Promise<string>
-  getAgentState(): Promise<string>
-  getContext(): Promise<string>
   /**
    * Every decision in the open document, newest first, with what needs a
    * person and why — derived by the host, the same for every app.

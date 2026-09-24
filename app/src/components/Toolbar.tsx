@@ -14,7 +14,6 @@ interface Props {
   trusted?: boolean
   onHome: () => void
   onOpenFile: () => void
-  onToggleAgent: () => void
   onToggleSidebar: () => void
   onWorkspace: () => void
   onSave: () => void
@@ -24,9 +23,6 @@ interface Props {
   /** Identifies the open document, so "Continue in…" refetches when it changes. */
   docPath: string
   onSpinoff: (appId: string) => void
-  agentPanelOpen: boolean
-  /** False on a document opened on the device: the host refuses agent calls there. */
-  agentAvailable?: boolean
   sidebarOpen: boolean
   loading: boolean
   validation?: string
@@ -44,8 +40,8 @@ function SidebarGlyph() {
 
 /** The document bar: studio home, title and status, file actions, panels. */
 export default function Toolbar({
-  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport,
-  docPath, onSpinoff, agentPanelOpen, agentAvailable = true, sidebarOpen, loading, validation,
+  title, isTemplate, trusted, onHome, onOpenFile, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport,
+  docPath, onSpinoff, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
   return (
@@ -88,13 +84,6 @@ export default function Toolbar({
       <button className="ch-btn" onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">Export</button>
       <button className="ch-btn" onClick={onWorkspace} title="Lineage & provenance">Lineage</button>
       <ContinueIn key={docPath} docPath={docPath} onSpinoff={onSpinoff} />
-      {agentAvailable && (
-        <>
-          <button className="ch-btn" aria-pressed={agentPanelOpen} onClick={onToggleAgent}>
-            Agent
-          </button>
-        </>
-      )}
       <ThemeToggle />
     </div>
   )

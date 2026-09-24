@@ -41,9 +41,6 @@ export const tauriHost: Host = {
 
   getHumanHtml: () => invoke<string>('get_human_html'),
   getData: () => invoke<string>('get_data'),
-  getChain: () => invoke<string>('get_chain'),
-  getAgentState: () => invoke<string>('get_agent_state'),
-  getContext: () => invoke<string>('get_context'),
   // The desktop viewer is parked; the web shell is where the panel lives.
   getDecisions: () => Promise.reject(new Error('the decision view is not available on the desktop yet')),
 
