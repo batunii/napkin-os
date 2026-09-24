@@ -8,6 +8,7 @@ import Sidebar from '../components/Sidebar'
 import AgentPanel from '../components/AgentPanel'
 import AppRuntime from './AppRuntime'
 import WorkspaceView from './WorkspaceView'
+import DecisionPanel from './decisions/DecisionPanel'
 import { PoweredByClan } from '../brand/PoweredByClan'
 import type { RunningApp } from './types'
 import '../components/chrome.css'
@@ -61,6 +62,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onExport,
             editMode={running.editMode}
           />
         </main>
+        <DecisionPanel docPath={open.path} />
         {agentPanelOpen && <AgentPanel onClose={() => setAgentPanelOpen(false)} />}
       </div>
       <footer className="ch-footer">
