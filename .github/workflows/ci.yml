@@ -200,3 +200,13 @@ jobs:
           cargo build -p clan-sdk --target wasm32-unknown-unknown
           cargo build -p napkin-host --no-default-features --target wasm32-unknown-unknown
           cargo build -p napkin-wasm --target wasm32-unknown-unknown
+
+  middleware:
+    name: Middleware (server/, fake components)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Test
+        working-directory: server
+        run: uv run --python 3.12 pytest -q
