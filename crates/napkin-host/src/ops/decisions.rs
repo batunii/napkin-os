@@ -442,6 +442,25 @@ impl Lookup<'_> {
             ];
             return cite("finding", statement, Some(join(&detail)));
         }
+        // A value held in a contest points at a layer row nobody pinned; the
+        // contest entry is what the document knows of it.
+        let held = data_contests(self.data).find_map(|c| {
+            let v = c
+                .get("values")?
+                .as_array()?
+                .iter()
+                .find(|v| str_of(v, "fact_id") == Some(id))?;
+            Some((c, v))
+        });
+        if let Some((c, v)) = held {
+            let value = v.get("value").map(|x| format_value(x, str_of(v, "unit")));
+            let label = join_with(&[str_of(c, "key").map(String::from), value], " = ");
+            let detail = [
+                str_of(v, "from").map(|f| format!("from {f}")),
+                Some("a value in a contest, not pinned".to_string()),
+            ];
+            return cite("fact", label, Some(join(&detail)));
+        }
         if let Some(m) = self.data.get("materials").and_then(|m| m.get(id)) {
             let label = str_of(m, "name").unwrap_or(id).to_string();
             let detail = [

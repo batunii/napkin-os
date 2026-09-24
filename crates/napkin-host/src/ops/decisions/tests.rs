@@ -161,6 +161,16 @@ fn cites_resolve_to_what_they_name() {
     assert_eq!(v.cites["mat_prompt01"].kind, "material");
     assert_eq!(v.cites["mat_prompt01"].label, "Planner prompt");
 
+    // Held in the open contest, not pinned.
+    let held = &v.cites["f_01JA0B5C7N"];
+    assert_eq!(held.kind, "fact");
+    assert_eq!(held.label, "brand/orchard-hill:product.abv = 0.5% ABV");
+    assert!(held
+        .detail
+        .as_deref()
+        .unwrap()
+        .contains("brands_positioning/GB"));
+
     let source = &v.cites["src_tr4d"];
     assert_eq!(source.kind, "source");
     assert!(source
