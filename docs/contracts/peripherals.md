@@ -328,8 +328,8 @@ vector.
 
 ## 2. Research port — `napkin.research/1`
 
-Web source discovery for the Research Tool. The shape is today's
-`mock-research` shape, kept; this section tidies what was left implicit.
+Web source discovery for the Research Tool. The shape is the one the retired
+`mock-research` served, kept; this section tidies what was left implicit.
 
 ### 2.1 `POST <NAPKIN_RESEARCH_URL>/v1/research`
 
@@ -787,8 +787,9 @@ confidential sources org-scoped, roster atomic, idempotency).
 
 ## 5. The mock backend
 
-One process fakes every peripheral. It replaces `mock-llm/` and
-`mock-research/`, which retire once their tests are ported into it.
+One process fakes every peripheral. It replaced `mock-llm/` and
+`mock-research/`, which retired on 2026-09-24 once their tests were ported into
+`mock-backend/tests/` and `mock-backend/contract/`.
 
 ### 5.1 Process
 
@@ -812,7 +813,7 @@ One process fakes every peripheral. It replaces `mock-llm/` and
 | model | `POST /v1/messages` | `claude -p`, Anthropic shape (§1.3) |
 | model | `POST /v1/chat/completions` | `claude -p`, OpenAI shape (§1.4) |
 | model | `GET /v1/models` | the id map; Anthropic list shape when the request has `anthropic-version`, OpenAI list shape otherwise |
-| research | `POST /v1/research` | `claude -p` + WebSearch, WebFetch (§2; today's `mock-research` behaviour) |
+| research | `POST /v1/research` | `claude -p` + WebSearch, WebFetch (§2; the retired `mock-research`'s behaviour) |
 | retrieval | `GET /v1/packs`, `POST /v1/retrieve` | pack files + `claude -p` (§3.6) |
 | layers | `/v1/layers/…` | SQLite, no model (§4.8) |
 | — | `GET /healthz` | §5.5 |
@@ -834,7 +835,7 @@ One process fakes every peripheral. It replaces `mock-llm/` and
   `<user>…</user>` / `<assistant>…</assistant>` transcript; structured output
   via `--json-schema`, the envelope's `structured_output` serialised as the
   reply text; usage from the CLI envelope, never estimated (as `mock-llm`
-  does today); `stop_reason: end_turn` / `finish_reason: stop`. Images: sent to
+  did); `stop_reason: end_turn` / `finish_reason: stop`. Images: sent to
   the CLI as image content blocks through `--input-format stream-json`. If the
   installed CLI cannot take them, the mock answers `400` "image input is not
   supported by this stand-in" in the wire's shape rather than dropping the
@@ -979,8 +980,8 @@ Environment only (`server/napkin/config.py`); handlers never see any of it.
 
 Removed: `NAPKIN_LAYERS=local:…` (the middleware no longer opens a database).
 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` still work through the SDK when the
-`NAPKIN_MODEL_*` values are unset, so today's `mock-llm` wiring keeps working
-until it retires.
+`NAPKIN_MODEL_*` values are unset, so `ANTHROPIC_BASE_URL=http://127.0.0.1:8797` still reaches the mock
+backend's model family (the retired `mock-llm` was wired that way on :8791).
 
 Mock backend variables (all optional): `MOCK_BACKEND_HOST`, `MOCK_BACKEND_PORT`
 (8797), `MOCK_FAKES`, `MOCK_CONCURRENCY` (4), `MOCK_QUEUE_TIMEOUT` (= the
@@ -1019,7 +1020,7 @@ be asked to fail are behind a flag, never edited out.
   shape.
 - The response `model` echoes the request's.
 
-### 8.2 Research — `research_contract.py` (today's `mock-research/contract_test.py`, moved)
+### 8.2 Research — `research_contract.py` (moved from the retired `mock-research/contract_test.py`)
 
 - Health. Each §2.1 rule violated → `400 invalid_input`; unknown path `404`.
 - One live query: every source has an http(s) URL, a title, a publisher, 1–5
@@ -1091,7 +1092,7 @@ recommendation.
 | O3 | Whether the layers service keeps the per-identity supersede/contest rule (§4.4) or the middleware decides and the service only inserts | Keep it in the service: it must run in the append transaction, and moving it means a read-then-write race across HTTP. The middleware's merge (across runs) and contests (in the document) stay middleware-side, as the owner decided |
 | O4 | Same as O3 for `set_roster`'s key mapping (`roster.categories.primary` …) | Keep the route: the three keys are fixed here; the middleware still decides *when* a roster row is written |
 | O5 | Passages as a data block (`data.passages`) or a member (`shared/passages.yaml`) | Data block now (§6) |
-| O6 | Images: whether `claude -p --input-format stream-json` takes image blocks (the mock's vision path), and whether image-only PDFs get their pages rendered for transcription (engine did, with PyMuPDF) | The mock builder verifies the CLI first; if it cannot, the mock refuses images honestly and §8.1's image check runs only against a real endpoint. Page rendering belongs to the host's extraction (it already extracts PDF text), not the middleware — a host task |
+| O6 | Images: whether `claude -p --input-format stream-json` takes image blocks (the mock's vision path), and whether image-only PDFs get their pages rendered for transcription (engine did, with PyMuPDF) | The mock builder verifies the CLI first; if it cannot, the mock refuses images honestly and §8.1's image check runs only against a real endpoint. Page rendering belongs to the host's extraction (it already extracts PDF text), not the middleware — a host task. **Mock half verified 2026-09-24:** Claude Code 2.1.281 reads image blocks sent with `--input-format stream-json` (which requires `--output-format stream-json --verbose`); `mock-backend` serves images on both wires and §8.1's image check passes against it |
 | O7 | How carried upstream facts reach the middleware: `clan.facts` holds only the brief's own member; D6's carried upstream is not sent (the host's `clan_context_for_agent` has no `carried`) | Host sends `clan.carried: [{id, facts, findings}]`; the middleware cites carried pins by address `<upstream-doc-id>#facts[f_…]`. Until then a brief cites only pins in its own `clan.facts` |
 | O8 | Whether the research port receives the org for metering | Not in v1 (public-web questions); add `X-Napkin-Org` as informational only if billing needs it |
 | O9 | Where the Brief Maker rubric (the golden-brief field prompts, examples, limits, checks) lives — M2's principle says app-specific knowledge arrives as a declaration | The field map (app key ↔ loop ↔ packs kind) is declared in Brief Maker's `pipeline.yaml` (`middleware-api.md` §10.2); the rubric text is bundled with `draft_brief@1` and versioned with it, since a major pins behaviour. Move it into the template when a second brief app needs a different rubric |
@@ -1150,5 +1151,6 @@ For the two builds to fix; none is fixed by this document.
 12. **`engine/packs_dist` has digests only and no Effie pack**, and
     `rag/packs.lock` lists no Effie pack, though Effie is named as a corpus
     (§3.6).
-13. **`mock-llm` refuses image blocks** (by design today); the engine's vision
+13. **`mock-llm` refused image blocks** — fixed: `mock-backend` takes them through
+    `--input-format stream-json` (verified with Claude Code 2.1.281; O6's mock half). The engine's vision
     path needs them (§1.6, O6).
