@@ -7,13 +7,14 @@
 import { build } from 'esbuild'
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const tests = readdirSync(here).filter(f => f.endsWith('.test.ts'))
-const out = mkdtempSync(join(tmpdir(), 'napkin-app-tests-'))
+// Inside app/, so a bundle's external imports (react-dom, for the figure
+// test) resolve against app/node_modules.
+const out = mkdtempSync(join(here, '.run-'))
 
 try {
   await build({
@@ -25,6 +26,9 @@ try {
     format: 'esm',
     target: 'node20',
     packages: 'external',
+    // The figure test renders the shell's own React components.
+    jsx: 'automatic',
+    loader: { '.css': 'empty' },
     logLevel: 'warning',
   })
   const files = readdirSync(out).filter(f => f.endsWith('.mjs')).map(f => join(out, f))
