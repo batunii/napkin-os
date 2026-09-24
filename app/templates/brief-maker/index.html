@@ -123,7 +123,7 @@
   .band .eyebrow{color:var(--zone-3)}
 
   /* crew: who does the work, each with a line on what they do */
-  .crew{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .crew{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
   .who{display:flex;align-items:flex-end;gap:10px;padding:10px 12px 10px 8px;border-radius:var(--r-card);background:var(--zone-tint);min-width:0}
   .who .agent-figure{width:30px;height:40px}
   .who .t{min-width:0;display:grid;gap:1px;padding-bottom:3px}
@@ -338,7 +338,7 @@
   @media (max-width:860px){
     .intake{grid-template-columns:1fr;min-height:0;gap:18px}
     .intro{padding:24px 22px 20px;gap:16px}
-    .intro .crew{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:4px}
+    .intro .crew{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:4px}
   }
   @media (max-width:640px){
     .app{padding:12px 16px 90px}
@@ -522,16 +522,16 @@
   var forceIntake=false, phase='intake';
 
   // ---------- who does Brief Maker's work (decision N4) ----------
-  // Extract reads the ask and what is attached; one Drafter per field drafts
-  // in parallel; the Judge runs after, alone, on the whole brief. Plain names,
-  // as the shell's model.ts gives them.
+  // Extract reads what is attached; one Drafter per field drafts. Plain names,
+  // as the shell's model.ts gives them. No Judge: N4 puts one after the
+  // drafts, but nothing judges the brief yet, so the app shows no one doing it.
   var CREW=[
-    {k:'extract', name:'Extract', does:'Reads your prompt and every file you attach.'},
-    {k:'drafter', name:'Drafter', does:'One per field, side by side, each drafting from the ask.'},
-    {k:'judge',   name:'Judge',   does:'Reads the whole brief once the drafts are in.'}
+    {k:'extract', name:'Extract', does:'Reads every file you attach.'},
+    {k:'drafter', name:'Drafter', does:'One per field, each drafting from the ask.'}
   ];
-  function crewHtml(states, texts){
-    return CREW.map(function(c){
+  // `only`: the crew members to show (default: all).
+  function crewHtml(states, texts, only){
+    return CREW.filter(function(c){ return !only||only.indexOf(c.k)!==-1; }).map(function(c){
       var st=(states&&states[c.k])||'idle', t=(texts&&texts[c.k])||c.does;
       return '<div class="who'+(st==='working'?' on':st==='done'?' done':'')+'" data-k="'+c.k+'">'
         +fig(c.k,{state:st==='done'?'idle':st, label:c.name+', '+c.does})
@@ -546,12 +546,11 @@
   function agentKeyOf(d){
     if(!d) return '';
     var a=String(d.agent||'')+' '+String(d.action||'');
-    if(/judge/i.test(a)) return 'judge';
     if(/extract/i.test(a)) return 'extract';
     return 'drafter';
   }
   function whoName(d){ return isHuman(d)?'You':(AGENT_NAME[agentKeyOf(d)]||d.agent); }
-  var AGENT_NAME={extract:'Extract', drafter:'Drafter', judge:'Judge'};
+  var AGENT_NAME={extract:'Extract', drafter:'Drafter'};
 
   // ---------- the decision chain: why each field says what it says ----------
   // Read lazily from clan://chain (the context object leaves it out). A field
@@ -641,7 +640,7 @@
     var by={}, filled=0;
     FIELDS.forEach(function(f){ if(!hasVal(get(f.key))) return; filled++; var d=decisionsFor(f.key)[0]; var w=d?(isHuman(d)?'you':agentKeyOf(d)):''; if(w) by[w]=(by[w]||0)+1; });
     var h='';
-    ['extract','drafter','judge'].forEach(function(k){ if(by[k]) h+='<div class="cl">'+fig(k,{decorative:true})+'<span><b>'+AGENT_NAME[k]+'</b> wrote '+by[k]+' of '+filled+' fields</span></div>'; });
+    ['extract','drafter'].forEach(function(k){ if(by[k]) h+='<div class="cl">'+fig(k,{decorative:true})+'<span><b>'+AGENT_NAME[k]+'</b> wrote '+by[k]+' of '+filled+' fields</span></div>'; });
     if(by.you) h+='<div class="cl"><span class="you" aria-hidden="true">you</span><span><b>You</b> wrote or edited '+by.you+'</span></div>';
     var att=null;
     CHAIN.decisions.slice().sort(function(a,b){ return tsOf(b)-tsOf(a); }).some(function(d){ if(!isHuman(d)&&hasReasoning(d)){ att=d; return true; } return false; });
@@ -732,7 +731,7 @@
     var s=style();
     document.querySelectorAll('#tpls .tpl').forEach(function(el){ el.classList.toggle('sel', el.getAttribute('data-style')===s); });
     var n=(data().reference_assets||[]).length;
-    $('introCrew').innerHTML=crewHtml(null, n?{extract:'Reads your prompt and the '+n+' '+(n===1?'file':'files')+' attached.'}:null);
+    $('introCrew').innerHTML=crewHtml(null, n?{extract:'Reads the '+n+' '+(n===1?'file':'files')+' attached.'}:null);
     var chips=$('chips'); chips.innerHTML='';
     (data().reference_assets||[]).forEach(function(a,i){
       var c=document.createElement('span'); c.className='chip';
@@ -764,11 +763,13 @@
   }
   $('addAny').addEventListener('change',function(){ uploadFiles(this, $('intakeStatus')); });
 
-  // ---------- working: the crew, then a tile per field ----------
-  // The draft is one call; the backend runs the briefing loops inside it and
-  // answers once. So the stages below follow the shape of the work (N4:
-  // Extract, then a Drafter per field side by side, then the Judge alone)
-  // on a clock while the call is out, and land on what actually came back.
+  // ---------- working: the crew and a tile per field ----------
+  // draft_brief is ONE call: the backend answers once, with every field. So
+  // while it is out, everyone who is part of it works at once — Extract only
+  // when files are attached, a Drafter on every field being drafted — with
+  // no claim about which stage is running, and each tile fills when the
+  // answer lands. A staged display (who is on what, right now) waits for the
+  // backend to report its stages, as the Research Tool's jobs do.
   function tileHtml(f, st, text){
     var figSt=st==='work'?'working':'idle';
     return '<div class="tile '+st+'" data-key="'+esc(f.key)+'">'
@@ -778,46 +779,31 @@
   function runProcessing(){
     var n=(data().reference_assets||[]).length;
     $('procIdent').innerHTML=IDENT;
-    var drafting=FIELDS.filter(function(f){ return !isLocked(f.key); }).length;
+    var drafting=FIELDS.filter(function(f){ return !isLocked(f.key); }).length, kept=FIELDS.length-drafting;
+    var who=n?['extract','drafter']:['drafter'];
+    var files=n+' attached '+(n===1?'file':'files');
+    $('procCrew').innerHTML=crewHtml({extract:'working',drafter:'working'},
+      {extract:'Reading the '+files+'.', drafter:drafting+' of them, one per field.'}, who);
+    $('procH').textContent='Drafting the brief…';
+    $('procS').textContent=drafting+' fields from your ask'+(n?' and the '+files:'')+'.'+(kept?' '+kept+' locked, kept as they are.':'');
     var tiles=$('tiles');
-    function drawTiles(st){
-      tiles.innerHTML=FIELDS.map(function(f){
-        if(isLocked(f.key)) return tileHtml(f,'kept','Locked — kept as it is');
-        return tileHtml(f, st, st==='work'?'Drafting':'Waiting for the ask');
-      }).join('');
-    }
-    function crew(states, texts, h, s){
-      $('procCrew').innerHTML=crewHtml(states, texts);
-      $('procH').textContent=h; $('procS').textContent=s||'';
-    }
-    var extractText='Reading your prompt'+(n?' and '+n+' attached '+(n===1?'file':'files'):'');
-    crew({extract:'working'},{extract:extractText+'.'},'Reading the ask…','Extract reads what you gave it before anyone drafts.');
-    drawTiles('wait');
-    var failed=false, t1=setTimeout(function(){
-      if(failed) return;
-      crew({extract:'done',drafter:'working'},{extract:'Read the ask'+(n?' and '+n+' '+(n===1?'file':'files'):'')+'.',drafter:drafting+' drafting at once, one per field.',judge:'Waits for every draft.'},
-        'Drafting the brief…', drafting+' fields, each with its own Drafter.'+(drafting<FIELDS.length?' '+(FIELDS.length-drafting)+' locked, kept as they are.':''));
-      drawTiles('work');
-    }, reduce?300:1600);
+    tiles.innerHTML=FIELDS.map(function(f){
+      return isLocked(f.key)?tileHtml(f,'kept','Locked — kept as it is'):tileHtml(f,'work','Drafting');
+    }).join('');
     return {
+      // The answer is in: every tile shows what came back for its field.
       resolve:function(fields, cb){
-        clearTimeout(t1);
-        crew({extract:'done',drafter:'working'},{extract:'Read the ask.',drafter:'Drafts are in.',judge:'Waits for every draft.'},'Drafts are in…','');
-        var i=0, step=reduce?0:45;
-        (function next(){
-          if(i<FIELDS.length){
-            var f=FIELDS[i++], el=tiles.querySelector('[data-key="'+f.key+'"]');
-            if(el&&!isLocked(f.key)){
-              var v=f.key.split('.').reduce(function(o,k){ return o==null?undefined:o[k]; }, fields);
-              el.outerHTML=hasVal(v)?tileHtml(f,'done',Array.isArray(v)?v.join(' · '):String(v)):tileHtml(f,'skip','Nothing in the ask for this — left empty');
-            }
-            return step?setTimeout(next,step):next();
-          }
-          crew({extract:'done',drafter:'done',judge:'working'},{extract:'Read the ask.',drafter:'Every field drafted.',judge:'Reading the whole brief through.'},'Checking it holds together…','The Judge reads the brief as one piece, after the drafts.');
-          setTimeout(cb, reduce?200:1100);
-        })();
+        FIELDS.forEach(function(f){
+          var el=tiles.querySelector('[data-key="'+f.key+'"]');
+          if(!el||isLocked(f.key)) return;
+          var v=f.key.split('.').reduce(function(o,k){ return o==null?undefined:o[k]; }, fields);
+          el.outerHTML=hasVal(v)?tileHtml(f,'done',Array.isArray(v)?v.join(' · '):String(v)):tileHtml(f,'skip','Nothing in the ask for this — left empty');
+        });
+        $('procCrew').innerHTML=crewHtml({extract:'done',drafter:'done'},{extract:'Read the '+files+'.',drafter:'Drafts are in.'}, who);
+        $('procH').textContent='The drafts are in.';
+        setTimeout(cb, reduce?150:700);
       },
-      fail:function(){ failed=true; clearTimeout(t1); }
+      fail:function(){}
     };
   }
 
