@@ -1,4 +1,11 @@
-"""LocalLayers: the layers protocol on stdlib sqlite3.
+"""The storage behind the tests' fake layers SERVICE (fake_layers.py).
+
+Formerly `napkin/layers/local.py`: the middleware no longer opens a database
+(peripherals.md §10 item 1); the tests serve `napkin.layers/1` over an
+in-process transport from this store, so the middleware's own client
+(`HttpLayers`) is what the tests exercise.
+
+LocalLayers: the layers protocol on stdlib sqlite3.
 
 Schema (typed value columns — no JSON value column — per the fact-envelope
 cautions; `market` '' means market-independent):
@@ -27,9 +34,9 @@ import re
 import sqlite3
 import threading
 
-from ..util import iso, slug, uid
-from . import origin_uri
-from .taxonomy import TREE
+from napkin.util import iso, slug, uid
+from napkin.layers import origin_uri
+from taxonomy_seed import TREE
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS verticals(code TEXT PRIMARY KEY, name TEXT NOT NULL, aliases TEXT NOT NULL,

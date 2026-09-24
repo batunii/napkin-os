@@ -198,7 +198,7 @@ class FakeResearch:
         self.calls = []
         self.fail_on = fail_on or set()
 
-    def search(self, query, lens, market, entity=None, category=None, max_sources=6):
+    def search(self, query, lens, market, entity=None, category=None, max_sources=6, attribution=None):
         from napkin.research import ResearchError
         self.calls.append((lens, market))
         if (lens, market) in self.fail_on:
@@ -221,3 +221,75 @@ class FakeResearch:
 
 def lens_key(lens, suffix):
     return f"{LENS_NAMESPACE[lens]}.{suffix}"
+
+
+# ---------------------------------------------------------------------------
+# Retrieval: a fake napkin.retrieval/1 service (an httpx MockTransport handler)
+# ---------------------------------------------------------------------------
+
+PACK_TEXT = {
+    ("playbooks", "playbook", (), 2): {
+        ("insight.md", "Finding the tension"): "An insight names a human tension: what people want against what "
+                                               "holds them back, and why it matters now.",
+        ("proposition.md", "One thing"): "A single-minded proposition says one thing, derived from the insight, "
+                                         "that a rival could not say.",
+        ("qa.md", "Decision rules"): "Pressure-test the proposition: one idea, ownable, true to the insight, "
+                                     "supported by every reason to believe.",
+    },
+    ("cannes", "case", ("loop4_insight", "loop6_substantiation"), 1): {
+        ("case-harbour.md", "The insight"): "Midweek drinkers were not quitting; they were trading down to "
+                                            "something they could be proud of.",
+        ("case-harbour.md", "Results"): "Sales rose while the category fell, and the brand became the grown-up "
+                                        "choice.",
+    },
+}
+
+
+def _passage(pack, source, section, text, rank, k):
+    sha = hashlib.sha256(text.encode()).hexdigest()
+    slug_ = re.sub(r"[^a-z0-9]+", "-", section.lower()).strip("-")
+    return {"id": "psg_" + hashlib.sha256(f"{pack}\n{source}\n{section}\n{text}".encode()).hexdigest()[:20],
+            "uri": f"passage://{pack}/{source}#{slug_}@{sha[:16]}", "pack": pack, "scope": "house",
+            "licence": "licensed-internal", "source": source, "section": section,
+            "citation": f"{source} › {section}", "text": text, "text_sha256": sha, "truncated": False,
+            "rank": rank, "score": round(1 - (rank - 1) / k, 3), "metadata": {"source": pack}}
+
+
+class FakeRetrievalService:
+    def __init__(self, fail=None, tamper=False, empty=False):
+        self.requests, self.fail, self.tamper, self.empty = [], list(fail or []), tamper, empty
+
+    def packs_list(self):
+        return [{"tag": tag, "id": tag, "kind": kind, "scope": "house", "licence": "licensed-internal", "k": k,
+                 "loops": list(loops), "passages": len(secs), "filterable": ["category"],
+                 "version": "sha256:" + hashlib.sha256(tag.encode()).hexdigest()[:16]}
+                for (tag, kind, loops, k), secs in PACK_TEXT.items()]
+
+    def __call__(self, request):
+        import httpx
+        self.requests.append(request)
+        if self.fail:
+            st = self.fail.pop(0)
+            return httpx.Response(st, json={"error": {"type": "unknown_pack" if st == 404 else "upstream_failed",
+                                                      "message": "no"}})
+        if not request.headers.get("x-napkin-org"):
+            return httpx.Response(400, json={"error": {"type": "missing_scope", "message": "no org"}})
+        if request.url.path == "/v1/packs":
+            return httpx.Response(200, json={"packs": self.packs_list(), "embed_model": None, "backend": "fake"})
+        body = json.loads(request.content)
+        want = body.get("packs") or [p["tag"] for p in self.packs_list()]
+        words = set(re.findall(r"[a-z]{4,}", body["query"].lower()))
+        cands = []
+        for (tag, _kind, _loops, _k), secs in PACK_TEXT.items():
+            if tag not in want:
+                continue
+            for (src, sec), text in secs.items():
+                cands.append((-len(words & set(re.findall(r"[a-z]{4,}", text.lower()))), tag, src, sec, text))
+        cands.sort()
+        k = body["k"]
+        ps = [] if self.empty else [_passage(t, s, sec, x, i + 1, k) for i, (_, t, s, sec, x) in enumerate(cands[:k])]
+        if self.tamper and ps:
+            ps[0] = dict(ps[0], text="TAMPERED")
+        vers = {p["tag"]: p["version"] for p in self.packs_list() if p["tag"] in want}
+        return httpx.Response(200, json={"passages": ps, "trace": {"backend": "fake", "embed_model": None,
+                                                                   "packs": vers}})

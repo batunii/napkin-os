@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 
-from . import BACKEND
+from . import backend
 from .reasoning import give
 from .util import bad, iso, norm_sha
 
@@ -234,7 +234,7 @@ def decision(doc, did, kind, handler, action, rationale, targets, cites=(), time
     d = {
         "id": did, "kind": kind, "agent": handler, "action": action,
         "rationale": rationale, "targets": [f"{doc}#{t}" for t in targets],
-        "cites": list(dict.fromkeys(cites)), "handler": handler, "backend": BACKEND,
+        "cites": list(dict.fromkeys(cites)), "handler": handler, "backend": backend(),
         "timestamp": timestamp or iso(),
     }
     d.update(extra)

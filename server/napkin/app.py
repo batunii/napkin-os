@@ -14,18 +14,18 @@ import json
 import logging
 import threading
 
-import anthropic
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import API, BACKEND, registry
+from . import API, backend, registry, set_model_wire
 from .capabilities import Capabilities
 from .config import Settings
 from .doc import STAGES
 from .jobs import JobStore, LongJob
-from .layers import open_store
-from .model import ModelPort
+from .layers.http import HttpLayerStore
+from .model import ModelPort, build_wire
 from .research import ResearchPort
+from .retrieval import RetrievalPort
 from .util import TaskError, bad, iso
 
 log = logging.getLogger("napkin.app")
@@ -41,28 +41,43 @@ class Req:
 
 
 class Middleware:
-    def __init__(self, settings: Settings, model_client=None, research_port=None, layer_store=None):
+    def __init__(self, settings: Settings, model_client=None, research_port=None, layer_store=None,
+                 retrieval_port=None, model_transport=None):
+        """Each port from configuration (peripherals.md §7); the keyword
+        arguments replace one with a test double."""
         self.settings = settings
         self.resolved = registry.resolve_at_startup(settings.pipelines)
-        if model_client is None:
-            model_client = anthropic.Anthropic()  # ANTHROPIC_BASE_URL / credentials from the environment
-        self.model_port = ModelPort(model_client, settings.model, settings.model_timeout)
+        wire = model_client if hasattr(model_client, "send") and hasattr(model_client, "api") else \
+            build_wire(settings, client=model_client, transport=model_transport)
+        set_model_wire(wire.api)
+        self.model_port = ModelPort(wire, settings.model, settings.model_timeout, vision_model=settings.vision_model)
         if research_port is None and settings.research_url:
-            research_port = ResearchPort(settings.research_url, settings.research_timeout)
+            research_port = ResearchPort(settings.research_url, settings.research_timeout,
+                                         token=settings.research_token)
         self.research_port = research_port
-        self.layer_store = layer_store or open_store(settings.layers)
+        if retrieval_port is None and settings.retrieval_url:
+            retrieval_port = RetrievalPort(settings.retrieval_url, settings.retrieval_token, settings.retrieval_timeout)
+        self.retrieval_port = retrieval_port
+        if layer_store is None:
+            if not settings.layers_url:
+                raise SystemExit("NAPKIN_LAYERS_URL is required: the knowledge layers are a service "
+                                 "(napkin.layers/1); the middleware opens no database")
+            layer_store = HttpLayerStore(settings.layers_url, settings.layers_token, settings.layers_timeout)
+        self.layer_store = layer_store
         self.jobs = JobStore()
         self.research_sem = threading.Semaphore(max(1, settings.research_concurrency))
+        self.model_sem = threading.Semaphore(max(1, settings.model_concurrency))
 
     def caps(self, handler: str) -> Capabilities:
         return Capabilities(handler=handler, scope=self.settings.scope, model_port=self.model_port,
                             research_port=self.research_port, layer_store=self.layer_store,
-                            research_semaphore=self.research_sem)
+                            research_semaphore=self.research_sem, retrieval_port=self.retrieval_port,
+                            model_semaphore=self.model_sem)
 
     # -- envelope -----------------------------------------------------------
     def trace(self, caps: Capabilities | None, hits=()) -> dict:
         ran = caps is not None and caps.model_ran()
-        return {"scope": self.settings.scope, "backend": BACKEND,
+        return {"scope": self.settings.scope, "backend": backend(),
                 "model": caps.model.model_id if ran else None,
                 "hits": list({(h["id"], h["source"]): h for h in hits}.values()),
                 "usage": caps.usage.as_dict() if caps is not None else {"input_tokens": 0, "output_tokens": 0}}
@@ -125,7 +140,9 @@ class Middleware:
                 raise TaskError(409, "job_state", "a start_campaign job on this document is still running or "
                                                   "waiting for an answer; one composition of a document at a time")
             caps = self.caps(handler)
-            job = mod.start(req, caps, self.settings, self.jobs.new_id())
+            jid = self.jobs.new_id()
+            caps.bind_job(jid)
+            job = mod.start(req, caps, self.settings, jid)
             self.jobs.add(job)
             job.start()
             return self.campaign_envelope(job, None)
@@ -135,6 +152,7 @@ class Middleware:
                                                   "composition of a document at a time")
             caps = self.caps(handler)
             jid = self.jobs.new_id()
+            caps.bind_job(jid)
             t0 = iso()
             if task == "compose_report":
                 result, change, hits = mod.run(req, caps, jid)
@@ -147,8 +165,10 @@ class Middleware:
             return self.envelope(task, handler, job, result, change, caps, hits)
         # long
         caps = self.caps(handler)
+        jid = self.jobs.new_id()
+        caps.bind_job(jid)
         total, work = mod.prepare(req, caps, self.settings)
-        job = LongJob(self.jobs.new_id(), task, handler, doc, scope, caps, total, work)
+        job = LongJob(jid, task, handler, doc, scope, caps, total, work)
         self.jobs.add(job)
         job.start()
         return self.envelope(task, handler, {**job.view(), "state": "queued", "progress": {"done": 0, "total": total}},
@@ -177,8 +197,9 @@ def create_app(settings: Settings | None = None, **components) -> FastAPI:
 
     @app.get("/healthz")
     def healthz():
-        return {"ok": True, "api": API, "backend": BACKEND, "model": settings.model,
-                "research": bool(mw.research_port), "stages": STAGES}
+        return {"ok": True, "api": API, "backend": backend(), "model": settings.model,
+                "model_api": mw.model_port.api, "research": bool(mw.research_port),
+                "retrieval": bool(mw.retrieval_port), "stages": STAGES}
 
     @app.post("/v1/tasks")
     async def tasks(request: Request):
@@ -218,11 +239,12 @@ def main():
     import uvicorn
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     settings = Settings.from_env()
-    if settings.port in (8080, 8790):
+    if settings.port in (8080, 8090, 8790, 8791, 8792, 8796):
         raise SystemExit(f"refusing to bind port {settings.port}")
     app = create_app(settings)
-    log.info("%s on http://%s:%d/v1/tasks scope=%s model=%s research=%s layers=%s", API, settings.host,
-             settings.port, settings.scope, settings.model, settings.research_url or "none", settings.layers)
+    log.info("%s on http://%s:%d/v1/tasks scope=%s model=%s/%s research=%s retrieval=%s layers=%s", API,
+             settings.host, settings.port, settings.scope, settings.model_api, settings.model,
+             settings.research_url or "none", settings.retrieval_url or "none", settings.layers_url)
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="warning")
 
 
