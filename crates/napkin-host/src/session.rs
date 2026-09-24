@@ -26,6 +26,7 @@ use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
 use crate::ops::{edit, middleware, read, Outcome};
 use crate::store::{DocId, DocStore};
+use crate::view::{self, ViewSource};
 
 pub use crate::ops::{attribute, content_type_for, sanitize_asset_name};
 
@@ -85,8 +86,19 @@ pub struct OpenResult {
     /// `true` when this file is a template app (document_type == "template").
     pub is_template: bool,
     /// `true` when the app is validly signed by Napkin's key → scoped host
-    /// capabilities are available to it.
+    /// capabilities are available to it. With a library view this is the
+    /// installed template's signature, not the document's (see [`crate::view`]).
     pub trusted: bool,
+    /// Where the view is served from: `"library"` — the installed app's
+    /// current view, same app id and major — or `"document"`, the copy the
+    /// document carries. Absent from a reply that predates it: `"document"`.
+    #[serde(default)]
+    pub view_source: ViewSource,
+    /// The app version of the view served: the installed app's for a library
+    /// view, else the document's own. `None` for a document that is not an
+    /// instance of an app.
+    #[serde(default)]
+    pub view_version: Option<String>,
 }
 
 /// What a write did, once its changes are in the store: the reply for the
@@ -242,8 +254,17 @@ impl Session {
             .map(|d| d.version().clone())
     }
 
-    /// The packed archive of the open snapshot — the single-file handoff.
+    /// The packed archive of the open snapshot as handed out — the single-file
+    /// handoff ("save as", the web download). It carries the view the user
+    /// sees: with a library view, that view is swapped into the copy
+    /// ([`view::served_archive`]). The stored document is not touched; see
+    /// [`Self::stored_bytes`] for it exactly as stored.
     pub fn raw_bytes(&self) -> HostResult<Vec<u8>> {
+        self.read(|d| Ok(view::served_archive(d)?.into_owned()))
+    }
+
+    /// The packed archive of the open snapshot exactly as stored.
+    pub fn stored_bytes(&self) -> HostResult<Vec<u8>> {
         self.read(|d| Ok(d.bytes().to_vec()))
     }
 
@@ -264,10 +285,13 @@ impl Session {
 
     // ── Opening ─────────────────────────────────────────────────────────────
 
-    /// Read `id` as it stands now and make it the open snapshot.
+    /// Read `id` as it stands now and make it the open snapshot, shown with
+    /// the installed app's view when the library has one of the same major
+    /// ([`crate::view`]).
     pub fn open(&self, id: DocId) -> HostResult<OpenResult> {
         // One read: the snapshot holds the bytes it was built from (#10).
         let doc = Document::load(self.store.parts(), id)?;
+        let doc = view::resolve(&*self.store, doc, NAPKIN_PUBLIC_KEY);
         let result = read::describe(&doc);
         self.view.lock().unwrap().open = Some(doc);
         Ok(result)

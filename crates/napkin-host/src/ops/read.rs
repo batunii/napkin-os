@@ -6,6 +6,8 @@
 //! agent is shown, what an export composes. Each is a function of one
 //! snapshot, so any shell holding a [`Document`] can answer them.
 
+use std::borrow::Cow;
+
 use clan_sdk::{export_html, validate, ClanFile, ExportOptions};
 use serde_json::Value;
 
@@ -16,6 +18,7 @@ use crate::html::{
 };
 use crate::log::log;
 use crate::session::{AppMeta, LineageInfo, ManifestInfo, OpenResult};
+use crate::view;
 
 use super::{content_type_for, members};
 
@@ -53,7 +56,7 @@ pub fn describe(doc: &Document) -> OpenResult {
         path: doc.id().to_string(),
         manifest: info,
         validation: validate(clan).display(),
-        has_human_view: clan.has_entry("human/index.html"),
+        has_human_view: doc.view_clan().has_entry("human/index.html"),
         render_model: if is_authored {
             "authored".into()
         } else {
@@ -61,6 +64,8 @@ pub fn describe(doc: &Document) -> OpenResult {
         },
         is_template,
         trusted: doc.trusted(),
+        view_source: doc.view_source(),
+        view_version: doc.view_version().map(String::from),
     }
 }
 
@@ -71,10 +76,18 @@ pub fn entry_string(doc: &Document, path: &str) -> HostResult<String> {
 
 /// The view, ready to render: bindings resolved (legacy views), styles and
 /// `window.__CLAN__` injected.
+///
+/// The markup and stylesheet come from the view the document is shown with —
+/// the installed app's when [`crate::view`] chose it, else the document's own.
+/// Data, manifest and assets are always the document's.
 pub fn human_html(doc: &Document) -> HostResult<String> {
-    log("get_human_html: called");
+    log(&format!(
+        "get_human_html: called ({:?} view)",
+        doc.view_source()
+    ));
     let clan = doc.clan();
-    let html = clan.read_entry_string("human/index.html")?;
+    let view = doc.view_clan();
+    let html = view.read_entry_string("human/index.html")?;
 
     // Authored template apps (view.source == "app") render client-side
     // from window.__CLAN__.data. Legacy AI-generated views keep the
@@ -108,12 +121,12 @@ pub fn human_html(doc: &Document) -> HostResult<String> {
         }
     };
 
-    let css = clan
+    let css = view
         .read_entry_string("human/styles.css")
         .unwrap_or_default();
     let styled_html = inject_styles(&body, &css);
 
-    let context = build_clan_context(clan, &data_value);
+    let context = build_clan_context(doc, &data_value);
     let context_json = serde_json::to_string(&context).unwrap_or_else(|_| "{}".to_string());
     Ok(inject_clan_data(&styled_html, &context_json))
 }
@@ -130,11 +143,21 @@ pub fn data_json(doc: &Document) -> Value {
 }
 
 /// `GET /assets/<rel>` — a binary asset from inside the archive.
+///
+/// The document's own asset first: uploads share `human/assets/` with the
+/// view's, and a document's upload must never be shadowed by an app's file of
+/// the same name. With a library view, a name the document does not hold is
+/// then looked up in the installed template, so an asset a newer view added
+/// resolves.
 pub fn serve_asset(doc: &Document, rel: &str) -> HostResult<(String, Vec<u8>)> {
     let full = format!("human/assets/{rel}");
     let bytes = doc
         .clan()
         .read_entry(&full)
+        .or_else(|e| match doc.library_view() {
+            Some(v) => v.template().read_entry(&full),
+            None => Err(e),
+        })
         .map_err(|_| HostError::not_found(format!("asset not found: {rel}")))?;
     Ok((content_type_for(rel).to_string(), bytes))
 }
@@ -162,6 +185,10 @@ pub fn chain_json(doc: &Document) -> HostResult<Value> {
 /// Compose a standalone document via the SDK (bindings resolved, assets
 /// inlined, scripts stripped, brand chrome + optional provenance). Returns
 /// `(html, filename_stem)`.
+///
+/// Composed from [`crate::view::served_archive`], so an export shows the view
+/// the user saw — the installed app's when that is what the document is shown
+/// with. Nothing is written.
 pub fn compose_export(
     doc: &Document,
     provenance: bool,
@@ -178,8 +205,16 @@ pub fn compose_export(
             }
         })
         .collect();
+    let swapped;
+    let served = match view::served_archive(doc)? {
+        Cow::Borrowed(_) => doc.clan(),
+        Cow::Owned(bytes) => {
+            swapped = ClanFile::from_bytes(bytes)?;
+            &swapped
+        }
+    };
     let html = export_html(
-        doc.clan(),
+        served,
         &ExportOptions {
             brand: !no_brand,
             provenance,
@@ -267,16 +302,24 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
 /// Build the `window.__CLAN__` context object the template/view reads:
 /// `{ data, manifest, assets }`. The decision chain is intentionally omitted
 /// here (it can be large) — the view fetches it lazily via `clan://chain`.
-fn build_clan_context(clan: &ClanFile, data: &serde_yaml::Value) -> Value {
+fn build_clan_context(doc: &Document, data: &serde_yaml::Value) -> Value {
+    let clan = doc.clan();
     let data_json: Value = serde_json::to_value(data).unwrap_or(Value::Null);
     let m = clan.manifest();
 
     // Map every human/assets/<rel> entry to a relative URL the iframe resolves
-    // against its own clan:// origin.
+    // against its own clan:// origin — the document's, then any a library
+    // view adds (the same order `serve_asset` resolves them in).
     let mut assets = serde_json::Map::new();
-    for f in &m.files {
+    let library_files = doc
+        .library_view()
+        .map(|v| v.template().manifest().files.as_slice())
+        .unwrap_or_default();
+    for f in m.files.iter().chain(library_files) {
         if let Some(rel) = f.path.strip_prefix("human/assets/") {
-            assets.insert(rel.to_string(), Value::String(format!("/assets/{rel}")));
+            assets
+                .entry(rel.to_string())
+                .or_insert_with(|| Value::String(format!("/assets/{rel}")));
         }
     }
 

@@ -18,6 +18,7 @@
 //! the ones that move.
 
 use std::fmt;
+use std::sync::Arc;
 
 use clan_sdk::{ClanFile, Decision, DecisionChain};
 
@@ -25,6 +26,7 @@ use crate::error::HostResult;
 use crate::event::HostEvent;
 use crate::session::NAPKIN_PUBLIC_KEY;
 use crate::store::{DocId, PartStore};
+use crate::view::{LibraryView, ViewSource};
 
 const CHAIN: &str = "agent/decision-chain.yaml";
 
@@ -88,6 +90,10 @@ pub struct Document {
     // document is opened and carried through its own changes, exactly as the
     // open file always was: a write does not re-run the trust gate.
     trusted: bool,
+    // The installed app whose view this document is shown with, when the
+    // library has one it may use (see `crate::view`). Chosen at open and
+    // carried through the document's own changes, like `trusted`.
+    library_view: Option<Arc<LibraryView>>,
 }
 
 impl Document {
@@ -99,14 +105,29 @@ impl Document {
 
     /// A snapshot of `bytes`, which are `id` at the version they hash to.
     pub fn from_bytes(id: DocId, bytes: Vec<u8>) -> HostResult<Self> {
+        Self::from_bytes_with_key(id, bytes, NAPKIN_PUBLIC_KEY)
+    }
+
+    /// [`Self::from_bytes`], verifying the app against `public_key` instead of
+    /// Napkin's — for a deployment with its own publisher key, and for tests.
+    pub fn from_bytes_with_key(id: DocId, bytes: Vec<u8>, public_key: &str) -> HostResult<Self> {
         let clan = ClanFile::from_bytes(bytes)?;
-        let trusted = clan_sdk::verify_app(&clan, NAPKIN_PUBLIC_KEY);
+        let trusted = clan_sdk::verify_app(&clan, public_key);
         Ok(Self {
             version: Version::of_archive(clan.raw_bytes()),
             id,
             clan,
             trusted,
+            library_view: None,
         })
+    }
+
+    /// This snapshot, shown with `view` — the installed app's — instead of its
+    /// own. From here on [`Self::trusted`] is the template's trust, because the
+    /// code that runs is the template's.
+    pub fn with_library_view(mut self, view: LibraryView) -> Self {
+        self.library_view = Some(Arc::new(view));
+        self
     }
 
     pub fn id(&self) -> &DocId {
@@ -121,8 +142,58 @@ impl Document {
         &self.clan
     }
 
+    /// Whether the code this document is shown with verifies. With a library
+    /// view that is the installed template's signature, not the document's:
+    /// trust belongs to the code that runs, and that code is the library's.
     pub fn trusted(&self) -> bool {
+        match &self.library_view {
+            Some(v) => v.trusted(),
+            None => self.trusted,
+        }
+    }
+
+    /// Whether the document's own copy of its app verifies, whichever view it
+    /// is shown with.
+    pub fn document_trusted(&self) -> bool {
         self.trusted
+    }
+
+    /// The installed app whose view this document is shown with, if any.
+    pub fn library_view(&self) -> Option<&LibraryView> {
+        self.library_view.as_deref()
+    }
+
+    /// Where the view this document is shown with comes from.
+    pub fn view_source(&self) -> ViewSource {
+        if self.library_view.is_some() {
+            ViewSource::Library
+        } else {
+            ViewSource::Document
+        }
+    }
+
+    /// The app version of the view this document is shown with: the installed
+    /// app's for a library view, else the document's own app version (none
+    /// when it is not an instance of an app).
+    pub fn view_version(&self) -> Option<&str> {
+        match &self.library_view {
+            Some(v) => Some(v.version()),
+            None => self
+                .clan
+                .manifest()
+                .app
+                .as_ref()
+                .map(|a| a.version.as_str()),
+        }
+    }
+
+    /// The archive the view's entries (`human/index.html`, `human/styles.css`,
+    /// `human/export.html`) are read from.
+    pub fn view_clan(&self) -> &ClanFile {
+        match &self.library_view {
+            Some(v) => v.template(),
+            None => &self.clan,
+        }
     }
 
     /// The packed archive exactly as stored at this version.
@@ -162,6 +233,7 @@ impl Document {
             version,
             clan,
             trusted: self.trusted,
+            library_view: self.library_view.clone(),
         })
     }
 }

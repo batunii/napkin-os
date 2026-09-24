@@ -37,6 +37,7 @@ pub mod proxy;
 pub mod routes;
 pub mod session;
 pub mod store;
+pub mod view;
 
 #[cfg(feature = "native")]
 pub use config::FsConfig;
@@ -59,3 +60,4 @@ pub use session::{AppMeta, Applied, LineageInfo, ManifestInfo, OpenResult, Sessi
 #[cfg(feature = "native")]
 pub use store::FsStore;
 pub use store::{DocId, DocStore, Library, PartStore};
+pub use view::{LibraryView, ViewSource};
