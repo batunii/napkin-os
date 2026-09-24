@@ -73,6 +73,604 @@
       }
     },
     "locked_fields": { "type": "array", "items": { "type": "string" } },
-    "locked": { "type": "boolean" }
+    "locked": { "type": "boolean" },
+    "materials": { "$ref": "#/definitions/materials", "$comment": "written only by the middleware (middleware-api.md §10.4)" },
+    "capture": { "$ref": "#/definitions/capture", "$comment": "written only by the middleware (middleware-api.md §10.4)" },
+    "review": { "$ref": "#/definitions/review", "$comment": "written only by the middleware (middleware-api.md §10.4)" },
+    "passages": { "$ref": "#/definitions/passages", "$comment": "written only by the middleware (middleware-api.md §10.4)" }
+  },
+  "definitions": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "datetime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "handler": {
+      "type": "string",
+      "pattern": "^[a-z_]+@\\d+(\\.\\d+)?$"
+    },
+    "material_id": {
+      "type": "string",
+      "pattern": "^mat_[0-9a-f]{16}$"
+    },
+    "licence": {
+      "type": "string",
+      "enum": [
+        "open",
+        "licensed-internal",
+        "client-confidential"
+      ]
+    },
+    "loop1_key": {
+      "type": "string",
+      "enum": [
+        "background_context",
+        "business_problem",
+        "objective",
+        "target_audience",
+        "deliverables",
+        "mandatories",
+        "budget",
+        "timeline",
+        "success_metrics",
+        "key_message",
+        "proof_points",
+        "evaluation_criteria",
+        "strategic_angle",
+        "anti_target",
+        "competitors_market",
+        "tone_and_brand",
+        "decision_makers",
+        "constraints"
+      ]
+    },
+    "check_status": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "review"
+      ]
+    },
+    "materials": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/definitions/material_id"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "name",
+          "sha256",
+          "received_at",
+          "licence"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "prompt",
+              "client_brief",
+              "email",
+              "deck",
+              "image",
+              "other"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "#/definitions/sha256"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "received_at": {
+            "$ref": "#/definitions/datetime"
+          },
+          "licence": {
+            "$ref": "#/definitions/licence"
+          },
+          "unread": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "transcribed": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "model",
+              "backend"
+            ],
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "backend": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "built_at",
+        "handler",
+        "items",
+        "gaps",
+        "how_to_win",
+        "ledger"
+      ],
+      "properties": {
+        "built_at": {
+          "$ref": "#/definitions/datetime"
+        },
+        "handler": {
+          "$ref": "#/definitions/handler"
+        },
+        "items": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^cap_[0-9a-f]{16}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "value",
+              "status",
+              "material_id"
+            ],
+            "properties": {
+              "key": {
+                "$ref": "#/definitions/loop1_key"
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "fact",
+                  "assumption"
+                ]
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1
+              },
+              "material_id": {
+                "$ref": "#/definitions/material_id"
+              },
+              "objective_type": {
+                "type": "string",
+                "enum": [
+                  "commercial",
+                  "behavioural",
+                  "attitudinal"
+                ]
+              }
+            },
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "fact"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "quote"
+              ]
+            }
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/loop1_key"
+          }
+        },
+        "how_to_win": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "point",
+              "evidence",
+              "material_id"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "stated_evaluation_criteria",
+                  "unstated_needs",
+                  "likely_landmines",
+                  "winning_themes",
+                  "proof_required"
+                ]
+              },
+              "point": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "material_id": {
+                "$ref": "#/definitions/material_id"
+              }
+            }
+          }
+        },
+        "ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total_segments",
+            "mapped_segments",
+            "coverage_pct",
+            "unmapped"
+          ],
+          "properties": {
+            "total_segments": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mapped_segments": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "coverage_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "unmapped": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "segment",
+                  "material_id"
+                ],
+                "properties": {
+                  "segment": {
+                    "type": "string"
+                  },
+                  "material_id": {
+                    "$ref": "#/definitions/material_id"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "built_at",
+        "handler",
+        "based_on",
+        "scorecard"
+      ],
+      "properties": {
+        "built_at": {
+          "$ref": "#/definitions/datetime"
+        },
+        "handler": {
+          "$ref": "#/definitions/handler"
+        },
+        "based_on": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version"
+          ],
+          "properties": {
+            "version": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          }
+        },
+        "scorecard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dimensions",
+            "single_mindedness",
+            "summary"
+          ],
+          "properties": {
+            "dimensions": {
+              "type": "array",
+              "minItems": 7,
+              "maxItems": 7,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "dimension",
+                  "verdict"
+                ],
+                "properties": {
+                  "dimension": {
+                    "type": "string",
+                    "enum": [
+                      "objectives_quality",
+                      "audience_vividness",
+                      "single_minded_message",
+                      "evaluation_criteria",
+                      "budget_interlock",
+                      "strategic_clarity",
+                      "language"
+                    ]
+                  },
+                  "verdict": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "vague",
+                      "missing"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "fix": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "single_mindedness": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "verdict",
+                "split_into"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "single",
+                    "multiple"
+                  ]
+                },
+                "split_into": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reason_codes_version",
+            "fields",
+            "dependencies",
+            "definition_of_done",
+            "health"
+          ],
+          "properties": {
+            "reason_codes_version": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "outcome",
+                  "checks"
+                ],
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "passed",
+                      "revised",
+                      "failed",
+                      "kept",
+                      "absent"
+                    ]
+                  },
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "check",
+                        "method",
+                        "status",
+                        "note"
+                      ],
+                      "properties": {
+                        "check": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "llm",
+                            "human"
+                          ]
+                        },
+                        "status": {
+                          "$ref": "#/definitions/check_status"
+                        },
+                        "note": {
+                          "type": "string"
+                        },
+                        "fix": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "status",
+                  "note"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "$ref": "#/definitions/check_status"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "definition_of_done": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "$ref": "#/definitions/check_status"
+                  }
+                }
+              }
+            },
+            "health": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
+    "passages": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^psg_[0-9a-f]{20}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "uri",
+          "pack",
+          "scope",
+          "licence",
+          "source",
+          "section",
+          "citation",
+          "text",
+          "text_sha256",
+          "pack_version",
+          "retrieved_at"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "pattern": "^passage://"
+          },
+          "pack": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "house",
+              "agency"
+            ]
+          },
+          "licence": {
+            "$ref": "#/definitions/licence"
+          },
+          "source": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "citation": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "text_sha256": {
+            "$ref": "#/definitions/sha256"
+          },
+          "pack_version": {
+            "type": "string",
+            "pattern": "^sha256:"
+          },
+          "retrieved_at": {
+            "$ref": "#/definitions/datetime"
+          }
+        }
+      }
+    }
   }
 }

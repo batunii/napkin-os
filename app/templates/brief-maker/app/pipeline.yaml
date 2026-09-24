@@ -1,8 +1,10 @@
-# Brief Maker pipeline declaration (docs/contracts/middleware-api.md §10.2).
+# Brief Maker pipeline contract.
 # Travels verbatim into every instance (CLAN instantiation copies all members),
-# so any middleware continuing a Brief Maker .clan knows the tasks it must speak
-# and how each field is filled. The middleware resolves every task to the
-# handler named here (name@major); a task not declared here is refused (M4).
+# so any middleware continuing a Brief Maker .clan knows the pipeline it must
+# speak. This is a DECLARATION (decision M2): each task names a handler,
+# name@major, which the middleware resolves against its registry. An unknown
+# handler, task or version is a hard error, never a fall-through (M4).
+# Contract: docs/contracts/middleware-api.md §10.
 pipeline: napkin-briefing
 version: 2
 request_kind: middleware
@@ -44,3 +46,13 @@ merge_policies:
   capture: last-write
   review: last-write
   "*": ask
+
+# R1 (Contract 4 §3): which middleware decisions must carry reasoning. The host
+# requires it on every pin, contest, finding and verdict, and every proposal,
+# whatever an app says; this adds every edit that writes a brief field, the
+# capture or the review (middleware-api.md §10.7: each one writes an agent
+# field). Indexing a material alone may omit it.
+reasoning:
+  edits: [project_name, client, background, objectives, audience, competitor_context,
+          budget_and_scope, mandatories, tone_and_world, insight, single_minded_proposition,
+          reasons_to_believe, desired_response, open_questions, capture, review]
