@@ -44,6 +44,8 @@ export const tauriHost: Host = {
   getChain: () => invoke<string>('get_chain'),
   getAgentState: () => invoke<string>('get_agent_state'),
   getContext: () => invoke<string>('get_context'),
+  // The desktop viewer is parked; the web shell is where the panel lives.
+  getDecisions: () => Promise.reject(new Error('the decision view is not available on the desktop yet')),
 
   setEditMode: active => invoke('set_edit_mode', { active }),
   updatePreviewHtml: html => invoke('update_preview_html', { html }),

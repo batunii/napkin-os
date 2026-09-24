@@ -77,6 +77,100 @@ export interface RecentDoc {
   updated_at: string
 }
 
+// ── The decision view (`napkin_host::ops::decisions`) ─────────────────────────
+
+/** One point of evidence, and the ids it rests on. */
+export interface ReasonPoint {
+  point: string
+  cites?: string[]
+}
+
+/** A decision's structured reasoning (OS-layer contract §3). */
+export interface Reasoning {
+  decided: string
+  because: ReasonPoint[]
+  rejected: { option: string; why: string }[]
+  only_option?: string
+  certainty: { level: 'high' | 'medium' | 'low' | string; why: string }
+  would_change_if: string
+  attention?: string
+}
+
+/** A decision as the chain holds it. Unknown fields ride along. */
+export interface Decision {
+  id?: string
+  kind?: string
+  agent: string
+  actor?: string
+  handler?: string
+  backend?: string
+  action: string
+  targets?: string[]
+  cites?: string[]
+  superseded_by?: string
+  polarity?: string
+  reason_code?: string
+  rationale: string
+  reasoning?: Reasoning
+  timestamp: string
+  fields_changed?: string[]
+  [extra: string]: unknown
+}
+
+/** Why something needs a person. `blocks_lock` items are the lock list. */
+export interface AttentionReason {
+  code:
+    | 'flagged' | 'low_certainty' | 'open_contest' | 'unverified_finding'
+    | 'flagged_field' | 'bad_verdict' | 'unmerged_branch'
+  text: string
+  blocks_lock: boolean
+}
+
+export interface AttentionItem extends AttentionReason {
+  /** The decision it belongs to, when there is one. */
+  decision?: string
+  address?: string
+  label?: string
+}
+
+export interface DecisionTarget {
+  address: string
+  path: string
+  label: string
+  kind: 'field' | 'contest' | 'finding' | 'fact' | 'decision' | 'document'
+  /** False when the address is on another document, carried from upstream. */
+  here: boolean
+}
+
+export interface DecisionBlock {
+  decision: Decision
+  who: { kind: 'person' | 'agent'; id: string; name: string }
+  targets: DecisionTarget[]
+  attention: AttentionReason[]
+  superseded: boolean
+}
+
+/** What a cite names, resolved by the host. */
+export interface CiteInfo {
+  kind: 'fact' | 'finding' | 'source' | 'material' | 'decision' | 'person' | 'address' | 'unknown'
+  label: string
+  detail?: string
+  quote?: string
+}
+
+export interface DecisionsView {
+  document_id: string
+  version: string
+  /** Newest first. */
+  decisions: DecisionBlock[]
+  /** Lock blockers first. */
+  attention: AttentionItem[]
+  cites: Record<string, CiteInfo>
+  lock: { can_lock: boolean; blockers: number }
+  /** Set when the chain could not be read. */
+  problem?: string
+}
+
 /**
  * Events the host pushes at the shell. The names are the host's own
  * (`napkin_host::event::HostEvent::name`), so this map and the Rust route
@@ -114,6 +208,11 @@ export interface Host {
   getChain(): Promise<string>
   getAgentState(): Promise<string>
   getContext(): Promise<string>
+  /**
+   * Every decision in the open document, newest first, with what needs a
+   * person and why — derived by the host, the same for every app.
+   */
+  getDecisions(): Promise<DecisionsView>
 
   // ── The render surface ────────────────────────────────────────────────────
   setEditMode(active: boolean): Promise<void>
