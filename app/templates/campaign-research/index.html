@@ -354,16 +354,36 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
 @keyframes af-step{from{transform:rotate(-9deg)}to{transform:rotate(9deg)}}
 @keyframes af-bob{from{transform:translateY(0)}to{transform:translateY(-1.2px)}}
 
-/* ---------- the chat intake ---------- */
-section.chat{margin-top:40px}
-.chatbox{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);overflow:hidden}
-.chatbox > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px 20px;font-weight:600;font-size:14px;border-bottom:1px solid var(--line-soft);background:var(--soft)}
-.chatbox > summary::-webkit-details-marker{display:none}
-.chatbox > summary .sp{flex:1}
-.chatbox > summary .chev{transition:transform .2s var(--ease);color:var(--ink3)}
-.chatbox[open] > summary .chev{transform:rotate(180deg)}
-.chatbox:not([open]) > summary{border-bottom:0}
-.stepper{display:flex;gap:4px;padding:12px 20px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap;align-items:center}
+/* ---------- the start of a campaign: a form, filled in step by step ---------- */
+section.start{margin-top:40px}
+.flow{display:grid;gap:14px;max-width:820px}
+.fcard{border:1px solid var(--line-soft);border-radius:20px;background:var(--paper);box-shadow:var(--shadow);padding:18px 22px}
+.fc-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.fc-h .sp{flex:1}
+.fc-h .srcline b{color:var(--ink2);font-weight:500}
+/* the submitted form */
+.sheet-rows{margin:0;display:grid}
+.srow{display:grid;grid-template-columns:150px minmax(0,1fr);gap:4px 16px;padding:11px 0;border-top:1px solid var(--line-soft);align-items:start}
+.srow:first-child{border-top:0;padding-top:0}
+.srow > dt{font-size:12.5px;color:var(--ink3);padding-top:2px}
+.srow > dd{margin:0;min-width:0;display:grid;gap:6px;justify-items:start}
+.srow .ptext{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.55;max-height:10.9em;overflow:auto;width:100%}
+.srow .none{color:var(--ink3);font-size:13.5px}
+.srow .aval{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:15px;font-weight:600}
+.srow .asked{font-size:12.5px;color:var(--ink2)}
+.srow .asked q{font-style:normal;color:var(--ink)}
+.srow.ans{animation:rowin .35s var(--ease)}
+.srow.open > dt{color:var(--create-ink)}
+@keyframes rowin{from{background:var(--green-soft)}to{background:transparent}}
+.atts{display:flex;flex-wrap:wrap;gap:6px}
+.att{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px 4px 8px;border-radius:10px;background:var(--paper);border:1px solid var(--line);text-decoration:none;max-width:100%}
+.att svg{width:13px;height:13px;flex:none;color:var(--ink3)}
+.att .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:28ch}
+.att small{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.att button{border:0;background:transparent;cursor:pointer;padding:0 0 0 2px;color:var(--ink3);font-size:15px;line-height:1}
+.att button:hover{color:var(--create-ink)}
+/* progress */
+.stepper{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:0;list-style:none}
 .step{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink3);padding:3px 10px 3px 6px;border-radius:999px}
 .step i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);display:inline-grid;place-items:center;flex:none;font-style:normal;font-family:var(--mono);font-size:9px}
 .step.done{color:var(--ink2)}
@@ -375,51 +395,54 @@ section.chat{margin-top:40px}
 .step.fail{color:var(--create-ink)}
 .step.fail i{border-color:var(--create)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.stepper .pct{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink3)}
-.thread{display:grid;gap:16px;padding:22px 20px}
-.msg{display:flex;gap:10px;align-items:flex-end;max-width:100%}
-.msg.user{justify-content:flex-end}
-.msg .col{display:grid;gap:5px;max-width:min(640px,86%);min-width:0}
-.msg.user .col{justify-items:end}
-.msg .meta{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink3);flex-wrap:wrap}
-.msg .meta b{color:var(--ink2);font-weight:600}
-.msg .meta time{font-family:var(--mono);font-size:10.5px}
-.bub{padding:10px 14px;border-radius:18px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
-.msg.agent .bub{background:var(--soft);border-bottom-left-radius:6px}
-.msg.user .bub{background:var(--ink);color:var(--paper);border-bottom-right-radius:6px}
-.msg.agent.q .bub{background:var(--paper);border:1px solid var(--ink);box-shadow:var(--shadow)}
-.msg.agent.err .bub{background:var(--create-soft);color:var(--create-ink)}
-.msg .fig{width:32px;display:grid;justify-items:center;padding-bottom:2px;flex:none}
-.msg.user .fig{order:2}
-.avatar{width:28px;height:28px;border-radius:50%;background:var(--learn);color:var(--ink);display:grid;place-items:center;font-size:11px;font-weight:700;text-transform:uppercase}
-.atts{display:flex;flex-wrap:wrap;gap:6px}
-.msg.user .atts{justify-content:flex-end}
-.att{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px 4px 8px;border-radius:10px;background:var(--paper);border:1px solid var(--line);text-decoration:none;max-width:100%}
-.att svg{width:13px;height:13px;flex:none;color:var(--ink3)}
-.att .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:28ch}
-.att small{font-family:var(--mono);font-size:10px;color:var(--ink3)}
-.att button{border:0;background:transparent;cursor:pointer;padding:0 0 0 2px;color:var(--ink3);font-size:15px;line-height:1}
-.att button:hover{color:var(--create-ink)}
-.q-opts{display:grid;gap:8px;margin-top:4px}
-.q-opt{display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:14px;padding:9px 12px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease);width:100%}
+.pct{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.nowline{display:flex;gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--soft)}
+.nowline .agent-figure{width:30px;height:40px}
+.nowline .t{display:grid;gap:2px;min-width:0}
+.nowline .t b{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.nowline .t span{font-size:13px;color:var(--ink2);overflow-wrap:anywhere}
+.nowline.wait{background:var(--create-soft)}
+.nowline.wait .t b{color:var(--create-ink)}
+.nowline.err{background:var(--create-soft);color:var(--create-ink)}
+.nowline.err .t span{color:var(--create-ink)}
+.nowline + .flag,.nowline + .notice{margin-top:10px}
+.fcard .flag{margin-top:10px}
+details.activity{margin-top:12px}
+details.activity > summary{cursor:pointer;font-size:12.5px;color:var(--ink2);display:inline-flex;gap:6px;align-items:center;list-style:none;border-radius:8px;padding:2px 4px;margin-left:-4px}
+details.activity > summary::-webkit-details-marker{display:none}
+details.activity > summary .chev{transition:transform .2s var(--ease)}
+details.activity[open] > summary .chev{transform:rotate(180deg)}
+ol.act{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px;border-left:2px solid var(--line-soft);padding-left:14px}
+ol.act li{font-size:13px;line-height:1.5;color:var(--ink2);overflow-wrap:anywhere}
+ol.act li b{color:var(--ink);font-weight:600;margin-right:6px}
+ol.act li time{font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-right:6px}
+ol.act li .pill{margin-left:6px}
+/* the agent asks */
+.qcard{border:1.5px solid var(--ink);box-shadow:var(--shadow-lg);padding:20px 22px 18px;display:grid;gap:12px;animation:qin .35s var(--ease);scroll-margin-top:110px}
+.qcard:focus{outline:none}
+.qcard:focus-visible{outline:3px solid var(--create);outline-offset:3px}
+@keyframes qin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.qc-who{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink2)}
+.qc-who .agent-figure{width:27px;height:36px}
+.qc-who b{color:var(--ink);font-weight:600}
+.qc-h{margin:0;font-size:clamp(20px,2.4vw,26px);line-height:1.2;letter-spacing:-.03em;font-weight:800;text-wrap:balance}
+.qc-ctx{margin:0;color:var(--ink2);font-size:14px;line-height:1.55;max-width:70ch}
+.q-opts{display:grid;gap:8px}
+.q-opt{display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:14px;padding:11px 14px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease);width:100%}
 button.q-opt{cursor:pointer}
 button.q-opt:hover{border-color:var(--ink);box-shadow:var(--shadow)}
 button.q-opt:active{transform:translateY(1px)}
-.q-opt .l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;font-size:14px}
+.q-opt .l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;font-size:14.5px}
 .q-opt .src{font-size:12px;color:var(--ink2);white-space:normal}
 .q-opt .src q{font-style:italic}
 .q-opt.escape{border-style:dashed}
 .q-opt.picked{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft)}
-.q-opt.dim{opacity:.55}
 button.q-opt[disabled]{cursor:wait;opacity:.6}
-.q-text{display:flex;gap:8px;margin-top:8px}
-.q-text input{flex:1;min-width:0;padding:8px 12px;border-radius:999px}
+.q-text{display:grid;gap:6px}
+.q-text label{font-size:12.5px;color:var(--ink2)}
+.q-text .r{display:flex;gap:8px}
+.q-text input{flex:1;min-width:0;padding:9px 12px;border-radius:12px;font-size:14px}
 .q-note{font-size:12px;color:var(--ink3)}
-.typing{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink2)}
-.typing .dots{display:inline-flex;gap:3px}
-.typing .dots i{width:5px;height:5px;border-radius:50%;background:var(--ink3);animation:blink 1.2s infinite}
-.typing .dots i:nth-child(2){animation-delay:.2s}.typing .dots i:nth-child(3){animation-delay:.4s}
-@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
 
 /* composer */
 .composer{position:relative;margin:0;border:1px solid var(--line);border-radius:22px;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);box-shadow:var(--shadow-lg);padding:14px 14px 10px;display:grid;gap:10px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
@@ -429,20 +452,24 @@ button.q-opt[disabled]{cursor:wait;opacity:.6}
 .composer textarea::placeholder{color:var(--ink3)}
 .composer .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .composer .row .sp{flex:1}
-.composer .who{font-size:12px;color:var(--ink3);display:inline-flex;gap:6px;align-items:center}
-.composer .who input{width:14ch;padding:3px 8px;font-size:12px;border-radius:999px}
 .composer .name{display:flex;gap:8px;align-items:center;padding:0 8px;font-size:12.5px;color:var(--ink2)}
 .composer .name input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;background:transparent;padding:4px 2px;font-size:13px}
 .composer .name input:focus{outline:none;border-bottom-color:var(--ink)}
 .btn.icon svg{width:15px;height:15px}
 .drop-hint{position:absolute;inset:0;display:none;place-items:center;border-radius:22px;background:color-mix(in srgb,var(--paper) 80%,transparent);font-weight:600;color:var(--create-ink);pointer-events:none}
 .composer.drag .drop-hint{display:grid}
-.composer-wrap{padding:16px 20px 20px;border-top:1px solid var(--line-soft)}
+/* who is signing: rarely needed, so out of the form */
+.signas{font-size:12px;color:var(--ink3);margin-top:-8px}
+.signas > summary{cursor:pointer;display:inline-block;border-radius:6px;padding:1px 2px}
+.signas > summary b{color:var(--ink2);font-weight:500}
+.signas .in{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.signas input{width:18ch;padding:4px 9px;font-size:12px;border-radius:999px}
+.signas p{margin:6px 0 0;max-width:60ch}
 
 /* the empty document: Brief Maker's intake, in this view's tokens */
 .apptitle{font-weight:600;font-size:14px;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
 body.fresh .nav,body.fresh .top-act,body.fresh #hero,body.fresh #gates,body.fresh #jobs,body.fresh section.region,body.fresh #docfoot{display:none!important}
-body.fresh section.chat{margin-top:0}
+body.fresh section.start{margin-top:0}
 .intake{min-height:calc(100vh - 150px);display:flex;flex-direction:column;justify-content:center;gap:22px;max-width:680px;margin:0 auto;width:100%;padding:3vh 0 7vh}
 .intake .h1{font-size:clamp(32px,5.5vw,50px);font-weight:800;letter-spacing:-.045em;line-height:1.03;margin:10px 0 0;text-wrap:balance}
 .intake .lede{margin:0;color:var(--ink2);font-size:16px;line-height:1.6;max-width:56ch}
@@ -452,6 +479,16 @@ body.fresh section.chat{margin-top:0}
 .btn.go .arrow{transition:transform .2s var(--ease)}
 .btn.go:hover .arrow{transform:translateX(3px)}
 .composer .btn.icon{border-radius:12px;padding:9px 13px}
+@media (max-width:640px){
+  .fcard{padding:16px 14px;border-radius:16px}
+  .qcard{padding:16px 14px}
+  .srow{grid-template-columns:1fr;gap:4px}
+  .step{padding:2px 6px 2px 4px}
+  .step > span:not(.sr){display:none}
+  .step.now > span,.step.wait > span,.step.fail > span{display:inline}
+  .q-text .r{flex-wrap:wrap}
+  .q-text .r .btn{flex:none}
+}
 /* ---------- the report ---------- */
 section.report{margin-top:36px}
 .rep{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);padding:26px 28px 24px;display:grid;gap:22px}
@@ -507,13 +544,6 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
 @keyframes flash{0%,40%{box-shadow:0 0 0 4px var(--create-soft),var(--shadow-lg)}100%{box-shadow:var(--shadow)}}
 @media (max-width:640px){
   .rep{padding:18px 16px;border-radius:18px}
-  .thread{padding:16px 12px}
-  .composer-wrap{padding:12px}
-  .msg .col{max-width:88%}
-  .stepper{padding:10px 12px}
-  .step{padding:2px 6px 2px 4px}
-  .step span{display:none}
-  .step.now span,.step.wait span{display:inline}
 }
 
 /* ---------- print / export ---------- */
@@ -525,8 +555,9 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   section.region{margin-top:28pt;break-before:auto}
   .field,.card,.entity,.matrix,.gates{box-shadow:none!important;break-inside:avoid;page-break-inside:avoid}
   .field:target,.card:target{box-shadow:none}
-  .rep,.chatbox,.blk-card{box-shadow:none!important;break-inside:avoid-page}
-  .chatbox > summary .chev{display:none}
+  .rep,.fcard,.blk-card{box-shadow:none!important;break-inside:avoid-page}
+  details.activity > summary .chev{display:none}
+  .srow .ptext{max-height:none;overflow:visible}
   body.fresh .intake{display:none}
   a{text-decoration:none}
   @page{margin:16mm}
@@ -539,7 +570,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     <div class="apptitle">Research Tool</div>
     <nav class="nav" aria-label="Sections">
       <a href="#report" id="nav-report-a" hidden>Report</a>
-      <a href="#chat" id="nav-chat-a" hidden>Chat<span id="nav-chat"></span></a>
+      <a href="#start" id="nav-start-a" hidden>Request</a>
       <a href="#ask">The ask<span id="nav-ask"></span></a>
       <a href="#facts">Facts<span id="nav-facts"></span></a>
       <a href="#findings">Findings<span id="nav-findings"></span></a>
@@ -561,7 +592,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   <div id="notices"></div>
   <div class="hero" id="hero"></div>
   <section class="report" id="report" aria-labelledby="h-report" hidden></section>
-  <section class="chat" id="chat" aria-label="The conversation that started this campaign" hidden></section>
+  <section class="start" id="start" aria-label="How this campaign started: your request, its progress and your answers" hidden></section>
   <div id="gates"></div>
   <div id="jobs" aria-live="polite"></div>
 
@@ -1633,11 +1664,11 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // The chat intake (Contract 3 §16–18, middleware-api §8). A campaign starts
-  // as a chat: the person's prompt and files go in as ONE human write
-  // (materials + the user message), then start_campaign runs as one job. The
-  // view writes only role:user messages and the fields a person answers; the
-  // middleware's staged changes (agent messages, fields, the report) are the
+  // The intake (Contract 3 §16–18, middleware-api §8), shown as a form, not a
+  // chat. A campaign starts from a submitted request: the person's prompt and
+  // files go in as ONE human write (materials + the user message), then
+  // start_campaign runs as one job. The view writes only role:user messages
+  // and the fields a person answers; the middleware's staged changes (agent messages, fields, the report) are the
   // host's to apply. Polls (job_status) are free; submissions spend quota.
   // ════════════════════════════════════════════════════════════════════════
   var STAGES=[
@@ -1658,8 +1689,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   ICON.doc='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M4 1.8h5.2L12.5 5v9.2H4Z M9 1.8V5h3.5"/></svg>';
   ICON.chev='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="m4 6 4 4 4-4"/></svg>';
 
-  var CHAT={files:[], draft:'', name:'', who:'', sending:false, sendStep:'', sendErr:'',
-            job:null, live:{}, answering:null, qdraft:{}, open:null,
+  var CHAT={files:[], draft:'', name:'', who:'', askWho:false, sending:false, sendStep:'', sendErr:'',
+            job:null, live:{}, answering:null, qdraft:{}, open:false, focusedQ:null,
             reportBusy:false, reportErr:''};
   var POLL={t:null, delay:1000};
   var TITLE={done:'', hadName:null};
@@ -1790,10 +1821,10 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function stepperHtml(){
     var st=stageStates(), j=CHAT.job;
     var pg=j&&j.progress&&j.progress.total?j.progress:null;
-    return '<div class="stepper" role="list" aria-label="Stages">'+STAGES.map(function(S){
+    return '<ol class="stepper" aria-label="Stages">'+STAGES.map(function(S){
       var s=st[S.k], t={done:'done',now:'working',wait:'waiting for you',fail:'failed',todo:'not started'}[s];
-      return '<span class="step '+s+'" role="listitem" title="'+esc(S.l+': '+t)+'"><i aria-hidden="true">'+(s==='done'?'✓':s==='fail'?'!':'')+'</i><span>'+esc(S.l)+'</span><span class="sr"> — '+esc(t)+'</span></span>';
-    }).join('')+(pg?'<span class="pct">'+esc(pg.done)+' of '+esc(pg.total)+' stages</span>':'')+'</div>';
+      return '<li class="step '+s+'" title="'+esc(S.l+': '+t)+'"'+(s==='now'||s==='wait'?' aria-current="step"':'')+'><i aria-hidden="true">'+(s==='done'?'✓':s==='fail'?'!':'')+'</i><span>'+esc(S.l)+'</span><span class="sr"> — '+esc(t)+'</span></li>';
+    }).join('')+(pg?'<li class="pct" aria-hidden="true">'+esc(pg.done)+' of '+esc(pg.total)+'</li>':'')+'</ol>';
   }
   function attChip(mid){
     var m=material(mid), href=assetHref(m), name=m?(m.name||mid):mid;
@@ -1813,118 +1844,207 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(arr(o.fact_ids).length) h+=pinChips(o.fact_ids);
     return h;
   }
-  function questionHtml(q, ans){
-    var lq=liveQuestion(), live=!!(lq&&lq.id===q.id), open=live&&!ans, busy=CHAT.answering===q.id;
-    var picked=ans&&ans.m.answer.option_id;
-    var h='<div class="q-opts" role="group" aria-label="'+esc(q.text)+'">';
-    arr(q.options).forEach(function(o){
-      var isPick=picked&&picked===o.id;
-      var inner='<span class="l">'+esc(o.label)+(o.value!==undefined?optOrigin(o):'<span class="pill dash">say it in your words</span>')+(isPick?'<span class="pill ok"><span class="d"></span>your answer</span>':'')+'</span>'+optEvidence(o);
-      if(open) h+='<button type="button" class="q-opt'+(o.value===undefined?' escape':'')+'" data-act="q-opt" data-q="'+esc(q.id)+'" data-opt="'+esc(o.id)+'"'+(busy?' disabled':'')+'>'+inner+'</button>';
-      else h+='<div class="q-opt'+(isPick?' picked':' dim')+'">'+inner+'</div>';
+  function qField(q){ return (/#campaign\.([a-z_]+)$/.exec(String(q&&q.address||''))||[])[1]||''; }
+  // Every question asked so far, in order (the agent messages that carry one),
+  // plus the job's open question when its message has not landed yet.
+  function questions(T){
+    var out=[], seen={};
+    T.forEach(function(x){ var q=x.m.question; if(x.m.role==='agent'&&isObj(q)&&q.id&&!seen[q.id]){ seen[q.id]=true; out.push({q:q, stage:x.m.stage, text:x.m.text}); } });
+    var lq=liveQuestion();
+    if(lq&&lq.id&&!seen[lq.id]) out.push({q:lq, stage:CHAT.job.stage, text:''});
+    return out;
+  }
+  function whoLabel(by){ var h=human(by); return h&&h===me()?'you':(h||'a person'); }
+  function stageWho(k){ return (STAGE[k]||{who:'The agent'}).who; }
+
+  // ── the submitted form: the prompt, the files, the name, then each answer ──
+  // One row per field asked about: the latest answer, with any earlier words
+  // the person gave before the agent turned them into choices.
+  function answerRow(Q, ans, earlier){
+    var q=Q.q, k=qField(q), label=(k&&FIELD[k]?FIELD[k].label:'Your answer'), a=ans.m.answer, who=whoLabel(ans.m.by);
+    var val, badge;
+    if(a.option_id){
+      var o=arr(q.options).filter(function(x){ return x.id===a.option_id; })[0]||{label:ans.m.text||a.option_id};
+      var origin=o.origin==='stated'?'stated':'confirmed';
+      val=esc(o.label);
+      badge=origin==='stated'
+        ?'<span class="ob stated">'+ICON.person+'stated by '+esc(who)+'</span>'
+        :'<span class="ob confirmed">'+ICON.check+'confirmed by '+esc(who)+'</span>';
+    } else {
+      val='“'+esc(a.text||ans.m.text)+'”';
+      badge='<span class="pill">in '+esc(who==='you'?'your':who+'’s')+' own words</span>';
+    }
+    return '<div class="srow ans" id="ans-'+esc(q.id)+'"><dt>'+esc(label)+'</dt><dd><span class="aval">'+val+badge+'</span>'
+      +'<span class="asked">'+esc(stageWho(Q.stage))+' asked <q>'+esc(q.text)+'</q>'+(a.text?' — the agent turns your words into choices and asks again.':'')+'</span>'
+      +arr(earlier).map(function(t){ return '<span class="asked">Before that, in your own words: <q>'+esc(t)+'</q></span>'; }).join('')+'</dd></div>';
+  }
+  function sheetHtml(T){
+    var first=firstPrompt(), c=camp();
+    var name=isObj(c.name)&&typeof c.name.value==='string'?c.name.value:'';
+    var h='<div class="fcard sheet" id="sheet"><div class="fc-h"><span class="eyebrow">Your request</span><span class="sp"></span>'
+      +(first?'<span class="srcline">submitted by <b>'+esc(whoLabel(first.by))+'</b>'+(first.at?' · <time datetime="'+esc(first.at)+'">'+esc(fmtDate(first.at))+'</time>':'')+'</span>':'')+'</div><dl class="sheet-rows">';
+    h+='<div class="srow"><dt>What the client needs</dt><dd>'+(first&&first.text?'<div class="ptext" tabindex="0">'+esc(first.text)+'</div>':'<span class="none">No prompt recorded.</span>')+'</dd></div>';
+    var atts=first?arr(first.attachments):[];
+    h+='<div class="srow"><dt>Files</dt><dd>'+(atts.length?'<div class="atts">'+atts.map(attChip).join('')+'</div>':'<span class="none">None attached</span>')+'</dd></div>';
+    h+='<div class="srow"><dt>Working name</dt><dd>'+(name?'<span>'+esc(name)+'</span>':'<span class="none">Not given</span>')+'</dd></div>';
+    var lq=liveQuestion(), Qs=questions(T), rows=[], byAddr={};
+    Qs.forEach(function(Q){
+      var ans=answerTo(Q.q.id, T); if(!(ans&&isObj(ans.m.answer))) return;
+      var key=Q.q.address||Q.q.id, prev=byAddr[key];
+      if(prev){ if(prev.ans.m.answer.text) prev.earlier.push(prev.ans.m.answer.text); prev.Q=Q; prev.ans=ans; }
+      else { byAddr[key]={Q:Q, ans:ans, earlier:[]}; rows.push(byAddr[key]); }
     });
-    h+='</div>';
-    if(open && (q.allow_text||!arr(q.options).length)){
-      var v=CHAT.qdraft[q.id]||'';
-      h+='<div class="q-text no-print"><input type="text" id="qtext-'+esc(q.id)+'" data-q="'+esc(q.id)+'" value="'+esc(v)+'" placeholder="'+(arr(q.options).length?'Or say it in your own words':'Type your answer')+'" aria-label="Answer in your own words"'+(busy?' disabled':'')+'><button type="button" class="btn primary sm" data-act="q-send" data-q="'+esc(q.id)+'"'+(busy?' disabled':'')+'>Answer</button></div>'
-        +'<div class="q-note no-print">Your words are not written as the answer: the agent turns them into choices and asks you to pick one.</div>';
-    }
-    if(busy) h+='<div class="q-note">Recording your answer…</div>';
-    if(ans && isObj(ans.m.answer) && ans.m.answer.text) h+='<div class="q-note">You answered in your own words: “'+esc(ans.m.answer.text)+'”</div>';
-    if(ans && live && !busy) h+='<div class="q-note no-print">Your answer is recorded, but the job is still waiting on this question. <button type="button" class="btn sm" data-act="q-resend" data-q="'+esc(q.id)+'">Send it again</button></div>';
-    if(!ans && !live){
-      var j=CHAT.job;
-      h+='<div class="q-note">'+(j&&j.state==='checking'?'Checking whether the job is still waiting on this…':j&&j.id?'This question is no longer open.':'The job that asked this is not running here; nothing was answered.')+'</div>';
-    }
-    return h;
+    rows.forEach(function(x){ h+=answerRow(x.Q, x.ans, x.earlier); });
+    Qs.forEach(function(Q){
+      var ans=answerTo(Q.q.id, T);
+      if((ans&&isObj(ans.m.answer))||byAddr[Q.q.address||Q.q.id]) return;
+      if(!(lq&&lq.id===Q.q.id)){
+        var k=qField(Q.q);
+        h+='<div class="srow open"><dt>'+esc(k&&FIELD[k]?FIELD[k].label:'A question')+'</dt><dd><span class="none">Not answered</span><span class="asked">'+esc(stageWho(Q.stage))+' asked <q>'+esc(Q.q.text)+'</q> — '
+          +esc(CHAT.job&&CHAT.job.state==='checking'?'checking whether the job still waits on it…':CHAT.job&&CHAT.job.id?'the question is no longer open.':'the job that asked is not running here.')+'</span></dd></div>';
+      }
+    });
+    return h+'</dl></div>';
   }
-  function msgHtml(x, T){
-    var m=x.m;
-    if(m.role==='user'){
-      var who=human(m.by);
-      var ans=isObj(m.answer)?m.answer:null;
-      return '<div class="msg user" id="msg-'+esc(x.id)+'"><div class="col"><div class="meta"><b>'+esc(who||'you')+'</b>'+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+(ans?'<span class="pill">answer</span>':'')+'</div>'
-        +(m.text?'<div class="bub">'+esc(m.text)+'</div>':'')
-        +(arr(m.attachments).length?'<div class="atts">'+arr(m.attachments).map(attChip).join('')+'</div>':'')
-        +'</div><div class="fig"><span class="avatar" aria-hidden="true">'+esc(initials(who))+'</span></div></div>';
-    }
-    var S=STAGE[m.stage]||{l:m.stage||'agent', who:'Agent'}, q=isObj(m.question)?m.question:null;
-    var ans=q?answerTo(q.id, T):null;
-    return '<div class="msg agent'+(q&&!ans?' q':'')+(m.error?' err':'')+'" id="msg-'+esc(x.id)+'"><div class="fig">'+fig(m.stage)+'</div><div class="col">'
-      +'<div class="meta"><b>'+esc(S.who)+'</b>'+(m.stage?'<span class="pill">'+esc(m.stage)+'</span>':'')+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+(x.stored?'':'<span class="pill dash" title="Shown from the job’s reply; the host has not written it yet">in flight</span>')+'</div>'
-      +(m.text?'<div class="bub">'+esc(m.text)+(q&&q.text&&String(m.text).indexOf(q.text)===-1?'\n\n<b>'+esc(q.text)+'</b>':'')+'</div>':'')
-      +(q?questionHtml(q, ans):'')
-      +'</div></div>';
+
+  // ── progress: the six stages, the agent at work, one live line ───────────
+  var DOING={extract:'is reading the ask', identify:'is working out the brand and the category', select:'is picking the lenses',
+             research:'is researching', synthesise:'is reading the facts together', report:'is writing the report'};
+  var MARKET={IE:'Ireland', GB:'Great Britain', UK:'the UK', US:'the US', FR:'France', DE:'Germany', ES:'Spain', IT:'Italy', NL:'the Netherlands'};
+  function listJoin(a){ return a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
+  function liveLine(j){
+    if(j.state==='sending') return 'Sending your request to the research agent…';
+    if(j.state==='checking') return 'Checking on the research job…';
+    var S=STAGE[j.stage]||STAGE.extract, t=S.who+' '+DOING[S.k];
+    if(S.k==='research'){ var mk=arr(camp().markets&&camp().markets.value).map(function(m){ return MARKET[m]||m; }); if(mk.length) t+=' '+listJoin(mk); }
+    return t+'…';
   }
-  function statusHtml(){
-    var j=CHAT.job; if(!j) return '';
-    var S=STAGE[j.stage]||STAGE.extract;
-    if(jobActive()){
-      var what=j.state==='sending'?'Sending to the research agent…':j.state==='checking'?'Checking on the research job…':S.l+(j.summary?' — '+j.summary:'…');
-      return '<div class="msg agent working" aria-live="polite"><div class="fig">'+fig(j.stage||'extract')+'</div><div class="col"><div class="typing"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>'+esc(what)+'</span></div>'
-        +(j.applied===false&&j.reason&&j.reason!=='already applied'?'<div class="flag amber"><div>The host did not apply the last change: '+esc(j.reason)+'</div></div>':'')+'</div></div>';
-    }
-    if(j.state==='failed'||j.error){
-      return '<div class="msg agent err"><div class="fig">'+fig(j.stage)+'</div><div class="col"><div class="meta"><b>'+esc(S.who)+'</b><span class="pill alert"><span class="d"></span>'+(j.state==='failed'?'failed':'not reached')+'</span></div><div class="bub">'+esc(j.error||'The job failed.')+(j.state==='failed'?' What already landed stays in the document.':'')+'</div>'
-        +(j.id&&j.state!=='failed'?'<div class="no-print"><button type="button" class="btn sm" data-act="chat-poll">Check again</button></div>':'')+'</div></div>';
-    }
-    return '';
+  function lastNarration(T, stage){
+    for(var i=T.length-1;i>=0;i--){ var m=T[i].m; if(m.role==='agent'&&m.text&&!isObj(m.question)&&(!stage||m.stage===stage)) return m; }
+    return null;
   }
+  function progressHtml(T){
+    var j=CHAT.job, lq=liveQuestion(), active=jobActive(), rep=isObj(D().report);
+    var started=!!firstPrompt(), anyAgent=T.some(function(x){ return x.m.role==='agent'; });
+    var pill=j?(j.state==='needs_input'?'<span class="pill alert"><span class="d"></span>waiting for you</span>':active?'<span class="pill warn"><span class="d"></span>working</span>':j.state==='failed'?'<span class="pill alert"><span class="d"></span>failed</span>':j.state==='done'?'<span class="pill ok"><span class="d"></span>done</span>':''):(rep?'<span class="pill ok"><span class="d"></span>done</span>':'');
+    var h='<div class="fcard progress" id="progress"><div class="fc-h"><span class="eyebrow">Progress</span>'+pill+'</div>'+stepperHtml();
+    var stage=(j&&j.stage)||'', line, sub='', cls='';
+    if(j&&active){
+      cls=' working'; line=liveLine(j);
+      var n=lastNarration(T, stage)||lastNarration(T); if(n) sub=n.text;
+    } else if(lq){
+      cls=' wait'; line=stageWho(stage)+' needs an answer from you to go on.'; sub='The question is below.';
+    } else if(j&&(j.state==='failed'||j.error)){
+      cls=' err'; line=j.state==='failed'?stageWho(stage)+' stopped: the job failed.':'The research agent could not be reached.';
+      sub=(j.error||'')+(j.state==='failed'?' What already landed stays in the document.':'');
+    } else if(rep||(j&&j.state==='done')){
+      stage='report'; line='Done. The report is above.'; var nr=lastNarration(T, 'report'); sub=nr?nr.text:'';
+    } else if(started&&!anyAgent&&!CHAT.sending){
+      stage='extract'; line='Your request is saved, but no research job is running for it.';
+    } else {
+      var ln=lastNarration(T); stage=ln?ln.stage:'extract'; line='The job is not running here.'; sub=ln?ln.text:'';
+    }
+    h+='<div class="nowline'+cls+'" role="status" aria-live="polite">'+fig(stage)+'<div class="t"><b>'+esc(line)+'</b>'+(sub?'<span>'+esc(sub)+'</span>':'')+'</div></div>';
+    if(j&&active&&j.applied===false&&j.reason&&j.reason!=='already applied') h+='<div class="flag amber"><div>The host did not apply the last change: '+esc(j.reason)+'</div></div>';
+    if(j&&j.id&&j.error&&j.state!=='failed') h+='<div class="no-print" style="margin-top:10px"><button type="button" class="btn sm" data-act="chat-poll">Check again</button></div>';
+    if(started&&!anyAgent&&!j&&!CHAT.sending) h+='<div class="no-print" style="margin-top:10px"><button type="button" class="btn sm primary" data-act="chat-retry">Start the research</button></div>';
+    var acts=T.filter(function(x){ return x.m.role==='agent'&&x.m.text; });
+    if(acts.length){
+      h+='<details class="activity" id="activity"'+(CHAT.open?' open':'')+'><summary><span>Activity</span><span class="pct">'+acts.length+'</span><span class="chev" aria-hidden="true">'+ICON.chev+'</span></summary><ol class="act">'
+        +acts.map(function(x){ var m=x.m; return '<li>'+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+'<b>'+esc(stageWho(m.stage))+'</b>'+esc(m.text)+(x.stored?'':'<span class="pill dash" title="From the job’s reply; the host has not written it yet">in flight</span>')+'</li>'; }).join('')
+        +'</ol></details>';
+    }
+    return h+'</div>';
+  }
+
+  // ── the agent asks: one focused card, form controls, attributed ──────────
+  function questionCard(Q, T){
+    var q=Q.q, ans=answerTo(q.id, T), busy=CHAT.answering===q.id, hid='qh-'+slug(q.id);
+    var ctx=String(Q.text||'').replace(q.text||'\u0000','').trim();
+    var h='<div class="fcard qcard no-print" id="qcard" tabindex="-1" role="group" aria-labelledby="'+hid+'" data-q="'+esc(q.id)+'">'
+      +'<div class="qc-who">'+fig(Q.stage)+'<span><b>'+esc(stageWho(Q.stage))+'</b> asks</span><span class="pill alert"><span class="d"></span>research waits for your answer</span></div>'
+      +'<h3 class="qc-h" id="'+hid+'">'+esc(q.text)+'</h3>'
+      +(ctx?'<p class="qc-ctx">'+esc(ctx)+'</p>':'');
+    if(ans&&!busy){
+      return h+'<div class="q-note">Your answer — '+esc(ans.m.text)+' — is recorded, but the job is still waiting on this question. <button type="button" class="btn sm" data-act="q-resend" data-q="'+esc(q.id)+'">Send it again</button></div></div>';
+    }
+    var opts=arr(q.options);
+    if(opts.length){
+      h+='<div class="q-opts" role="group" aria-labelledby="'+hid+'">'+opts.map(function(o){
+        var esc_=o.value===undefined;
+        return '<button type="button" class="q-opt'+(esc_?' escape':'')+'" data-act="q-opt" data-q="'+esc(q.id)+'" data-opt="'+esc(o.id)+'"'+(busy?' disabled':'')+'>'
+          +'<span class="l">'+esc(o.label)+(esc_?'<span class="pill dash">say it in your words</span>':optOrigin(o))+'</span>'+optEvidence(o)+'</button>';
+      }).join('')+'</div>';
+    }
+    if(q.allow_text||!opts.length){
+      var v=CHAT.qdraft[q.id]||'', tid='qtext-'+q.id;
+      h+='<div class="q-text"><label for="'+esc(tid)+'">'+(opts.length?'Or in your own words':'Your answer')+'</label><div class="r"><input type="text" id="'+esc(tid)+'" data-q="'+esc(q.id)+'" value="'+esc(v)+'" autocomplete="off"'+(busy?' disabled':'')+'><button type="button" class="btn primary" data-act="q-send" data-q="'+esc(q.id)+'"'+(busy?' disabled':'')+'>Answer</button></div>'
+        +'<div class="q-note">Your words are not written as the value: the agent turns them into choices and asks you to pick one.</div></div>';
+    }
+    if(busy) h+='<div class="q-note" role="status">Recording your answer…</div>';
+    return h+'</div>';
+  }
+
   // The empty document opens the way Brief Maker does: a prompt box, attach
   // any files, one primary action. Files upload on send (middleware §8.1).
   function composerHtml(){
-    var who=me();
     return '<div class="composer no-print" id="composer">'
       +'<label class="sr" for="cmp-prompt">What does the client need?</label>'
       +'<textarea id="cmp-prompt" rows="4" placeholder="Paste or describe the ask: the client, the brand, the markets, what they need to know…">'+esc(CHAT.draft)+'</textarea>'
-      +(CHAT.files.length?'<div class="atts">'+CHAT.files.map(function(f,i){ return '<span class="att">'+ICON.doc+'<span class="nm">'+esc(f.name)+'</span><small>'+esc(fmtSize(f.size||0))+'</small><button type="button" data-act="cmp-rm" data-i="'+i+'" aria-label="Remove '+esc(f.name)+'"'+(CHAT.sending?' disabled':'')+'>\u00d7</button></span>'; }).join('')+'</div>':'')
+      +(CHAT.files.length?'<div class="atts">'+CHAT.files.map(function(f,i){ return '<span class="att">'+ICON.doc+'<span class="nm">'+esc(f.name)+'</span><small>'+esc(fmtSize(f.size||0))+'</small><button type="button" data-act="cmp-rm" data-i="'+i+'" aria-label="Remove '+esc(f.name)+'"'+(CHAT.sending?' disabled':'')+'>×</button></span>'; }).join('')+'</div>':'')
       +'<div class="name"><label for="cmp-name">Working name</label><input type="text" id="cmp-name" value="'+esc(CHAT.name)+'" placeholder="optional" autocomplete="off"></div>'
       +'<div class="row"><button type="button" class="btn icon" data-act="cmp-attach"'+(CHAT.sending?' disabled':'')+'>'+ICON.clip+'Attach files</button><input type="file" id="cmp-file" multiple hidden>'
       +'<span class="sp"></span>'
-      +(who?'<span class="who">as <b>'+esc(who)+'</b><button type="button" class="btn ghost sm" data-act="who">change</button></span>'
-           :'<span class="who"><label for="cmp-who">You are</label><span class="mono">human:</span><input type="text" id="cmp-who" value="'+esc(CHAT.who)+'" placeholder="your user id" autocomplete="username"></span>')
-      +'<button type="button" class="btn primary go" data-act="cmp-send"'+(CHAT.sending?' disabled':'')+'>'+(CHAT.sending?'Starting…':'Start research <span class="arrow" aria-hidden="true">\u2192</span>')+'</button></div>'
+      +'<button type="button" class="btn primary go" data-act="cmp-send"'+(CHAT.sending?' disabled':'')+'>'+(CHAT.sending?'Starting…':'Start research <span class="arrow" aria-hidden="true">→</span>')+'</button></div>'
       +(CHAT.sending?'<div class="q-note" role="status">'+esc(CHAT.sendStep)+'</div>':'')
       +(CHAT.sendErr?'<div class="flag" role="alert"><div>'+esc(CHAT.sendErr)+'</div></div>':'')
       +'<div class="drop-hint" aria-hidden="true">Drop to attach</div>'
       +'</div>';
   }
+  // `by` needs human:<id>. The host does not say who the viewer is, so the id
+  // comes from the chain (an upload is attributed to the person) or, failing
+  // that, from here: a small field, needed only with no file and no history.
+  function signAsHtml(){
+    var who=me();
+    if(who) return '<div class="signas no-print">Signing as <b>'+esc(who)+'</b> · <button type="button" class="btn ghost sm" data-act="who">change</button></div>';
+    return '<details class="signas no-print" id="signas"'+(CHAT.askWho?' open':'')+'><summary>Your user id, if the host cannot tell who you are</summary>'
+      +'<div class="in"><label for="cmp-who">Your user id</label><span class="mono">human:</span><input type="text" id="cmp-who" value="'+esc(CHAT.who)+'" placeholder="e.g. u_aoife" autocomplete="username"></div>'
+      +'<p>An attached file tells the host who you are. Without one, the record needs your id.</p></details>';
+  }
   function intakeHtml(){
     return '<div class="intake">'
       +'<div><div class="eyebrow">Campaign research</div><h1 class="h1">Start a campaign.</h1></div>'
       +'<p class="lede">Say what the client needs and drop in what they sent: the brief, the email, the deck. The agent works out the brand and the category, asks you when it cannot tell, researches the lenses your prompt calls for, and comes back with a report in which every claim cites a pinned fact or a finding.</p>'
-      +composerHtml()
+      +composerHtml()+signAsHtml()
       +'<div class="figs" aria-hidden="true">'+STAGES.map(function(S){ return '<span title="'+esc(S.l)+'">'+fig(S.k)+'</span>'; }).join('')+'<span class="muted" style="font-size:12px;margin-left:6px">read the ask · brand and category · pick the lenses · research · synthesise · report</span></div>'
       +'</div>';
   }
   function renderChat(){
-    var el=$('chat'); if(!el) return;
+    var el=$('start'); if(!el) return;
     var ae=document.activeElement, keep=null;
     if(ae&&ae.id&&el.contains(ae)) keep={id:ae.id, s:ae.selectionStart, e:ae.selectionEnd};
     var T=thread(), fresh=!T.length&&!Object.keys(camp()).length;
-    $('nav-chat-a').hidden=!T.length; $('nav-chat').textContent=T.length||'';
+    $('nav-start-a').hidden=!T.length;
     document.body.classList.toggle('fresh', fresh&&!CHAT.job);
     if(!T.length && !fresh && !CHAT.job){ el.hidden=true; el.innerHTML=''; return; }
     el.hidden=false;
+    var lq=null;
     if(fresh && !CHAT.job){
       el.innerHTML=intakeHtml();
     } else {
-      var idle=!jobActive()&&!liveQuestion();
-      var open=CHAT.open!==null?CHAT.open:!(isObj(D().report)&&idle);
-      var st=CHAT.job?(CHAT.job.state==='needs_input'?'<span class="pill alert"><span class="d"></span>waiting for you</span>':jobActive()?'<span class="pill warn"><span class="d"></span>working</span>':CHAT.job.state==='failed'?'<span class="pill alert"><span class="d"></span>failed</span>':CHAT.job.state==='done'?'<span class="pill ok"><span class="d"></span>done</span>':''):'';
-      var started=T.some(function(x){ return x.m.role==='user'&&x.m.material_id; });
-      var anyAgent=T.some(function(x){ return x.m.role==='agent'; });
-      var h='<details class="chatbox" id="chatbox"'+(open?' open':'')+'><summary><span>The conversation</span><span class="pill">'+T.length+' message'+(T.length===1?'':'s')+'</span>'+st+'<span class="sp"></span><span class="chev">'+ICON.chev+'</span></summary>'
-        +stepperHtml()
-        +'<div class="thread" role="log" aria-label="Messages">'+T.map(function(x){ return msgHtml(x, T); }).join('')
-        +(liveQuestion()&&!T.some(function(x){ return isObj(x.m.question)&&x.m.question.id===liveQuestion().id; })?msgHtml({id:'live-'+liveQuestion().id, m:{role:'agent', stage:CHAT.job.stage, text:liveQuestion().text, question:liveQuestion()}, stored:false}, T):'')
-        +statusHtml()+'</div>';
-      if(started && !anyAgent && !CHAT.job && !CHAT.sending){
-        h+='<div class="composer-wrap no-print"><div class="flag amber"><div>Your message is saved, but no research job is running for it. <button type="button" class="btn sm" data-act="chat-retry">Start the research</button></div></div></div>';
-      }
-      el.innerHTML=h+'</details>';
+      lq=liveQuestion();
+      var Q=lq?questions(T).filter(function(x){ return x.q.id===lq.id; })[0]:null;
+      el.innerHTML='<div class="flow">'+sheetHtml(T)+progressHtml(T)+(Q?questionCard(Q, T):'')+'</div>';
     }
     if(keep){ var n=$(keep.id); if(n){ try{ n.focus({preventScroll:true}); if(keep.s!=null) n.setSelectionRange(keep.s, keep.e); }catch(e){} } }
+    // A question that has just opened takes the focus, once: the agent is asking.
+    if(lq&&CHAT.focusedQ!==lq.id){
+      var qc=$('qcard');
+      if(qc){ CHAT.focusedQ=lq.id;
+        var calm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        try{ qc.focus({preventScroll:true}); }catch(e){}
+        if(qc.scrollIntoView) qc.scrollIntoView({block:'center', behavior:calm?'auto':'smooth'}); }
+    }
     var ta=$('cmp-prompt'); if(ta) grow(ta);
   }
   function grow(ta){ ta.style.height='auto'; ta.style.height=Math.min(Math.max(ta.scrollHeight,96),420)+'px'; }
@@ -1971,8 +2091,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     // recorded as the person's, so with a file attached the id is learned
     // before the message is written. Without one it takes the id typed here.
     var whoIn=$('cmp-who'), typed=whoIn?whoIn.value.trim():CHAT.who, files=CHAT.files.slice();
-    if(typed&&!/^[A-Za-z0-9_.@-]+$/.test(typed)){ toast('That user id has characters it cannot carry.'); if(whoIn) whoIn.focus(); return; }
-    if(!me()&&!typed&&!files.length){ toast('Say who you are first: your user id.'); if(whoIn) whoIn.focus(); return; }
+    if(typed&&!/^[A-Za-z0-9_.@-]+$/.test(typed)){ CHAT.askWho=true; renderChat(); toast('That user id has characters it cannot carry.'); whoIn=$('cmp-who'); if(whoIn) whoIn.focus(); return; }
+    if(!me()&&!typed&&!files.length){ CHAT.askWho=true; renderChat(); toast('Attach a file, or say who you are: your user id.'); whoIn=$('cmp-who'); if(whoIn) whoIn.focus(); return; }
     var at=nowIso(), used=assetNamesInUse(), up=[], by='';
     CHAT.sending=true; CHAT.sendErr=''; CHAT.sendStep=files.length?'Reading your files…':'Saving your message…'; renderChat();
     var p=Promise.resolve();
@@ -1990,7 +2110,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     });
     p.then(function(){ return (up.length&&!me())?loadChain():null; }).then(function(){
       var who=me()||typed;
-      if(!who) throw new Error('the host did not say who you are, so type your user id');
+      if(!who){ CHAT.askWho=true; throw new Error('the host did not say who you are, so give your user id below the form'); }
       if(!reviewer()) setReviewer(who);
       by='human:'+who;
       return sha256Hex(utf8(prompt));
@@ -2029,8 +2149,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       return {material_id:id, name:String(x.asset||x.name||id).replace(/^(human\/)?assets\//,''), sha256:x.sha256}; }));
   }
   function startCampaign(prompt, atts){
-    CHAT.job={state:'sending', stage:'extract'}; CHAT.open=true; POLL.delay=1000; renderChat();
-    var el=$('chat'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'start', behavior:'smooth'});
+    CHAT.job={state:'sending', stage:'extract'}; POLL.delay=1000; renderChat();
+    var el=$('start'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'start', behavior:'smooth'});
     window.clan.apiProxy('middleware', {task:'start_campaign', input:{prompt:prompt, attachments:atts}}).then(function(r){ onJobReply(r); }, unreachable);
   }
 
@@ -2064,10 +2184,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
     if(isObj(b.change)){ j.applied=b.change.applied; j.reason=b.change.reason; if(b.change.applied) loadChain(); }
     if(j.id) store(jobKey(), (j.state==='done'||j.state==='failed')?null:j.id);
-    if(j.state==='done') CHAT.open=null;
     render();
     if(j.state==='queued'||j.state==='running') schedulePoll();
-    if(j.state==='needs_input'){ var inp=j.question&&$('qtext-'+j.question.id); if(inp&&(!document.activeElement||document.activeElement===document.body)) inp.focus({preventScroll:true}); }
   }
   function unreachable(e){
     var j=CHAT.job||(CHAT.job={});
@@ -2290,7 +2408,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     window.clan.setTitle(n).then(function(res){ if(res&&res.ok!==false) m.title=n; else TITLE.done=''; }, function(){ TITLE.done=''; });
   }
 
-  // ── wiring for the chat (delegated: the chat re-renders) ───────────────────
+  // ── wiring for the intake (delegated: it re-renders) ──────────────────────
   document.addEventListener('input', function(e){
     var t=e.target, id=t&&t.id;
     if(id==='cmp-prompt'){ CHAT.draft=t.value; grow(t); }
@@ -2304,7 +2422,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     else if(t.id.indexOf('qtext-')===0){ e.preventDefault(); doAnswer(t.getAttribute('data-q'), null, t.value); }
   });
   document.addEventListener('change', function(e){ if(e.target&&e.target.id==='cmp-file'){ addFiles(e.target.files); e.target.value=''; } });
-  document.addEventListener('toggle', function(e){ if(e.target&&e.target.id==='chatbox') CHAT.open=e.target.open; }, true);
+  document.addEventListener('toggle', function(e){ if(e.target&&e.target.id==='activity') CHAT.open=e.target.open; }, true);
   ['dragenter','dragover'].forEach(function(t){ document.addEventListener(t, function(e){
     var c=$('composer'); if(!c||!e.dataTransfer) return;
     e.preventDefault(); if(c.contains(e.target)) c.classList.add('drag');
@@ -2323,7 +2441,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function buildExportHTML(){
     var clone=$('doc').cloneNode(true);
     clone.querySelectorAll('.ctl,.no-print,button,dialog,select').forEach(function(n){ n.remove(); });
-    // The report and the conversation travel; the composer and every control do not.
+    // The report, the submitted request and its answers travel; the start
+    // screen, the open question and every control do not.
     clone.querySelectorAll('details').forEach(function(n){ n.setAttribute('open',''); });
     clone.querySelectorAll('[hidden]').forEach(function(n){ n.remove(); });
     var css=$('cr-style').textContent;
