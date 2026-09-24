@@ -304,6 +304,20 @@ def test_a_coherence_verdict_keeps_its_whole_reason_and_its_fix_apart(tmp_path):
     check_change_rules(host)
 
 
+def test_the_judge_sees_the_timing_when_it_judges_why_now(tmp_path):
+    """why_now asks for the timing; the capture files a launch date under budget &
+    scope, so the Judge judging the background sees that and the objectives."""
+    model = FakeModel()
+    s = Server(tmp_path, model=model, retrieval=retrieval())
+    try:
+        run(s, Host())
+    finally:
+        s.stop()
+    p = next(pl for pu, pl, _ in model.calls if pu == "judge_background")
+    assert "why_now" in [t["id"] for t in p["tests"]]
+    assert p["context"].get("budget_scope") and p["context"].get("objectives"), p["context"]
+
+
 def test_clip_cuts_at_a_sentence_never_mid_word():
     from napkin.brief.judge import clip, sentence
     assert clip("short", 50) == "short"

@@ -33,6 +33,13 @@ COHERENCE_SYSTEM = ("You are a strategy director checking that a creative brief 
                     "not prescribe the creative idea.")
 COHERENCE_LLM = ("backbone_balance", "smp_derivation", "rtb_supports_smp", "response_ladders")
 DOD_LLM = ("one_strategy", "no_solution_prescribed")
+# Context a field's tests need beyond the rubric's depends_on. why_now asks for
+# the timing, and the capture files a launch date under budget & scope and the
+# relaunch under the commercial objective: without them the Judge failed a
+# background whose brief said "launch March" and told the planner to take it
+# back to the client. ownable/derivation need the competitors.
+JUDGE_CONTEXT = {"background": ("budget_scope", "objectives"), "insight": ("competitor_context",),
+                 "smp": ("competitor_context",)}
 # which rubric fields each definition-of-done model check names (for verdicts)
 DOD_FIELDS = {"one_strategy": ["insight", "smp", "reasons_to_believe", "desired_response"]}
 
@@ -81,9 +88,8 @@ def judge_field(model, rid: str, values: dict, rules: list[dict]) -> dict:
     if not pending:
         return out
     tests = {r["id"]: r["test"] for r in f.get("rubric", [])}
-    context = {d: rubric_value(d, values) for d in f.get("depends_on") or [] if d in RUBRIC_FIELDS}
-    if rid in ("insight", "smp") and "competitor_context" not in context:
-        context["competitor_context"] = values.get("competitor_context")
+    deps = list(f.get("depends_on") or []) + [d for d in JUDGE_CONTEXT.get(rid, ()) if d not in (f.get("depends_on") or [])]
+    context = {d: rubric_value(d, values) for d in deps if d in RUBRIC_FIELDS}
     payload = {"field": f["label"], "what_the_field_is": f.get("prompt"), "good_example": f.get("good_example"),
                "bad_example": f.get("bad_example"), "why_the_bad_one_fails": f.get("bad_reason"),
                "value": value, "context": {k: v for k, v in context.items() if filled(v)},
