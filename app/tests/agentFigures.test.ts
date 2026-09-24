@@ -33,6 +33,14 @@ test('the snippet never closes the page early', () => {
   assert.equal(s.match(/<\/script>/g)?.length, 1)
 })
 
+test('both templates mark where the snippet goes', () => {
+  for (const t of ['brief-maker', 'campaign-research']) {
+    const html = read(`templates/${t}/index.html`)
+    const at = html.indexOf('<!-- @napkin:agent-figures -->')
+    assert.ok(at > 0 && at < html.indexOf('</head>'), `${t} has the marker in its <head>`)
+  }
+})
+
 test('every agent is in the snippet, and the helper sets state and label', () => {
   const s = read('templates/shared/agent-figures.html')
   const script = s.slice(s.indexOf('<script>') + 8, s.indexOf('</script>'))

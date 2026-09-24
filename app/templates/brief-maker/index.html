@@ -8,10 +8,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-  /* Napkin Studio OS design language (tokens as the shell's app/src/index.css).
-     The OS top bar carries the product brand; this app carries none of its own.
-     Two layers, as in the shell:
-     - design tokens (--paper, --ink, --create …)
+  /* Brief Maker, in the Napkin Studio OS design language (tokens as the
+     shell's app/src/index.css). The OS top bar carries the product; this app
+     carries its own identity only: its mark and name, on Plan.
+
+     Where it lands: Brief Maker is a Plan tool, so its ground is the Plan
+     band — ink, with the figures drawn light on it — and the brief itself sits
+     on paper. Orange (--create) is not an app colour: it stays the studio's
+     one accent, for focus and for "needs you".
+
+     Two token layers, as in the shell:
+     - design tokens (--paper, --ink, --plan, --create …)
      - the legacy names the immersive brand theme overrides inline on <html>
        (--bg, --surface, --border, --text, --muted, --accent, --accent2,
        --btnText, --fieldFont, --bg2). Everything themeable reads those. */
@@ -20,7 +27,8 @@
     --paper:#FFFFFF; --card:#FFFFFF; --soft:#F5F6F8; --soft-2:#F2F3F6;
     --line:#D6DAE2; --line-soft:#E7E9EE;
     --ink:#14161B; --ink2:#4A4F5C; --ink3:#737987;
-    --create:#FF4F2E; --create-soft:#FFF1EE; --produce:#8B919E; --learn:#DADDE3;
+    --create:#FF4F2E; --create-soft:#FFF1EE; --create-ink:#B8321A; --produce:#8B919E; --learn:#DADDE3;
+    --plan:#14161B; --plan-fg:#FFFFFF; --plan-eye:#FFFFFF; --produce-eye:#14161B; --learn-eye:#14161B;
     --green:#22C55E; --green-soft:#DCFCE7; --green-ink:#146C35;
     --amber-dot:#F5A524; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
     --frost:rgba(255,255,255,.82);
@@ -39,16 +47,22 @@
     /* roles that follow the immersive theme when one is applied (see below) */
     --faint:var(--ink3); --tint:var(--soft); --tint-2:var(--soft-2); --rule:var(--line-soft);
     --sec:var(--ink3); --primary:var(--ink); --primaryText:var(--paper); --sel:var(--surface);
+    /* the Plan band: ground, what is written on it, and its quieter lines */
+    --zone-bg:var(--plan); --zone-fg:var(--plan-fg);
+    --zone-2:rgba(255,255,255,.68); --zone-3:rgba(255,255,255,.5); --zone-line:rgba(255,255,255,.14); --zone-tint:rgba(255,255,255,.08);
   }
   /* The shell pushes its colour scheme in (clan:colorscheme → data-color-scheme);
-     with no attribute the OS preference decides. Dark inverts the ink/paper axis. */
+     with no attribute the OS preference decides. Dark inverts the ink/paper
+     axis, and Plan with it: the band goes light, as it does on the home screen. */
   @media (prefers-color-scheme:dark){
     :root:not([data-color-scheme="light"]){
       color-scheme:dark;
       --paper:#0F1114; --card:#161A1F; --soft:#1B1F25; --soft-2:#22262D;
       --line:#2A2F38; --line-soft:#22262D;
       --ink:#F2F3F5; --ink2:#A6ACB8; --ink3:#7A808C;
-      --create-soft:#2A1612; --learn:#3A3F48;
+      --create-soft:#2A1612; --create-ink:#FF8A70; --learn:#3A3F48;
+      --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
+      --zone-2:rgba(15,17,20,.7); --zone-3:rgba(15,17,20,.52); --zone-line:rgba(15,17,20,.14); --zone-tint:rgba(15,17,20,.07);
       --green-soft:#10281A; --green-ink:#6EE7A0; --amber-soft:#2A2110; --amber-ink:#F7C361;
       --frost:rgba(15,17,20,.8);
       --shadow:0 10px 30px rgba(0,0,0,.4); --shadow-pill:0 1px 3px rgba(0,0,0,.5);
@@ -59,13 +73,16 @@
     --paper:#0F1114; --card:#161A1F; --soft:#1B1F25; --soft-2:#22262D;
     --line:#2A2F38; --line-soft:#22262D;
     --ink:#F2F3F5; --ink2:#A6ACB8; --ink3:#7A808C;
-    --create-soft:#2A1612; --learn:#3A3F48;
+    --create-soft:#2A1612; --create-ink:#FF8A70; --learn:#3A3F48;
+    --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
+    --zone-2:rgba(15,17,20,.7); --zone-3:rgba(15,17,20,.52); --zone-line:rgba(15,17,20,.14); --zone-tint:rgba(15,17,20,.07);
     --green-soft:#10281A; --green-ink:#6EE7A0; --amber-soft:#2A2110; --amber-ink:#F7C361;
     --frost:rgba(15,17,20,.8);
     --shadow:0 10px 30px rgba(0,0,0,.4); --shadow-pill:0 1px 3px rgba(0,0,0,.5);
   }
   /* Immersive: the brand theme is written inline on <html> (--bg, --text …).
-     Derive the soft roles from it so every surface follows the brand. */
+     Derive the soft roles from it so every surface follows the brand, the band
+     included: it becomes the brand's raised surface. */
   :root[style*="--bg:"]{
     --faint:var(--muted);
     --tint:color-mix(in srgb,var(--text) 6%,var(--surface));
@@ -74,6 +91,8 @@
     --rule:color-mix(in srgb,var(--border) 70%,var(--bg));
     --sec:var(--accent); --primary:var(--accent); --primaryText:var(--btnText);
     --ok:var(--green); --amber:var(--amber-dot);
+    --zone-bg:var(--surface); --zone-fg:var(--text);
+    --zone-2:var(--muted); --zone-3:var(--muted); --zone-line:var(--border); --zone-tint:color-mix(in srgb,var(--text) 7%,transparent);
   }
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -82,21 +101,46 @@
   body.grad{background:linear-gradient(155deg,var(--bg) 0%,var(--bg2) 100%);background-attachment:fixed}
   button,input,select,textarea{font:inherit;color:inherit}
   :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  [hidden]{display:none!important}
   .ic{width:15px;height:15px;flex:none;display:block}
-  .app{max-width:880px;margin:0 auto;padding:0 28px 110px;min-height:100vh;display:flex;flex-direction:column}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .app{max-width:1120px;margin:0 auto;padding:24px 28px 110px;min-height:100vh;display:flex;flex-direction:column}
 
-  /* chrome — the app's own name only; the OS top bar brands the product */
-  .chrome{display:flex;align-items:center;gap:10px;padding:18px 0 6px;min-height:52px}
-  .appname{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
-  .spacer{flex:1}
-  .trust{display:none;font-family:var(--mono);font-size:11px;letter-spacing:.04em;line-height:17px;padding:2px 9px;border-radius:var(--r-pill);background:var(--green-soft);color:var(--green-ink)}
+  /* ---------- the Plan band ----------
+     Inside it the figures are redrawn for the ground, the way the design
+     draws them on Plan: ink bodies and legs go light, their eyes go to the
+     ground. Slate and mist bodies keep their tone. */
+  .band{background:var(--zone-bg);color:var(--zone-fg);border-radius:var(--r-panel);position:relative;
+    --ink:var(--zone-fg); --plan:var(--zone-fg); --plan-eye:var(--zone-bg)}
+  .band .agent-figure .af-shadow{opacity:.18}
+  /* Immersive: the brand's ground can be anything, so figures take their ink
+     from the brand's text and their eyes from its ground. */
+  :root[style*="--bg:"] .agent-figure{--ink:var(--text);--plan:var(--text);--plan-eye:var(--bg)}
+  :root[style*="--bg:"] .cl.needs .agent-figure,:root[style*="--bg:"] .flag .agent-figure{--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
+  .ident{display:inline-flex;align-items:center;gap:9px;font-size:13px;font-weight:600;letter-spacing:-.01em}
+  .ident svg{width:22px;height:22px;flex:none;display:block}
+  .ident .kind{font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin-left:4px}
+  .band .eyebrow{color:var(--zone-3)}
 
-  /* intake — the pattern every app opens with */
-  .intake{flex:1;display:flex;flex-direction:column;justify-content:center;gap:24px;max-width:700px;margin:0 auto;width:100%;padding:4vh 0 8vh}
+  /* crew: who does the work, each with a line on what they do */
+  .crew{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .who{display:flex;align-items:flex-end;gap:10px;padding:10px 12px 10px 8px;border-radius:var(--r-card);background:var(--zone-tint);min-width:0}
+  .who .agent-figure{width:30px;height:40px}
+  .who .t{min-width:0;display:grid;gap:1px;padding-bottom:3px}
+  .who b{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+  .who span{font-size:12px;line-height:1.35;color:var(--zone-2)}
+  .who.on{box-shadow:inset 0 0 0 1.5px var(--zone-fg)}
+  .who.done span::before{content:"✓ ";font-weight:600;color:var(--zone-fg)}
+
+  /* ---------- intake: the pattern every app opens with ---------- */
+  .intake{flex:1;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:28px;align-items:stretch;min-height:calc(100vh - 150px)}
+  .intro{padding:34px 32px 28px;display:flex;flex-direction:column;gap:22px}
+  .intro .h1{font-size:clamp(32px,3.7vw,46px);font-weight:800;letter-spacing:-.045em;line-height:1.02;text-wrap:balance}
+  .intro .lede{color:var(--zone-2);font-size:16px;line-height:1.55;max-width:46ch}
+  .intro .crew{grid-template-columns:1fr;margin-top:auto}
+  .ask{display:flex;flex-direction:column;justify-content:center;gap:18px;padding:12px 0}
+  .ask .eyebrow{color:var(--faint)}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
-  .h1{font-size:clamp(34px,5.4vw,56px);font-weight:800;letter-spacing:-.045em;line-height:1.02;text-wrap:balance;margin-top:12px}
-  .h1 .em{color:var(--accent)}
-  .lede{color:var(--muted);font-size:17px;max-width:54ch;line-height:1.55}
   .seg{display:flex;gap:3px;background:var(--tint-2);border-radius:16px;padding:3px}
   .seg .tpl{flex:1;min-width:0;background:none;border:none;color:var(--text);opacity:.6;font-size:13.5px;font-weight:600;letter-spacing:-.01em;padding:9px 12px;border-radius:var(--r-card);cursor:pointer;text-align:left;transition:background .2s var(--ease),opacity .2s var(--ease),box-shadow .2s var(--ease)}
   .seg .tpl .sm{display:block;font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.02em;color:var(--faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -106,13 +150,13 @@
   .seg .tpl.sel{opacity:1;background:var(--sel);box-shadow:var(--shadow-pill)}
   .composer{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-panel);padding:18px 18px 14px;box-shadow:var(--shadow);transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
   .composer:focus-within{border-color:var(--faint)}
-  .composer textarea{width:100%;min-height:112px;max-height:300px;resize:vertical;border:none;outline:none;background:transparent;color:var(--text);font-size:17px;line-height:1.55;letter-spacing:-.01em}
+  .composer textarea{width:100%;min-height:150px;max-height:340px;resize:vertical;border:none;outline:none;background:transparent;color:var(--text);font-size:17px;line-height:1.55;letter-spacing:-.01em}
   .composer textarea::placeholder{color:var(--faint)}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
   .chips:empty{display:none}
   .chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;background:var(--tint);color:var(--text);border:1px solid var(--rule);border-radius:var(--r-pill);padding:4px 6px 4px 10px;max-width:100%}
   .chip .ic{width:13px;height:13px;color:var(--faint)}
-  .chip .x{cursor:pointer;color:var(--faint);width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1}
+  .chip .x{cursor:pointer;color:var(--faint);width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1;border:0;background:none}
   .chip .x:hover{background:var(--surface);color:var(--text)}
   .crow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
   .attach{display:inline-flex;align-items:center;gap:7px;background:none;border:1px solid transparent;border-radius:var(--r-pill);padding:8px 13px 8px 10px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:background .2s var(--ease),color .2s var(--ease)}
@@ -124,42 +168,59 @@
   .primary:disabled{opacity:.5;cursor:default;box-shadow:none}
   .primary .arrow{transition:transform .25s var(--ease)}.primary:hover .arrow{transform:translateX(3px)}
   #intakeStatus:empty{display:none}
+  .note{font-size:12.5px;color:var(--faint);line-height:1.5}
+  .note.err{color:var(--create-ink)}
 
-  /* processing */
-  .proc{flex:1;display:none;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6vh 0}
+  /* ---------- working: the crew on the band, a tile per field ---------- */
+  .proc{flex:1;display:none;flex-direction:column;gap:18px}
   .proc.on{display:flex}
-  .stage{position:relative;width:100%;max-width:560px;height:230px}
-  .stage canvas{position:absolute;inset:0;width:100%;height:100%}
-  .pct{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--faint);margin-top:26px}
-  .procH{font-size:24px;font-weight:800;letter-spacing:-.03em;margin-top:6px}
-  .track{width:min(420px,80%);height:4px;border-radius:var(--r-pill);background:var(--tint-2);overflow:hidden;margin-top:18px}
-  .track .fill{height:100%;width:0;border-radius:var(--r-pill);background:var(--accent);transition:width .4s var(--ease)}
-  .steps{margin-top:24px;display:flex;flex-direction:column;gap:10px;width:min(430px,86%);text-align:left}
-  .step{display:flex;align-items:center;gap:11px;font-size:13.5px;color:var(--muted);opacity:.4;transition:opacity .35s var(--ease),color .35s var(--ease)}
-  .step.act{opacity:1;color:var(--text);font-weight:500}.step.done{opacity:.85;color:var(--muted)}
-  .step .dot{width:16px;height:16px;flex:none;border-radius:50%;border:1.5px solid var(--border);position:relative;transition:.3s var(--ease)}
-  .step.act .dot{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent)}
-  .step.act .dot::after{content:"";position:absolute;inset:3px;border-radius:50%;border:1.5px solid var(--accent);border-top-color:transparent;animation:spin .7s linear infinite}
-  .step.done .dot{border-color:var(--green);background:var(--green)}
-  .step.done .dot::before{content:"";position:absolute;left:5px;top:2.5px;width:3.5px;height:7px;border:solid #fff;border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+  .pband{padding:22px 24px 20px;display:grid;gap:16px}
+  .pband .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .procH{font-size:clamp(24px,3vw,32px);font-weight:800;letter-spacing:-.035em;line-height:1.1}
+  .procS{font-size:14px;color:var(--zone-2);margin-top:4px;max-width:70ch}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+  .tile{display:flex;gap:10px;align-items:flex-start;padding:11px 12px 12px 8px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);min-height:74px;transition:border-color .3s var(--ease),background .3s var(--ease)}
+  .tile .agent-figure{width:24px;height:32px;margin-top:2px}
+  .tile .tb{min-width:0;flex:1}
+  .tile .ts{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .tile .tl{font-size:13px;font-weight:600;letter-spacing:-.01em;margin-top:1px}
+  .tile .tv{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .tile.work .tv{color:var(--faint)}
+  .tile.work .tv::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(4,end) infinite}
+  .tile.done{border-color:var(--border)}
+  .tile.done .tv{color:var(--text)}
+  .tile.skip{background:transparent;border-style:dashed}
+  .tile.kept{background:var(--tint)}
+  @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 
-  /* structured */
-  #structured{display:none;padding-top:12px}
-  .docbar{display:flex;align-items:flex-start;gap:12px;padding:8px 0 4px;flex-wrap:wrap}
-  .title-wrap{flex:1;min-width:240px}
-  .h1row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-  .proj{font-size:clamp(28px,4.2vw,40px);font-weight:800;letter-spacing:-.045em;line-height:1.04;text-wrap:balance}
-  .cli{color:var(--muted);font-size:15px;margin-top:6px}
+  /* ---------- the brief ---------- */
+  #structured{display:none}
+  .docband{padding:20px 24px 22px;display:grid;gap:14px}
+  .dtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .spacer{flex:1}
+  .proj{font-size:clamp(28px,4.2vw,44px);font-weight:800;letter-spacing:-.045em;line-height:1.04;text-wrap:balance;max-width:24ch}
+  .cli{color:var(--zone-2);font-size:15px;margin-top:6px}
   .cli:empty{display:none}
-  .modes{display:flex;gap:2px;background:var(--tint-2);border-radius:var(--r-pill);padding:3px}
-  .modes button{background:none;border:none;color:var(--text);opacity:.6;font-size:13px;font-weight:500;letter-spacing:-.01em;padding:6px 13px;border-radius:var(--r-pill);cursor:pointer;transition:background .2s var(--ease),opacity .2s var(--ease)}
+  .modes{display:flex;gap:2px;background:var(--zone-tint);border-radius:var(--r-pill);padding:3px}
+  .modes button{background:none;border:none;color:var(--zone-fg);opacity:.7;font-size:13px;font-weight:500;letter-spacing:-.01em;padding:6px 13px;border-radius:var(--r-pill);cursor:pointer;transition:background .2s var(--ease),opacity .2s var(--ease)}
   .modes button:hover{opacity:1}
-  .modes button.on{opacity:1;background:var(--sel);box-shadow:var(--shadow-pill)}
+  .modes button.on{opacity:1;background:var(--zone-fg);color:var(--zone-bg)}
+  .bghost{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;background:transparent;border:1px solid var(--zone-line);color:var(--zone-fg);border-radius:var(--r-pill);padding:7px 14px;cursor:pointer;white-space:nowrap;transition:border-color .2s var(--ease),background .2s var(--ease)}
+  .bghost:hover{border-color:var(--zone-2);background:var(--zone-tint)}
+  .crewline{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+  .crewline:empty{display:none}
+  .cl{display:flex;align-items:center;gap:9px;padding:6px 12px 6px 6px;border-radius:var(--r-card);background:var(--zone-tint);font-size:12.5px;color:var(--zone-2);min-width:0}
+  .cl b{color:var(--zone-fg);font-weight:600}
+  .cl .agent-figure{width:21px;height:28px}
+  .cl .you{width:24px;height:24px;border-radius:50%;flex:none;border:1.5px solid var(--zone-fg);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--zone-fg)}
+  /* needs you: the one place the band carries the accent */
+  .cl.needs{background:var(--create-soft);color:var(--create-ink);flex:1 1 320px}
+  .cl.needs b{color:var(--create-ink)}
+  .cl.needs,.flag{--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
   .ghost,.save-as{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:var(--r-pill);padding:7px 14px;cursor:pointer;white-space:nowrap;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
   .ghost:hover,.save-as:hover{border-color:var(--faint);box-shadow:var(--shadow)}
   .ghost:active,.save-as:active{transform:translateY(1px)}
+  .sheet{max-width:880px;width:100%;margin:0 auto}
 
   .themebar{display:none;flex-wrap:wrap;align-items:center;gap:12px 18px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-panel);padding:14px 18px;margin:20px 0 4px;box-shadow:var(--shadow)}
   .themebar.on{display:flex}
@@ -176,11 +237,18 @@
   .preset:hover{transform:scale(1.08)}
 
   .sechead{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--sec);margin:26px 0 2px;padding-top:14px;border-top:1px solid var(--rule);display:flex;align-items:center;gap:10px}
+  #fields > .sechead:first-child{border-top:none;margin-top:18px}
   .row{padding:14px 0 15px;border-top:1px solid var(--rule);position:relative}
   .sechead + .row{border-top:none}
-  .lab{display:flex;align-items:center;gap:9px;min-height:28px;font-size:12.5px;font-weight:600;letter-spacing:-.005em;color:var(--muted)}
+  .lab{display:flex;align-items:center;gap:9px;min-height:28px;font-size:12.5px;font-weight:600;letter-spacing:-.005em;color:var(--muted);flex-wrap:wrap}
   .lockbadge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.04em;line-height:17px;padding:0 8px;border-radius:var(--r-pill);color:var(--amber-ink);background:var(--amber-soft)}
   .lockbadge .ic{width:10px;height:10px}
+  /* who wrote this field, and the way into why */
+  .prov{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);background:transparent;border-radius:var(--r-pill);padding:1px 10px 1px 4px;font-size:11.5px;font-weight:500;color:var(--muted);cursor:pointer;line-height:22px;transition:border-color .2s var(--ease),color .2s var(--ease)}
+  .prov:hover,.prov[aria-expanded="true"]{border-color:var(--faint);color:var(--text)}
+  .prov .agent-figure{width:14px;height:19px;margin:0 -1px}
+  .prov .you{width:16px;height:16px;border-radius:50%;border:1.2px solid currentColor;font-size:8.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .prov .q{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
   .ctrls{margin-left:auto;display:flex;gap:4px;opacity:0;transition:opacity .18s var(--ease)}
   .row:hover .ctrls,.row:focus-within .ctrls{opacity:1}
   @media (hover:none) and (pointer:coarse){.ctrls{opacity:1}}
@@ -195,6 +263,32 @@
   .val li{margin:4px 0}
   .val li::marker{color:var(--faint)}
   .val.spp{font-size:clamp(22px,3vw,28px);line-height:1.2;font-weight:700;letter-spacing:-.03em;max-width:32ch}
+  .regen-now{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:13px;color:var(--muted)}
+  .regen-now .agent-figure{width:21px;height:28px}
+
+  /* why: the decision behind the field, in the spec's reasoning shape */
+  .why{margin-top:10px;border-left:2px solid var(--border);padding:4px 0 4px 14px;display:grid;gap:8px;max-width:72ch}
+  .why .wh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+  .why .wh b{color:var(--text);font-weight:600}
+  .why .wh .agent-figure{width:18px;height:24px}
+  .why .wh time{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .rsn{font-size:13.5px;color:var(--text);display:grid;gap:6px}
+  .rsn p{margin:0}
+  .rsn .rl{display:inline-block;min-width:10.5em;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-right:6px}
+  .rsn ul{margin:2px 0 0;padding-left:18px;display:grid;gap:3px}
+  .rsn .m{color:var(--muted)}
+  .cite{display:inline-block;font-family:var(--mono);font-size:10.5px;background:var(--tint);border-radius:6px;padding:0 6px;color:var(--muted);margin-left:5px;vertical-align:1px}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;padding:0 8px;border-radius:var(--r-pill);border:1px solid var(--border);color:var(--muted);line-height:18px}
+  .pill.ok{background:var(--green-soft);border-color:transparent;color:var(--green-ink)}
+  .pill.alert{background:var(--create-soft);border-color:transparent;color:var(--create-ink)}
+  .flag{display:flex;gap:10px;align-items:flex-start;background:var(--create-soft);color:var(--create-ink);border-radius:10px;padding:8px 12px;font-size:13px}
+  .flag .agent-figure{width:18px;height:24px}
+  .earlier{font-size:12px;color:var(--faint)}
+  .earlier summary{cursor:pointer}
+  .earlier ol{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
+  .earlier li{font-size:12.5px;color:var(--muted)}
+  .earlier li b{color:var(--text);font-weight:600}
+
   .edit{margin-top:8px;display:flex;flex-direction:column;gap:8px}
   .edit textarea,.edit input[type=text]{width:100%;background:var(--surface);border:1px solid var(--faint);border-radius:var(--r-card);padding:10px 12px;color:var(--text);font-size:15px;outline:none;transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
   .edit textarea:focus,.edit input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
@@ -233,114 +327,137 @@
   .lock.locked{background:var(--green-soft);color:var(--green-ink);box-shadow:none}
   .footer .save-as{padding:9px 15px}
   .footer .muted{margin-left:4px}
+  .status{display:inline-flex;align-items:center;gap:8px}
+  .status .agent-figure{width:18px;height:24px}
 
   .foot{margin-top:auto;padding:28px 0 8px;display:flex;align-items:center;justify-content:center;gap:9px;font-size:11px;color:var(--faint);font-family:var(--mono);letter-spacing:.04em;flex-wrap:wrap;text-align:center}
-  .foot .dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+  .foot .dot{width:4px;height:4px;border-radius:50%;background:var(--faint)}
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:var(--r-pill);font-size:13px;font-weight:500;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:50;max-width:calc(100vw - 32px)}
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
+  @media (max-width:860px){
+    .intake{grid-template-columns:1fr;min-height:0;gap:18px}
+    .intro{padding:24px 22px 20px;gap:16px}
+    .intro .crew{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:4px}
+  }
   @media (max-width:640px){
-    .app{padding:0 16px 90px}
-    .intake{padding:2vh 0 5vh;gap:20px}
-    .lede{font-size:16px}
+    .app{padding:12px 16px 90px}
+    .intro .h1{font-size:34px}
+    .intro .lede{font-size:15px}
+    .intro .crew,.pband .crew{grid-template-columns:1fr;gap:6px}
+    .who{padding:6px 10px 6px 6px}
+    .who .agent-figure{width:24px;height:32px}
     .seg .tpl{padding:8px 9px}
     .composer{padding:14px 14px 12px}
+    .composer textarea{min-height:112px}
     .crow{flex-wrap:wrap}
     .primary{margin-left:auto}
-    .docbar{gap:10px}
-    .title-wrap{min-width:100%}
+    .pband,.docband{padding:18px 16px}
+    .tiles{grid-template-columns:1fr 1fr;gap:8px}
+    .tile{min-height:64px;padding:9px 9px 10px 6px;gap:7px}
+    .tile .agent-figure{width:18px;height:24px}
+    .tile .tv{-webkit-line-clamp:1}
+    .rsn .rl{display:block;min-width:0}
     .presets{margin-left:0}
   }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important}.step.act .dot::after,.spin{animation:none}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}.tile.work .tv::after{animation:none;content:"…"}}
 </style>
+<!-- @napkin:agent-figures -->
 </head>
 <body>
 <div class="app">
-  <header class="chrome">
-    <span class="appname">Brief Maker</span>
-    <span class="spacer"></span>
-    <span class="trust" id="trust">trusted app</span>
-  </header>
-
-  <!-- PHASE 1 — INTAKE -->
+  <!-- PHASE 1 — INTAKE: who does the work, on the band; the ask beside it -->
   <section class="intake" id="intake">
-    <div>
-      <div class="eyebrow">Creative brief</div>
-      <h1 class="h1">A three day brief in <span class="em">three&nbsp;minutes</span>.</h1>
+    <div class="band intro">
+      <div class="ident"><svg viewBox="0 0 44 44" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 8.5h14.2l5.8 5.8v21.2H12z M16.5 18h11v2.6h-11z M16.5 23h11v2.6h-11z M16.5 28h7v2.6h-7z"/><path fill="currentColor" opacity=".5" d="M27.4 7.6 33 13.2h-5.6z"/></svg>Brief Maker<span class="kind">Plan</span></div>
+      <h1 class="h1">A three day brief in three&nbsp;minutes.</h1>
+      <p class="lede">Drop in the raw material: notes, a client PDF, mood images, a voice memo. You get back a structured brief, every field traceable to where it came from.</p>
+      <div class="crew" id="introCrew" aria-label="Who works on your brief"></div>
     </div>
-    <p class="lede">Research, strategy, revisions. The parts that eat the week. Drop in the raw material: notes, a client PDF, mood images, a voice memo. Get back a structured brief, every field traceable to where it came from, stored where the team can find it.</p>
-    <div class="seg" id="tpls">
-      <button class="tpl" data-style="basic">Basic<span class="sm">Clean report</span></button>
-      <button class="tpl" data-style="creative">Creative<span class="sm">+ mood boards</span></button>
-      <button class="tpl" data-style="immersive">Immersive<span class="sm">+ brand theme</span></button>
-    </div>
-    <div class="composer">
-      <textarea id="prompt" placeholder="Paste or describe the brief — the client, the problem, what a win looks like…"></textarea>
-      <div class="chips" id="chips"></div>
-      <div class="crow">
-        <label class="attach"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 7.6 8.3 12.8a3.2 3.2 0 0 1-4.6-4.6l5.4-5.4a2.1 2.1 0 0 1 3 3L6.8 11a1.1 1.1 0 0 1-1.5-1.5l4.9-4.9"/></svg>Attach files<input type="file" hidden id="addAny" multiple /></label>
-        <button class="primary" id="genBtn">Generate brief <span class="arrow">→</span></button>
+    <div class="ask">
+      <div class="eyebrow">The ask</div>
+      <div class="seg" id="tpls" role="group" aria-label="Brief style">
+        <button class="tpl" data-style="basic">Basic<span class="sm">Clean report</span></button>
+        <button class="tpl" data-style="creative">Creative<span class="sm">+ mood boards</span></button>
+        <button class="tpl" data-style="immersive">Immersive<span class="sm">+ brand theme</span></button>
       </div>
+      <div class="composer">
+        <label class="sr" for="prompt">The brief, in your words</label>
+        <textarea id="prompt" placeholder="Paste or describe the brief — the client, the problem, what a win looks like…"></textarea>
+        <div class="chips" id="chips"></div>
+        <div class="crow">
+          <label class="attach"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 7.6 8.3 12.8a3.2 3.2 0 0 1-4.6-4.6l5.4-5.4a2.1 2.1 0 0 1 3 3L6.8 11a1.1 1.1 0 0 1-1.5-1.5l4.9-4.9"/></svg>Attach files<input type="file" hidden id="addAny" multiple /></label>
+          <button class="primary" id="genBtn">Generate brief <span class="arrow" aria-hidden="true">→</span></button>
+        </div>
+      </div>
+      <div class="note" id="intakeStatus" role="status"></div>
     </div>
-    <div class="muted" id="intakeStatus"></div>
   </section>
 
-  <!-- PHASE 2 — PROCESSING -->
-  <section class="proc" id="proc">
-    <div class="stage"><canvas id="cv"></canvas></div>
-    <div class="pct" id="pct">0%</div>
-    <div class="procH" id="procH">Reading the brief…</div>
-    <div class="track"><div class="fill" id="fill"></div></div>
-    <div class="steps" id="steps"></div>
+  <!-- PHASE 2 — WORKING: the crew on the band, one tile per field -->
+  <section class="proc" id="proc" aria-live="polite">
+    <div class="band pband">
+      <div class="top"><div class="ident" id="procIdent"></div></div>
+      <div><h2 class="procH" id="procH">Reading the ask…</h2><p class="procS" id="procS"></p></div>
+      <div class="crew" id="procCrew"></div>
+    </div>
+    <div class="tiles" id="tiles"></div>
   </section>
 
-  <!-- PHASE 3 — STRUCTURED -->
+  <!-- PHASE 3 — THE BRIEF -->
   <section id="structured">
-    <div class="docbar">
-      <div class="title-wrap"><div class="proj" id="hProj"></div><div class="cli" id="hCli"></div></div>
-      <div class="modes" id="modes">
-        <button data-style="basic">Basic</button>
-        <button data-style="creative">Creative</button>
-        <button data-style="immersive">Immersive</button>
+    <header class="band docband">
+      <div class="dtop">
+        <div class="ident" id="docIdent"></div>
+        <span class="spacer"></span>
+        <div class="modes" id="modes" role="group" aria-label="Brief style">
+          <button data-style="basic">Basic</button>
+          <button data-style="creative">Creative</button>
+          <button data-style="immersive">Immersive</button>
+        </div>
+        <button class="bghost" id="newDraft" title="Start a fresh draft from a new prompt"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New draft</button>
       </div>
-      <button class="ghost" id="newDraft" title="Start a fresh draft from a new prompt"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New draft</button>
-    </div>
+      <div><div class="proj" id="hProj"></div><div class="cli" id="hCli"></div></div>
+      <div class="crewline" id="crewline"></div>
+    </header>
 
-    <div class="themebar" id="themebar">
-      <span class="tb-lab">Brand theme</span>
-      <label class="swatch">Background <input type="color" id="thBg" /></label>
-      <label class="gradtog"><input type="checkbox" id="thGradOn" /> blend</label>
-      <label class="swatch" id="thBg2Wrap" style="display:none">→ <input type="color" id="thBg2" /></label>
-      <label class="swatch">Accent <input type="color" id="thAccent" /></label>
-      <label class="swatch">Text <input type="color" id="thText" /></label>
-      <label class="swatch">Field font
-        <select id="thFont">
-          <option value="var(--serif)">Serif</option>
-          <option value="var(--ui)">Sans</option>
-          <option value="var(--mono)">Mono</option>
-        </select>
-      </label>
-      <div class="presets" id="presets"></div>
-    </div>
+    <div class="sheet">
+      <div class="themebar" id="themebar">
+        <span class="tb-lab">Brand theme</span>
+        <label class="swatch">Background <input type="color" id="thBg" /></label>
+        <label class="gradtog"><input type="checkbox" id="thGradOn" /> blend</label>
+        <label class="swatch" id="thBg2Wrap" style="display:none">→ <input type="color" id="thBg2" /></label>
+        <label class="swatch">Accent <input type="color" id="thAccent" /></label>
+        <label class="swatch">Text <input type="color" id="thText" /></label>
+        <label class="swatch">Field font
+          <select id="thFont">
+            <option value="var(--serif)">Serif</option>
+            <option value="var(--ui)">Sans</option>
+            <option value="var(--mono)">Mono</option>
+          </select>
+        </label>
+        <div class="presets" id="presets"></div>
+      </div>
 
-    <div id="fields"></div>
+      <div id="fields"></div>
 
-    <div class="sechead" id="boardsHead" style="display:none">Mood board <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-family:var(--ui)">— travels inside this .clan</span></div>
-    <div class="boards" id="boards"></div>
+      <div class="sechead" id="boardsHead" style="display:none">Mood board <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0;font-family:var(--ui)">— travels inside this .clan</span></div>
+      <div class="boards" id="boards"></div>
 
-    <div class="footer">
-      <button class="lock" id="lockBtn">Lock brief</button>
-      <button class="save-as" id="saveBtn"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3.5A1 1 0 0 1 4 2.5h6.3L13 5.2V12.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M5.5 2.5v3h4v-3M5.5 13.5v-4h5v4"/></svg>Save as…</button>
-      <button class="save-as" id="exHtml" title="Export a clean standalone HTML report"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13h10"/></svg>HTML</button>
-      <button class="save-as" id="exPdf" title="Export a print-ready PDF"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13h10"/></svg>PDF</button>
-      <span class="muted" id="lockedBadge" style="display:none;color:var(--ok)">Locked for handoff</span>
-      <span class="muted" id="status"></span>
+      <div class="footer">
+        <button class="lock" id="lockBtn">Lock brief</button>
+        <button class="save-as" id="saveBtn"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3.5A1 1 0 0 1 4 2.5h6.3L13 5.2V12.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M5.5 2.5v3h4v-3M5.5 13.5v-4h5v4"/></svg>Save as…</button>
+        <button class="save-as" id="exHtml" title="Export a clean standalone HTML report"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13h10"/></svg>HTML</button>
+        <button class="save-as" id="exPdf" title="Export a print-ready PDF"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13h10"/></svg>PDF</button>
+        <span class="muted" id="lockedBadge" style="display:none;color:var(--ok)">Locked for handoff</span>
+        <span class="muted status" id="status" role="status"></span>
+      </div>
     </div>
   </section>
 
   <footer class="foot"><span>Nothing gets lost.</span><span class="dot"></span><span>Every brief stored and searchable.</span></footer>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
   var clanScheme = navigator.userAgent.includes('Windows') ? 'http://clan.localhost' : 'clan://localhost';
@@ -348,11 +465,16 @@
   function data(){ return (window.__CLAN__ && window.__CLAN__.data) || {}; }
   function get(p){ return p.split('.').reduce(function(o,k){return (o==null)?undefined:o[k];}, data()); }
   function patch(p,v,opts){ if(window.clan) return window.clan.patchData(p,v,opts||{actor:'human',pinned:false}); }
-  function esc(s){ return (s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function arr(v){ return Array.isArray(v)?v:[]; }
   function assetUrl(n){ return clanScheme+'/assets/'+n; }
   function valToText(v,t){ if(v==null) return ''; return t==='list'?(Array.isArray(v)?v.join('\n'):String(v)):String(v); }
-  function short(s){ s=String(s||''); return s.length>48?s.slice(0,48)+'…':s; }
+  function short(s,n){ n=n||48; s=String(s||''); return s.length>n?s.slice(0,n)+'…':s; }
   function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('on');},2100); }
+  function $(id){ return document.getElementById(id); }
+  // The figures come from the shared snippet the packer inlines (agentFigure).
+  // Opened from source with no snippet, the app still works, just without them.
+  function fig(key,o){ return typeof agentFigure==='function'?agentFigure(key,o):''; }
   // Line icons (presentation only): 16-unit grid, 1.5 stroke, currentColor.
   function ic(d){ return '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+d+'</svg>'; }
   var IC={
@@ -367,6 +489,9 @@
     doc:ic('<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3M6 9h4M6 11h3"/>'),
     plus:ic('<path d="M8 3v10M3 8h10"/>')
   };
+  // Brief Maker's mark (the same shape as icon.svg, which the home screen shows).
+  var MARK='<svg viewBox="0 0 44 44" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 8.5h14.2l5.8 5.8v21.2H12z M16.5 18h11v2.6h-11z M16.5 23h11v2.6h-11z M16.5 28h7v2.6h-7z"/><path fill="currentColor" opacity=".5" d="M27.4 7.6 33 13.2h-5.6z"/></svg>';
+  var IDENT=MARK+'Brief Maker<span class="kind">Creative brief</span>';
 
   var FIELDS=[
     {sec:'Identity',key:'project_name',label:'Project name',type:'text'},
@@ -389,11 +514,140 @@
     {sec:'Execution',key:'open_questions',label:'Open questions',type:'list'}
   ];
   var CONTENT_KEYS=FIELDS.map(function(f){return f.key;});
-  function hasContent(){ return CONTENT_KEYS.some(function(k){var v=get(k);return v!=null&&(Array.isArray(v)?v.length:String(v).trim());}); }
+  function hasVal(v){ return v!=null&&(Array.isArray(v)?v.length:String(v).trim()); }
+  function hasContent(){ return CONTENT_KEYS.some(function(k){return hasVal(get(k));}); }
   function style(){ return get('brief_style')||'basic'; }
   function lockedList(){ var l=get('locked_fields'); return Array.isArray(l)?l:[]; }
   function isLocked(k){ return lockedList().indexOf(k)!==-1; }
   var forceIntake=false, phase='intake';
+
+  // ---------- who does Brief Maker's work (decision N4) ----------
+  // Extract reads the ask and what is attached; one Drafter per field drafts
+  // in parallel; the Judge runs after, alone, on the whole brief. Plain names,
+  // as the shell's model.ts gives them.
+  var CREW=[
+    {k:'extract', name:'Extract', does:'Reads your prompt and every file you attach.'},
+    {k:'drafter', name:'Drafter', does:'One per field, side by side, each drafting from the ask.'},
+    {k:'judge',   name:'Judge',   does:'Reads the whole brief once the drafts are in.'}
+  ];
+  function crewHtml(states, texts){
+    return CREW.map(function(c){
+      var st=(states&&states[c.k])||'idle', t=(texts&&texts[c.k])||c.does;
+      return '<div class="who'+(st==='working'?' on':st==='done'?' done':'')+'" data-k="'+c.k+'">'
+        +fig(c.k,{state:st==='done'?'idle':st, label:c.name+', '+c.does})
+        +'<div class="t"><b>'+esc(c.name)+'</b><span>'+esc(t)+'</span></div></div>';
+    }).join('');
+  }
+  // Who wrote a decision, as a person would say it.
+  // By what the write claimed (`agent`), not who was signed in when it
+  // landed (`actor`): a draft the Drafter wrote is the Drafter's, even though
+  // a person pressed the button.
+  function isHuman(d){ return !!d&&(d.agent==='human'||/^human[:]/.test(String(d.agent||''))); }
+  function agentKeyOf(d){
+    if(!d) return '';
+    var a=String(d.agent||'')+' '+String(d.action||'');
+    if(/judge/i.test(a)) return 'judge';
+    if(/extract/i.test(a)) return 'extract';
+    return 'drafter';
+  }
+  function whoName(d){ return isHuman(d)?'You':(AGENT_NAME[agentKeyOf(d)]||d.agent); }
+  var AGENT_NAME={extract:'Extract', drafter:'Drafter', judge:'Judge'};
+
+  // ---------- the decision chain: why each field says what it says ----------
+  // Read lazily from clan://chain (the context object leaves it out). A field
+  // was set by the latest decision that changed its top-level key and, for a
+  // nested field, did not name a sibling.
+  var CHAIN={state:'idle', decisions:[]}, chainT=null;
+  function loadChain(){
+    clearTimeout(chainT);
+    chainT=setTimeout(function(){
+      if(CHAIN.state==='idle') CHAIN.state='loading';
+      fetch(clanScheme+'/chain').then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); })
+        .then(function(c){ CHAIN={state:'ok', decisions:arr(c&&c.decisions)}; })
+        .catch(function(e){ CHAIN={state:'unavailable', decisions:[], err:String(e&&e.message||e)}; })
+        .then(function(){ if(phase==='doc') refreshWhy(); });
+    }, 120);
+  }
+  function tsOf(d){ return Date.parse(d&&d.timestamp)||0; }
+  function decisionsFor(key){
+    var top=key.split('.')[0];
+    return CHAIN.decisions.filter(function(d){
+      if(arr(d.fields_changed).indexOf(top)===-1) return false;
+      if(key===top) return true;
+      var act=String(d.action||'');
+      // "edit objectives.feel" does not explain objectives.commercial.
+      return act.indexOf(top+'.')===-1 || act.indexOf(key)!==-1;
+    }).sort(function(a,b){ return tsOf(b)-tsOf(a); });
+  }
+  function fmtDate(iso){ var d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+  function hasReasoning(d){ return d&&d.reasoning&&typeof d.reasoning==='object'&&d.reasoning.decided; }
+  // decided / because (with cites) / rejected / certainty / would change if.
+  function reasoningBlock(r){
+    var rej=arr(r.rejected), c=r.certainty||null;
+    return '<div class="rsn">'
+      +'<p><span class="rl">Decided</span>'+esc(r.decided)+'</p>'
+      +(arr(r.because).length?'<div><span class="rl">Because</span><ul>'+arr(r.because).map(function(b){
+          return '<li>'+esc(b.point)+arr(b.cites).map(function(x){ return '<span class="cite">'+esc(x)+'</span>'; }).join('')+'</li>'; }).join('')+'</ul></div>':'')
+      +(rej.length?'<div><span class="rl">Rejected</span><ul>'+rej.map(function(x){ return '<li>'+esc(x.option)+' <span class="m">— '+esc(x.why)+'</span></li>'; }).join('')+'</ul></div>'
+        :(r.only_option?'<p><span class="rl">Only option</span><span class="m">'+esc(r.only_option)+'</span></p>':''))
+      +(c&&c.level?'<p><span class="rl">Certainty</span><span class="pill'+(c.level==='high'?' ok':c.level==='low'?' alert':'')+'">'+esc(c.level)+'</span> <span class="m">'+esc(c.why||'')+'</span></p>':'')
+      +(r.would_change_if?'<p><span class="rl">Would change if</span>'+esc(r.would_change_if)+'</p>':'')
+      +'</div>';
+  }
+  function whyHtml(f){
+    if(CHAIN.state!=='ok') return '<div class="muted">'+(CHAIN.state==='unavailable'?'The decision chain is not available here.':'Reading the decision chain…')+'</div>';
+    var ds=decisionsFor(f.key); if(!ds.length) return '<div class="muted">No decision in the chain names this field.</div>';
+    var d=ds[0], human=isHuman(d), r=hasReasoning(d)?d.reasoning:null;
+    var h='<div class="wh">'+(human?'<span class="you" aria-hidden="true" style="width:18px;height:18px;border-radius:50%;border:1.2px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700">you</span>':fig(agentKeyOf(d),{decorative:true}))
+      +'<b>'+esc(whoName(d))+'</b><span>'+esc(d.action||'')+'</span><time datetime="'+esc(d.timestamp)+'">'+esc(fmtDate(d.timestamp))+'</time></div>';
+    h+=r?reasoningBlock(r):(d.rationale?'<p class="rsn">'+esc(d.rationale)+'</p>':'<p class="muted">No reason was recorded.</p>');
+    if(r&&r.attention) h+='<div class="flag">'+fig(agentKeyOf(d),{state:'needs-you',decorative:true})+'<div><b>Look at this:</b> '+esc(r.attention)+'</div></div>';
+    if(ds.length>1) h+='<details class="earlier"><summary>'+(ds.length-1)+' earlier '+(ds.length===2?'decision':'decisions')+' on this field</summary><ol>'
+      +ds.slice(1,8).map(function(e){ return '<li><b>'+esc(whoName(e))+'</b> · '+esc(e.action||'')+' · '+esc(fmtDate(e.timestamp))+(e.rationale?' — '+esc(short(e.rationale,90)):'')+'</li>'; }).join('')+'</ol></details>';
+    return h;
+  }
+  var OPEN_WHY={};
+  function refreshWhy(){
+    document.querySelectorAll('#fields .row').forEach(function(row){
+      var f=FIELDS[+row.getAttribute('data-i')]; if(!f) return;
+      var p=row.querySelector('.prov'); if(p) p.outerHTML=provHtml(f);
+      var b=row.querySelector('.prov'); if(b) b.addEventListener('click',function(){ toggleWhy(row,f); });
+      var w=row.querySelector('.why'); if(w) w.innerHTML=whyHtml(f);
+    });
+    renderCrewline();
+  }
+  function provHtml(f){
+    if(!hasVal(get(f.key))) return '';
+    var d=CHAIN.state==='ok'?decisionsFor(f.key)[0]:null, open=!!OPEN_WHY[f.key];
+    var who=d?(isHuman(d)?'<span class="you" aria-hidden="true">you</span>':fig(agentKeyOf(d),{decorative:true})):'';
+    return '<button type="button" class="prov act-why" aria-expanded="'+open+'" title="Why this field says what it says">'
+      +who+(d?esc(whoName(d)):'')+'<span class="q">why</span></button>';
+  }
+  function toggleWhy(row,f){
+    OPEN_WHY[f.key]=!OPEN_WHY[f.key];
+    var w=row.querySelector('.why'), b=row.querySelector('.prov');
+    if(OPEN_WHY[f.key]){
+      if(!w){ w=document.createElement('div'); w.className='why'; row.appendChild(w); }
+      w.hidden=false; w.innerHTML=whyHtml(f);
+    } else if(w) w.hidden=true;
+    if(b) b.setAttribute('aria-expanded', String(!!OPEN_WHY[f.key]));
+    if(CHAIN.state!=='ok') loadChain();
+  }
+  // The band's summary: who wrote the brief, and anything the drafter asked
+  // a person to look at (the one place the band carries the accent).
+  function renderCrewline(){
+    var el=$('crewline'); if(!el) return;
+    if(CHAIN.state!=='ok'){ el.innerHTML=''; return; }
+    var by={}, filled=0;
+    FIELDS.forEach(function(f){ if(!hasVal(get(f.key))) return; filled++; var d=decisionsFor(f.key)[0]; var w=d?(isHuman(d)?'you':agentKeyOf(d)):''; if(w) by[w]=(by[w]||0)+1; });
+    var h='';
+    ['extract','drafter','judge'].forEach(function(k){ if(by[k]) h+='<div class="cl">'+fig(k,{decorative:true})+'<span><b>'+AGENT_NAME[k]+'</b> wrote '+by[k]+' of '+filled+' fields</span></div>'; });
+    if(by.you) h+='<div class="cl"><span class="you" aria-hidden="true">you</span><span><b>You</b> wrote or edited '+by.you+'</span></div>';
+    var att=null;
+    CHAIN.decisions.slice().sort(function(a,b){ return tsOf(b)-tsOf(a); }).some(function(d){ if(!isHuman(d)&&hasReasoning(d)){ att=d; return true; } return false; });
+    if(att&&att.reasoning.attention&&!get('locked')) h+='<div class="cl needs">'+fig(agentKeyOf(att),{state:'needs-you',decorative:true})+'<span><b>'+esc(whoName(att))+' asks you to look:</b> '+esc(att.reasoning.attention)+'</span></div>';
+    el.innerHTML=h;
+  }
 
   // ---------- colour maths (keeps chrome legible on any ground) ----------
   function h2r(h){h=String(h||'').replace('#','');if(h.length===3)h=h.split('').map(function(c){return c+c;}).join('');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
@@ -459,9 +713,9 @@
   // ---------- phase routing ----------
   function setPhase(p){
     phase=p;
-    document.getElementById('intake').style.display = p==='intake'?'flex':'none';
-    document.getElementById('proc').classList.toggle('on', p==='proc');
-    document.getElementById('structured').style.display = p==='doc'?'block':'none';
+    $('intake').style.display = p==='intake'?'grid':'none';
+    $('proc').classList.toggle('on', p==='proc');
+    $('structured').style.display = p==='doc'?'block':'none';
   }
   function render(){
     if(phase!=='proc'){
@@ -470,17 +724,19 @@
       applyModeChrome();
     }
     if(phase==='intake') renderIntake();
-    if(phase==='doc') renderStructured();
+    if(phase==='doc'){ renderStructured(); loadChain(); }
   }
 
   // ---------- intake ----------
   function renderIntake(){
     var s=style();
     document.querySelectorAll('#tpls .tpl').forEach(function(el){ el.classList.toggle('sel', el.getAttribute('data-style')===s); });
-    var chips=document.getElementById('chips'); chips.innerHTML='';
+    var n=(data().reference_assets||[]).length;
+    $('introCrew').innerHTML=crewHtml(null, n?{extract:'Reads your prompt and the '+n+' '+(n===1?'file':'files')+' attached.'}:null);
+    var chips=$('chips'); chips.innerHTML='';
     (data().reference_assets||[]).forEach(function(a,i){
       var c=document.createElement('span'); c.className='chip';
-      c.innerHTML=(a.type==='image'?IC.image:a.type==='audio'?IC.audio:a.type==='video'?IC.video:IC.doc)+'<span>'+esc(a.label||a.name)+'</span><span class="x" title="Remove">×</span>';
+      c.innerHTML=(a.type==='image'?IC.image:a.type==='audio'?IC.audio:a.type==='video'?IC.video:IC.doc)+'<span>'+esc(a.label||a.name)+'</span><button type="button" class="x" title="Remove" aria-label="Remove '+esc(a.label||a.name)+'">×</button>';
       c.querySelector('.x').addEventListener('click',function(){var n=(data().reference_assets||[]).slice();n.splice(i,1);patch('reference_assets',n);});
       chips.appendChild(c);
     });
@@ -506,87 +762,93 @@
         .then(function(r){return r.json();}).then(function(res){if(res&&res.internal_path){var n=(data().reference_assets||[]).slice();n.push({type:type,name:name,path:res.internal_path,label:file.name});patch('reference_assets',n);}});
     });},Promise.resolve()).then(function(){if(statusEl)statusEl.textContent='';input.value='';});
   }
-  document.getElementById('addAny').addEventListener('change',function(){ uploadFiles(this, document.getElementById('intakeStatus')); });
+  $('addAny').addEventListener('change',function(){ uploadFiles(this, $('intakeStatus')); });
 
-  // ---------- processing animation (resolve-driven) ----------
-  var STEPS=[
-    'Reading the source material',
-    'Parsing references',
-    'Listening for the brand voice',
-    'Finding the proposition',
-    'Structuring 18 fields',
-    'Drafting the brief'
-  ];
-  var DEFAULT_WORDS=['scale','secret','audience','drifting','taste','insight','on-sale','frequency','curated','wandering','voice','warm','handmade','one friend','this summer','who you are','lineup','soul','proposition','tone'];
-  function pickWords(){
-    var raw=(get('brief_input')||document.getElementById('prompt').value||'').replace(/[^\w\s-]/g,' ').split(/\s+/).filter(function(w){return w.length>3;});
-    if(raw.length<8) return DEFAULT_WORDS;
-    var out=[],step=Math.max(1,Math.floor(raw.length/20));
-    for(var i=0;i<raw.length&&out.length<20;i+=step) out.push(raw[i].toLowerCase());
-    return out.length?out:DEFAULT_WORDS;
+  // ---------- working: the crew, then a tile per field ----------
+  // The draft is one call; the backend runs the briefing loops inside it and
+  // answers once. So the stages below follow the shape of the work (N4:
+  // Extract, then a Drafter per field side by side, then the Judge alone)
+  // on a clock while the call is out, and land on what actually came back.
+  function tileHtml(f, st, text){
+    var figSt=st==='work'?'working':'idle';
+    return '<div class="tile '+st+'" data-key="'+esc(f.key)+'">'
+      +(st==='kept'||st==='skip'?'<span style="width:24px;flex:none"></span>':fig('drafter',{state:figSt, label:'Drafter · '+f.label}))
+      +'<div class="tb"><div class="ts">'+esc(f.sec)+'</div><div class="tl">'+esc(f.label)+'</div><div class="tv">'+esc(text)+'</div></div></div>';
   }
   function runProcessing(){
-    var box=document.getElementById('steps'); box.innerHTML='';
-    var els=STEPS.map(function(s){ var d=document.createElement('div'); d.className='step'; d.innerHTML='<span class="dot"></span><span>'+esc(s)+'</span>'; box.appendChild(d); return d; });
-    var cv=document.getElementById('cv'), ctx=cv.getContext('2d'), DPR=Math.min(2,window.devicePixelRatio||1), W=0,H=0;
-    function size(){ var r=cv.getBoundingClientRect(); W=r.width; H=r.height||230; cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
-    size();
-    var words=pickWords(), rows=words.length, colX=W*0.5, rowGap=Math.min(15,(H-24)/rows);
-    var P=words.map(function(w,i){ return { w:w, sx:Math.random()*W*0.6, sy:18+Math.random()*(H-36), rot:(Math.random()-.5)*0.9,
-      tx:colX, ty:H/2-(rows*rowGap)/2+i*rowGap+rowGap/2, delay:i/rows*0.5, dur:0.45 }; });
-    // Paint from the live palette (light, dark or the immersive brand theme).
-    var cs=getComputedStyle(document.documentElement), cText=cs.getPropertyValue('--text').trim()||'#14161B', cMuted=cs.getPropertyValue('--muted').trim()||'#737987', cAcc=cs.getPropertyValue('--accent').trim()||'#FF4F2E';
-    var grad=ctx.createLinearGradient(0,0,0,H); grad.addColorStop(0,cAcc); grad.addColorStop(1,cAcc);
-    function ease(x){return x<0?0:x>1?1:1-Math.pow(1-x,3);}
-    var t0=performance.now(), resolved=false, failed=false, resolveAt=0, base=0.9, onDone=null, raf=0, cur=-1;
-    var ramp=reduce?1400:6500;
-    function pend(now){ return Math.max(0,Math.min(0.9,(now-t0)/ramp)); }
-    function gAt(now){ return resolved ? Math.min(1, base+(1-base)*((now-resolveAt)/650)) : pend(now); }
-    function frame(){
-      if(failed) return;
-      var now=performance.now();          // single clock — rAF param can diverge
-      var g=Math.max(0,Math.min(1,gAt(now)));
-      var si=Math.max(0,Math.min(STEPS.length-1,Math.floor(g*STEPS.length)));
-      if(si!==cur){ cur=si; els.forEach(function(e,i){ e.classList.toggle('done',i<si); e.classList.toggle('act',i===si); }); document.getElementById('procH').textContent=STEPS[si]+'…'; }
-      document.getElementById('pct').textContent=Math.round(g*100)+'%';
-      document.getElementById('fill').style.width=(g*100)+'%';
-      ctx.clearRect(0,0,W,H);
-      var scanX=ease(g)*W;
-      P.forEach(function(p){
-        var pg=ease(Math.min(1,Math.max(0,(g-p.delay)/p.dur)));
-        var x=p.sx+(p.tx-p.sx)*pg, y=p.sy+(p.ty-p.sy)*pg;
-        ctx.save(); ctx.translate(x,y); ctx.rotate(p.rot*(1-pg));
-        ctx.font=(pg>0.5?'500 ':'400 ')+'12px "Geist Mono",ui-monospace,Menlo,monospace';
-        ctx.fillStyle=pg>0.6?cText:cMuted; ctx.globalAlpha=0.22+0.78*pg;
-        ctx.textBaseline='middle'; ctx.fillText(p.w,0,0); ctx.restore();
-      });
-      if(!reduce){ ctx.save(); ctx.globalAlpha=.9; ctx.strokeStyle=grad; ctx.lineWidth=2; ctx.shadowColor=cAcc; ctx.shadowBlur=16;
-        ctx.beginPath(); ctx.moveTo(scanX,8); ctx.lineTo(scanX,H-8); ctx.stroke(); ctx.restore(); }
-      if(g>=1 && resolved){ els.forEach(function(e){e.classList.remove('act');e.classList.add('done');}); if(onDone){var f=onDone;onDone=null;setTimeout(f,240);} return; }
-      raf=requestAnimationFrame(frame);
+    var n=(data().reference_assets||[]).length;
+    $('procIdent').innerHTML=IDENT;
+    var drafting=FIELDS.filter(function(f){ return !isLocked(f.key); }).length;
+    var tiles=$('tiles');
+    function drawTiles(st){
+      tiles.innerHTML=FIELDS.map(function(f){
+        if(isLocked(f.key)) return tileHtml(f,'kept','Locked — kept as it is');
+        return tileHtml(f, st, st==='work'?'Drafting':'Waiting for the ask');
+      }).join('');
     }
-    raf=requestAnimationFrame(frame);
+    function crew(states, texts, h, s){
+      $('procCrew').innerHTML=crewHtml(states, texts);
+      $('procH').textContent=h; $('procS').textContent=s||'';
+    }
+    var extractText='Reading your prompt'+(n?' and '+n+' attached '+(n===1?'file':'files'):'');
+    crew({extract:'working'},{extract:extractText+'.'},'Reading the ask…','Extract reads what you gave it before anyone drafts.');
+    drawTiles('wait');
+    var failed=false, t1=setTimeout(function(){
+      if(failed) return;
+      crew({extract:'done',drafter:'working'},{extract:'Read the ask'+(n?' and '+n+' '+(n===1?'file':'files'):'')+'.',drafter:drafting+' drafting at once, one per field.',judge:'Waits for every draft.'},
+        'Drafting the brief…', drafting+' fields, each with its own Drafter.'+(drafting<FIELDS.length?' '+(FIELDS.length-drafting)+' locked, kept as they are.':''));
+      drawTiles('work');
+    }, reduce?300:1600);
     return {
-      resolve:function(cb){ base=pend(performance.now()); resolveAt=performance.now(); resolved=true; onDone=cb; },
-      fail:function(){ failed=true; cancelAnimationFrame(raf); }
+      resolve:function(fields, cb){
+        clearTimeout(t1);
+        crew({extract:'done',drafter:'working'},{extract:'Read the ask.',drafter:'Drafts are in.',judge:'Waits for every draft.'},'Drafts are in…','');
+        var i=0, step=reduce?0:45;
+        (function next(){
+          if(i<FIELDS.length){
+            var f=FIELDS[i++], el=tiles.querySelector('[data-key="'+f.key+'"]');
+            if(el&&!isLocked(f.key)){
+              var v=f.key.split('.').reduce(function(o,k){ return o==null?undefined:o[k]; }, fields);
+              el.outerHTML=hasVal(v)?tileHtml(f,'done',Array.isArray(v)?v.join(' · '):String(v)):tileHtml(f,'skip','Nothing in the ask for this — left empty');
+            }
+            return step?setTimeout(next,step):next();
+          }
+          crew({extract:'done',drafter:'done',judge:'working'},{extract:'Read the ask.',drafter:'Every field drafted.',judge:'Reading the whole brief through.'},'Checking it holds together…','The Judge reads the brief as one piece, after the drafts.');
+          setTimeout(cb, reduce?200:1100);
+        })();
+      },
+      fail:function(){ failed=true; clearTimeout(t1); }
     };
   }
 
-  document.getElementById('genBtn').addEventListener('click',function(){
-    var prompt=document.getElementById('prompt').value.trim();
-    if(!window.clan){ document.getElementById('intakeStatus').textContent='No host bridge — open this inside Napkin Studio OS.'; return; }
+  // Record the agent's write with its structured reasoning when it gave one;
+  // if the host refuses the reasoning's shape, keep the write and the one-line
+  // rationale rather than lose the draft.
+  function agentWrite(fields, opts, reasoning){
+    if(!reasoning) return window.clan.patchData(fields, opts);
+    return window.clan.patchData(fields, Object.assign({}, opts, {reasoning:reasoning})).then(function(res){
+      return (res&&res.ok)?res:window.clan.patchData(fields, opts);
+    });
+  }
+  var META_KEYS=['rationale','reasoning','context','reference_assets','locked','locked_fields','brief_style','theme','field_styles','brief_input'];
+
+  $('genBtn').addEventListener('click',function(){
+    var prompt=$('prompt').value.trim();
+    if(!window.clan){ $('intakeStatus').textContent='No host bridge — open this inside Napkin Studio OS.'; return; }
+    $('intakeStatus').classList.remove('err');
     if(prompt) patch('brief_input',prompt);
-    setPhase('proc');
+    setPhase('proc'); window.scrollTo(0,0);
     var ctrl=runProcessing();
     window.clan.apiProxy('agent',{input:prompt,task:'draft_brief',attachments:(data().reference_assets||[])}).then(function(res){
       if(res&&res.ok&&res.data&&typeof res.data==='object'){
         var fields=Object.assign({},res.data);
         var rationale=fields.rationale||'Drafted creative brief from the client intake.';
+        var reasoning=(fields.reasoning&&typeof fields.reasoning==='object')?fields.reasoning:null;
         var ctx2=fields.context;
         var aiTheme=fields.theme;   // capture before stripping meta keys
-        ['rationale','context','reference_assets','locked','locked_fields','brief_style','theme','field_styles','brief_input'].forEach(function(k){delete fields[k];});
+        META_KEYS.forEach(function(k){delete fields[k];});
         lockedList().forEach(function(k){ var top=k.split('.')[0]; delete fields[top]; });
-        window.clan.patchData(fields,{actor:'analysis-model',pinned:false,action:'draft brief',rationale:rationale});
+        agentWrite(fields,{actor:'analysis-model',pinned:false,action:'draft brief',rationale:rationale},reasoning);
         if(fields.project_name) window.clan.setTitle(fields.project_name);
         if(ctx2) window.clan.setContext(ctx2,false);
         // Immersive: apply the agent's proposed brand palette to app + viewer.
@@ -599,61 +861,69 @@
           }
         }
         forceIntake=false;
-        ctrl.resolve(function(){ setPhase('doc'); if(appliedTheme){applyThemeLocal(appliedTheme);pushThemeToViewer(appliedTheme);} else {applyModeChrome();} renderStructured(); window.scrollTo(0,0); });
+        ctrl.resolve(fields, function(){ setPhase('doc'); if(appliedTheme){applyThemeLocal(appliedTheme);pushThemeToViewer(appliedTheme);} else {applyModeChrome();} renderStructured(); loadChain(); window.scrollTo(0,0); });
       } else {
         ctrl.fail();
-        document.getElementById('intakeStatus').textContent=(res&&res.error)?res.error:'No agent connected — start mock-agent/server.py or fill fields manually.';
-        setPhase('intake');
+        $('intakeStatus').textContent=(res&&res.error)?res.error:'No agent connected — start mock-agent/server.py or fill fields manually.';
+        $('intakeStatus').classList.add('err');
+        setPhase('intake'); renderIntake();
       }
-    }).catch(function(e){ ctrl.fail(); document.getElementById('intakeStatus').textContent=String(e); setPhase('intake'); });
+    }).catch(function(e){ ctrl.fail(); $('intakeStatus').textContent=String(e); $('intakeStatus').classList.add('err'); setPhase('intake'); renderIntake(); });
   });
 
   // ---------- structured ----------
+  var REGEN={};   // field key → true while its Drafter is redrafting it
   function renderStructured(){
-    document.getElementById('hProj').textContent=get('project_name')||'Untitled campaign';
-    document.getElementById('hCli').textContent=get('client')||'';
+    $('docIdent').innerHTML=IDENT;
+    $('hProj').textContent=get('project_name')||'Untitled campaign';
+    $('hCli').textContent=get('client')||'';
     var s=style();
-    document.querySelectorAll('#modes button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-style')===s); });
-    var tb=document.getElementById('themebar'); tb.classList.toggle('on', s==='immersive');
+    document.querySelectorAll('#modes button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-style')===s); b.setAttribute('aria-pressed', String(b.getAttribute('data-style')===s)); });
+    var tb=$('themebar'); tb.classList.toggle('on', s==='immersive');
     if(s==='immersive') syncThemeInputs();
-    var host=document.getElementById('fields'); host.innerHTML=''; var sec=null;
-    FIELDS.forEach(function(f){
+    var host=$('fields'); host.innerHTML=''; var sec=null;
+    FIELDS.forEach(function(f,i){
       if(f.sec!==sec){ sec=f.sec; var h=document.createElement('div'); h.className='sechead'; h.textContent=f.sec; host.appendChild(h); }
-      host.appendChild(fieldRow(f));
+      host.appendChild(fieldRow(f,i));
     });
     var showBoards=(s==='creative'||s==='immersive');
-    document.getElementById('boardsHead').style.display=showBoards?'flex':'none';
-    document.getElementById('boards').classList.toggle('on',showBoards);
+    $('boardsHead').style.display=showBoards?'flex':'none';
+    $('boards').classList.toggle('on',showBoards);
     if(showBoards) renderBoards(s==='immersive');
     var locked=!!get('locked');
-    document.getElementById('lockedBadge').style.display=locked?'inline':'none';
-    var lb=document.getElementById('lockBtn'); lb.classList.toggle('locked',locked); lb.textContent=locked?'✓ Locked':'Lock brief';
+    $('lockedBadge').style.display=locked?'inline':'none';
+    var lb=$('lockBtn'); lb.classList.toggle('locked',locked); lb.textContent=locked?'✓ Locked':'Lock brief';
+    renderCrewline();
   }
 
   function fieldStyle(key){ var fs=(get('field_styles')||{})[key]||{}; var s='';
     if(fs.font) s+='font-family:'+fs.font+';'; if(fs.size) s+='font-size:'+fs.size+';'; if(fs.color) s+='color:'+fs.color+';'; return s; }
 
-  function fieldRow(f){
-    var row=document.createElement('div'); row.className='row';
-    var v=get(f.key); var has=v!=null&&(Array.isArray(v)?v.length:String(v).trim());
+  function fieldRow(f,i){
+    var row=document.createElement('div'); row.className='row'; row.setAttribute('data-i', String(i));
+    var v=get(f.key); var has=hasVal(v);
     var st=fieldStyle(f.key); var sa=st?' style="'+st+'"':'';
     var cls='val'+(f.hero?' spp':'');
     var valHtml = !has ? '<div class="val empty">Empty. Hover and choose edit to add it.</div>'
       : f.type==='list' ? '<div class="'+cls+'"'+sa+'><ul>'+(Array.isArray(v)?v:[v]).map(function(x){return '<li>'+esc(String(x))+'</li>';}).join('')+'</ul></div>'
       : '<div class="'+cls+'"'+sa+'>'+esc(String(v))+'</div>';
     var locked=isLocked(f.key);
-    row.innerHTML='<div class="lab">'+esc(f.label)+
+    row.innerHTML='<div class="lab"><span>'+esc(f.label)+'</span>'+
+      provHtml(f)+
       (locked?' <span class="lockbadge">'+IC.lock+'locked</span>':'')+
       '<span class="ctrls">'+
-        '<button class="iconbtn act-edit" title="Edit value">'+IC.edit+'</button>'+
-        (style()==='immersive'?'<button class="iconbtn act-style" title="Font, size, colour">'+IC.style+'</button>':'')+
-        '<button class="iconbtn act-regen" title="Regenerate with AI">'+IC.regen+'</button>'+
-        '<button class="iconbtn act-lock'+(locked?' on':'')+'" title="'+(locked?'Unlock':'Lock (keep on full regenerate)')+'">'+(locked?IC.lock:IC.unlock)+'</button>'+
-      '</span></div>'+valHtml;
+        '<button class="iconbtn act-edit" title="Edit value" aria-label="Edit '+esc(f.label)+'">'+IC.edit+'</button>'+
+        (style()==='immersive'?'<button class="iconbtn act-style" title="Font, size, colour" aria-label="Style '+esc(f.label)+'">'+IC.style+'</button>':'')+
+        '<button class="iconbtn act-regen" title="Redraft with the Drafter" aria-label="Redraft '+esc(f.label)+'"'+(REGEN[f.key]?' disabled':'')+'>'+IC.regen+'</button>'+
+        '<button class="iconbtn act-lock'+(locked?' on':'')+'" title="'+(locked?'Unlock':'Lock (keep on full regenerate)')+'" aria-label="'+(locked?'Unlock ':'Lock ')+esc(f.label)+'">'+(locked?IC.lock:IC.unlock)+'</button>'+
+      '</span></div>'+valHtml+
+      (REGEN[f.key]?'<div class="regen-now">'+fig('drafter',{state:'working',label:'Drafter · '+f.label})+'<span>The Drafter is redrafting '+esc(f.label.toLowerCase())+'…</span></div>':'')+
+      (OPEN_WHY[f.key]?'<div class="why">'+whyHtml(f)+'</div>':'');
     row.querySelector('.act-edit').addEventListener('click',function(){startEdit(row,f);});
     row.querySelector('.act-regen').addEventListener('click',function(){startRegen(row,f);});
     row.querySelector('.act-lock').addEventListener('click',function(){toggleLock(f);});
     var sb=row.querySelector('.act-style'); if(sb) sb.addEventListener('click',function(){startStyle(row,f);});
+    var pb=row.querySelector('.prov'); if(pb) pb.addEventListener('click',function(){toggleWhy(row,f);});
     return row;
   }
 
@@ -668,7 +938,7 @@
     return wrap;
   }
 
-  // 🎨 per-field font / size / colour (immersive)
+  // per-field font / size / colour (immersive)
   function startStyle(row,f){
     var fs=(get('field_styles')||{})[f.key]||{};
     var fonts=[['','Default'],['var(--serif)','Serif'],['var(--ui)','Sans'],['var(--mono)','Mono'],["Georgia,serif",'Georgia']];
@@ -695,7 +965,7 @@
     wrap.querySelector('.sreset').addEventListener('click',function(){commit(true);});
   }
 
-  // ✏️ edit value + rationale + optional pin(=lock)
+  // edit value + rationale + optional pin(=lock)
   function startEdit(row,f){
     var cur=valToText(get(f.key),f.type);
     var ctl = (f.type==='list')?'<textarea class="valctl" placeholder="one per line">'+esc(cur)+'</textarea>'
@@ -725,32 +995,40 @@
     });
   }
 
-  // ↻ regenerate with OPTIONAL guidance (transient)
+  // regenerate with OPTIONAL guidance (transient)
   function startRegen(row,f){
     var wrap=openInline(row,
-      '<textarea placeholder="Add anything for the AI? (optional) — e.g. punchier, lean into humour"></textarea>'+
-      '<div class="editrow"><button class="save">Regenerate</button><button class="cancel">Cancel</button>'+
-      '<span class="muted">extra guidance is used for this regeneration only</span></div>');
+      '<textarea placeholder="Anything for the Drafter? (optional) — e.g. punchier, lean into humour"></textarea>'+
+      '<div class="editrow"><button class="save">Redraft</button><button class="cancel">Cancel</button>'+
+      '<span class="muted">extra guidance is used for this redraft only</span></div>');
     if(!wrap) return;
     var ta=wrap.querySelector('textarea'); ta.focus();
-    wrap.querySelector('.save').addEventListener('click',function(){ var g=ta.value.trim(); wrap.__close(); regenField(row,f,g); });
+    wrap.querySelector('.save').addEventListener('click',function(){ var g=ta.value.trim(); wrap.__close(); regenField(f,g); });
   }
-  function regenField(row,f,guidance){
+  function setStatus(html){ $('status').innerHTML=html||''; }
+  function regenField(f,guidance){
     if(!window.clan) return;
-    var btn=row.querySelector('.act-regen'); if(btn){btn.innerHTML='<span class="spin"></span>';btn.disabled=true;}
-    document.getElementById('status').innerHTML='<span class="spin"></span> Regenerating "'+esc(f.label)+'"…';
+    REGEN[f.key]=true; renderStructured();
+    setStatus(fig('drafter',{state:'working',decorative:true})+'<span>Redrafting “'+esc(f.label)+'”…</span>');
     window.clan.apiProxy('agent',{task:'regenerate_field',field:f.key,input:guidance||''}).then(function(res){
       if(res&&res.ok&&res.data&&typeof res.data==='object'){
         var rationale=res.data.rationale||('Regenerated '+f.label+(guidance?' — '+guidance:'')+'.');
+        var reasoning=(res.data.reasoning&&typeof res.data.reasoning==='object')?res.data.reasoning:null;
         var val=(f.key in res.data)?res.data[f.key]:undefined;
-        if(val===undefined){var ks=Object.keys(res.data).filter(function(k){return k!=='rationale'&&k!=='context';});if(ks.length)val=res.data[ks[0]];}
-        if(val!==undefined) window.clan.patchData(f.key,val,{actor:'analysis-model',pinned:false,action:'regenerate '+f.key,rationale:rationale});
-        document.getElementById('status').textContent='';
-      } else { document.getElementById('status').textContent=(res&&res.error)?res.error:'No agent connected.'; }
-    }).catch(function(e){document.getElementById('status').textContent=String(e);}).finally(function(){if(btn){btn.innerHTML=IC.regen;btn.disabled=false;}});
+        if(val===undefined){var ks=Object.keys(res.data).filter(function(k){return k!=='rationale'&&k!=='context'&&k!=='reasoning';});if(ks.length)val=res.data[ks[0]];}
+        if(val!==undefined){
+          var top=f.key.split('.'), p={}, o=p; top.forEach(function(k,i){ if(i===top.length-1) o[k]=val; else { o[k]={}; o=o[k]; } });
+          // A nested field goes through the dot-path form, which merges into
+          // its parent; the object form is for top-level keys.
+          if(top.length>1) window.clan.patchData(f.key,val,Object.assign({actor:'analysis-model',pinned:false,action:'regenerate '+f.key,rationale:rationale},reasoning?{reasoning:reasoning}:{}));
+          else agentWrite(p,{actor:'analysis-model',pinned:false,action:'regenerate '+f.key,rationale:rationale},reasoning);
+        }
+        setStatus('');
+      } else { setStatus(esc((res&&res.error)?res.error:'No agent connected.')); }
+    }).catch(function(e){ setStatus(esc(String(e))); }).then(function(){ delete REGEN[f.key]; if(phase==='doc') renderStructured(); loadChain(); });
   }
 
-  // 🔒 lock toggle
+  // lock toggle
   function toggleLock(f){ setLock(f.key, !isLocked(f.key)); }
   function setLock(key, on){
     var cur=lockedList(); var has=cur.indexOf(key)!==-1;
@@ -761,17 +1039,17 @@
 
   // ---------- mood boards ----------
   function renderBoards(big){
-    var box=document.getElementById('boards'); box.innerHTML='';
+    var box=$('boards'); box.innerHTML='';
     (data().reference_assets||[]).forEach(function(a,i){
       var el=document.createElement('div'); el.className='board'+(big?' big':''); var url=assetUrl(a.name);
-      var m=a.type==='image'?'<img src="'+url+'"/>':a.type==='audio'?'<audio controls src="'+url+'"></audio>':a.type==='video'?'<video controls src="'+url+'"></video>':'<div class="doc">'+IC.doc+'</div>';
-      el.innerHTML=m+'<div class="nm">'+esc(a.label||a.name)+'</div><button class="rm">×</button>';
+      var m=a.type==='image'?'<img src="'+url+'" alt=""/>':a.type==='audio'?'<audio controls src="'+url+'"></audio>':a.type==='video'?'<video controls src="'+url+'"></video>':'<div class="doc">'+IC.doc+'</div>';
+      el.innerHTML=m+'<div class="nm">'+esc(a.label||a.name)+'</div><button class="rm" aria-label="Remove '+esc(a.label||a.name)+'">×</button>';
       el.querySelector('.rm').addEventListener('click',function(){var n=(data().reference_assets||[]).slice();n.splice(i,1);patch('reference_assets',n);});
       box.appendChild(el);
     });
     var add=document.createElement('label'); add.className='addboard';
     add.innerHTML=IC.plus+'<div>Add image · audio · video</div><input type="file" hidden multiple />';
-    add.querySelector('input').addEventListener('change',function(){ uploadFiles(this, document.getElementById('status')); });
+    add.querySelector('input').addEventListener('change',function(){ uploadFiles(this, $('status')); });
     box.appendChild(add);
   }
 
@@ -787,22 +1065,22 @@
   // ---------- theme controls ----------
   function syncThemeInputs(){
     var t=get('theme')||{};
-    document.getElementById('thBg').value=t.bg||DEF.bg;
-    document.getElementById('thBg2').value=t.bg2||'#000000';
-    document.getElementById('thAccent').value=t.accent||DEF.accent;
-    document.getElementById('thText').value=t.text||DEF.text;
-    document.getElementById('thGradOn').checked=!!t.grad;
-    document.getElementById('thBg2Wrap').style.display=t.grad?'flex':'none';
-    if(t.font) document.getElementById('thFont').value=t.font;
+    $('thBg').value=t.bg||DEF.bg;
+    $('thBg2').value=t.bg2||'#000000';
+    $('thAccent').value=t.accent||DEF.accent;
+    $('thText').value=t.text||DEF.text;
+    $('thGradOn').checked=!!t.grad;
+    $('thBg2Wrap').style.display=t.grad?'flex':'none';
+    if(t.font) $('thFont').value=t.font;
   }
   function setTheme(key,val){ var t=Object.assign({},get('theme')||{}); t[key]=val; patch('theme',t); applyThemeLocal(t); pushThemeToViewer(t); }
   // Bind BOTH 'input' and 'change': WebKitGTK's native colour chooser (Tauri on
   // Linux) fires only 'change' on commit, not the live 'input' Chromium fires.
-  function onColor(id,key){ var el=document.getElementById(id);
+  function onColor(id,key){ var el=$(id);
     ['input','change'].forEach(function(ev){ el.addEventListener(ev,function(e){ setTheme(key,e.target.value); }); }); }
   onColor('thBg','bg'); onColor('thBg2','bg2'); onColor('thAccent','accent'); onColor('thText','text');
-  document.getElementById('thFont').addEventListener('change',function(e){ setTheme('font',e.target.value); renderStructured(); });
-  document.getElementById('thGradOn').addEventListener('change',function(e){ document.getElementById('thBg2Wrap').style.display=e.target.checked?'flex':'none';
+  $('thFont').addEventListener('change',function(e){ setTheme('font',e.target.value); renderStructured(); });
+  $('thGradOn').addEventListener('change',function(e){ $('thBg2Wrap').style.display=e.target.checked?'flex':'none';
     var t=Object.assign({},get('theme')||{}); t.grad=e.target.checked; if(t.grad&&!t.bg2) t.bg2=mix(t.bg||DEF.bg,'#000000',.4);
     patch('theme',t); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); });
 
@@ -812,7 +1090,7 @@
     {bg:'#f6f3ec',bg2:'#ece3d4',grad:true,accent:'#c0492f',text:'#221a14',font:'var(--serif)'},
     {bg:'#08130f',bg2:'#0c241b',grad:true,accent:'#34d399',text:'#e6f5ee',font:'var(--mono)'}
   ];
-  (function(){ var pc=document.getElementById('presets');
+  (function(){ var pc=$('presets');
     PRESETS.forEach(function(p){ var s=document.createElement('button'); s.className='preset'; s.type='button';
       s.style.background='linear-gradient(135deg,'+p.bg2+' 0%,'+p.accent+' 130%)'; s.title='Apply palette';
       s.addEventListener('click',function(){ patch('theme',Object.assign({},p),{actor:'human',pinned:false,action:'set theme',rationale:'Applied a brand palette'}); applyThemeLocal(p); pushThemeToViewer(p); syncThemeInputs(); });
@@ -833,8 +1111,8 @@
     })).then(function(arr){return arr.filter(Boolean);});
   }
   function exportField(f){
-    var v=get(f.key); var has=v!=null&&(Array.isArray(v)?v.length:String(v).trim());
-    if(!has) return '';
+    var v=get(f.key);
+    if(!hasVal(v)) return '';
     var val=f.type==='list'
       ? '<ul>'+(Array.isArray(v)?v:[v]).map(function(x){return '<li>'+esc(String(x))+'</li>';}).join('')+'</ul>'
       : '<p'+(f.hero?' class="spp"':'')+'>'+esc(String(v))+'</p>';
@@ -888,8 +1166,8 @@
     }).then(function(res){ if(res&&res.ok===false) toast('Could not start export.'); })
       .catch(function(e){ toast('Export failed: '+e); });
   }
-  document.getElementById('exHtml').addEventListener('click',function(){ doExport('html'); });
-  document.getElementById('exPdf').addEventListener('click',function(){ doExport('pdf'); });
+  $('exHtml').addEventListener('click',function(){ doExport('html'); });
+  $('exPdf').addEventListener('click',function(){ doExport('pdf'); });
 
   // The shell's Export offers us the job before composing one from our markup —
   // which, since this view renders from data at runtime, would be the empty
@@ -900,9 +1178,9 @@
   });
 
   // ---------- footer actions ----------
-  document.getElementById('newDraft').addEventListener('click',function(){ forceIntake=true; render(); });
-  document.getElementById('saveBtn').addEventListener('click',function(){ if(window.clan&&window.clan.requestSave) window.clan.requestSave(); toast('Saving a copy of this .clan…'); });
-  document.getElementById('lockBtn').addEventListener('click',function(){
+  $('newDraft').addEventListener('click',function(){ forceIntake=true; render(); });
+  $('saveBtn').addEventListener('click',function(){ if(window.clan&&window.clan.requestSave) window.clan.requestSave(); toast('Saving a copy of this .clan…'); });
+  $('lockBtn').addEventListener('click',function(){
     var locked=!get('locked'); patch('locked',locked,{actor:'human',pinned:true,action:'lock brief',rationale:'Brief locked for handoff'});
     if(locked){
       if(window.napkin&&window.napkin.notify) window.napkin.notify('Brief locked',(get('project_name')||'Brief')+' is ready for handoff.');
@@ -913,11 +1191,10 @@
 
   // ---------- boot ----------
   render();
-  window.addEventListener('clan:dataupdated', render);
-  window.addEventListener('napkin:ready', function(e){
-    if(e.detail&&e.detail.trusted) document.getElementById('trust').style.display='inline';
-    applyModeChrome();
-  });
+  // A write lands: re-render, and re-read the chain it was recorded in.
+  window.addEventListener('clan:dataupdated', function(){ render(); });
+  // The OS toolbar shows whether this app is trusted; the app does not repeat it.
+  window.addEventListener('napkin:ready', function(){ applyModeChrome(); });
 </script>
 </body>
 </html>

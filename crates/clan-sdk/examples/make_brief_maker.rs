@@ -23,6 +23,9 @@ use clan_sdk::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "shared/app_ui.rs"]
+mod app_ui;
+
 const PIPELINE_PATH: &str = "app/pipeline.yaml";
 
 fn template_dir() -> PathBuf {
@@ -39,7 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "brief-maker.app.clan".to_string());
 
     let schema = fs::read_to_string(dir.join("schema.json"))?;
-    let index_html = fs::read_to_string(dir.join("index.html"))?;
+    // The agent figures are inlined at build (one snippet, both apps).
+    let index_html = app_ui::inline_figures(
+        &dir.join(".."),
+        &fs::read_to_string(dir.join("index.html"))?,
+    )?;
+    let icon = app_ui::icon_svg(&dir)?;
     let requirements = fs::read_to_string(dir.join("agent/requirements.yaml"))?;
     let pipeline = fs::read_to_string(dir.join("app/pipeline.yaml"))?;
 
@@ -65,6 +73,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.add_entry(path, bytes);
     }
     builder.add_entry(PIPELINE_PATH, pipeline.into_bytes());
+    // The mark the home screen shows (app.icon names this member).
+    builder.add_entry(app_ui::ICON_PATH, icon);
+    if clan.manifest().file_by_path(app_ui::ICON_PATH).is_none() {
+        builder.manifest_mut().files.push(FileEntry {
+            id: "app-icon".into(),
+            path: app_ui::ICON_PATH.into(),
+            role: "app-icon".into(),
+            content_type: "image/svg+xml".into(),
+            priority: None,
+            sha256: None,
+        });
+    }
     if clan.manifest().file_by_path(PIPELINE_PATH).is_none() {
         builder.manifest_mut().files.push(FileEntry {
             id: "pipeline-contract".into(),
@@ -83,8 +103,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         AppInfo {
             name: "Brief Maker".into(),
             app_id: "ie.napkin.brief-maker".into(),
-            version: "0.2.0".into(),
-            icon: None,
+            // 0.3: the Plan-zone identity and the agents at work.
+            version: "0.3.0".into(),
+            icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
