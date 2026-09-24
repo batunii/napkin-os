@@ -19,6 +19,13 @@ from napkin.rules.markets import COUNTRIES
 STOP_CAPS = {"EXAMPLE", "TV", "TVC", "UK", "GB", "IE", "EU", "EV", "OOH", "BVOD", "I"}
 
 
+def reasoning(points, rejected=(), attention=None, only=None):
+    """A model's reasoning block: `points` are (text, [cites])."""
+    return {"because": [{"point": t, "cites": list(c)} for t, c in points],
+            "rejected": [{"option": o, "why": w} for o, w in rejected], "only_option": only,
+            "would_change_if": "the client says otherwise", "attention": attention}
+
+
 def _h(*parts) -> int:
     return int(hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:8], 16)
 
@@ -51,6 +58,11 @@ class FakeModel:
         out = {"brand": None, "client_org": None, "markets": [], "campaign_type": None, "problem": None,
                "objective": None, "audience_stated": None, "competitor_set": [], "success_measures": [],
                "budget": None, "in_market": None, "channels_mandated": [], "deliverables": [], "constraints": []}
+        mids = [m["material_id"] for m in p["materials"]]
+        # One point cites a material it was never given: the cite check drops it.
+        out["reasoning"] = reasoning([("The prompt states the markets and the budget", mids[:1]),
+                                      ("An invented source", ["mat_NOTGIVEN"])],
+                                     rejected=[("fill the audience", "the prompt does not describe one")])
         for m in p["materials"]:
             t, mid = m["text"], m["material_id"]
             for rx, code in COUNTRIES:
@@ -97,7 +109,11 @@ class FakeModel:
                              (r"\b(?:EV|Ev|electric)\b", "automotive.ev_charging"), (r"\bhybrid\b", "automotive.hybrid")):
                 if (x := re.search(rx, t)) and leaf not in [c["leaf"] for c in cats]:
                     cats.append({"leaf": leaf, "quote": x.group(0), "material_id": mid})
-        return {"brands": brands, "client_org": client, "categories": cats[:2]}
+        mids = [m["material_id"] for m in p["materials"]]
+        why = reasoning([("The material labels the brand", mids[:1])],
+                        rejected=[(f"{b['name']} as the client's", "a comparator") for b in brands if b["comparator"]],
+                        only="one brand is named")
+        return {"brands": brands, "client_org": client, "categories": cats[:2], "reasoning": why}
 
     @staticmethod
     def r_select(p):
@@ -107,7 +123,11 @@ class FakeModel:
                 named = [c for rx, c in COUNTRIES if re.search(rx, sent)]
                 out.append({"lens": "effectiveness_evidence", "run": True,
                             "skip_markets": [m for m in p["markets"] if m not in named], "reason": sent})
-        return {"lenses": out}
+        pid = [p["prompt_material_id"]] if p.get("prompt_material_id") else []
+        return {"lenses": out, "reasoning": reasoning(
+            [("The prompt limits effectiveness to some markets" if out else "The prompt asks for everything", pid)],
+            rejected=[("research everything everywhere", "the prompt limits a lens")] if out else [],
+            only=None if out else "the prompt limits nothing")}
 
     @staticmethod
     def r_classify_category(p):
@@ -142,9 +162,14 @@ class FakeModel:
             if pin["lens"]:
                 by.setdefault(pin["lens"], []).append(pin["id"])
         out = [{"lens": l, "statement": f"The {l.replace('_', ' ')} picture reads differently by market.",
-                "cites": ids[:2], "markets": []} for l, ids in by.items()]
+                "cites": ids[:2], "markets": [],
+                # A figure with no cite is dropped; the cited point stands.
+                "reasoning": reasoning([("The pins differ by market", ids[:2]), ("It is 99% sure", [])],
+                                       rejected=[("one finding per market", "the pins compare")])}
+               for l, ids in by.items()]
         out.append({"lens": "market_structure", "statement": "It grew 99% last year.",
-                    "cites": list(by.get("market_structure", [])[:1]) or [p["pins"][0]["id"]], "markets": []})
+                    "cites": list(by.get("market_structure", [])[:1]) or [p["pins"][0]["id"]], "markets": [],
+                    "reasoning": reasoning([("Growth", ["f_NOTAPIN"])], only="one reading")})
         return {"findings": out, "audience": None}
 
     @staticmethod
@@ -156,7 +181,9 @@ class FakeModel:
             claims = [{"text": f"{l['title']} is covered by the research.", "cites": ids[:2]},
                       {"text": "A made-up figure of 42 appears here.", "cites": ids[:1]}]
             secs.append({"lens": l["lens"], "claims": claims})
-        return {"headline": {"text": f"{p['brand']}: the research is in.", "cites": [first]},
+        return {"reasoning": reasoning([("The headline leads with what the research covers", [first])],
+                                       rejected=[("lead with a single market", "the research spans markets")]),
+                "headline": {"text": f"{p['brand']}: the research is in.", "cites": [first]},
                 "summary": [{"text": "Read the sections below.", "cites": [first]},
                             {"text": "Nothing is cited here.", "cites": []}],
                 "sections": secs}

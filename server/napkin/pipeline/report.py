@@ -21,6 +21,7 @@ from ..doc import (CAMPAIGN_FIELDS, LENS_TITLES, LENSES, ctx_data, ctx_facts, ct
                    market_list)
 from ..rules.cite import clean_claim
 from ..util import bad, canon_sha, iso
+from .. import reasoning as rsn
 
 log = logging.getLogger("napkin.report")
 
@@ -29,7 +30,9 @@ and proposed findings. Plain, specific sentences. Every sentence cites the pin i
 ids it rests on. State no number that is not the value of a pin you cite (or written in a finding
 you cite); the view renders every figure from the pins, so describing ("the larger market",
 "growing fastest") is usually better than restating. Never cite anything not in the input. Write a
-headline, two to four summary lines, and for each lens section one to three claims."""
+headline, two to four summary lines, and for each lens section one to three claims.
+The reasoning is about the report's reading as a whole: why the headline leads, what you chose not to
+say; cite the pin and finding ids each point rests on.""" + rsn.GUIDE
 
 FIELD_LABELS = {"brand": "Brand", "client_org": "Client", "categories": "Categories", "markets": "Markets",
                 "competitor_set": "Comparators", "audience": "The researched audience", "in_market": "In market",
@@ -45,11 +48,12 @@ def schema(cite_ids: list[str], lenses: list[str]) -> dict:
                                                                                    "enum": cite_ids}}})
     return _obj({"headline": claim, "summary": {"type": "array", "items": claim},
                  "sections": {"type": "array", "items": _obj({"lens": {"type": "string", "enum": lenses or LENSES},
-                                                              "claims": {"type": "array", "items": claim}})}})
+                                                              "claims": {"type": "array", "items": claim}})},
+                 "reasoning": rsn.MODEL_SCHEMA})
 
 
 def compose(doc, clan, handler, caps):
-    """-> (report, cites, hits). 400 when there is nothing to cite."""
+    """-> (report, cites, hits, reasoning). 400 when there is nothing to cite."""
     data = ctx_data(clan)
     camp = data.get("campaign") or {}
     sel = data.get("selection") or {}
@@ -91,6 +95,7 @@ def compose(doc, clan, handler, caps):
     # -- the model writes the prose ----------------------------------------------
     written = {"headline": None, "summary": [], "sections": {}}
     dropped = []
+    raw = {}
     if lenses_with:
         payload = {"brand": brand, "markets": markets, "problem": fval("problem"), "objective": fval("objective"),
                    "lenses": [{"lens": l, "title": LENS_TITLES[l],
@@ -189,7 +194,49 @@ def compose(doc, clan, handler, caps):
             for c in cites if c in pin_by]
     if dropped:
         log.info("report: dropped %d claim(s) by the cite rule: %s", len(dropped), json.dumps(dropped)[:600])
-    return report, cites, hits
+    why = report_reasoning(raw.get("reasoning"), report, pin_by, fi_by, dropped, open_ct, brand)
+    return report, cites, hits, why
+
+
+def report_reasoning(raw, report, pin_by, fi_by, dropped, open_ct, brand) -> dict:
+    """The report's reasoning: the model's points, cite-checked against the
+    pins and findings it was given; certainty from the rules — the lowest
+    derived confidence of what the headline and summary cite, one lower when
+    the cite rule dropped any claim."""
+    lead = list(dict.fromkeys(list(report["headline"]["cites"]) + [c for s in report["summary"] for c in s["cites"]]))
+    conf = [(pin_by.get(c) or fi_by.get(c) or {}).get("confidence") for c in lead]
+    level = rsn.lowest(conf, default="low")
+    basis = f"the lowest derived confidence of what the headline and summary cite is {level}"
+    if dropped:
+        level = rsn.step_down(level)
+        basis += f"; one lower because the cite rule dropped {len(dropped)} claim(s)"
+    fallback = [rsn.point(f"The headline rests on what it cites: {report['headline']['text']}",
+                          report["headline"]["cites"])]
+    for sec in report["sections"]:
+        ids = [i for b in sec["blocks"] for i in (b.get("fact_ids") or b.get("cites") or [])
+               + ([b["finding_id"]] if b.get("finding_id") else [])]
+        if ids:
+            fallback.append(rsn.point(f"{sec['title']}: what the section cites", list(dict.fromkeys(ids))))
+    rejected = [rsn.rej("state a figure the cited pins do not hold",
+                        "every claim is checked: a figure must be the value of a pin it cites")]
+    if dropped:
+        rejected.append(rsn.rej(f"keep the {len(dropped)} claim(s) that failed the cite check",
+                                "a claim that cites nothing, cites what the document does not hold, or states an "
+                                "unsupported figure is dropped"))
+    attention = []
+    if open_ct:
+        attention.append(f"{len(open_ct)} value(s) are still contested.")
+    if report.get("not_researched"):
+        attention.append("Some lenses were not researched; the report says which.")
+    if dropped:
+        attention.append(f"The cite rule dropped {len(dropped)} claim(s).")
+    r, _ = rsn.from_model(
+        raw, decided=f"Composed the report for {brand}: {len(report['sections'])} section(s), "
+                     f"{len(report['confirm'])} field(s) to confirm.",
+        known=set(pin_by) | set(fi_by), certainty_=rsn.certainty(level, basis), fallback=fallback,
+        would_change_if="new pins or findings land, a contest is resolved, or a finding is verified or rejected",
+        rejected=rejected, attention=" ".join(attention) or None)
+    return r
 
 
 def based_on(clan) -> dict:

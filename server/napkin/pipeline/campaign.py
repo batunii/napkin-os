@@ -32,6 +32,7 @@ from ..rules import markets as market_rules
 from ..rules.confidence import fact_confidence
 from ..rules.quotes import find_quote
 from ..util import TaskError, iso, slug, uid, ulid_like
+from .. import reasoning as rsn
 from . import extract as extract_stage
 from . import report as report_stage
 from . import synthesise as synth_stage
@@ -49,13 +50,17 @@ material (each with a material_id) list:
 - the client organisation, only if the material names it (e.g. a signature), with its quote;
 - at most two category leaves from the given tree that the ask is about, most likely first, each with
   the quote that points at it. Choose from the tree only.
-Never guess what the material does not say."""
+Never guess what the material does not say.
+The reasoning is about which brand is the client's and why the others are not: cite the material_id
+of each quote you rely on.""" + rsn.GUIDE
 
 SELECT_SYSTEM = """You plan the research for an advertising campaign ask. There are eight research lenses.
 Decide, for each lens, whether this ask needs it. Research everything by default: skip a lens (or skip it
 in some markets) ONLY when the prompt says to leave it out, limits it to certain markets, or asks only
 for other lenses, or when the lens plainly has nothing to read for these categories. Give the reason for
-every skip, quoting the prompt where it is the prompt's instruction."""
+every skip, quoting the prompt where it is the prompt's instruction.
+The reasoning is about the plan as a whole: cite the prompt's material_id for anything the prompt says;
+reject the plans you did not choose (research everything, skip more).""" + rsn.GUIDE
 
 CLASSIFY_SYSTEM = """Map a person's typed description of a product category to at most two leaves of the
 given category tree, most likely first. Return an empty list when nothing in the tree fits."""
@@ -74,12 +79,14 @@ def identify_schema(leaf_codes: list[str]) -> dict:
             "comparator": {"type": "boolean"}})},
         "client_org": {"anyOf": [_obj({"name": {"type": "string"}, **q}), {"type": "null"}]},
         "categories": {"type": "array", "items": _obj({"leaf": {"type": "string", "enum": leaf_codes}, **q})},
+        "reasoning": rsn.MODEL_SCHEMA,
     })
 
 
 SELECT_SCHEMA = _obj({"lenses": {"type": "array", "items": _obj({
     "lens": {"type": "string", "enum": LENSES}, "run": {"type": "boolean"},
-    "skip_markets": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}})}})
+    "skip_markets": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}})},
+    "reasoning": rsn.MODEL_SCHEMA})
 
 
 def classify_schema(leaf_codes):
@@ -181,7 +188,11 @@ class CampaignJob:
             owner = msg_decision or (decisions[0] if decisions else None)
             if owner is None:
                 owner = decision(self.doc, self.did(stage, "narrate", self.seq), "edit", self.handler, "narrate",
-                                 f"The {stage} stage's chat message.", [])
+                                 f"The {stage} stage's chat message.", [], reasoning=rsn.make(
+                                     f"Posted the {stage} stage's message in the chat.",
+                                     [rsn.point(f"The {stage} stage finished and says what it did")],
+                                     rsn.certainty("high", "it reports what the stage recorded"),
+                                     "the stage is rerun", only_option="a stage always says what it did"))
             if owner not in decisions:
                 decisions.append(owner)
             owner["targets"].append(f"{self.doc}#intake.messages[{mid}]")
@@ -245,7 +256,14 @@ class CampaignJob:
 
     def fail(self, stage, etype, message):
         d = decision(self.doc, self.did(stage, "failed"), "edit", self.handler, "stage_failed",
-                     f"The {stage} stage failed: {message}. What landed before it stays.", [])
+                     f"The {stage} stage failed: {message}. What landed before it stays.", [], reasoning=rsn.make(
+                         f"Stopped the campaign at the {stage} stage; what landed before it stays.",
+                         [rsn.point(f"The {stage} stage raised an error (its message is in the attention note)")],
+                         rsn.certainty("high", "the stage did not finish"),
+                         "the cause is fixed and the campaign is started again",
+                         rejected=[rsn.rej("carry on past the failed stage",
+                                           "later stages would build on something that did not happen")],
+                         attention=f"The {stage} stage failed: {message[:200]}"))
         self.add_chunk(stage, {}, [d], text=f"The {stage} stage failed: {message}. What already landed stays.")
         with self.lock:
             self.state = "failed"
@@ -372,7 +390,9 @@ class CampaignJob:
                 sp = self._span(c.get("material_id"), c.get("quote"))
                 if c.get("leaf") in codes and sp and c["leaf"] not in [x[0] for x in cats]:
                     cats.append((c["leaf"], sp))
-            self._identify_raw = {"brands": brands, "client": client, "categories": cats[:2]}
+            self._identify_raw = {"brands": brands, "client": client, "categories": cats[:2],
+                                  "reasoning": raw.get("reasoning"),
+                                  "material_ids": [m.id for m in self.materials()]}
         return self._identify_raw
 
     # -- stages -----------------------------------------------------------------
@@ -401,10 +421,27 @@ class CampaignJob:
         qid = uid("q_", self.doc, self.id, field, self.seq + 1, n=12)
         q = {"id": qid, "text": text, "options": options, "allow_text": allow_text,
              "address": f"{self.doc}#campaign.{field}"}
-        d = decision(self.doc, self.did("ask", qid), "edit", self.handler, "identify",
-                     f"Asked the person ({field}): {text} Research waits; nothing is guessed.", [],
-                     [o["source"]["material_id"] for o in options if o.get("source")]
+        opt_cites = ([o["source"]["material_id"] for o in options if o.get("source")]
                      + [f for o in options for f in o.get("fact_ids", [])])
+        named = [o["label"] for o in options if "value" in o]
+        label = field.replace("_", " ")
+        because = [rsn.point(intro, opt_cites) if intro and (opt_cites or not rsn.states_figure(intro))
+                   else rsn.point(f"Nothing settles the {label}")]
+        if named:
+            because.append(rsn.point(f"The candidates: {', '.join(named)}", opt_cites)
+                           if opt_cites or not rsn.states_figure(", ".join(named))
+                           else rsn.point("The candidates are the options offered"))
+        d = decision(self.doc, self.did("ask", qid), "edit", self.handler, "identify",
+                     f"Asked the person ({field}): {text} Research waits; nothing is guessed.", [], opt_cites,
+                     reasoning=rsn.make(
+                         f"Asked the person for the {label} instead of guessing.", because,
+                         rsn.certainty("low", f"the material and the layers do not settle the {label}; that is "
+                                              f"why it is asked"),
+                         "the person answers, or the material names it plainly",
+                         rejected=[rsn.rej(f"pick {named[0]}" if named else "guess one",
+                                           "nothing says which is right, and a wrong guess would steer every "
+                                           "later stage")],
+                         attention="Waiting for your answer: research does not start until it is given."))
         decs = list(decisions or []) + [d]
         self.add_chunk("identify", patch or {}, decs, facts=facts, text=f"{intro} {text}".strip(), question=q,
                        msg_decision=d)
@@ -419,6 +456,8 @@ class CampaignJob:
         patch, decs, facts, notes = {"campaign": {}}, [], [], []
         did = self.did("identify", len(self.chunks))
         idec = decision(self.doc, did, "edit", self.handler, "identify", "", [], [])
+        # What each written field rests on, the derived level of each, what lost.
+        ev_material, ev_pins, levels, rejected = [], [], [], []
 
         def write(field, env):
             patch["campaign"][field] = dict(env, gate=GATES[field], decision=did)
@@ -428,6 +467,8 @@ class CampaignJob:
         def flush():
             idec["rationale"] = " ".join(notes) or "Nothing settled from the material yet."
             p = patch if patch["campaign"] else {}
+            if idec["targets"]:
+                self.identify_reasoning(idec, ev_material, ev_pins, levels, rejected)
             return p, ([idec] if idec["targets"] else []) + decs
 
         # 1. the subject brand -----------------------------------------------------
@@ -450,6 +491,24 @@ class CampaignJob:
                 write("brand", {"value": brand, "origin": "extracted", "source": what["span"]})
                 idec["cites"].append(what["span"]["material_id"])
                 notes.append(f"{what['name']} is the client's brand (read from the material).")
+                basis = id_rules.checked_basis(what)
+                mid = what["span"]["material_id"]
+                if basis == "brand_label":
+                    ev_material.append(rsn.point(f"The material labels {what['name']} as the brand", mid))
+                    levels.append(("high", f"{what['name']} is labelled the brand in the material"))
+                elif basis == "named_as_ours":
+                    ev_material.append(rsn.point(f"The material calls {what['name']} the client's own", mid))
+                    levels.append(("high", f"the material names {what['name']} as the client's"))
+                else:
+                    ev_material.append(rsn.point(f"{what['name']} is the only brand the material names, and not as "
+                                                 f"a comparator", mid))
+                    levels.append(("medium", f"{what['name']} is the only brand named; nothing labels it the "
+                                             f"client's"))
+                for b in brands:
+                    opt = f"{b['name']} as the client's brand"
+                    if b["ref"] != what["ref"] and opt not in [r["option"] for r in rejected]:
+                        rejected.append(rsn.rej(opt, "the material presents it as a comparator" if b.get("comparator")
+                                                else "the material does not name it as the client's"))
             else:
                 p, ds = flush()
                 if kind == "ask":
@@ -482,10 +541,21 @@ class CampaignJob:
                                   "pin_reason": f"Roster row ({r['key']}) from the brand layer, for campaign."
                                                 f"{'categories' if 'categories' in r['key'] else 'client_org'}",
                                   "layer": "brand", "method": r.get("method") or "report"})
+                lv = rsn.lowest(f["confidence"] for f in facts)
+                tiers = sorted({x.get("tier", "?") for r in row["facts"] for x in r["source_records"]})
                 decs.append(decision(self.doc, pin_did, "pin", self.handler, "lookup",
                                      f"Deterministic lookup of {brand['name']}'s roster row in the brand layer: "
                                      f"{len(facts)} row(s) pinned.", [f"facts[{f['id']}]" for f in facts],
-                                     [s for f in facts for s in f["sources"]]))
+                                     [s for f in facts for s in f["sources"]], reasoning=rsn.make(
+                                         f"Pinned {brand['name']}'s roster row from the brand layer.",
+                                         [rsn.point(f"The brand layer holds {f['key']} = {f['value']}",
+                                                    f["id"], f["sources"]) for f in facts],
+                                         rsn.certainty(lv, f"lowest derived confidence of the rows ({lv}); sources "
+                                                           f"tiered {', '.join(tiers)}"),
+                                         "the roster row is revised in the brand layer, or a person corrects it",
+                                         rejected=[rsn.rej("ask the person for the categories",
+                                                           "the brand layer already holds a roster row for "
+                                                           "this brand")])))
                 self.hits += [{"id": f["id"], "scope": "brand", "source": f["origin"]} for f in facts]
                 pinned = pinned + facts
         cat_pins = sorted([f for f in pinned if f["key"] in ("roster.categories.primary", "roster.categories.secondary")
@@ -503,6 +573,14 @@ class CampaignJob:
                     write("categories", {"value": vals, "origin": "proposed", "fact_ids": [f["id"] for f in cat_pins]})
                     idec["cites"] += [f["id"] for f in cat_pins]
                     notes.append(f"Categories from the roster row: {', '.join(vals)} (proposed, to confirm).")
+                    ev_pins.append(rsn.point(f"{brand['name']}'s roster row in the brand layer gives the categories "
+                                             f"{', '.join(vals)}", [f["id"] for f in cat_pins]))
+                    lv = rsn.lowest(f.get("confidence") for f in cat_pins)
+                    levels.append((lv, f"the roster pins are {lv} (derived from source tier and corroboration)"))
+                    for leaf, _sp in (self._identify_raw or {}).get("categories") or []:
+                        if leaf not in vals:
+                            rejected.append(rsn.rej(f"the material's reading, {leaf}",
+                                                    "the brand layer's roster row is the record for this brand"))
             else:
                 pt = self.pending_text if (self.pending_text or {}).get("field") == "categories" else None
                 self.pending_text = None
@@ -572,10 +650,16 @@ class CampaignJob:
                                      "fact_ids": [org_pin["id"]]})
                 idec["cites"].append(org_pin["id"])
                 notes.append(f"Client: {name} (from the roster row, proposed).")
+                ev_pins.append(rsn.point(f"The roster row names the client, {name}", org_pin["id"]))
+                lv = org_pin.get("confidence") if org_pin.get("confidence") in rsn.LEVELS else "low"
+                levels.append((lv, f"the client pin is {lv} (derived)"))
             elif ext:
                 write("client_org", {"value": ext["value"], "origin": "extracted", "source": ext["span"]})
                 idec["cites"].append(ext["span"]["material_id"])
                 notes.append(f"Client: {ext['value']['name']} (read from the material).")
+                ev_material.append(rsn.point(f"The material names the client, {ext['value']['name']}",
+                                             ext["span"]["material_id"]))
+                levels.append(("high", "the client is quoted verbatim from the material"))
 
         # 6. the subject is never its own comparator (a later stage rewriting an
         #    earlier stage's field: new decision, read = what extract wrote, §3)
@@ -595,16 +679,47 @@ class CampaignJob:
                 patch["campaign"]["competitor_set"] = None
                 idec["targets"].append(f"{self.doc}#campaign.competitor_set")
             notes.append(f"{brand['name']} removed from the comparators: it is the client's brand.")
+            ev_pins.append(rsn.point(f"{brand['name']} is the client's brand, so it is not its own comparator",
+                                     f"{self.doc}#campaign.brand"))
+            rejected.append(rsn.rej(f"keep {brand['name']} among the comparators",
+                                    "a brand is never its own comparator"))
 
         idec["rationale"] = " ".join(notes) or "Subject brand, categories and markets already settled."
         p, ds = flush()
         if not ds:
-            ds = [decision(self.doc, did, "edit", self.handler, "identify", idec["rationale"], [])]
+            settled = [f"{self.doc}#campaign.{f}" for f in ("brand", "categories", "markets") if camp.get(f)]
+            ds = [decision(self.doc, did, "edit", self.handler, "identify", idec["rationale"], [],
+                           reasoning=rsn.make(
+                               "Wrote nothing: the brand, categories and markets were already in the document.",
+                               [rsn.point("The document already holds them", settled)],
+                               rsn.certainty("high", "the document holds each of them"),
+                               "a person clears one of them",
+                               only_option="there was nothing left to identify"))]
         text = " ".join(notes) or f"{brand['name']}: brand, categories and markets are settled."
         self.add_chunk("identify", p, ds, facts=facts, text=text)
         with self.lock:
             self.question = None
         return True
+
+    def identify_reasoning(self, idec, ev_material, ev_pins, levels, rejected):
+        """identify's reasoning: the model's points on the material (cite-checked
+        against the material ids), the code's points on the pins it read, and
+        the certainty from the rules — how the brand was settled, and the
+        derived confidence of any pin a field was proposed from."""
+        raw = self._identify_raw or {}
+        fields = [t.partition("#campaign.")[2] for t in idec["targets"] if "#campaign." in t]
+        level = rsn.lowest(l for l, _ in levels) if levels else "high"
+        basis = "; ".join(b for l, b in levels if l == level) or "each field rests on a quote or a pin"
+        r, _ = rsn.from_model(
+            raw.get("reasoning") if ev_material else None,
+            decided=f"Settled {', '.join(f.replace('_', ' ') for f in fields) or 'nothing'} for the campaign.",
+            known=raw.get("material_ids") or [m.id for m in self.materials()],
+            certainty_=rsn.certainty(level, basis), fallback=ev_material, always=ev_pins,
+            would_change_if="the client names a different brand, or the brand layer's roster row changes",
+            rejected=rejected, only_option="the material and the layers point at one reading and nothing else",
+            attention=("Only one brand is named and nothing labels it the client's; confirm it."
+                       if level == "medium" and ev_material else None))
+        rsn.give(idec, r)
 
     def stage_select(self):
         camp = self.W.get("campaign") or {}
@@ -615,7 +730,8 @@ class CampaignJob:
         from .research import LENS_QUESTIONS
         raw = self.caps.model.structured(
             "select", SELECT_SYSTEM,
-            {"prompt": prompt.text if prompt else "", "markets": markets,
+            {"prompt": prompt.text if prompt else "", "prompt_material_id": prompt.id if prompt else None,
+             "markets": markets,
              "categories": [{"code": c, "name": (leaves.get(c) or {}).get("name", c),
                              "regulated": (leaves.get(c) or {}).get("regulated")} for c in cats],
              "lenses": [{"lens": l, "title": LENS_TITLES[l], "question": LENS_QUESTIONS[l][0]} for l in LENSES]},
@@ -649,7 +765,8 @@ class CampaignJob:
                         if skipped else "") + ".",
                      ["selection.lenses_skipped"] + [f"selection.lenses_skipped[{s['lens']}"
                                                      f"{'/' + s['market'] if 'market' in s else ''}]" for s in skipped],
-                     [prompt.id] if prompt else [], fields_changed=["selection.lenses_skipped"])
+                     [prompt.id] if prompt else [], fields_changed=["selection.lenses_skipped"],
+                     reasoning=self.select_reasoning(raw.get("reasoning"), prompt, pairs, skipped, markets))
         by_lens = {}
         for l, m in pairs:
             by_lens.setdefault(l, []).append(m)
@@ -660,11 +777,47 @@ class CampaignJob:
         self.add_chunk("select", {"selection": {"lenses_skipped": prior + skipped}}, [d], text=text)
         return True
 
+    def select_reasoning(self, raw, prompt, pairs, skipped, markets):
+        """select's reasoning: the model's points, cite-checked against the
+        prompt's material id; certainty from the rules — a skip whose reason
+        is the prompt's own words is certain, one the model inferred is not."""
+        pid = [prompt.id] if prompt else []
+        inferred = [s for s in skipped if not (prompt and find_quote(prompt.text, s["reason"]))]
+        if not skipped:
+            level, basis = "high", "every lens runs in every market, the default"
+        elif inferred:
+            level, basis = "medium", "a skip rests on the model's reading rather than the prompt's words"
+        else:
+            level, basis = "high", "every skip quotes the prompt's own instruction"
+        n = len({l for l, _ in pairs})
+        where = lambda s: f" in {market_list([s['market']])}" if "market" in s else ""
+        fallback = [rsn.point("Every lens runs by default unless the prompt says otherwise", pid)]
+        fallback += [rsn.point(f"{LENS_TITLES[s['lens']]}{where(s)} is skipped: {s['reason']}", pid)
+                     for s in skipped]
+        rejected = [rsn.rej(f"research {LENS_TITLES[s['lens']]}{where(s)}", s["reason"]) for s in skipped]
+        if not skipped:
+            rejected.append(rsn.rej("skip lenses the prompt does not mention",
+                                    "research covers every lens unless the prompt limits it"))
+        attention = (f"Skipped for a reason the prompt does not state: "
+                     f"{'; '.join(LENS_TITLES[s['lens']] + where(s) for s in inferred)}." if inferred else None)
+        r, _ = rsn.from_model(
+            raw, decided=f"Research {n} lens(es) across {market_list(markets)}; skip {len(skipped)}.",
+            known=pid, certainty_=rsn.certainty(level, basis), fallback=fallback,
+            would_change_if="the person asks for a skipped lens, or limits the research further",
+            rejected=rejected, attention=attention)
+        return r
+
     def stage_research(self):
         pairs = self.selected[0] if self.selected else []
         if not pairs:
             d = decision(self.doc, self.did("research"), "edit", self.handler, "research",
-                         "Nothing selected: no lens x market to research.", [])
+                         "Nothing selected: no lens x market to research.", [], reasoning=rsn.make(
+                             "Researched nothing: every lens was skipped.",
+                             [rsn.point("The selection leaves no lens and market to research",
+                                        f"{self.doc}#selection.lenses_skipped")],
+                             rsn.certainty("high", "the selection is empty"),
+                             "the person asks for a lens", only_option="there was nothing selected to research",
+                             attention="No research ran; the report will have nothing researched to show."))
             self.add_chunk("research", {}, [d], text="Nothing to research: every lens was skipped.")
             return True
         camp = self.W.get("campaign") or {}
@@ -699,25 +852,35 @@ class CampaignJob:
                                                              with_audience=True)
         except TaskError:
             d = decision(self.doc, self.did("synthesise"), "edit", self.handler, "synthesise",
-                         "No pins to synthesise from; no finding is invented.", [])
+                         "No pins to synthesise from; no finding is invented.", [], reasoning=rsn.make(
+                             "Proposed no finding: research pinned no facts.",
+                             [rsn.point("A finding must cite pins, and the document holds none")],
+                             rsn.certainty("high", "the document holds no pin"),
+                             "research pins facts", only_option="without a pin there is nothing to cite"))
             self.add_chunk("synthesise", {}, [d], text="Nothing to synthesise: research pinned no facts.")
             return True
         self.hits += hits
         n = len(change["findings_append"])
         text = (f"{n} finding(s), each derived by the agent and waiting for a person to verify or reject."
                 if n else "No new findings: what the pins say is already written up.")
-        decs = change["decisions"] or [decision(self.doc, self.did("synthesise"), "edit", self.handler, "synthesise",
-                                                result["summary"], [])]
+        decs = change["decisions"] or [decision(
+            self.doc, self.did("synthesise"), "edit", self.handler, "synthesise", result["summary"], [],
+            reasoning=rsn.make("Proposed no new finding.",
+                               [rsn.point("Every set of pins worth a statement is already written up",
+                                          [f["id"] for f in ctx_findings(self.wclan())])],
+                               rsn.certainty("high", "the findings already cover the pins"),
+                               "research pins new facts", only_option="nothing new was left to say"))]
         self.add_chunk("synthesise", change["data_patch"], decs, findings=change["findings_append"], text=text)
         return True
 
     def stage_report(self):
         clan = self.latest_clan  # the request's document, now holding every earlier stage
-        report, cites, hits = report_stage.compose(self.doc, clan, self.handler, self.caps)
+        report, cites, hits, why = report_stage.compose(self.doc, clan, self.handler, self.caps)
         d = decision(self.doc, self.did("report"), "edit", self.handler, "report",
                      "The report stage: structured blocks over the pins and findings the document held once the "
                      "earlier stages had landed. Every claim was checked against the document: it cites a pin or a "
-                     "finding and states no figure they do not hold.", ["report"], cites, fields_changed=["report"])
+                     "finding and states no figure they do not hold.", ["report"], cites, fields_changed=["report"],
+                     reasoning=why)
         self.hits += hits
         self.add_chunk("report", {"report": report}, [d], base=clan.get("version"), read_from=ctx_data(clan),
                        text="Report ready. The short list under it is what to confirm before the brief.")

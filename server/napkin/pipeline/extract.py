@@ -25,6 +25,7 @@ from ..rules import budget as budget_rules
 from ..rules import markets as market_rules
 from ..rules.quotes import find_quote
 from ..util import bad, iso, lid, slug, uid
+from .. import reasoning as rsn
 
 SYSTEM = """You read a client's campaign ask for an advertising agency's research tool.
 You are given the person's prompt and any attached material, each with a material_id.
@@ -34,7 +35,8 @@ When the material does not support a field, return null (or an empty list). Neve
 never default, never use outside knowledge. Relative dates ("next spring") are not dates.
 Markets are countries: return ISO 3166-1 alpha-2 codes (the United Kingdom is GB).
 Budget: report the amount and currency exactly as stated; do not convert.
-Slugs are lowercase snake_case (tv, bvod, ooh, audio, social_meta, tvc_30, social_cutdowns, ooh_6sheet)."""
+Slugs are lowercase snake_case (tv, bvod, ooh, audio, social_meta, tvc_30, social_cutdowns, ooh_6sheet).
+The reasoning is about what you read and what you left out: cite the material_id each point rests on.""" + rsn.GUIDE
 
 _Q = {"quote": {"type": "string"}, "material_id": {"type": "string"}}
 
@@ -66,6 +68,7 @@ SCHEMA = _obj({
     "constraints": {"type": "array", "items": _obj({"kind": {"type": "string", "enum": ["legal", "brand",
                                                                                          "mandatory"]},
                                                     "text": {"type": "string"}, **_Q})},
+    "reasoning": rsn.MODEL_SCHEMA,
 })
 
 FIELD_GUIDE = {
@@ -336,10 +339,13 @@ def run_extract(doc, base, clan, inp, handler, caps, skip=(), did=None, action="
     rationale = (f"Read {len(mats)} material(s) with one structured-output call; filled {len(written)} field(s) "
                  f"from verified spans{' and layer pins' if proposed else ''}; abstained on {len(abstained)}"
                  + (f"; held back {len(withheld)} human-owned" if withheld else "") + ".")
+    reasoning, why_notes = extract_reasoning(raw.get("reasoning"), mats, facts, proposed, campaign_patch, written,
+                                             abstained, withheld, notes)
+    notes += why_notes
     dec = decision(doc, did, "edit", handler, action, rationale,
                    [f"campaign.{f}" for f in written] or ["campaign"], cites,
                    fields_changed=[f"campaign.{f}" for f in written],
-                   material_read=[m.id for m in mats], abstained=abstained)
+                   material_read=[m.id for m in mats], abstained=abstained, reasoning=reasoning)
     if unread:
         dec["material_unread"] = unread
     change = {"doc": doc, "base_version": base, "data_patch": patch, "read": read_of(data, patch),
@@ -351,3 +357,57 @@ def run_extract(doc, base, clan, inp, handler, caps, skip=(), did=None, action="
               "notes": notes, "materials_read": [m.id for m in mats], "materials_unread": unread,
               "materials_new": sorted(new_mats)}
     return result, change, hits
+
+
+def _label(f: str) -> str:
+    return f.replace("_", " ")
+
+
+def extract_reasoning(raw, mats, facts, proposed, campaign_patch, written, abstained, withheld, notes):
+    """The extraction's reasoning: the model's points, cite-checked against the
+    materials and pins it was given; certainty from the rules — every written
+    value rests on a verbatim quote or a pin, and how many the model read that
+    did not verify."""
+    fact_by = {f.get("id"): f for f in facts}
+    mat_name = {m.id: m.name for m in mats}
+    known = set(mat_name) | {fid for p in proposed.values() for fid in p["fact_ids"]}
+    fallback = []
+    for f in written:
+        env = campaign_patch[f]
+        if env.get("origin") == "proposed":
+            fallback.append(rsn.point(f"{_label(f)} comes from the brand's roster pins in the layer", env["fact_ids"]))
+        else:
+            mid = (env.get("source") or {}).get("material_id")
+            fallback.append(rsn.point(f"{_label(f)} is read verbatim from {mat_name.get(mid, 'the material')}", mid))
+    if not fallback:
+        fallback = [rsn.point("Nothing in the material verified against a field", [m.id for m in mats])]
+    pin_levels = [fact_by.get(fid, {}).get("confidence") for p in proposed.values() for fid in p["fact_ids"]]
+    if not written:
+        level, basis = "low", "nothing the material says could be written to a field"
+    elif notes:
+        level = "medium"
+        basis = (f"every written value rests on a verbatim quote or a pin, but the rules dropped {len(notes)} "
+                 f"value(s) the model read (a quote not in the material, not a country code, no dated window)")
+    else:
+        level, basis = "high", "every written value rests on a quote found verbatim in the material, or on a pin"
+    if pin_levels:
+        lowest = rsn.lowest(pin_levels)
+        if rsn.LEVELS.index(lowest) < rsn.LEVELS.index(level):
+            level, basis = lowest, f"{basis}; the lowest pin it proposes from is {lowest} (derived)"
+    rejected = ([rsn.rej(f"fill {', '.join(_label(f) for f in abstained[:6])}"
+                         + (" and more" if len(abstained) > 6 else ""),
+                         "nothing in the material supports them; a field is absent rather than guessed")]
+                if abstained else [])
+    rejected += [rsn.rej(f"write {_label(f)}", w) for f, w in withheld.items()]
+    attention = []
+    if notes:
+        attention.append(f"The rules dropped {len(notes)} value(s) the model read: {'; '.join(notes[:3])}.")
+    if withheld:
+        attention.append(f"Held back {', '.join(_label(f) for f in withheld)}: a person owns them.")
+    decided = (f"Filled {', '.join(_label(f) for f in written)} from the material." if written
+               else "Filled no field from the material.")
+    return rsn.from_model(
+        raw, decided=decided, known=known, certainty_=rsn.certainty(level, basis), fallback=fallback,
+        would_change_if="the client's material says otherwise, or a person confirms a different value",
+        rejected=rejected, only_option="every field the material names was filled; nothing else was on offer",
+        attention=" ".join(attention) or None)

@@ -137,7 +137,7 @@ def test_report_claims_are_checked_in_code(store):
     _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
                            ["automotive.ev_charging"]).run()
     clan = dict(rclan(["IE"]), facts=rch["facts_append"])
-    rpt, cites, _ = report.compose(DOC, clan, "t@1.0", caps)
+    rpt, cites, _, why = report.compose(DOC, clan, "t@1.0", caps)
     texts = [b["text"] for s in rpt["sections"] for b in s["blocks"] if b["kind"] == "claim"]
     assert texts and not any("42" in t for t in texts)                 # the made-up figure was dropped
     assert all(s["cites"] for s in rpt["summary"])                     # the uncited line was dropped

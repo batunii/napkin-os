@@ -32,6 +32,7 @@ from ..rules.figures import quote_supports
 from ..rules.quotes import verbatim
 from ..rules.tiering import registrable, tier_for
 from ..util import bad, iso, lid, slug, today, uid
+from .. import reasoning as rsn
 
 # The standing question each lens asks (Planner Research Taxonomy, panel 3),
 # and the facts it wants — the wanted keys become gaps when not found.
@@ -375,6 +376,7 @@ class Researcher:
                                  f"{' with the pinned value' if ct['pinned'] is not None else ''}; the layer rows are "
                                  f"contested and nothing is picked.")
             cdec["cites"] = [v["fact_id"] for v in vals] + [s for v in vals for s in v["sources"]]
+            rsn.give(cdec, contest_reasoning(ct["key"], cid, vals))
             contest_decs.append(cdec)
 
         # selection
@@ -397,7 +399,8 @@ class Researcher:
                 [f"selection.lenses_run[{u['lens']}/{u['market']}]"] + [f"selection.gaps[{g['id']}]" for g in u["gaps"]],
                 [s["sid"] for s in u["sources"]], timestamp=t_now,
                 fields_changed=["selection.lenses_run", "selection.coverage_by_market"]
-                + (["selection.gaps"] if u["gaps"] else [])))
+                + (["selection.gaps"] if u["gaps"] else []),
+                reasoning=run_reasoning(u, cov, self.reuse_days)))
         old_cbm = sel.get("coverage_by_market") or {}
         cbm_all = {m: dict(old_cbm.get(m) or {}) for m in old_cbm}
         for m, v in by_market.items():
@@ -434,6 +437,7 @@ class Researcher:
             + ". Each fact was written to the layer with this decision before it was pinned; confidence is "
               "derived from source tier and corroboration.")
         merge_dec["fields_changed"] = ["selection.coverage", "selection.coverage_by_market"]
+        rsn.give(merge_dec, merge_reasoning(facts_append, contests, gaps, len(units), n_reused))
         change = {"doc": doc, "base_version": self.base, "data_patch": {"selection": sel_patch},
                   "read": read_of(self.data, {"selection": sel_patch}),
                   "facts_append": facts_append, "findings_append": [],
@@ -478,3 +482,110 @@ class Researcher:
             f["market"] = row["market"]
         assert f["confidence"] in CONF
         return f
+
+
+# ---------------------------------------------------------------------------
+# Reasoning: every research decision is deterministic, so the code writes it
+# whole from the evidence it holds. Certainty is the derived confidence.
+# ---------------------------------------------------------------------------
+
+def _where(market):
+    return f" in {market_list([market])}" if market else ""
+
+
+def _fact_line(f) -> str:
+    unit = f" {f['unit']}" if f.get("unit") and f["unit"] not in ("text", "code", "date", "boolean") else ""
+    return f"{f['entity']} {f['key']}{_where(f.get('market'))} is {f['value']}{unit}"
+
+
+def run_reasoning(u, cov, reuse_days) -> dict:
+    """One lens x market run: what came back, what passed the quote check,
+    what was not found. Certainty from coverage: every fact corroborated
+    (filled) is high, some single-source (thin) medium, nothing (empty) low."""
+    lens, market = u["lens"], u["market"]
+    sids = [s["sid"] for s in u["sources"]]
+    gids = [g["id"] for g in u["gaps"]]
+    because, rejected = [], []
+    if u["reused"]:
+        rows = [c["row"]["id"] for c in u["cands"]]
+        because.append(rsn.point(f"The layers already held {u['reused']} fresh fact(s) for this lens and market",
+                                 rows))
+        rejected.append(rsn.rej("research it again", f"the layers' facts are within the {reuse_days}-day reuse "
+                                                     f"window, so a new call would spend for nothing"))
+    elif u["error"]:
+        because.append(rsn.point(f"The research call failed: {u['error'][:160]}", gids or sids))
+        rejected.append(rsn.rej("report the lens as covered", "a failed run is a gap, never a silent success"))
+    else:
+        because.append(rsn.point(f"{len(sids)} source(s) came back for {lens.replace('_', ' ')}{_where(market)}",
+                                 sids) if sids else rsn.point("No source came back for the lens here", gids))
+        passed = [c for c in u["cands"]]
+        if passed:
+            because.append(rsn.point(f"{len(passed)} fact(s) passed the quote check: the quote is verbatim in "
+                                     f"the source and the figure is in the quote",
+                                     [s for c in passed for s in c["sources"]]))
+        rejected.append(rsn.rej("keep what the model read but the source does not say",
+                                "a fact is kept only when its quote is in the source's excerpts"))
+    if u["gaps"]:
+        because.append(rsn.point(f"Not found: {', '.join(g['searched'] for g in u['gaps'][:4])}", gids))
+    level = {"filled": "high", "thin": "medium"}.get(cov, "low")
+    basis = {"filled": "coverage filled: every fact rests on two or more independent sources",
+             "thin": "coverage thin: some facts rest on a single source",
+             "empty": "coverage empty: nothing passed the checks"}[cov]
+    attention = None
+    if u["error"]:
+        attention = "The research call failed; this lens and market is a gap until it is rerun."
+    elif cov == "empty":
+        attention = "Nothing was found for this lens here."
+    elif cov == "thin":
+        attention = "Some facts here rest on one source."
+    return rsn.make(f"Ran {lens.replace('_', ' ')}{_where(market)}: coverage {cov}.", because,
+                    rsn.certainty(level, basis),
+                    "a new source states what was not found, or a corroborating source appears",
+                    rejected=rejected, attention=attention)
+
+
+def merge_reasoning(pins, contests, gaps, n_units, n_reused) -> dict:
+    """The merge: which facts were pinned and on what evidence. Certainty is
+    the lowest derived confidence of the pins (source tier + independent
+    corroboration), never an average and never the model's."""
+    because = [rsn.point(_fact_line(f) + f": {len(f['sources'])} source(s), confidence {f['confidence']}",
+                         f["id"], f["sources"]) for f in pins[:10]]
+    if len(pins) > 10:
+        rest = pins[10:]
+        because.append(rsn.point(f"and {len(rest)} more pin(s)", [f["id"] for f in rest]))
+    if not because:
+        because = [rsn.point("Nothing new passed the checks to pin", [g["id"] for g in gaps])]
+    rejected = [rsn.rej(f"pin one of the values for {c['key']}",
+                        "the runs disagree; the contest holds every value and nothing is picked") for c in contests]
+    rejected.append(rsn.rej("pin a fact the layer has not recorded",
+                            "every fact is written to its layer with this decision first, then pinned from the row"))
+    counts = {l: sum(1 for f in pins if f["confidence"] == l) for l in rsn.LEVELS}
+    level = rsn.lowest(f["confidence"] for f in pins) if pins else "low"
+    basis = ("lowest derived confidence of the pins (source tier + independent corroboration): "
+             + ", ".join(f"{counts[l]} {l}" for l in reversed(rsn.LEVELS) if counts[l])) if pins else \
+        "nothing was pinned"
+    attention = []
+    if counts["low"]:
+        attention.append(f"{counts['low']} pin(s) rest on thin evidence (low confidence).")
+    if contests:
+        attention.append(f"{len(contests)} value(s) are contested and wait for a person.")
+    return rsn.make(f"Pinned {len(pins)} fact(s) from {n_units} run(s)"
+                    + (f", {n_reused} reused from the layers" if n_reused else "") + ".",
+                    because, rsn.certainty(level, basis),
+                    "a higher-tier or corroborating source revises a value, or a person excludes a pin",
+                    rejected=rejected, attention=" ".join(attention) or None)
+
+
+def contest_reasoning(key, cid, vals) -> dict:
+    """A contest: every value with the facts and sources it rests on;
+    nothing is picked."""
+    because = [rsn.point(f"The pinned value is {v['value']}" if v["from"] == "pinned"
+                         else f"The {v['from']} run says {v['value']}", v["fact_id"], v.get("sources") or [])
+               for v in vals]
+    return rsn.make(
+        f"Opened a contest on {key}; nothing is picked.", because,
+        rsn.certainty("high", "the values differ as their sources state them; which is right is what is open"),
+        "a primary source settles the value, or a person resolves the contest",
+        rejected=[rsn.rej("pick either value silently", "nothing in the evidence says which run is right"),
+                  rsn.rej("drop the contested values", "the evidence for each would be lost")],
+        attention=f"The runs disagree on {key}; a person should resolve it ({cid}).")

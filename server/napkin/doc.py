@@ -13,6 +13,7 @@ import json
 import re
 
 from . import BACKEND
+from .reasoning import give
 from .util import bad, iso, norm_sha
 
 LENSES = [
@@ -226,7 +227,10 @@ def apply_patch(target, patch):
     return out
 
 
-def decision(doc, did, kind, handler, action, rationale, targets, cites=(), timestamp=None, **extra) -> dict:
+def decision(doc, did, kind, handler, action, rationale, targets, cites=(), timestamp=None, reasoning=None,
+             **extra) -> dict:
+    """One decision (middleware-api §3). With `reasoning`, the rationale is its
+    one-line summary; the reasoning can also be given later (`reasoning.give`)."""
     d = {
         "id": did, "kind": kind, "agent": handler, "action": action,
         "rationale": rationale, "targets": [f"{doc}#{t}" for t in targets],
@@ -234,6 +238,8 @@ def decision(doc, did, kind, handler, action, rationale, targets, cites=(), time
         "timestamp": timestamp or iso(),
     }
     d.update(extra)
+    if reasoning is not None:
+        give(d, reasoning)
     return d
 
 
