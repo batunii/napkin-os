@@ -169,7 +169,11 @@ class Middleware:
             self.brief_conflict(task, inp, scope, doc)
             self.jobs.add(job)
             job.start()
-            return self.brief_envelope(job, None)
+            # a long task's first reply is queued, with no change (§2 Jobs): the
+            # host polls, and every poll carries what finished since
+            first = {**job.view(), "state": "queued", "progress": {"done": 0, "total": len(job.stages)},
+                     "stage": job.stages[0], "finished_at": None, "error": None}
+            return self.envelope(job.task, job.handler, first, {**job.result(), "summary": "queued"}, None, job.caps)
         if mod.KIND == "short":
             if task == "compose_report" and self.jobs.unfinished_campaign(scope, doc):
                 raise TaskError(409, "job_state", "a start_campaign job on this document is unfinished; one "

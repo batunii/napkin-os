@@ -24,7 +24,7 @@ from conftest import Server
 from fakes import BRIEF_TEXT, INSIGHT_SHARP, SMPS, FakeModel, FakeRetrievalService
 
 REPO = Path(__file__).resolve().parents[2]
-ADDITIONS = json.loads((REPO / "docs/contracts/peripherals/brief-maker.schema.json").read_text())
+BRIEF_SCHEMA = json.loads((REPO / "app/templates/brief-maker/schema.json").read_text())
 DOC = "bbbbbbbb-2222-4333-8444-555555555555"
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"1" * 32).decode()
 
@@ -130,9 +130,8 @@ def check_change_rules(host):
                 assert ok, f"{d['id']} cites {c}, which does not resolve"
         assert d["handler"].startswith(("draft_brief@1", "regenerate_field@1"))
         assert d["agent"].rsplit("/", 1)[-1] in ("extract", "drafter", "judge")
-    # the §10.4 blocks validate against the contract's shapes
-    jsonschema.Draft7Validator(ADDITIONS).validate({k: data[k] for k in ("materials", "capture", "review", "passages")
-                                                    if k in data})
+    # the document validates against Brief Maker's schema, the §10.4 blocks included
+    jsonschema.Draft7Validator(BRIEF_SCHEMA).validate(data)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -143,6 +142,7 @@ def test_draft_brief_end_to_end(bserver):
     last = replies[-1]
     assert last["job"]["state"] == "done" and last["task"] == "draft_brief" and last["handler"] == "draft_brief@1.0"
     assert last["job"]["progress"] == {"done": 3, "total": 3} and last["job"]["question"] is None
+    assert replies[0]["job"]["state"] == "queued" and replies[0]["change"] is None  # a long task, polled
     for r in replies:
         assert set(r["result"]["fields"]) == set(KEYS) and r["job"]["stage"] in ("extract", "draft", "judge")
         assert r["task"] == "draft_brief" and r["handler"] == "draft_brief@1.0"
@@ -472,6 +472,27 @@ def test_regenerate_a_captured_field_rederives_from_the_capture(bserver):
     assert replies[-1]["result"]["fields"]["audience"]["state"] == "proposed"
     assert replies[-1]["result"]["proposals"][0]["value"].startswith("Thirty-something")
     assert not any(c[0].startswith("draft_") for c in bserver.model.calls[-3:])
+
+
+def test_regenerate_open_questions_recomposes_without_judging(tmp_path):
+    model = FakeModel()
+    model.fail_checks[("judge_smp", "not_a_tagline")] = 2
+    s = Server(tmp_path, model=model, retrieval=retrieval())
+    try:
+        host = Host()
+        run(s, host)
+        host.data["open_questions"] = ["wiped by a person"]
+        host.chain.append({"id": "d_HUMAN00003", "kind": "edit", "actor": "process:middleware", "action": "x",
+                           "targets": [f"{DOC}#open_questions"], "timestamp": "2026-09-24T10:00:00Z"})
+        n = len(model.calls)
+        replies = run(s, host, task="regenerate_field", inp={"field": "open_questions"})
+        assert not any(p.startswith(("judge_", "draft_")) for p, _, _ in model.calls[n:])
+        assert any(q.startswith("Agree the single-minded proposition.") for q in host.data["open_questions"])
+        replies = run(s, host, task="regenerate_field", inp={"field": "project_name"})
+        assert replies[-1]["result"]["fields"]["project_name"]["state"] == "absent"
+        assert "Nothing supports" in replies[-1]["result"]["summary"]
+    finally:
+        s.stop()
 
 
 def test_errors_and_concurrency(tmp_path):

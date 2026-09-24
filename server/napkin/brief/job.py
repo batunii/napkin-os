@@ -421,10 +421,13 @@ class BriefJob:
                 continue
             for k in d.keys:
                 values[k] = clean(k, d.leaf(k))
+        judge_only = self.fm[self.field].get("rubric") if self.task == "regenerate_field" else None
+        # regenerate_field of a field with no rubric (open questions, project name, client): nothing to judge
+        judging = not (self.task == "regenerate_field" and judge_only is None)
         ctx = getattr(self, "ctx", None) or self._context()
         g = ctx.gist()
         q7, _ = _query("loop7_qa", g, values.get("single_minded_proposition") or values.get("insight"), "judge")
-        loop7, l7notes = ctx.retrieve("loop7_qa", q7, None) if ctx.caps.retrieval.configured else ({}, [])
+        loop7, l7notes = ctx.retrieve("loop7_qa", q7, None) if judging and ctx.caps.retrieval.configured else ({}, [])
         self.hits += [h for h in ctx.hits if h not in self.hits]
         rules = [{"id": pid, "citation": p["citation"], "text": p["text"]} for pid, p in list(loop7.items())[:4]]
         rule_ids = [r["id"] for r in rules]
@@ -432,15 +435,12 @@ class BriefJob:
         patch, decisions, verdicts = {}, [], []
         field_results, judged_out = [], {}
         failed_keys, bad_captured = [], []
-        judge_only = None
-        if self.task == "regenerate_field":
-            judge_only = self.fm[self.field].get("rubric")
         model = self.caps.model
 
         def edit_ref(k):
             return self.writer.get(k) or last_writer(self.doc, self.chain, k) or f"{self.doc}#{k}"
 
-        for rid, keys in rubric_groups(self.fm):
+        for rid, keys in (rubric_groups(self.fm) if judging else []):
             if judge_only is not None and rid != judge_only:
                 continue
             live = [k for k in keys if k not in self.locked and filled(values.get(k))]
@@ -502,7 +502,8 @@ class BriefJob:
             verdicts.append(self._verdict(rid, live, res, fails, outcome, cites, rule_ids if res["model_ran"] else []))
         # coherence, over the brief as it would stand
         only = {judge_only} if judge_only else None
-        coh, coh_ran, coh_err = coherence(model, {k: v for k, v in values.items() if k not in failed_keys}, rules, only)
+        coh, coh_ran, coh_err = coherence(model, {k: v for k, v in values.items() if k not in failed_keys}, rules,
+                                          only) if judging else ([], False, None)
         for c in coh:
             if c["status"] != FAIL:
                 continue
@@ -517,6 +518,15 @@ class BriefJob:
             if any(r in v["cites"] for v in verdicts):
                 passages_out[r] = loop7[r]
         # open questions (written whole)
+        if self.task == "regenerate_field" and self.field == "open_questions":
+            prev = ((self.W.get("review") or {}).get("judge") or {}).get("fields") or {}
+            for fk, fr in prev.items():
+                if fk in self.fm and fr.get("outcome") == "failed":
+                    bad = [c for c in fr.get("checks") or [] if c.get("status") == FAIL]
+                    if self.fm[fk]["class"] == "drafted" and not filled(values.get(fk)):
+                        failed_keys.append(fk)
+                    elif self.fm[fk]["class"] == "captured" and bad:
+                        bad_captured.append((fk, [{"check": bad[0]["check"], "reason": bad[0].get("note") or ""}]))
         if self.task == "draft_brief" or self.field == "open_questions":
             self._questions(values, failed_keys, bad_captured, verdicts, patch, decisions)
         # review, again: a deliberate rewrite with a new decision id (draft_brief only)
