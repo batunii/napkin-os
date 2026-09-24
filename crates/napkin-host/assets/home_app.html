@@ -19,7 +19,7 @@
     --paper:#FFFFFF; --card:#FFFFFF; --soft:#F5F6F8; --soft-2:#F2F3F6;
     --line:#D6DAE2; --line-soft:#E7E9EE;
     --ink:#14161B; --ink2:#4A4F5C; --ink3:#737987;
-    --plan:#14161B; --create:#FF4F2E; --produce:#8B919E; --learn:#DADDE3;
+    --plan:#14161B; --plan-fg:#FFFFFF; --create:#FF4F2E; --produce:#8B919E; --learn:#DADDE3;
     --status-red:#FF4F2E;
     --shadow-soft:0 10px 30px rgba(20,30,60,.08); --shadow-pill:0 1px 3px rgba(20,22,27,.1);
     --f-display:'Geist','Helvetica Neue',Arial,sans-serif;
@@ -33,7 +33,7 @@
       --paper:#0F1114; --card:#161A1F; --soft:#1B1F25; --soft-2:#22262D;
       --line:#2A2F38; --line-soft:#22262D;
       --ink:#F2F3F5; --ink2:#A6ACB8; --ink3:#7A808C;
-      --plan:#F2F3F5; --learn:#3A3F48;
+      --plan:#F2F3F5; --plan-fg:#0F1114; --learn:#3A3F48;
       --shadow-soft:0 10px 30px rgba(0,0,0,.4); --shadow-pill:0 1px 3px rgba(0,0,0,.5);
     }
   }
@@ -42,7 +42,7 @@
     --paper:#0F1114; --card:#161A1F; --soft:#1B1F25; --soft-2:#22262D;
     --line:#2A2F38; --line-soft:#22262D;
     --ink:#F2F3F5; --ink2:#A6ACB8; --ink3:#7A808C;
-    --plan:#F2F3F5; --learn:#3A3F48;
+    --plan:#F2F3F5; --plan-fg:#0F1114; --learn:#3A3F48;
     --shadow-soft:0 10px 30px rgba(0,0,0,.4); --shadow-pill:0 1px 3px rgba(0,0,0,.5);
   }
 
@@ -74,10 +74,17 @@
   .app .err{font-size:12px;line-height:1.4;color:var(--status-red)}
   /* The app's identity: its declared icon when the library can show one,
      otherwise its initial on a rounded square (the studio's own mark is the
-     disc; an app never wears it). */
+     disc; an app never wears it). The tile is the app's zone colour. Every
+     app installed today is a Plan tool, so Plan is the tile: ink, inverting
+     in dark like the rest of the studio's ink. An SVG mark (data:image/svg+xml)
+     is a shape, not a picture: it is used as a mask and painted in the zone's
+     foreground, so one mark reads in light and dark. Any other icon (a PNG,
+     a URL) is shown as it is. */
   .icon{width:44px;height:44px;flex:none;border-radius:var(--r-card);display:flex;align-items:center;justify-content:center;
-    background:var(--ink);color:var(--paper);font-size:19px;font-weight:700;letter-spacing:-.03em;overflow:hidden}
+    background:var(--plan);color:var(--plan-fg);font-size:19px;font-weight:700;letter-spacing:-.03em;overflow:hidden}
   .icon img{width:100%;height:100%;object-fit:cover;display:block}
+  .icon .mk{width:100%;height:100%;display:block;background:currentColor;
+    -webkit-mask:var(--mark) center/100% 100% no-repeat;mask:var(--mark) center/100% 100% no-repeat}
   .app.open{border-style:dashed;background:transparent;color:var(--ink2);align-items:center;justify-content:center;gap:8px}
   .app.open:hover{border-color:var(--ink2);box-shadow:none;color:var(--ink)}
   .app.open .plus{width:22px;height:22px;color:var(--ink3)}
@@ -185,9 +192,12 @@
   var ICON_PLUS = '<svg class="plus" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M11 5v12M5 11h12"/></svg>';
 
   // An app's own mark: its declared icon when it is something a page can show
-  // (a URL or data: URI), else its initial.
+  // (a URL or data: URI), else its initial. An SVG data: mark is painted in
+  // the tile's colours (see .icon .mk); it must not carry a double quote.
   function mark(app){
     var ic = app.icon || '';
+    if (/^data:image\/svg\+xml[,;]/.test(ic) && ic.indexOf('"') < 0)
+      return '<div class="icon" aria-hidden="true"><span class="mk" style="--mark:url(&quot;'+esc(ic)+'&quot;)"></span></div>';
     if (/^(data:image\/|https?:\/\/)/.test(ic)) return '<div class="icon"><img alt="" src="'+esc(ic)+'"></div>';
     return '<div class="icon" aria-hidden="true">'+esc((app.name||'?').trim().slice(0,1).toUpperCase())+'</div>';
   }
