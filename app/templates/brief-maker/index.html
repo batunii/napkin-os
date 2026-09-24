@@ -701,6 +701,8 @@
     var pre=(i>=0?a.slice(0,i):a.replace(ANSWER_TAIL,'')).trim();
     var bs=r?arr(r.because):[], rule=bs.filter(function(b){ return /^The rule: /.test(String(b.point||'')); })[0];
     var reason=pre?pre.replace(/^[a-z_ ]+:\s*/,''):(bs[0]?String(bs[0].point||''):(d.rationale||''));
+    // an older verdict's reason was cut mid-sentence: say so
+    if(pre&&reason&&!/[.!?…)'"’”]$/.test(reason)) reason+='…';
     return {reason:reason, fix:fix, rule:rule?String(rule.point).replace(/^The rule: /,''):''};
   }
   // A proposal waits for the person while nothing has written the field since,
@@ -852,7 +854,7 @@
     var across=listWords(acrossOf(d));
     if(home&&home.key!==f.key){
       return '<div class="note-v note-x">'+fig('judge',{state:'needs-you',decorative:true})
-        +'<div>Part of one check across '+esc(across)+code+': see <a href="#" class="act-goto" data-k="'+esc(home.key)+'">'+esc(home.label)+'</a>.</div></div>';
+        +'<div>Part of one check across '+esc(across)+code+': see <a href="#" class="act-goto" data-k="'+esc(home.key)+'">'+esc(home.key.indexOf('.')!==-1?home.sec+' › '+home.label:home.label)+'</a>.</div></div>';
     }
     var rf=reasonFix(d);
     return '<div class="note-v" data-cross="'+esc(d.id||'')+'">'+fig('judge',{state:'needs-you',decorative:true})
