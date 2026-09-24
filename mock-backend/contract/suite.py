@@ -58,7 +58,8 @@ class Client:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
                 status, text, rh = r.status, r.read(), dict(r.headers.items())
         except urllib.error.HTTPError as e:
-            status, text, rh = e.code, e.read(), dict(e.headers.items())
+            with e:
+                status, text, rh = e.code, e.read(), dict(e.headers.items())
         except (ConnectionError, urllib.error.URLError) as e:
             return None, {"_transport_error": str(e)}, {}, time.monotonic() - t0
         try:

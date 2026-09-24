@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import Client, Result, error_type, is_error_shape  # noqa: E402
+from suite import Client, Result, error_type, is_error_shape  # noqa: E402
 
 ORIGIN_RE = re.compile(r"^fact://(brand|category)/.+/[a-z0-9_]+(\.[a-z0-9_]+)*@[1-9][0-9]*$")
 LEAF_KEYS = {"code", "name", "vertical", "vertical_name", "aliases", "regulated", "provisional"}
