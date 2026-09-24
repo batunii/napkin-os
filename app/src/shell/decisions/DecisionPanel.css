@@ -1,0 +1,282 @@
+/* The decision panel. Colours and type come only from the tokens in
+   index.css; --create is the design's "needs you", so it marks attention and
+   nothing else here. */
+
+/* ── the toggle, while the panel is closed ──────────────────────────────── */
+
+.dp-rail {
+  flex-shrink: 0;
+  width: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  border: 0;
+  border-left: 1px solid var(--line-soft);
+  background: var(--paper);
+  color: var(--ink2);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.dp-rail:hover { background: var(--soft); color: var(--ink); }
+.dp-rail-label {
+  writing-mode: vertical-rl;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dp-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: var(--create);
+  color: var(--create-fg);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── the panel ──────────────────────────────────────────────────────────── */
+
+.dp-panel {
+  flex-shrink: 0;
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  border-left: 1px solid var(--line-soft);
+}
+
+.dp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 10px 4px 16px;
+}
+.dp-title { font-size: 18px; font-weight: 700; letter-spacing: -0.03em; margin-top: 4px; color: var(--ink); }
+
+.dp-lock { padding: 0 16px 4px; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
+.dp-lock-blocked { color: var(--ink); }
+
+.dp-filters { padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+.dp-filters .ch-seg button { white-space: nowrap; }
+.dp-who { display: block; padding: 0 12px; }
+.dp-who select {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.dp-scroll { flex: 1; overflow-y: auto; padding: 4px 12px 24px; }
+.dp-loading { display: flex; justify-content: center; padding: 40px 0; }
+.dp-section { margin: 14px 4px 8px; }
+
+.dp-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ── one decision ───────────────────────────────────────────────────────── */
+
+.dp-block {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.dp-block-needs {
+  border-color: color-mix(in srgb, var(--create) 45%, var(--card));
+  box-shadow: inset 3px 0 0 var(--create);
+}
+.dp-block-old { opacity: 0.6; }
+
+.dp-block-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.dp-who-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.dp-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-mark {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--learn);
+  color: var(--learn-fg);
+  font-size: 12px;
+  font-weight: 700;
+}
+.dp-mark-person { border-radius: 50%; background: var(--soft-2); color: var(--ink); border: 1px solid var(--line); }
+.dp-meta { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.dp-meta time { font-size: 11px; color: var(--ink3); white-space: nowrap; }
+.dp-kind {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink2);
+}
+
+.dp-reasons { list-style: none; display: grid; gap: 6px; margin-bottom: 8px; }
+.dp-reasons li {
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--create) 9%, var(--card));
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.dp-blocks {
+  display: inline-block;
+  margin-right: 6px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--create);
+}
+
+.dp-what { font-weight: 500; }
+.dp-rationale { margin-top: 6px; color: var(--ink2); }
+.dp-note { margin-top: 8px; font-size: 12px; color: var(--ink3); }
+
+.dp-targets { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dp-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--soft);
+  color: var(--ink2);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.dp-upstream { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
+
+.dp-why { margin-top: 10px; display: grid; gap: 8px; }
+.dp-why dt {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+.dp-why dd { margin-top: -6px; color: var(--ink); }
+.dp-because, .dp-rejected { list-style: none; display: grid; gap: 6px; }
+.dp-because li, .dp-rejected li { padding-left: 12px; position: relative; }
+.dp-because li::before, .dp-rejected li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 5px;
+  height: 1px;
+  background: var(--ink3);
+}
+.dp-rejected li { color: var(--ink2); }
+.dp-rejected b { font-weight: 500; color: var(--ink); }
+
+.dp-level {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2);
+}
+.dp-level-high { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.dp-level-low {
+  background: color-mix(in srgb, var(--create) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--create) 40%, var(--card));
+  color: var(--create);
+}
+
+/* ── cites ──────────────────────────────────────────────────────────────── */
+
+.dp-cited { margin-top: 5px; }
+.dp-cited-label { margin-right: 6px; font-size: 11.5px; color: var(--ink3); }
+.dp-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dp-chip {
+  max-width: 100%;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink2);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.dp-chip:hover { background: var(--soft); color: var(--ink); }
+.dp-chip[aria-expanded='true'] { border-color: var(--ink); color: var(--ink); background: var(--soft-2); }
+.dp-chip-unknown { border-style: dashed; }
+
+.dp-cite {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 12px;
+}
+.dp-cite-label { margin-top: 2px; font-weight: 500; color: var(--ink); }
+.dp-cite p { margin-top: 4px; color: var(--ink2); }
+.dp-cite blockquote { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--line); color: var(--ink); font-style: italic; }
+.dp-cite code { display: block; margin-top: 6px; font-family: var(--f-mono); font-size: 10px; color: var(--ink3); overflow-wrap: anywhere; }
+
+/* ── loading (stand-in for the shared LogoSpinner) ──────────────────────── */
+
+.dp-spinner { display: inline-flex; animation: dp-spin 1.4s linear infinite; }
+@keyframes dp-spin { to { transform: rotate(360deg); } }
+
+/* ── narrow screens: the panel covers the app, the toggle floats ────────── */
+
+@media (max-width: 760px) {
+  .dp-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    width: auto;
+    border-left: 0;
+  }
+  .dp-rail {
+    position: fixed;
+    right: 14px;
+    bottom: 48px;
+    z-index: 60;
+    width: auto;
+    flex-direction: row;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    background: var(--frost);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    box-shadow: var(--shadow-pill);
+  }
+  .dp-rail-label { writing-mode: horizontal-tb; }
+}

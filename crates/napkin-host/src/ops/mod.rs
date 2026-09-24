@@ -7,13 +7,14 @@
 //! `(Ctx, Document@version, input) → Outcome` for everything that changes a
 //! document ([`edit`], and [`middleware`] for applying what the middleware
 //! computed), and `Document → answer` for everything that only reads one
-//! ([`read`]). Nothing here holds state or writes: an [`Outcome`] carries
+//! ([`read`], and [`decisions`] for the decision view). Nothing here holds state or writes: an [`Outcome`] carries
 //! the [`Change`]s a caller may apply through
 //! [`PartStore::apply`](crate::store::PartStore::apply), inside whatever
 //! transaction it owns. That is what lets the desktop apply a change as a file
 //! write and the server as one Postgres transaction without either copy of the
 //! operation knowing which.
 
+pub mod decisions;
 pub mod edit;
 pub mod members;
 pub mod middleware;

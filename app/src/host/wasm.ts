@@ -18,6 +18,7 @@
 import init, { NapkinHost } from '../wasm/napkin_wasm'
 import { prepareFrameHtml } from './wasmFrame'
 import type {
+  DecisionsView,
   Host,
   HostEvents,
   InstalledApp,
@@ -213,6 +214,12 @@ export const wasmHost: Host = {
   getChain: async () => (await boot()).entry('agent/decision-chain.yaml'),
   getAgentState: async () => (await boot()).entry('agent/state.yaml'),
   getContext: async () => (await boot()).entry('agent/context.md'),
+  getDecisions: async () => {
+    const resp = (await boot()).handle('/decisions', '', new Uint8Array()) as RawResponse
+    const body = new TextDecoder().decode(asBytes(resp.body))
+    if (resp.status !== 200) throw new Error(`decisions: ${resp.status} ${body}`)
+    return JSON.parse(body) as DecisionsView
+  },
 
   setEditMode: async active => { (await boot()).setEditMode(active) },
   // The frame is loaded from srcdoc, so there is no document slot to fill.

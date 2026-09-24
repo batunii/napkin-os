@@ -99,6 +99,7 @@ fn every_reachable_route_answers_with_cors_open() {
         "/edit-mode",
         "/document",
         "/chain",
+        "/decisions",
         "/apps",
         "/recent",
         "/capabilities",
@@ -113,6 +114,27 @@ fn every_reachable_route_answers_with_cors_open() {
             "{path} must be reachable from the sandboxed frame",
         );
     }
+}
+
+// The decision view follows the chain: a person's patch-data is on top, and
+// it needs no attention.
+#[test]
+fn decisions_lists_the_chain_newest_first() {
+    let f = fixture();
+    post(
+        &f,
+        "/patch-data",
+        r#"{"patch":{"verdict":"yes"},"agent":"human"}"#,
+    );
+    let v = json(&get(&f, "/decisions"));
+    let decisions = v["decisions"].as_array().unwrap();
+    assert_eq!(decisions.len(), 1, "{v}");
+    assert_eq!(decisions[0]["who"]["kind"], "person");
+    // No targets on a patch-data: the fields it changed stand in.
+    assert_eq!(decisions[0]["targets"][0]["label"], "Verdict");
+    assert_eq!(decisions[0]["who"]["name"], "You");
+    assert_eq!(v["lock"]["can_lock"], true);
+    assert!(v["attention"].as_array().unwrap().is_empty());
 }
 
 #[test]
