@@ -181,6 +181,7 @@ def test_draft_brief_end_to_end(bserver):
     assert verdicts and all(v["polarity"] in ("good", "bad") and v["taxonomy_version"] == "reason-codes/1"
                             for v in verdicts)
     assert any(f"{DOC}#insight" in v["targets"] for v in verdicts)
+    assert not any("#passages[" in t for v in verdicts for t in v["targets"])  # verdicts target fields only
     check_change_rules(host)
     fields = last["result"]["fields"]
     assert fields["insight"] == {"state": "done", "by": "judge"} and fields["background"]["state"] == "done"

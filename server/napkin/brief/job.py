@@ -138,7 +138,8 @@ class BriefJob:
                 continue
             # a proposal targets its one field only (§10.5): a passage it cites is
             # targeted by a writing decision that cites it, else by the review
-            writers = [d for d in decisions if d.get("action") != "propose"] or decisions
+            # (and a verdict targets the fields it judges, nothing else)
+            writers = [d for d in decisions if d["kind"] == "edit" and d.get("action") != "propose"] or decisions
             owner = None
             if p.startswith("passages."):
                 pid = p.split(".", 1)[1]
