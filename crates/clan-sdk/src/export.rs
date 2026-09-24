@@ -315,7 +315,7 @@ fn brand_style_block() -> String {
 fn brand_header(clan: &ClanFile) -> String {
     format!(
         "<div class=\"napkin-export-header\"><span class=\"dot\"></span>\
-         <span>Napkin Studio OS</span><span style=\"flex:1\"></span>\
+         <span>Napkin</span><span style=\"flex:1\"></span>\
          <span>{}</span></div>\n",
         escape(&clan.manifest().title)
     )
@@ -330,8 +330,7 @@ fn brand_footer(clan: &ClanFile) -> String {
         .unwrap_or("")
         .to_string();
     format!(
-        "<div class=\"napkin-export-footer\">Generated with Napkin Studio OS · \
-         powered by CLAN{}</div>\n",
+        "<div class=\"napkin-export-footer\">powered by CLAN{}</div>\n",
         if date.is_empty() {
             String::new()
         } else {
@@ -441,6 +440,10 @@ mod tests {
         assert!(html.contains("{{ not a binding }}"), "{html}");
         // …and the escaped title appears in the brand header.
         assert!(html.contains("Q3 &lt;Report&gt;"), "{html}");
+        // The brand says Napkin once, as the shell does, and CLAN in the footer.
+        assert_eq!(html.matches("<span>Napkin</span>").count(), 1, "{html}");
+        assert!(!html.contains("Studio OS"), "{html}");
+        assert!(html.contains(">powered by CLAN"), "{html}");
     }
 
     #[test]

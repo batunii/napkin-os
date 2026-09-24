@@ -21,6 +21,13 @@ everything cross-cutting and identical across all 19 studios:
 | `<script>` stripping (the export is static)           | —                                         |
 | HTML → PDF conversion (headless browser)              | —                                         |
 
+The brand says **Napkin once**, as the shell does: the header carries the
+word `Napkin` beside the document's title, and the footer says only
+`powered by CLAN` and the document's date — never "Napkin Studio OS", never a
+second "Napkin". A template that composes its own export (Path B) keeps to the
+same rule: one `Napkin`, one `powered by CLAN` (Brief Maker's footer reads
+`Generated with Napkin · powered by CLAN · <date>`, with no Napkin header).
+
 This is why export works **without a running app**: `clan export doc.clan
 --format pdf` produces the same document as the viewer's ⬇ Export button, and
 Export Studio can batch-export a whole project lineage headless.

@@ -1460,12 +1460,12 @@
       return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>'+proj+'</title><style>'+css+'</style><\/head><body>'
         +'<header><div class="ey">Creative brief</div><h1>'+proj+'</h1>'+(client?'<div class="cli">'+client+'</div>':'')+'</header>'
         +body+boards
-        +'<footer>Generated with Napkin Studio OS · powered by CLAN · '+esc(date)+'</footer>'
+        +'<footer>Generated with Napkin · powered by CLAN · '+esc(date)+'</footer>'
         +'<\/body><\/html>';
     });
   }
   function doExport(kind){
-    if(!(window.clan&&window.clan.exportDoc)){ toast('Export needs the Napkin Studio OS host.'); return; }
+    if(!(window.clan&&window.clan.exportDoc)){ toast('Export needs the Napkin host.'); return; }
     toast('Preparing '+kind.toUpperCase()+'…');
     buildExportHTML().then(function(html){
       var base=(get('project_name')||'brief').replace(/[^\w.-]+/g,'-');
