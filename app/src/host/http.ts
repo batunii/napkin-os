@@ -92,11 +92,28 @@ function postJson(body: unknown): RequestInit {
   return { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
 }
 
-/** Remember what the shell opened, and hand back the plain OpenResult. */
-function adopt(view: OpenView): OpenResult {
-  openDoc = view.path
-  openToken = view.token
-  sandboxOrigin = view.sandbox_origin
+/** Opens asked for so far. Only the latest one may become the open document. */
+let opens = 0
+
+/**
+ * Open something, and remember it as what the shell has open — unless another
+ * open was asked for while this one was in flight.
+ *
+ * Responses do not come back in the order they were asked for. The shell asks
+ * for home and for a `?open=` document at the same moment on load, and when
+ * home answered last it became "the open document" underneath a frame showing
+ * the other one: that frame's token, its /chain and its writes all went to
+ * home. The last open *asked for* is the one the shell is showing, so it is the
+ * one that wins.
+ */
+async function adopt(request: Promise<OpenView>): Promise<OpenResult> {
+  const mine = ++opens
+  const view = await request
+  if (mine === opens) {
+    openDoc = view.path
+    openToken = view.token
+    sandboxOrigin = view.sandbox_origin
+  }
   return view
 }
 
@@ -161,10 +178,10 @@ export async function fetchOpenDocument(): Promise<{ manifest: OpenResult['manif
 }
 
 export const httpHost: Host = {
-  openClan: async path => adopt(await json<OpenView>(`/d/${encodeURIComponent(path)}`)),
-  openHome: async () => adopt(await json<OpenView>('/home')),
+  openClan: path => adopt(json<OpenView>(`/d/${encodeURIComponent(path)}`)),
+  openHome: () => adopt(json<OpenView>('/home')),
   newDocumentFromApp: async (appId, title) =>
-    adopt(await json<OpenView>('/documents', postJson({ app_id: appId, title }))),
+    adopt(json<OpenView>('/documents', postJson({ app_id: appId, title }))),
 
   // A shared link — `?open=<document>` — is the web's answer to double-clicking
   // a .clan. Consumed once, then cleared so a reload does not re-open it.
@@ -266,9 +283,9 @@ export const httpHost: Host = {
   listRecent: () => json<RecentDoc[]>('/recent'),
 
   spinoffTargets: () => json<SpinoffTarget[]>(`/d/${requireDoc()}/spinoff-targets`),
-  spinoffDocument: async (appId, title, map) =>
+  spinoffDocument: (appId, title, map) =>
     adopt(
-      await json<OpenView>(
+      json<OpenView>(
         `/d/${requireDoc()}/spinoff`,
         postJson({ app_id: appId, title, map }),
       ),

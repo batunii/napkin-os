@@ -73,12 +73,22 @@ export default function App() {
     setTimeout(() => setToast(null), ms)
   }, [])
 
+  // Every open — home, a document, a new or spun-off one, a file on the
+  // device — takes a number, and only the latest may change what is on screen.
+  // Opens overlap: on load the shell asks for home and for a `?open=` document
+  // at once, and whichever answered last used to win, sometimes painting one
+  // document's view over the other's host session.
+  const openSeq = useRef(0)
+  const nextOpen = () => ++openSeq.current
+  const isLatest = (n: number) => n === openSeq.current
+
   const refreshApps = useCallback(async () => {
     try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
   }, [])
 
   // Open the home CLAN app as the current document and render it.
   const openHome = useCallback(async () => {
+    const n = nextOpen()
     resetTheme() // home and other apps use the default Napkin theme
     // The web app on the device has its own home: open a file, or a copy.
     if (onDevice() && !serverless) {
@@ -88,9 +98,11 @@ export default function App() {
     try {
       const open = await host.openHome()
       const html = open.has_human_view ? await host.getHumanHtml() : ''
+      if (!isLatest(n)) return
       setHome({ open, html })
       refreshApps() // views other than Apps may offer installed apps too
     } catch (e) {
+      if (!isLatest(n)) return
       console.error('open_home failed', e)
       setHome(null)
       if (hasServer && (e instanceof TypeError || !navigator.onLine)) {
@@ -107,9 +119,10 @@ export default function App() {
     setScreen('home')
   }, [refreshApps])
 
-  const runArtifact = useCallback(async (open: OpenResult, source?: DeviceSource) => {
-    resetTheme() // clear any prior app's theme before this one (re)applies its own
+  const runArtifact = useCallback(async (n: number, open: OpenResult, source?: DeviceSource) => {
     const html = open.has_human_view ? await host.getHumanHtml() : ''
+    if (!isLatest(n)) return
+    resetTheme() // clear any prior app's theme before this one (re)applies its own
     setRunning({ artifactPath: open.path, open, htmlContent: html, editMode: false, source })
     setScreen('app')
   }, [])
@@ -118,12 +131,14 @@ export default function App() {
   // offline copy. It opens in the tab and is never uploaded, whichever host
   // the page was using before.
   const openDeviceBytes = useCallback(async (bytes: Uint8Array, label: string, source: DeviceSource) => {
+    const n = nextOpen()
     setLoading(true); setError(null); setBusy('Opening on this device…')
     try {
       const result = await openOnDevice(bytes, label)
       setDevice(true)
+      if (!isLatest(n)) return
       if (result.is_template) setPendingLaunch(result)
-      else await runArtifact(result, source)
+      else await runArtifact(n, result, source)
     } catch (e) { setError(String(e)) } finally { setLoading(false); setBusy(null) }
   }, [runArtifact])
 
@@ -163,11 +178,13 @@ export default function App() {
 
   // Open a .clan path: templates → install prompt; documents → run.
   const openPath = useCallback(async (path: string) => {
+    const n = nextOpen()
     setLoading(true); setError(null)
     try {
       const result = await host.openClan(path)
+      if (!isLatest(n)) return
       if (result.is_template) setPendingLaunch(result)
-      else await runArtifact(result)
+      else await runArtifact(n, result)
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
 
@@ -179,20 +196,22 @@ export default function App() {
   }, [openPath, chooseDeviceFile])
 
   const launchApp = useCallback(async (appId: string) => {
+    const n = nextOpen()
     setLoading(true); setError(null)
     try {
       const result = await host.newDocumentFromApp(appId, null)
-      await runArtifact(result)
+      await runArtifact(n, result)
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
 
   // Branch the open document into another app. The source is untouched — this
   // opens a new document that carries its data and its decisions.
   const spinOff = useCallback(async (appId: string) => {
+    const n = nextOpen()
     setLoading(true); setError(null)
     try {
       const result = await host.spinoffDocument(appId, null, null)
-      await runArtifact(result)
+      await runArtifact(n, result)
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [runArtifact])
 
@@ -312,7 +331,7 @@ export default function App() {
     if (!pendingLaunch) return
     const result = pendingLaunch
     setPendingLaunch(null)
-    await runArtifact(result)
+    await runArtifact(nextOpen(), result)
   }, [pendingLaunch, runArtifact])
 
   // Apps: the home CLAN app when the host has one (as home always was), the
