@@ -8,8 +8,9 @@ import uvicorn
 
 from napkin.app import create_app
 from napkin.config import Settings
-from napkin.layers.local import LocalLayerStore
+from napkin.layers.http import HttpLayerStore
 
+from fake_layers import FakeLayersService
 from fakes import FakeModel, FakeResearch
 
 
@@ -21,15 +22,26 @@ def free_port():
     return p
 
 
-def make_settings(tmp_path, **kw):
-    s = Settings(layers=f"local:{tmp_path / 'layers.sqlite'}", pipelines=Settings.from_env().pipelines
-                 if False else [], **kw)
-    return s
+LAYERS_URL = "http://layers.test"
+
+
+def layer_store(service: FakeLayersService | None = None) -> HttpLayerStore:
+    """The middleware's own layers client, over an in-process transport to a
+    fake napkin.layers/1 service."""
+    service = service or FakeLayersService()
+    st = HttpLayerStore(LAYERS_URL, transport=service.transport(), sleep=lambda s: None)
+    st.service = service
+    return st
 
 
 @pytest.fixture
-def store(tmp_path):
-    return LocalLayerStore(str(tmp_path / "layers.sqlite"))
+def layers_service():
+    return FakeLayersService()
+
+
+@pytest.fixture
+def store(layers_service):
+    return layer_store(layers_service)
 
 
 @pytest.fixture
@@ -38,12 +50,14 @@ def layers(store):
 
 
 class Server:
-    def __init__(self, tmp_path, model=None, research=None):
+    def __init__(self, tmp_path, model=None, research=None, retrieval=None, settings_kw=None):
         from napkin.config import _default_pipelines
         self.model, self.research = model or FakeModel(), research or FakeResearch()
-        settings = Settings(layers=f"local:{tmp_path / 'layers.sqlite'}", pipelines=_default_pipelines(),
-                            port=free_port())
-        self.app = create_app(settings, model_client=self.model, research_port=self.research)
+        self.retrieval = retrieval
+        self.layers = layer_store()
+        settings = Settings(pipelines=_default_pipelines(), port=free_port(), **(settings_kw or {}))
+        self.app = create_app(settings, model_client=self.model, research_port=self.research,
+                              layer_store=self.layers, retrieval_port=retrieval)
         self.url = f"http://127.0.0.1:{settings.port}"
         cfg = uvicorn.Config(self.app, host="127.0.0.1", port=settings.port, log_level="warning")
         self.srv = uvicorn.Server(cfg)

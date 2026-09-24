@@ -80,6 +80,11 @@ class JobStore:
             raise TaskError(404, "unknown_job", "no such job for this document")
         return job
 
+    def unfinished(self, scope: dict, doc: str, tasks) -> list:
+        with self._lock:
+            return [j for j in self._jobs.values() if getattr(j, "task", None) in tasks and j.doc == doc
+                    and j.scope == scope and j.state in ("queued", "running", "needs_input")]
+
     def unfinished_campaign(self, scope: dict, doc: str):
         with self._lock:
             return next((j for j in self._jobs.values() if getattr(j, "task", None) == "start_campaign"

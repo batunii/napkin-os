@@ -4,9 +4,10 @@
 returns a `Layers` whose methods take no scope argument: category facts are
 shared, brand facts are read and written under the bound (org, brand).
 
-Implementations: `LocalLayers` (stdlib sqlite3, now); Postgres with RLS
-(W2-B1, later) implements the same protocol. Nothing here is SQLite-specific:
-values cross the boundary as plain dicts.
+The layers are a peripheral (peripherals.md §4, `napkin.layers/1`): the one
+implementation here is `HttpLayers` (`layers/http.py`), a client of the layers
+service; the middleware opens no database. Values cross the boundary as plain
+dicts.
 
 Fact rows (the fact envelope, Contract 3 §4, as the layer holds it):
   {id, layer, entity, key, market|None, value, unit, as_of, retrieved_at,
@@ -44,15 +45,7 @@ class Layers(Protocol):
 
 
 class LayerStore(Protocol):
-    def open(self, scope: dict) -> Layers: ...
-
-
-def open_store(spec: str) -> LayerStore:
-    """`NAPKIN_LAYERS`: `local:/path/layers.sqlite` (later `postgres://…`)."""
-    if spec.startswith("local:"):
-        from .local import LocalLayerStore
-        return LocalLayerStore(spec[len("local:"):])
-    raise ValueError(f"NAPKIN_LAYERS: no layers implementation for {spec.split(':')[0]!r}")
+    def open(self, scope: dict, attribution: dict | None = None) -> Layers: ...
 
 
 def origin_uri(layer: str, entity: str, key: str, version: int) -> str:
