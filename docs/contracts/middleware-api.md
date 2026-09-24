@@ -3,7 +3,8 @@
 Status: **binding** for the host, the templates, the stand-in middleware and the
 real one. Reads with: `docs/contracts/campaign-clan.md` (Contract 3 — what a
 `change` may contain), `docs/contracts/os-layer.md` (Contract 4 — decisions,
-addresses, M3/M4).
+addresses, M3/M4), `docs/contracts/peripherals.md` (Contract 5 — the
+model, research, retrieval and layers ports behind the middleware).
 
 The one HTTP contract between the Napkin host and the middleware. The host and
 the templates depend on this document only — never on an implementation.
@@ -29,7 +30,7 @@ name the stand-in, its port, or branch on which implementation answered.
 ```json
 {
   "request_kind": "middleware",
-  "payload": { "task": "extract_ask | research_lens | synthesise_findings | start_campaign | answer_question | compose_report | job_status",
+  "payload": { "task": "extract_ask | research_lens | synthesise_findings | start_campaign | answer_question | compose_report | draft_brief | regenerate_field | job_status",
                "input": { "...": "task-specific, below" } },
   "clan": { "id": "<document_id>", "revision": "<manifest id>",
             "version": "<doc version the host holds>",
@@ -55,7 +56,7 @@ name the stand-in, its port, or branch on which implementation answered.
   (`name@major`). When the document carries no pipeline, the middleware's
   declared built-in map is used (`extract_ask@1`, `research_lens@1`,
   `synthesise_findings@1`, `start_campaign@1`, `answer_question@1`,
-  `compose_report@1`). A task the pipeline does not declare, an
+  `compose_report@1`, `draft_brief@1`, `regenerate_field@1`). A task the pipeline does not declare, an
   unregistered handler, a handler registered for a different task, or a major
   the middleware does not implement is a hard error (M4) — never a
   fall-through to a default. `job_status` is a transport verb and is not
@@ -79,6 +80,8 @@ name the stand-in, its port, or branch on which implementation answered.
 | `start_campaign` | `{ "prompt": "...", "attachments": [{ "material_id", "name", "sha256", "text"? }] }` | The chat intake (§8). Long. Each `material_id` must be a key of `clan.data.materials` with that `sha256` (the view indexes the file first). Nothing to read at all is `400 invalid_input`, as for `extract_ask` |
 | `answer_question` | `{ "job_id": "...", "question_id": "...", "option_id"?: "...", "text"?: "..." }` | Exactly one of `option_id` / `text` (§8.3) |
 | `compose_report` | `{}` | Short. Re-composes `data.report` from the document as it stands (§8.5) |
+| `draft_brief` | `{ "prompt"?: "...", "attachments": [{ "name", "sha256", "media_type"?, "asset"?, "text"?, "image"?: { "media_type", "data" } }] }` | Brief Maker (§10). Long. `image` is base64 bytes of a picture attachment (§10.1). Nothing to read at all is `400 invalid_input` |
+| `regenerate_field` | `{ "field": "<dotted field key>", "guidance"?: "..." }` | Brief Maker (§10.10). Long. `field` one of the eighteen keys of §10.4 |
 | `job_status` | `{ "job_id": "..." }` | Free: never charged to quota (§9) |
 
 Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
@@ -114,9 +117,10 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
   that message under in `intake.messages` (§8.2), so the view shows the list
   while the change is in flight and de-duplicates by id once it lands.
 - `job.stage` and `job.question` are present on `start_campaign` jobs (and
-  the replies of `answer_question`, which describe one) and on
-  `compose_report` replies (`stage: report`, `question: null`, §8.2); other
-  tasks omit them. `job.question` is non-null exactly when `job.state` is
+  the replies of `answer_question`, which describe one), on
+  `compose_report` replies (`stage: report`, `question: null`, §8.2), and on
+  `draft_brief` and `regenerate_field` jobs (`question: null` always, §10.6);
+  other tasks omit them. `job.question` is non-null exactly when `job.state` is
   `needs_input`.
 - `trace.usage` is what was actually spent; an implementation that ran no model
   reports zeros and never an estimate. `trace.model` is `null` when no model ran.
@@ -128,11 +132,12 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
 
 - **Short tasks** (`extract_ask`, `compose_report`) answer `job.state: done`
   and a `change` in one response.
-- **Long tasks** (`research_lens`, `synthesise_findings`, `start_campaign`)
+- **Long tasks** (`research_lens`, `synthesise_findings`, `start_campaign`,
+  `draft_brief`, `regenerate_field`)
   answer `job.state: queued | running`; the caller polls `job_status`. A
   `queued`, `running` or `needs_input` reply **may** carry a `change` for work
   finished since the previous reply — `start_campaign` does, stage by stage
-  (§8.4); `research_lens` and `synthesise_findings` send `change: null` until
+  (§8.4), and so does `draft_brief` (§10.9); `research_lens` and `synthesise_findings` send `change: null` until
   `done`. The `done` poll carries the (last) change; later polls of a done job
   return the same change again. **The host applies any reply's `change`,
   whatever the job's state.** Real research runs minutes and must survive the
@@ -169,7 +174,7 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
                   "selection": {}, "materials": {} },
   "facts_append": [ "entries per facts.schema.json" ],
   "findings_append": [ "entries per findings.schema.json" ],
-  "decisions": [ { "id": "d_...", "kind": "edit | finding | contest | pin", "agent": "<handler>",
+  "decisions": [ { "id": "d_...", "kind": "edit | finding | contest | pin | verdict (§10.7)", "agent": "<handler>",
                    "action": "...", "rationale": "...", "targets": ["<doc-id>#<path>"],
                    "cites": ["f_...", "src_...", "mat_..."], "handler": "...", "backend": "...",
                    "timestamp": "...",
@@ -290,7 +295,8 @@ Every change must leave the document valid against the campaign schemas
 | 401 | `{"error":{"type":"unauthenticated","message"}}` | credentials missing or wrong (when the deployment requires them) |
 | 400 | `{"error":{"type":"invalid_input","message"}}` | also: `start_campaign` attachment whose `material_id` is not in `clan.data.materials` with that `sha256`; `answer_question` with a `question_id` that is not the job's open question, neither or both of `option_id` / `text`, an `option_id` not among the question's candidates (an escape option is answered with `text`), `text` when `allow_text` is false; `compose_report` with no pin and no finding to cite |
 | 404 | `{"error":{"type":"unknown_job","message"}}` | job id unknown to this tenant and document |
-| 409 | `{"error":{"type":"job_state","message"}}` | `answer_question` for a job that is not `needs_input` (already answered, done or failed); `start_campaign` or `compose_report` while a `start_campaign` job on the same document is `queued`, `running` or `needs_input` — one composition of a document at a time |
+| 409 | `{"error":{"type":"job_state","message"}}` | `answer_question` for a job that is not `needs_input` (already answered, done or failed); `start_campaign` or `compose_report` while a `start_campaign` job on the same document is `queued`, `running` or `needs_input` — one composition of a document at a time; `draft_brief` while a `draft_brief` or `regenerate_field` job on the same document is `queued` or `running`, and `regenerate_field` while a `draft_brief` job, or a `regenerate_field` job for the same field, is (§10.11) |
+| 400 | `{"error":{"type":"invalid_input","message"}}` | also: `draft_brief` or `regenerate_field` on a brief whose `data.locked` is true; `regenerate_field` for a field not in §10.4 or in `data.locked_fields`; an `image` over 5 MB or of another media type (§10.1) |
 | 409 | `{"error":{"type":"version_conflict","message"}}` | `base_version` is stale — only an implementation that holds the document (the web product) can know this |
 | 500 | `{"error":{"type":"internal","message"}}` | anything else. The message never carries request content |
 
@@ -617,3 +623,403 @@ task is not `job_status` — `start_campaign`, `answer_question`,
 over the cap with its own `429` (the middleware never sees the request).
 `job_status` polls are free: a job is polled for minutes, and a poll spends
 nothing upstream.
+
+## 10. Brief Maker — `draft_brief`, `regenerate_field`
+
+Brief Maker moves off `engine/agent-server/` (a bare-JSON backend whose output
+the view wrote itself) onto the middleware. The engine's semantics port; its
+transport does not. Every rule in §1–§5 holds: the reply is the §2 envelope,
+the output is a job whose `change` the **host** applies — never bare JSON —
+and nothing the view receives is written by the view. The peripherals each
+stage uses are Contract 5 §6.
+
+### 10.1 Input
+
+`draft_brief`: `{ "prompt"?, "attachments": [...] }`.
+
+- `prompt` — the planner's typed ask (`data.brief_input`). It is a material
+  (`kind: prompt`, sha256 of its UTF-8 bytes).
+- Each attachment — `name`, `sha256` of its bytes, and what can be read:
+  `text` (host-extracted, as for `extract_ask`), or `image: {media_type,
+  data}` (base64 bytes; `image/png | image/jpeg | image/gif | image/webp`, at
+  most 5 MB decoded, else `400 invalid_input`). `media_type` and `asset` (the
+  document path of the bytes, from `reference_assets[].path`) are recorded on
+  the material. An attachment with neither `text` nor `image` is recorded
+  **unread** and grounds nothing.
+- At least a non-empty `prompt`, a `text` or an `image`; else `400
+  invalid_input`.
+
+The middleware indexes every material itself, in `data_patch.materials`
+(§10.4); the view does not index first. Material ids are deterministic —
+`mat_` + the first 16 hex of the sha256 — so a repeat, or a second draft over
+the same file, names the same material.
+
+### 10.2 The pipeline declaration
+
+Brief Maker's `app/pipeline.yaml` becomes a declaration like the Research
+Tool's (M2):
+
+```yaml
+pipeline: napkin-briefing
+version: 2
+request_kind: middleware
+contract: middleware-api/1#10
+
+tasks:
+  draft_brief:
+    handler: draft_brief@1
+    job: long
+    stages: [extract, draft, judge]
+  regenerate_field:
+    handler: regenerate_field@1
+    job: long
+    stages: [draft, judge]
+
+fields:                      # app key -> how it is filled; the handler reads this map
+  project_name:              { class: captured }
+  client:                    { class: captured }
+  background:                { class: captured, rubric: background }
+  objectives.commercial:     { class: captured, rubric: objectives }
+  objectives.behavioural:    { class: captured, rubric: objectives }
+  objectives.attitudinal:    { class: captured, rubric: objectives }
+  audience:                  { class: captured, rubric: audience }
+  competitor_context:        { class: captured, rubric: competitor_context }
+  budget_and_scope:          { class: captured, rubric: budget_scope }
+  mandatories:               { class: captured, rubric: mandatories }
+  tone_and_world:            { class: captured, rubric: tone_world_assets }
+  insight:                   { class: drafted, rubric: insight, loop: loop4_insight }
+  single_minded_proposition: { class: drafted, rubric: smp, loop: loop5_proposition }
+  reasons_to_believe:        { class: drafted, rubric: reasons_to_believe, loop: loop6_substantiation }
+  desired_response.think:    { class: drafted, rubric: desired_response, loop: loop5_proposition, drafter: desired_response }
+  desired_response.feel:     { class: drafted, rubric: desired_response, loop: loop5_proposition, drafter: desired_response }
+  desired_response.do:       { class: drafted, rubric: desired_response, loop: loop5_proposition, drafter: desired_response }
+  open_questions:            { class: composed }
+
+merge_policies:
+  materials: append
+  passages: append
+  capture: last-write
+  review: last-write
+  "*": ask
+```
+
+`rubric` names a field of the golden-brief rubric
+(`engine/golden-brief/golden_brief.schema.json`), bundled with the handler
+and versioned with it (Contract 5 §9, O9). The three `desired_response`
+leaves share one drafter: they are a ladder.
+
+### 10.3 The flow
+
+One job, three stages, in order. `progress` counts stages: `{done, total: 3}`.
+
+| Stage | Does | Writes (on the reply after it finishes) |
+|---|---|---|
+| `extract` | Transcribe each image (Contract 5 §1.6). **Loop 1 — no-loss capture:** one structured-output call over the materials returning the eighteen Loop-1 keys (the engine's `EXTRACTION_SYSTEM`: each item `{value, status: fact \| assumption, quote, material_id}`, plus `how_to_win` and `open_questions`); every `fact` quote checked verbatim in its material — an item whose quote is not found is dropped and its words stay unmapped; the no-loss ledger over the materials' segments. **Loop 2 — the working brief:** the captured fields, derived from the capture by the engine's `map_brief` rules (a Loop-2 client fact is never an insight or an SMP). The **BetterBriefs scorecard** (`SCORECARD_SYSTEM`: seven dimensions and single-mindedness, evidence quoted verbatim) | `materials`, `capture`, `review` (scorecard), every captured field it can support |
+| `draft` | For each drafted field not locked, **one drafter, all in parallel** (N4). A drafter builds its loop's query from the working brief (the captured fields' values — never raw material, never the capture itself), asks the retrieval port for the packs whose `loops` include its loop (and, for insight and substantiation, each case pack at its own `k`), and drafts: insight and SMP by tournament (N candidates in one call, ranked, auto-gated, one sharpen pass), the rest once. It may cite passages (`psg_…`), capture items (`cap_…`) and pins in `clan.facts` (`f_…`) — nothing else. Drafters never see each other's drafts | nothing yet: a draft lands only once judged |
+| `judge` | **Serial** (N4). The Judge (§10.8) judges every field that holds or will hold a value, then the brief as a whole; one revision per failed drafted field, by its drafter with the Judge's `fix`, re-judged once. Composes `open_questions` | the drafted fields that passed, the `passages` they cite, verdicts, proposals, `review` (with the Judge), `open_questions` |
+
+**The one hard rule: capture is RAG-free.** The `extract` stage has no
+retrieval or research capability (Contract 5 §3.4): nothing retrieved is fed
+to Loop 1, and no captured field cites a passage. The no-loss ledger measures
+fidelity to the client's own words, and injected text craters it.
+
+**Omitted, not blank.** No patch sets a brief field to `""`, `[]`, `{}` or
+`null`, and no patch removes one. A field nothing supports is absent from the
+patch and named in its stage decision's `abstained`. A second draft never
+blanks a box.
+
+**Parallel drafting in v1** runs in-process: each drafter owns one field, so
+the fan-out cannot collide (N4's reason), and the job's staged change carries
+the result. Branches (`agents/<user>.<agent>.<task>/`) are the web product's
+mechanism for the same thing and change nothing here.
+
+### 10.4 What the document holds
+
+Brief Maker's `shared/data.yaml`. The eighteen fields keep their bare shapes
+(`schema.json`: strings, or arrays of strings for `reasons_to_believe`,
+`tone_and_world`, `mandatories`, `open_questions`); provenance lives in the
+decisions that target them, not in an envelope. Addresses are
+`<doc-id>#<dotted key>` — `#insight`, `#objectives.commercial` — and a nested
+patch merges key-wise (`{objectives: {commercial: …}}` leaves `behavioural`
+alone).
+
+Four blocks, written only by the middleware — additions to Brief Maker's
+`schema.json` (shapes: `docs/contracts/peripherals/brief-maker.schema.json`;
+Contract 5 §9, O5 and O12):
+
+```yaml
+materials:                        # as Contract 3 §1, plus two optional keys; merges key-wise
+  mat_9f2c0a1b3d4e5f60:
+    kind: prompt | client_brief | email | deck | image | other
+    name: "Glenmore brief.pdf"
+    sha256: "…"
+    media_type: application/pdf
+    asset: human/assets/…
+    received_at: 2026-09-24T09:00:00Z
+    licence: client-confidential  # the strictest class until a human reclassifies it
+    unread: true                  # optional: nothing readable arrived
+    transcribed: { model: claude-opus-5, backend: "…" }   # optional: its text is a vision transcription
+capture:                          # Loop 1; replaced whole by each extract stage
+  built_at: …
+  handler: draft_brief@1.0
+  items:
+    cap_1a2b3c4d5e6f7a8b:
+      key: business_problem       # one of the eighteen Loop-1 keys
+      value: "…"
+      status: fact | assumption
+      quote: "…verbatim in the material…"   # required for fact
+      material_id: mat_…
+      objective_type: commercial | behavioural | attitudinal   # objective items only
+  gaps: [budget, decision_makers] # Loop-1 keys the material does not answer
+  how_to_win: [{ kind: stated_evaluation_criteria | unstated_needs | likely_landmines | winning_themes | proof_required, point, evidence, material_id }]
+  ledger: { total_segments, mapped_segments, coverage_pct, unmapped: [{ segment, material_id }] }
+review:                           # replaced whole by extract, then by judge
+  built_at: …
+  handler: draft_brief@1.0
+  based_on: { version }           # the clan.version the job read
+  scorecard:
+    dimensions: [{ dimension, verdict: pass | vague | missing, evidence?, fix? }]   # the seven, in order
+    single_mindedness: { verdict: single | multiple, split_into: [] }
+    summary: "…"
+  judge:                          # absent until the judge stage
+    reason_codes_version: "1"
+    fields: { <key>: { outcome: passed | revised | failed | kept | absent, checks: [{ check, method: auto | llm | human, status: pass | fail | review, note, fix? }] } }
+    dependencies: [{ id, status: pass | fail | review, note }]
+    definition_of_done: [{ id, status: pass | fail | review }]
+    health: 0-100                 # golden_critic's score, computed by code
+passages:                         # every passage a decision cites; merges key-wise
+  psg_3b9f0c2e7a41d5c8e210: { uri, pack, scope, licence, source, section, citation, text, text_sha256, pack_version, retrieved_at }
+```
+
+`cap_` ids are `cap_` + the first 16 hex of `sha256(key + "\n" + value + "\n"
++ material_id)`; `psg_` ids are the retrieval port's (Contract 5 §3.2). A
+scorecard `evidence` is a verbatim quote from a material (checked; one not
+found is dropped), absent for `missing`. The view renders `review` in place of
+the old context panel; the middleware no longer returns a `context`.
+
+### 10.5 Fields the middleware never writes
+
+- **Locked.** `data.locked: true` locks the whole brief: both tasks are `400
+  invalid_input`. A key in `data.locked_fields` — or whose top-level key is
+  there — is locked: not drafted, not written, not proposed; its
+  `result.fields` state is `kept`.
+- **Human-held.** A field is held by a person when the latest decision in
+  `clan.decision_chain` that wrote it is a person's: its `actor` begins
+  `human` (or, with no `actor`, its `agent` does). A decision *wrote* key `K`
+  (top-level `T`) when its `targets` include `<doc-id>#K` or `<doc-id>#T`, or,
+  with no `targets`, its `fields_changed` includes `T` and either `K` is `T`
+  or its `action` names no sibling `T.<x>` other than `K` (the view's own
+  rule). A field that holds a value no decision wrote is human-held.
+- **An unanswered bad verdict** by a person on the field (Contract 3 §2.2)
+  makes it human-held too: it is not silently re-drafted.
+
+The middleware **proposes** instead of writing a human-held field: the value
+goes in `result.proposals` (§10.6) and the change carries an `edit` decision
+with `action: propose`, `targets: ["<doc-id>#K"]`, the value as
+`proposed_value`, and reasoning — and no `data_patch` for `K`. Accepting is
+the view's human write of `K` (as §8.3's answers are), naming the proposal's
+decision id in its rationale; ignoring it changes nothing. Locked fields are
+not even proposed. A human-held `open_questions` is proposed like any field.
+
+### 10.6 Replies
+
+The §2 envelope; `task` and `handler` are the job's own (`draft_brief@1.x`,
+`regenerate_field@1.x`) on every reply, `job_status` included.
+
+```json
+{ "job": { "id": "job_…", "state": "running", "stage": "draft",
+           "progress": { "done": 1, "total": 3 }, "question": null,
+           "started_at": "…", "finished_at": null, "error": null },
+  "result": { "summary": "Drafting 4 fields in parallel.",
+              "fields": {
+                "background":                { "state": "done",     "by": "extract" },
+                "budget_and_scope":          { "state": "absent",   "by": "extract" },
+                "insight":                   { "state": "drafting", "by": "drafter" },
+                "single_minded_proposition": { "state": "drafting", "by": "drafter" },
+                "mandatories":               { "state": "kept",     "by": null },
+                "…": "every one of the eighteen keys" },
+              "proposals": [ { "field": "audience", "value": "…", "decision": "d_…" } ] },
+  "change": { "…": "the stages finished since the previous reply" } }
+```
+
+- `job.stage`: `extract | draft | judge` (`regenerate_field`: `draft |
+  judge`). `job.question` is always `null`: Brief Maker never waits for the
+  person mid-job.
+- `result.fields` — all eighteen keys, each `{state, by}`. `state`: `waiting
+  | extracting | drafting | judging | revising | done | proposed | absent |
+  kept | failed`; `by`: the worker doing it or that last did it — `extract |
+  drafter | judge` — or `null`. This is what lets the view show Extract, one
+  Drafter per field and the Judge working for real. `done`: written by a change
+  already sent or in this reply. `failed`: judged bad twice, not written.
+  `absent`: nothing supports it.
+- `result.proposals` — the proposals so far (§10.5). Display only.
+- `trace.hits` — each passage read (`id` its `psg_`, `scope` `house` or
+  `agency:<org>`, `source` its `uri`) and each pin cited.
+
+### 10.7 Decisions and reasoning
+
+Every decision in a Brief Maker change carries `reasoning` (Contract 4 §3),
+whatever the host currently requires (Contract 5 §10, item 6): each one writes
+an agent field. `agent` is the worker — `draft_brief@1.x/extract`,
+`…/drafter`, `…/judge` — so the chain says who did it; `handler` is the
+reply's.
+
+| Decision | Kind | Targets | Cites |
+|---|---|---|---|
+| one per captured field written | `edit`, action `extract` | `#K` | the `cap_` items and `mat_` it rests on |
+| the capture | `edit`, action `capture` | `#capture`, each new `#materials[mat_…]` | the `mat_` ids; flatten tail `material_read`, `unread`, `abstained` (keys not written) |
+| the scorecard, the review | `edit`, action `score` / `review` | `#review` | `mat_` ids / the verdict decision ids |
+| one per drafted field written | `edit`, action `draft` (`regenerate` for §10.10) | `#K` | its `psg_`, `cap_`, `f_` grounds |
+| one per judged field | `verdict`, `polarity: good \| bad`, `reason_code` when bad, `taxonomy_version: "reason-codes/1"` | `#K` | the edit decision it judges; loop-7 `psg_` |
+| a coherence failure | `verdict`, polarity `bad` | every field it names | their edit decisions |
+| a proposal | `edit`, action `propose`, flatten `proposed_value` | `#K` | as a draft or an extraction |
+| the open questions | `edit`, action `questions` | `#open_questions` | the verdicts and capture gaps they come from |
+
+Reasoning, by what decided:
+
+- **Captured field.** `because`: the client's words, each point citing its
+  `cap_` item. `only_option`: the value is what the client wrote. `certainty`
+  (derived): `high` — every cited item is a `fact` whose quote was found
+  verbatim in typed material; `medium` — an `assumption` among them, or a quote
+  from a transcribed image; `low` — the value rests on assumptions alone.
+  `would_change_if`: the client's material says otherwise, or a person edits
+  it.
+- **Drafted field.** `because`: the drafter's grounds, each citing passages,
+  capture items or pins; a point stating a figure cites the pin holding it.
+  `rejected`: the losing tournament candidates, each with why it lost (the
+  ranking's reason, a failed auto check, walking onto a competitor's ground).
+  `certainty` (derived, never the model's): `high` — every rubric check passed
+  first time and the grounds cite passages from at least two packs, or a pin
+  and a passage; `medium` — passed with checks left at `review`, or grounded
+  in one pack; `low` — passed only after revision, or grounded in no passage
+  (retrieval unconfigured, failed or empty — `attention` then says so).
+- **Verdict.** `decided`: the outcome; `because`: one point per check that
+  decided it; `certainty`: `high` when auto checks alone decided, `medium` when
+  a model check did; `attention` on every bad verdict and every check left at
+  `review`.
+- As §3: the model may write `because`, `rejected`, `would_change_if` and
+  `attention`; the middleware checks every cite against the ids it gave the
+  model, drops a point whose cites do not all resolve or that states a figure
+  without a pin, and writes its own point from the evidence when none is left.
+  The model's self-reported confidence is never asked for or read (the engine's
+  `confidence_floor` does not port).
+
+**Cites resolve in the document after the change** (§3), extended for these
+tasks: a `psg_` resolves when `data.passages` holds it, a `cap_` when
+`data.capture.items` does. Every passage a decision cites is therefore written
+into `passages` by the same change.
+
+**Host work this needs** (not in this document's gift): the host must copy a
+middleware decision's `polarity`, `reason_code`, `taxonomy_version` and its
+flatten tail (`abstained`, `material_read`, `unread`, `proposed_value`) —
+today `ops/middleware.rs` `decision()` keeps only id, kind, agent, action,
+rationale, reasoning, targets and cites — and accept `verdict` among a
+middleware change's decision kinds; and Brief Maker's view must find a field's
+decisions by `targets` as well as `fields_changed` (a middleware decision's
+`fields_changed` is empty).
+
+### 10.8 The Judge
+
+The engine's `golden_critic.py`, ported into the middleware, with the rubric
+bundled with the handler. It never sees a drafter's prompt, candidates or
+grounds — only the brief as it would stand, the rubric and loop-7
+decision-rule passages (UC-6).
+
+1. **Auto checks** in code: `within_limit`, `single_sentence`,
+   `single_minded`, `reveals_why`, `max_items`, `three_levels`, `all_three`,
+   `has_constraint`, `has_deliverables`, `names_rivals`.
+2. **Model checks**, one structured call per field, one field at a time,
+   carrying all its pending `llm` checks with the rubric's good and bad examples
+   (`critic_prompts_batched`), schema `{<check>: {verdict: pass | fail, reason,
+   fix}}`.
+3. **Coherence**, once every field is judged: the dependencies
+   (`backbone_balance`, `smp_derivation`, `rtb_supports_smp`,
+   `response_ladders`, `ownable_needs_competitors`) and the definition of done,
+   including `one_strategy` — the brief pulling in several directions,
+   per-field drafting's risk (N4).
+4. **Gating.** A drafted field with a failed check is revised once and
+   re-judged; failing again it is **not written** — state `failed`, a bad
+   verdict with `attention`, an open question "Agree the <label>." A captured
+   field is never rewritten (it is the client's words): a failed check on it
+   is a bad verdict with `attention` and an open question to take back to the
+   client. A coherence failure never removes a field: it is a bad verdict on
+   every field it names, with `attention`; an unanswered bad verdict is on the
+   lock list (Contract 4 §7), so a person answers it before the brief locks.
+5. **Reason codes** for bad verdicts: `within_limit`, `single_sentence`,
+   `single_minded`, `one_strategy`, `max_items` → `not_single_minded`;
+   `ownable`, `not_a_tagline` → `cliche`; `smp_derivation`,
+   `rtb_supports_smp`, `supports_smp`, `response_ladders`, `derives_from`,
+   `linked`, `backbone_balance` → `off_strategy`; `has_constraint` (budget
+   against ambition) → `unfeasible`; anything else → `other`, with the check's
+   reason as the text. Pending the creative director's redline (Contract 5
+   §9, O11).
+6. `review.judge.health` is `golden_critic._health`, computed by code.
+7. **Open questions** (`open_questions`, written whole): the capture's open
+   questions formatted `[<priority>] <question> — <why>` (the engine's
+   `_format_question`), then one per failed field, then one per bad verdict on
+   a captured field. Never a question the material already answers.
+
+### 10.9 Staged changes
+
+As §8.4: a reply carries the change for every stage finished since the
+previous one and may repeat them with the same decision ids; the host skips a
+field whose decisions are all in the chain.
+
+- **After `extract`**: `materials`, `capture`, `review` (scorecard), the
+  captured fields, and their decisions. `read` holds, per path, what the job
+  read (`null` for absent).
+- **After `judge`**: the drafted fields that passed, `passages`, verdicts,
+  proposals, `open_questions`, and `review` again — a deliberate rewrite, so a
+  **new** decision id and a `read` holding the value the extract stage wrote
+  (§3, *Staged writes*).
+- `draft` sends no change. A failed stage fails the job (`job.error`); the
+  reply carries the change for the stages that did finish, and what landed
+  stays.
+- The `done` poll carries the last change; later polls repeat it.
+
+### 10.10 `regenerate_field`
+
+`{ field, guidance? }` — redraft one field.
+
+- `field` is one of the eighteen keys; any other, or a locked one (§10.5), is
+  `400 invalid_input`.
+- Stages `draft` — one drafter; a captured field is re-derived from the
+  capture, never from retrieval; `guidance` goes to the drafter as the
+  planner's steer — then `judge` — that field's checks, then the coherence
+  checks that involve it. `desired_response.*` redrafts the named leaf only,
+  with the other two as context. `progress`: `{done, total: 2}`.
+- It writes the field (an `edit`, action `regenerate`, plus its verdict) — or,
+  when the field is human-held, proposes it (§10.5): pressing Redraft asks for
+  a draft, and the planner decides whether it replaces their words. A field
+  that fails twice is not written; `result.summary` says why and the bad
+  verdict is recorded.
+
+### 10.11 Errors and concurrency
+
+- `draft_brief` while a `draft_brief` or `regenerate_field` job on the same
+  document is `queued` or `running` → `409 job_state`. `regenerate_field` while
+  a `draft_brief`, or a `regenerate_field` for the same field, is → `409
+  job_state`. `regenerate_field` jobs for different fields may run together.
+- A model failure in `extract` fails the job: nothing was captured. A retrieval
+  failure in `draft` does not: the drafter drafts without passages, certainty
+  `low`, `attention` naming the failure. A model failure for one drafter makes
+  that field `failed`; the others continue.
+- Quota: each submission is one unit (§9); polls are free.
+
+### 10.12 Contract suite additions
+
+`mock-middleware/contract_test.py` gains, run against both middlewares:
+
+- `draft_brief` with a prompt only → a long job whose replies carry `stage`
+  and `result.fields` for all eighteen keys; the `done` change validates
+  against Brief Maker's schema with the §10.4 blocks; no field is `""`, `[]`,
+  `{}` or `null`; every written field is named by a decision's `targets`;
+  every decision carries well-formed reasoning; every `cap_` and `psg_` cite
+  resolves in the data after the change.
+- Every captured field's decision cites only `cap_` and `mat_` ids; every
+  `fact` capture item's quote is a substring of its material's text.
+- A key in `locked_fields` is in no patch; a field last written by a human
+  decision is in no patch and is in `result.proposals`.
+- `regenerate_field` for an unknown or a locked field → `400`; a second
+  `draft_brief` while one runs → `409`.
+- Polling a `done` job again returns the same change.

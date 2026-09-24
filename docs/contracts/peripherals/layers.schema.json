@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "napkin.layers/1",
+  "title": "Layers port — napkin.layers/1 (docs/contracts/peripherals.md §4)",
+  "definitions": {
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "entity": { "type": "string", "pattern": "^(brand|org|category)/[a-z0-9][a-z0-9._-]*$" },
+    "key": { "type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$" },
+    "market": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "leaf": { "type": "string", "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$" },
+    "licence": { "type": "string", "enum": ["open", "licensed-internal", "client-confidential"] },
+    "tier": { "type": "string", "enum": ["primary", "secondary", "tertiary", "reviewer-verified"] },
+    "value": { "type": ["number", "string", "boolean"] },
+    "origin": { "type": "string", "pattern": "^fact://(brand|category)/.+/[a-z0-9_]+(\\.[a-z0-9_]+)*@[1-9][0-9]*$" },
+    "decision": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "description": "Stored whole with the write, reasoning included (R1).",
+      "properties": {
+        "id": { "type": "string", "pattern": "^d_" },
+        "kind": { "type": "string" },
+        "handler": { "type": "string" },
+        "action": { "type": "string" },
+        "rationale": { "type": "string" },
+        "cites": { "type": "array", "items": { "type": "string" } },
+        "reasoning": { "type": "object" }
+      }
+    },
+    "fact_in": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer", "entity", "key", "value", "unit", "as_of", "retrieved_at", "sources", "licence"],
+      "properties": {
+        "layer": { "type": "string", "enum": ["brand", "category"] },
+        "entity": { "$ref": "#/definitions/entity" },
+        "key": { "$ref": "#/definitions/key" },
+        "market": { "anyOf": [{ "$ref": "#/definitions/market" }, { "type": "null" }] },
+        "value": { "$ref": "#/definitions/value" },
+        "unit": { "type": "string", "minLength": 1 },
+        "as_of": { "$ref": "#/definitions/date" },
+        "retrieved_at": { "$ref": "#/definitions/date" },
+        "sources": { "type": "array", "items": { "type": "string", "pattern": "^src_" } },
+        "quotes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "licence": { "$ref": "#/definitions/licence" },
+        "method": { "type": "string", "enum": ["observation", "report", "measurement", "synthesis"] },
+        "status": { "type": "string", "enum": ["contested"] }
+      }
+    },
+    "append_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "decision"],
+      "properties": {
+        "fact": { "$ref": "#/definitions/fact_in" },
+        "decision": { "$ref": "#/definitions/decision" }
+      }
+    },
+    "source_record": {
+      "type": "object",
+      "required": ["id", "uri", "tier", "domain", "licence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^src_" },
+        "uri": { "type": "string", "minLength": 1 },
+        "publisher": { "type": ["string", "null"] },
+        "title": { "type": ["string", "null"] },
+        "tier": { "$ref": "#/definitions/tier" },
+        "domain": { "type": "string" },
+        "licence": { "$ref": "#/definitions/licence" },
+        "retrieved_at": { "type": ["string", "null"] },
+        "published_at": { "type": ["string", "null"] },
+        "quote": { "type": ["string", "null"], "description": "In fact rows only: the quote linking this source to the fact." }
+      }
+    },
+    "fact_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layer", "entity", "key", "market", "value", "unit", "as_of", "retrieved_at", "status", "version", "supersedes", "licence", "method", "decision", "origin", "sources", "source_records"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^f_" },
+        "layer": { "type": "string", "enum": ["brand", "category"] },
+        "entity": { "$ref": "#/definitions/entity" },
+        "key": { "$ref": "#/definitions/key" },
+        "market": { "anyOf": [{ "$ref": "#/definitions/market" }, { "type": "null" }] },
+        "value": { "$ref": "#/definitions/value" },
+        "unit": { "type": "string" },
+        "as_of": { "$ref": "#/definitions/date" },
+        "retrieved_at": { "$ref": "#/definitions/date" },
+        "status": { "type": "string", "enum": ["active", "contested", "superseded"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "supersedes": { "type": ["string", "null"] },
+        "licence": { "$ref": "#/definitions/licence" },
+        "method": { "type": ["string", "null"] },
+        "decision": { "type": "string", "pattern": "^d_" },
+        "origin": { "$ref": "#/definitions/origin" },
+        "sources": { "type": "array", "items": { "type": "string" } },
+        "source_records": { "type": "array", "items": { "$ref": "#/definitions/source_record" } }
+      }
+    },
+    "append_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "outcome"],
+      "properties": {
+        "fact": { "$ref": "#/definitions/fact_row" },
+        "outcome": { "type": "string", "enum": ["created", "corroborated", "superseded", "contested"] }
+      }
+    },
+    "source_in": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["uri", "tier", "domain", "licence"],
+          "properties": {
+            "uri": { "type": "string", "minLength": 1 },
+            "tier": { "$ref": "#/definitions/tier" },
+            "domain": { "type": "string" },
+            "licence": { "$ref": "#/definitions/licence" },
+            "publisher": { "type": ["string", "null"] },
+            "title": { "type": ["string", "null"] },
+            "retrieved_at": { "anyOf": [{ "$ref": "#/definitions/date" }, { "type": "null" }] },
+            "published_at": { "anyOf": [{ "$ref": "#/definitions/date" }, { "type": "null" }] }
+          }
+        }
+      }
+    },
+    "leaf_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "name", "vertical", "vertical_name", "aliases", "regulated", "provisional"],
+      "properties": {
+        "code": { "$ref": "#/definitions/leaf" },
+        "name": { "type": "string" },
+        "vertical": { "type": "string" },
+        "vertical_name": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "regulated": { "type": "boolean" },
+        "provisional": { "type": "boolean" }
+      }
+    },
+    "roster_put": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "categories", "sources", "decision"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "categories": { "type": "array", "minItems": 1, "maxItems": 2, "items": { "$ref": "#/definitions/leaf" } },
+        "client_org": { "type": "string", "pattern": "^org/[a-z0-9][a-z0-9._-]*$" },
+        "sources": { "type": "array", "items": { "type": "string", "pattern": "^src_" } },
+        "decision": { "$ref": "#/definitions/decision" }
+      }
+    },
+    "roster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "name", "categories", "client_org", "facts"],
+      "properties": {
+        "ref": { "$ref": "#/definitions/entity" },
+        "name": { "type": ["string", "null"] },
+        "categories": { "type": "array", "maxItems": 2, "items": { "$ref": "#/definitions/leaf" } },
+        "client_org": { "type": ["string", "null"] },
+        "facts": { "type": "array", "items": { "$ref": "#/definitions/fact_row" } }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "message"],
+          "properties": {
+            "type": { "type": "string", "enum": ["invalid_input", "missing_scope", "unknown_leaf", "unauthenticated", "unknown_fact", "unknown_brand", "unknown_decision", "idempotency_conflict", "not_found", "method_not_allowed", "unavailable", "internal"] },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
