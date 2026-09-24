@@ -83,7 +83,10 @@ drawn as a thread. Once submitted, the start screen becomes three cards:
   ("Subject brand · Lúnasa · confirmed by you", or "stated by you"), and any
   words the person gave before the agent turned them into choices.
 - *Progress* — the six stages from `job.stage` / `job.progress`, the current
-  stage's agent figure (static copies of the shell's `AgentFigure`) and one
+  stage's agent figure (the shell's `AgentFigure`, from the shared snippet
+  `app/templates/shared/agent-figures.html` that the packer inlines at the
+  `<!-- @napkin:agent-figures -->` marker; regenerate it with `npm run
+  figures`), drawn on the Plan ground while it works, and one
   status line updated in place ("Research is researching Ireland and Great
   Britain…"), under it the stage's latest narration. Every agent message is
   kept, as plain lines, in a collapsed *Activity* disclosure; the job's
