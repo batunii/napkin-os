@@ -12,7 +12,9 @@ import AppRuntime from './shell/AppRuntime'
 import InstallPrompt from './shell/InstallPrompt'
 import type { RunningApp, Screen } from './shell/types'
 import StudioShell from './studio/StudioShell'
+import { LogoSpinnerFill, LogoSpinnerVeil } from './brand/LogoSpinner'
 import './index.css'
+import './components/chrome.css'
 
 // Theme keys an immersive app may recolor → CSS variables on the shell root.
 // These are the design tokens; the legacy names (--bg, --surface, --text,
@@ -43,9 +45,15 @@ export default function App() {
   const [installed, setInstalled] = useState<InstalledApp[]>([])
   const [pendingLaunch, setPendingLaunch] = useState<OpenResult | null>(null)
   const [loading, setLoading] = useState(false)
+  // Something the shell is preparing that is not opening a document (an
+  // export, an install): its label, shown on the loading veil.
+  const [busy, setBusy] = useState<string | null>(null)
+  // False until the first attempt to load home has settled, so the native
+  // launcher does not flash up before the home app arrives.
+  const [booted, setBooted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Toast raised by a trusted app via window.napkin.notify → clan://notify.
-  const [toast, setToast] = useState<{ title: string; body: string } | null>(null)
+  const [toast, setToast] = useState<{ title: string; body: string; error?: boolean } | null>(null)
 
   const refreshApps = useCallback(async () => {
     try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
@@ -64,6 +72,7 @@ export default function App() {
       setHome(null) // fall back to the native launcher
       refreshApps()
     }
+    setBooted(true)
     setScreen('home')
   }, [refreshApps])
 
@@ -128,10 +137,12 @@ export default function App() {
     // An app that renders its own view knows how it should look on paper; the
     // host can only compose from the markup, which for such an app is empty.
     if (await askAppToExport(kind)) return
+    setBusy('Preparing the export…')
     await host.exportCurrent(kind, false, false).catch(err => {
-      setToast({ title: 'Export failed', body: String(err) })
+      setToast({ title: 'Export failed', body: String(err), error: true })
       setTimeout(() => setToast(null), 5000)
     })
+    setBusy(null)
   }, [])
 
   useEffect(() => {
@@ -155,12 +166,14 @@ export default function App() {
         const ext = p.kind === 'pdf' ? 'pdf' : 'html'
         const dest = await host.pickSaveDestination(p.filename, ext)
         if (!dest) return
+        setBusy(`Saving the ${ext.toUpperCase()}…`)
         try {
           await host.finishExport(p.kind, p.tmpHtml, dest)
           setToast({ title: 'Exported', body: `Saved ${ext.toUpperCase()} to ${dest}` })
         } catch (err) {
-          setToast({ title: 'Export failed', body: String(err) })
+          setToast({ title: 'Export failed', body: String(err), error: true })
         }
+        setBusy(null)
         setTimeout(() => setToast(null), 5000)
       }),
       host.on('clan-title-changed', title => {
@@ -178,7 +191,9 @@ export default function App() {
 
   const onInstall = useCallback(async () => {
     if (!pendingLaunch) return
+    setBusy('Installing…')
     try { await host.installApp(pendingLaunch.path); await refreshApps() } catch (e) { setError(String(e)) }
+    setBusy(null)
     setPendingLaunch(null); openHome()
   }, [pendingLaunch, refreshApps, openHome])
 
@@ -199,7 +214,9 @@ export default function App() {
 
   // Apps: the home CLAN app when the host has one (as home always was), the
   // native launcher when it couldn't load.
-  const apps = home ? (
+  const apps = !booted ? (
+    <LogoSpinnerFill label="Opening the studio…" />
+  ) : home ? (
     <AppRuntime
       htmlContent={home.html}
       hasHumanView={home.open.has_human_view}
@@ -214,9 +231,10 @@ export default function App() {
   return (
     <>
       {error && (
-        <div style={{ padding: 16, color: 'var(--danger)', fontFamily: 'monospace', background: '#0a0d14', borderBottom: '1px solid var(--border)' }}>
-          <strong>Error:</strong> {error}{' '}
-          <button onClick={() => setError(null)} style={{ marginLeft: 8, background: 'none', border: '1px solid var(--border)', color: 'var(--muted)', borderRadius: 4, cursor: 'pointer' }}>dismiss</button>
+        <div className="ch-banner" role="alert">
+          <span className="ch-banner-dot" aria-hidden />
+          <span className="ch-banner-text"><strong>Something went wrong.</strong> <span className="ch-mono">{error}</span></span>
+          <button className="ch-btn ch-btn-quiet" onClick={() => setError(null)}>Dismiss</button>
         </div>
       )}
 
@@ -238,14 +256,12 @@ export default function App() {
         />
       )}
 
+      {(loading || busy) && <LogoSpinnerVeil label={busy ?? 'Opening…'} />}
+
       {toast && (
-        <div style={{
-          position: 'fixed', bottom: 20, right: 20, zIndex: 200, maxWidth: 320,
-          background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 12,
-          padding: '12px 16px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>🛡 {toast.title}</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{toast.body}</div>
+        <div className="ch-toast" data-error={toast.error || undefined} role="status" aria-live="polite">
+          <div className="ch-toast-title"><span className="ch-chip-dot" aria-hidden />{toast.title}</div>
+          <div className="ch-toast-body">{toast.body}</div>
         </div>
       )}
     </>

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { StudioLogo } from '../brand/StudioMark'
+import { LogoSpinner } from '../brand/LogoSpinner'
 import ApiKeyButton from './ApiKeyButton'
 import ContinueIn from './ContinueIn'
 import ThemeToggle from './ThemeToggle'
@@ -58,7 +59,7 @@ export default function Toolbar({
       <button className="ch-bar-home" onClick={onHome} title="Back to the studio">
         <StudioLogo size={15} compact />
       </button>
-      <span className="ch-bar-title">{loading ? 'Loading…' : (title ?? 'No file open')}</span>
+      <span className="ch-bar-title">{loading ? <LogoSpinner size="xs" label="Loading…" /> : (title ?? 'No file open')}</span>
       {isTemplate && <span className="ch-chip ch-chip-accent">Template</span>}
       {trusted && (
         <span className="ch-chip ch-chip-ok" title="Signed by Napkin — scoped host capabilities enabled">

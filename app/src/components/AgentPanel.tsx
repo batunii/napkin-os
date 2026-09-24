@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import { host } from '../host'
+import { LogoSpinner } from '../brand/LogoSpinner'
 import './chrome.css'
 
 interface Props { onClose: () => void }
@@ -59,7 +60,7 @@ export default function AgentPanel({ onClose }: Props) {
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '4px 16px 16px' }}>
         {loading ? (
-          <span className="ch-key">Loading…</span>
+          <LogoSpinner size="sm" label="Reading…" style={{ marginTop: 12 }} />
         ) : (
           <pre className="ch-pre">{content || '(empty)'}</pre>
         )}

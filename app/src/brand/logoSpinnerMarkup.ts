@@ -14,11 +14,15 @@
 // The colours read the studio tokens and fall back to the light palette, so
 // the markup works on a page that defines none of them.
 
-/** The mark: a disc of four quarters turned -45°. `size` in px. */
+let seq = 0
+
+/** The mark: a disc of four quarters turned -45°. `size` in px. Each copy gets
+ *  its own clip id — a clipPath inside a hidden copy would clip nothing. */
 export function logoSpinnerSvg(size = 28): string {
+  const clip = `napkin-spinner-clip-${++seq}`
   return `<svg class="napkin-spinner-mark" width="${size}" height="${size}" viewBox="0 0 22 22" aria-hidden="true">`
-    + `<clipPath id="napkin-spinner-clip"><circle cx="11" cy="11" r="11"/></clipPath>`
-    + `<g clip-path="url(#napkin-spinner-clip)" transform="rotate(-45 11 11)">`
+    + `<clipPath id="${clip}"><circle cx="11" cy="11" r="11"/></clipPath>`
+    + `<g clip-path="url(#${clip})" transform="rotate(-45 11 11)">`
     + `<rect x="0" y="0" width="11" height="11" fill="var(--plan, #14161B)"/>`
     + `<rect x="11" y="0" width="11" height="11" fill="var(--create, #FF4F2E)"/>`
     + `<rect x="0" y="11" width="11" height="11" fill="var(--learn, #DADDE3)"/>`
