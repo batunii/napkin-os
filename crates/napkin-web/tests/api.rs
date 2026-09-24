@@ -359,6 +359,108 @@ async fn the_sandbox_token_is_the_only_authority_it_needs() {
     assert_eq!(reply.status, StatusCode::FORBIDDEN);
 }
 
+/// The same document answers the same way on the server and in the browser.
+///
+/// napkin-wasm is `napkin_host::handle` over a session acting as the local
+/// user; napkin-web is the same table behind a token, acting as the tenant.
+/// For one `.clan` the two must agree on what an app reads — its decision
+/// chain above all, which is what the Research Tool counts History and its
+/// blockers from — and on how the shell describes it when opened. (They once
+/// seemed not to: the web shell had opened home underneath the document, so
+/// its frame read home's empty chain. That was the shell's bookkeeping, pinned
+/// in app/tests/httpHost.test.ts; this pins the hosts.)
+#[tokio::test]
+async fn the_server_and_the_browser_host_answer_alike_for_one_document() {
+    let s = server(40);
+    let b = browser(&s).await;
+    let (doc, token) = upload(&s, &b, "Parity").await;
+    // Give it a history: a person's write, then an agent's.
+    for body in [
+        r#"{"patch":{"verdict":"yes"},"agent":"human","rationale":"the brief says so"}"#,
+        r#"{"patch":{"notes":"checked"},"agent":"agent","rationale":"a second look"}"#,
+    ] {
+        let r = post(&s, &format!("/s/{token}/patch-data"), &b.cookie, body).await;
+        assert_eq!(
+            r.status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&r.body)
+        );
+    }
+    let web_open = get(&s, &format!("/api/t/{}/d/{doc}", b.tenant), Some(&b.cookie))
+        .await
+        .json();
+    let bytes = get(
+        &s,
+        &format!("/api/t/{}/d/{doc}/download", b.tenant),
+        Some(&b.cookie),
+    )
+    .await
+    .body;
+
+    // The browser's host, as napkin-wasm builds it, over the downloaded file.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("parity.clan");
+    std::fs::write(&path, &bytes).unwrap();
+    let device = napkin_host::Session::with_ctx(
+        Arc::new(napkin_host::FsStore::new(dir.path().to_path_buf())),
+        napkin_host::Ctx::local(),
+    );
+    let device_open = serde_json::to_value(device.open(path.into()).unwrap()).unwrap();
+
+    for key in [
+        "validation",
+        "has_human_view",
+        "render_model",
+        "is_template",
+        "trusted",
+    ] {
+        assert_eq!(
+            web_open[key], device_open[key],
+            "open result differs on {key}"
+        );
+    }
+    for key in [
+        "title",
+        "id",
+        "version",
+        "updated_at",
+        "sha256",
+        "file_count",
+    ] {
+        assert_eq!(
+            web_open["manifest"][key], device_open["manifest"][key],
+            "manifest differs on {key}"
+        );
+    }
+
+    for route in ["/chain", "/capabilities", "/spinoff-targets"] {
+        let web = get(&s, &format!("/s/{token}{route}"), None).await;
+        let dev = napkin_host::handle(
+            &device,
+            &NoConfig,
+            napkin_host::HostRequest::new(route, "", Vec::new()),
+        );
+        assert_eq!(web.status.as_u16(), dev.status, "{route} status");
+        let web: Value = serde_json::from_slice(&web.body).unwrap();
+        let dev: Value = serde_json::from_slice(&dev.body).unwrap();
+        assert_eq!(web, dev, "{route} differs between the hosts");
+    }
+    let chain: Value = serde_json::from_slice(
+        &napkin_host::handle(
+            &device,
+            &NoConfig,
+            napkin_host::HostRequest::new("/chain", "", Vec::new()),
+        )
+        .body,
+    )
+    .unwrap();
+    assert!(
+        chain["decisions"].as_array().is_some_and(|d| d.len() >= 2),
+        "the writes must be in the chain both hosts read: {chain}"
+    );
+}
+
 #[tokio::test]
 async fn a_token_reaches_exactly_one_document() {
     let s = server(40);
