@@ -270,6 +270,13 @@ pub fn dispatch(
             Err(e) => e.into(),
         },
 
+        // The decision view the shell's OS layer renders: every decision,
+        // newest first, with what needs a person — derived here, not by the app.
+        "/decisions" => match session.read(crate::ops::decisions::decisions) {
+            Ok(v) => HostResponse::json(200, &serde_json::json!(v)),
+            Err(e) => e.into(),
+        },
+
         // Launcher routes — let a home CLAN app list and launch apps.
         "/apps" => HostResponse::json(200, &serde_json::json!(scan_apps(&**session.store()))),
         "/recent" => HostResponse::json(200, &serde_json::json!(scan_recent(&**session.store()))),

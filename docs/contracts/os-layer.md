@@ -354,6 +354,12 @@ freely, never redefine.
   decision. The actor always comes from `Ctx`.
 - New in v1: `/verdict`, `/classify`, `/contest`, `/resolve`, `/finding`,
   `/verify`, `/approve`, `/history`, `/timeline`, `/open`, `/stale`.
+- `/decisions` (landed): every decision, newest first, with who made it, its
+  targets as labels, its cites resolved, and what needs a person — derived by
+  the host from the chain, the members and the data: `reasoning.attention`,
+  low certainty, and the §7 lock list. The shell renders it as the OS layer's
+  decision blocks. `/open` above names the lock list alone; it is not built,
+  and the path is taken today by the launcher's open-a-document route.
 - On the server, `/api-proxy` becomes a dispatch into the handler registry. The
   desktop keeps the transport; it does not assemble prompts.
 
