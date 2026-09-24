@@ -237,6 +237,70 @@ pub fn attach_extracted_text(doc: &Document, payload: &mut Value) {
         .get_mut("input")
         .and_then(|i| i.get_mut("attachments"));
     splice_text(doc, under_input, "text");
+    let under_input = payload
+        .get_mut("input")
+        .and_then(|i| i.get_mut("attachments"));
+    splice_images(doc, under_input);
+}
+
+/// The picture types a middleware task takes as `image` (middleware-api §10.1,
+/// Contract 5 §1.6): the set both model wires accept.
+pub const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+/// The most bytes one `image` may carry, decoded (middleware-api §10.1).
+pub const IMAGE_MAX_BYTES: usize = 5 * 1024 * 1024;
+
+/// For each middleware attachment that is a picture and carries no text, send
+/// its bytes as `image: {media_type, data}` (base64) — the middleware
+/// transcribes it (Contract 5 §1.6). The type is the attachment's
+/// `media_type`, else its extension's. A picture of another type, or over
+/// [`IMAGE_MAX_BYTES`], is not sent: the attachment goes without text or image
+/// and the middleware records it unread, rather than the whole task being
+/// refused for one oversized file.
+///
+/// TODO(O6, Contract 5 §9): an image-only PDF — a scanned deck, no text layer —
+/// arrives here with no `text` and is recorded unread. The contract gives its
+/// page rendering to the host's extraction (`extract_text` on upload): render
+/// each page to PNG there, cache the pages beside the `.extracted/` sidecar,
+/// and send them here as `images: [...]` (at most 20 per call). It needs a PDF
+/// rasteriser in the host (pdfium or mupdf bindings, native only), which this
+/// build does not carry yet.
+fn splice_images(doc: &Document, attachments: Option<&mut Value>) {
+    use base64::Engine as _;
+    let Some(atts) = attachments.and_then(|v| v.as_array_mut()) else {
+        return;
+    };
+    for a in atts.iter_mut() {
+        if a.get("text").and_then(Value::as_str).is_some() || a.get("image").is_some() {
+            continue;
+        }
+        let Some(name) = a.get("name").and_then(Value::as_str).map(str::to_string) else {
+            continue;
+        };
+        let media_type = a
+            .get("media_type")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| content_type_for(&name).to_string());
+        if !IMAGE_TYPES.contains(&media_type.as_str()) {
+            continue;
+        }
+        let Ok(bytes) = doc.clan().read_entry(&format!("human/assets/{name}")) else {
+            continue;
+        };
+        if bytes.len() > IMAGE_MAX_BYTES {
+            continue;
+        }
+        if let Some(obj) = a.as_object_mut() {
+            obj.insert(
+                "image".into(),
+                serde_json::json!({
+                    "media_type": media_type,
+                    "data": base64::engine::general_purpose::STANDARD.encode(&bytes),
+                }),
+            );
+        }
+    }
 }
 
 fn splice_text(doc: &Document, attachments: Option<&mut Value>, key: &str) {

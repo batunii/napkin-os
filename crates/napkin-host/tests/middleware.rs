@@ -238,6 +238,30 @@ fn an_uploaded_attachment_reaches_a_middleware_task_as_text() {
     f.session.attach_extracted_text(&mut payload);
     assert_eq!(payload["input"]["attachments"][0]["text"], email);
 
+    // A picture goes as its bytes, for the middleware to transcribe (§10.1);
+    // one of another type, or text, does not.
+    let png = b"\x89PNG\r\n\x1a\nnot really a png".to_vec();
+    f.session
+        .upload_asset("mood.png", Some("human"), png.clone())
+        .unwrap();
+    f.session
+        .upload_asset("vector.svg", Some("human"), b"<svg/>".to_vec())
+        .unwrap();
+    let mut payload = json!({ "task": "draft_brief", "input": { "attachments": [
+        { "name": "mood.png", "sha256": "sha256:01" },
+        { "name": "vector.svg", "sha256": "sha256:02" },
+        { "name": "client-email.txt", "sha256": "sha256:00" }] } });
+    f.session.attach_extracted_text(&mut payload);
+    let atts = &payload["input"]["attachments"];
+    use base64::Engine as _;
+    assert_eq!(atts[0]["image"]["media_type"], "image/png");
+    assert_eq!(
+        atts[0]["image"]["data"],
+        base64::engine::general_purpose::STANDARD.encode(&png)
+    );
+    assert!(atts[1].get("image").is_none(), "svg is not a picture type");
+    assert!(atts[2].get("image").is_none(), "text goes as text");
+
     // The agent's shape is unchanged: top-level attachments, `extracted_text`.
     let mut agent = json!({ "attachments": [{ "name": "client-email.txt" }] });
     f.session.attach_extracted_text(&mut agent);
