@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use crate::config::{resolve_proxy, HostConfig};
+use crate::config::{configured, resolve_proxy, HostConfig};
 use crate::ctx::Ctx;
 use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
@@ -18,6 +18,13 @@ use crate::session::Session;
 /// host-side auth, return a structured envelope. RAG, model choice, prompt
 /// assembly — all backend concerns behind the endpoint.
 pub async fn proxy_call(cfg: &dyn HostConfig, request_kind: &str, payload: Value) -> Value {
+    // The middleware never falls back to the agent URL: that endpoint does not
+    // speak napkin.middleware/1, and sending it the request (and the document)
+    // to refuse its answer afterwards is the fall-through M4 forbids. The app
+    // is told plainly that none is configured.
+    if let Some(refused) = unconfigured(cfg, request_kind) {
+        return refused;
+    }
     let (url, auth_kind, key) = resolve_proxy(cfg, request_kind);
     if url.trim().is_empty() {
         return serde_json::json!({ "ok": false, "status": 0, "error": format!("no endpoint configured for kind '{request_kind}'") });
@@ -41,6 +48,13 @@ pub async fn proxy_call(cfg: &dyn HostConfig, request_kind: &str, payload: Value
             "error": format!("could not reach {url}: {e}"),
         }),
     }
+}
+
+/// The envelope for a request this host will not send: a middleware request
+/// with no middleware configured.
+pub fn unconfigured(cfg: &dyn HostConfig, request_kind: &str) -> Option<Value> {
+    (request_kind == middleware::REQUEST_KIND && !configured(cfg, request_kind))
+        .then(middleware::no_middleware)
 }
 
 /// The envelope the app gets for an upstream answer with `status` and `body`.
@@ -124,6 +138,16 @@ pub async fn agent_prompt(cfg: &dyn HostConfig, text: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::NoConfig;
+
+    #[test]
+    fn a_middleware_request_never_falls_back_to_the_agent_url() {
+        assert!(unconfigured(&NoConfig, "agent").is_none());
+        let env = unconfigured(&NoConfig, "middleware").unwrap();
+        assert_eq!(env["ok"], false);
+        assert_eq!(env["error"]["type"], middleware::NO_MIDDLEWARE);
+        assert_eq!(env["endpoint"], Value::Null, "nothing was sent anywhere");
+    }
 
     #[test]
     fn a_middleware_error_body_reaches_the_app() {

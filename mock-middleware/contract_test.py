@@ -40,10 +40,11 @@ LENSES = ["market_structure", "brands_positioning", "consumer_culture", "categor
 DECISION_KINDS = {"edit", "contest", "resolve", "verdict", "classify", "pin", "finding",
                   "verify", "approve", "lease", "backref"}
 CONF = ["low", "medium", "high"]
-# Decisions that must say why (middleware-api.md §3): these kinds always, and
-# an edit whenever it writes one of these fields.
-REASONED_KINDS = {"pin", "contest", "finding"}
-AGENT_FIELDS = {"campaign", "selection", "report"}
+# Decisions that must say why (middleware-api.md §3, R1): the host's floor —
+# these kinds and every proposal, always — plus what the app declares in its
+# app/pipeline.yaml `reasoning` block (kinds, and the paths an edit must say
+# why it wrote). The suite reads the declaration of the app it tests against.
+REASONED_KINDS = {"pin", "contest", "finding", "verdict"}
 
 
 def reasoning_problems(r) -> list:
@@ -267,6 +268,7 @@ class Suite:
         self.facts_schema = json.loads((sd / "facts.schema.json").read_text())
         self.findings_schema = json.loads((sd / "findings.schema.json").read_text())
         self.pipeline = parse_pipeline((sd / "app" / "pipeline.yaml").read_text())
+        self.reason_kinds, self.reason_edits = parse_reasoning((sd / "app" / "pipeline.yaml").read_text())
         self.results = []
 
     # -- envelope checks ----------------------------------------------------
@@ -455,7 +457,8 @@ class Suite:
 
     def reasoning(self, body, clan, ch, data, facts, findings, dec_ids, chain_ids):
         """Every decision of a required kind says why (§3): pin, contest,
-        finding, and an edit that writes campaign, selection or report. Where
+        finding, verdict, a proposal, and whatever the app's pipeline declares
+        (the Research Tool: an edit that writes campaign, selection or report). Where
         reasoning is given it has the shape, and every id it cites resolves in
         the document as it stands after the change — a pin, a finding, a
         decision, a material, a contest or a gap, a value a contest holds, a
@@ -476,8 +479,10 @@ class Suite:
         fi_conf = {f["id"]: f.get("confidence") for f in findings}
         for d in ch["decisions"]:
             paths = [t.partition("#")[2] for t in d.get("targets") or []]
-            required = d["kind"] in REASONED_KINDS or (
-                d["kind"] == "edit" and any(re.split(r"[.\[]", p)[0] in AGENT_FIELDS for p in paths))
+            dotted = [re.sub(r"\[([^\]]+)\]", r".\1", p) for p in paths]
+            required = d["kind"] in self.reason_kinds or (d["kind"] == "edit" and (
+                d.get("action") == "propose"
+                or any(p == e or p.startswith(e + ".") for p in dotted for e in self.reason_edits)))
             r = d.get("reasoning")
             if r is None:
                 check(not required, f"decision {d['id']} ({d['kind']}, {d.get('action')}) carries no reasoning")
@@ -1652,6 +1657,26 @@ def parse_pipeline(text):
         if in_tasks and cur and m:
             out[cur] = m.group(1)
     return out
+
+
+def parse_reasoning(text):
+    """(kinds, edits) that must carry reasoning, from app/pipeline.yaml's
+    `reasoning` block over the host's floor (no YAML dependency: flow lists)."""
+    block, inside = [], False
+    for line in text.splitlines():
+        if re.match(r"^reasoning:\s*$", line):
+            inside = True
+            continue
+        if inside and re.match(r"^\S", line):
+            break
+        if inside:
+            block.append(line.split("#", 1)[0])
+    body = " ".join(block)
+
+    def flow(key):
+        m = re.search(key + r":\s*\[([^\]]*)\]", body)
+        return [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()] if m else []
+    return REASONED_KINDS | set(flow("kinds")), flow("edits")
 
 
 def main():

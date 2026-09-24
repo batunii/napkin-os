@@ -211,10 +211,10 @@ pub fn dispatch(
     match path {
         #[cfg(feature = "native")]
         "/api-proxy" => HostResponse::error(500, "/api-proxy must be dispatched asynchronously"),
-        // In a browser build the page owns inference — it has the credentials
-        // and the network — so it answers this before the host ever sees it.
+        // A browser build has no network behind it and no middleware: a task
+        // is answered, plainly, that none is configured.
         #[cfg(not(feature = "native"))]
-        "/api-proxy" => HostResponse::error(501, "inference is handled by the page in this build"),
+        "/api-proxy" => HostResponse::json(200, &crate::ops::middleware::no_middleware()),
 
         "/edit-mode" => HostResponse::new(
             200,
@@ -286,21 +286,17 @@ pub fn dispatch(
             None => HostResponse::error(400, "missing path"),
         },
 
-        // The page holds the credentials; the host holds the provenance. So the
-        // host assembles the prompt — schema, digests, data, decision history,
-        // attachment text, split for caching — and the caller makes the call.
-        // That is what lets a browser talk to Claude with the user's own key
-        // without a backend, and it is the same prompt every other shell sends.
-        "/agent-prompt" => {
-            let body = req.body_json();
-            let mut payload = body.get("payload").cloned().unwrap_or(body);
-            session.attach_extracted_text(&mut payload);
-            let clan = session.clan_context_for_agent();
-            HostResponse::json(
-                200,
-                &serde_json::json!(crate::prompt::build(&payload, &clan, "")),
-            )
-        }
+        // Whether a middleware request can go anywhere, so an app that runs
+        // on the middleware can say so plainly on open instead of failing on
+        // the first task. Only presence — never the endpoint or its secret.
+        "/middleware" => HostResponse::json(
+            200,
+            &serde_json::json!({
+                "api": crate::ops::middleware::API,
+                "configured": cfg!(feature = "native")
+                    && crate::config::configured(cfg, crate::ops::middleware::REQUEST_KIND),
+            }),
+        ),
 
         "/agent-endpoint" => {
             HostResponse::json(200, &serde_json::json!({ "endpoint": agent_base_url(cfg) }))

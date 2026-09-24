@@ -7,6 +7,8 @@
 //! changed — once, by the host, as `process:middleware` — or untouched with a
 //! reason. No network: the proxy call is the only part not exercised here.
 
+#![recursion_limit = "256"]
+
 use std::sync::Arc;
 
 use clan_sdk::{ClanFile, DecisionChain};
@@ -21,10 +23,23 @@ struct Fixture {
     id: DocId,
 }
 
+/// The Research Tool's pipeline declaration, as its documents carry it: the
+/// app, not the host, says which edits must carry reasoning (R1).
+const CAMPAIGN_PIPELINE: &str =
+    include_str!("../../../app/templates/campaign-research/app/pipeline.yaml");
+/// Brief Maker's.
+const BRIEF_PIPELINE: &str = include_str!("../../../app/templates/brief-maker/app/pipeline.yaml");
+
 fn fixture() -> Fixture {
+    fixture_with(Some(CAMPAIGN_PIPELINE))
+}
+
+/// A fresh document carrying `pipeline` as its `app/pipeline.yaml` (none when
+/// `None`).
+fn fixture_with(pipeline: Option<&str>) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let id = DocId::from(dir.path().join("campaign.clan"));
-    let bytes = clan_sdk::create(clan_sdk::CreateOptions {
+    let mut bytes = clan_sdk::create(clan_sdk::CreateOptions {
         title: "Campaign".into(),
         brief: "a campaign".into(),
         document_type: None,
@@ -32,6 +47,17 @@ fn fixture() -> Fixture {
         schema: None,
     })
     .unwrap();
+    if let Some(p) = pipeline {
+        let clan = ClanFile::from_bytes(bytes).unwrap();
+        let mut b = clan_sdk::ClanBuilder::new(clan.manifest().clone());
+        for (path, entry) in clan.read_all_entries().unwrap() {
+            if path != clan_sdk::MANIFEST_PATH {
+                b.add_entry(path, entry);
+            }
+        }
+        b.add_entry("app/pipeline.yaml", p.as_bytes().to_vec());
+        bytes = b.build().unwrap();
+    }
     std::fs::write(id.as_str(), bytes).unwrap();
     let session = Session::new(Arc::new(FsStore::new(dir.path().to_path_buf())));
     session.open(id.clone()).unwrap();
@@ -148,7 +174,7 @@ fn the_agent_context_names_the_document_and_carries_the_members() {
     );
     assert_eq!(clan["facts"], json!([]));
     assert_eq!(clan["findings"], json!([]));
-    assert_eq!(clan["pipeline"], Value::Null);
+    assert_eq!(clan["pipeline"]["pipeline"], "napkin-campaign-research");
     // What the existing agent reads is still there.
     for k in [
         "schema",
@@ -211,6 +237,30 @@ fn an_uploaded_attachment_reaches_a_middleware_task_as_text() {
         "attachments": [{ "name": "client-email.txt", "sha256": "sha256:00" }] } });
     f.session.attach_extracted_text(&mut payload);
     assert_eq!(payload["input"]["attachments"][0]["text"], email);
+
+    // A picture goes as its bytes, for the middleware to transcribe (§10.1);
+    // one of another type, or text, does not.
+    let png = b"\x89PNG\r\n\x1a\nnot really a png".to_vec();
+    f.session
+        .upload_asset("mood.png", Some("human"), png.clone())
+        .unwrap();
+    f.session
+        .upload_asset("vector.svg", Some("human"), b"<svg/>".to_vec())
+        .unwrap();
+    let mut payload = json!({ "task": "draft_brief", "input": { "attachments": [
+        { "name": "mood.png", "sha256": "sha256:01" },
+        { "name": "vector.svg", "sha256": "sha256:02" },
+        { "name": "client-email.txt", "sha256": "sha256:00" }] } });
+    f.session.attach_extracted_text(&mut payload);
+    let atts = &payload["input"]["attachments"];
+    use base64::Engine as _;
+    assert_eq!(atts[0]["image"]["media_type"], "image/png");
+    assert_eq!(
+        atts[0]["image"]["data"],
+        base64::engine::general_purpose::STANDARD.encode(&png)
+    );
+    assert!(atts[1].get("image").is_none(), "svg is not a picture type");
+    assert!(atts[2].get("image").is_none(), "text goes as text");
 
     // The agent's shape is unchanged: top-level attachments, `extracted_text`.
     let mut agent = json!({ "attachments": [{ "name": "client-email.txt" }] });
@@ -1302,4 +1352,199 @@ fn patch_data_records_a_persons_reasoning_when_given() {
         "{}",
         err.message
     );
+}
+
+// ── every field a decision sends (middleware-api.md §10.7, host work) ────
+
+/// A Brief Maker judge stage: a bad verdict on the insight, carrying every
+/// field a middleware decision can, plus fields the host owns said otherwise.
+fn verdict_reply(clan: &Value) -> Value {
+    let doc = clan["id"].as_str().unwrap();
+    json!({
+        "api": "napkin.middleware/1", "task": "draft_brief", "handler": "draft_brief@1.0",
+        "job": { "id": "job_b1", "state": "running", "stage": "judge",
+                 "progress": { "done": 2, "total": 3 }, "question": null,
+                 "started_at": "2026-09-24T09:00:00Z", "finished_at": null, "error": null },
+        "result": { "summary": "judging" },
+        "change": {
+            "doc": doc, "base_version": clan["version"],
+            "read": { "open_questions": Value::Null },
+            "data_patch": { "open_questions": ["[high] Agree the insight — it failed twice"] },
+            "decisions": [
+                { "id": "d_01JB0V01VER", "kind": "verdict", "agent": "draft_brief@1.0/judge",
+                  "action": "judge", "polarity": "bad", "reason_code": "cliche",
+                  "taxonomy_version": "reason-codes/1", "reviewer_role": "judge",
+                  "licence": { "model": true, "export": false },
+                  "targets": [format!("{doc}#insight")], "cites": ["d_01JB0D01DRF", "psg_3b9f0c2e7a41d5c8e210"],
+                  "claimed_agent": "golden-critic",
+                  "actor": "human:mallory", "scope": { "org": "elsewhere" },
+                  "timestamp": "2026-09-24T09:00:07Z",
+                  "abstained": ["budget_and_scope"], "material_read": ["mat_9f2c0a1b3d4e5f60"],
+                  "unread": ["mat_0000000000000000"], "proposed_value": "People buy cider for the ritual.",
+                  "checks": [{ "check": "ownable", "status": "fail" }],
+                  "reasoning": { "decided": "Failed the insight.",
+                                 "because": [{ "point": "it restates the category's cliché", "cites": ["psg_3b9f0c2e7a41d5c8e210"] }],
+                                 "only_option": "a failed model check decides the verdict",
+                                 "certainty": { "level": "medium", "why": "a model check decided" },
+                                 "would_change_if": "a redraft passes the ownable check",
+                                 "attention": "The insight failed twice; agree it with the client." } },
+                { "id": "d_01JB0Q01QST", "kind": "edit", "agent": "draft_brief@1.0/judge",
+                  "action": "questions", "targets": [format!("{doc}#open_questions")],
+                  "cites": ["d_01JB0V01VER"],
+                  "reasoning": reasoning("Composed the open questions.", &["d_01JB0V01VER"]) }
+            ]
+        },
+        "trace": { "scope": { "org": "dev", "brand": "dev" }, "backend": "mock-backend",
+                   "model": null, "hits": [], "usage": { "input_tokens": 0, "output_tokens": 0 } }
+    })
+}
+
+#[test]
+fn every_field_a_middleware_decision_sends_is_kept() {
+    let f = fixture_with(Some(BRIEF_PIPELINE));
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(&f, verdict_reply(&clan));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+
+    let c = chain(&on_disk(&f));
+    let d = c
+        .decisions
+        .iter()
+        .find(|d| d.id.as_deref() == Some("d_01JB0V01VER"))
+        .unwrap();
+    // The verdict's own fields.
+    assert_eq!(d.kind.as_deref(), Some("verdict"));
+    assert_eq!(d.polarity.as_deref(), Some("bad"));
+    assert_eq!(d.reason_code.as_deref(), Some("cliche"));
+    assert_eq!(d.taxonomy_version.as_deref(), Some("reason-codes/1"));
+    assert_eq!(d.reviewer_role.as_deref(), Some("judge"));
+    let licence = d.licence.as_ref().unwrap();
+    assert_eq!((licence.model, licence.export), (Some(true), Some(false)));
+    assert_eq!(d.agent, "draft_brief@1.0/judge");
+    assert_eq!(d.claimed_agent.as_deref(), Some("golden-critic"));
+    assert_eq!(d.cites, ["d_01JB0D01DRF", "psg_3b9f0c2e7a41d5c8e210"]);
+    // The flatten tail, verbatim.
+    let y = |s: &str| serde_yaml::from_str::<serde_yaml::Value>(s).unwrap();
+    assert_eq!(d.extra["abstained"], y("[budget_and_scope]"));
+    assert_eq!(d.extra["material_read"], y("[mat_9f2c0a1b3d4e5f60]"));
+    assert_eq!(d.extra["unread"], y("[mat_0000000000000000]"));
+    assert_eq!(
+        d.extra["proposed_value"],
+        y("People buy cider for the ritual.")
+    );
+    assert_eq!(d.extra["checks"], y("[{check: ownable, status: fail}]"));
+    // Attribution is the host's; what the body said instead is kept as a claim.
+    assert_eq!(d.actor.as_deref(), Some("process:middleware"));
+    assert_eq!(d.handler.as_deref(), Some("draft_brief@1.0"));
+    assert_eq!(d.backend.as_deref(), Some("mock-backend"));
+    assert_eq!(d.extra["claimed_actor"], y("human:mallory"));
+    assert_eq!(d.extra["claimed_scope"], y("{org: elsewhere}"));
+    assert_eq!(d.extra["claimed_timestamp"], y("'2026-09-24T09:00:07Z'"));
+    assert_ne!(d.timestamp, "2026-09-24T09:00:07Z");
+    // A bad verdict needs a rationale; the reasoning's summary is it.
+    assert!(
+        d.rationale.starts_with("Failed the insight."),
+        "{}",
+        d.rationale
+    );
+    assert!(d.fields_changed.is_empty());
+}
+
+#[test]
+fn a_malformed_decision_field_refuses_the_change() {
+    let f = fixture_with(Some(BRIEF_PIPELINE));
+    let clan = f.session.clan_context_for_agent();
+    let mut r = verdict_reply(&clan);
+    r["change"]["decisions"][0]["polarity"] = json!(3);
+    let why = refused_reason(&f, r);
+    assert!(why.contains("decision d_01JB0V01VER is malformed"), "{why}");
+}
+
+// ── R1, declared by the app ──────────────────────────────────────────────
+
+/// An edit to `field` with no reasoning, and nothing else.
+fn bare_edit(clan: &Value, field: &str, action: &str) -> Value {
+    let doc = clan["id"].as_str().unwrap();
+    let mut patch = json!({});
+    patch[field] = json!("a value");
+    let mut read = json!({});
+    read[field] = Value::Null;
+    json!({
+        "api": "napkin.middleware/1", "task": "draft_brief", "handler": "draft_brief@1.0",
+        "job": { "id": "job_b2", "state": "done", "progress": { "done": 3, "total": 3 },
+                 "started_at": "2026-09-24T09:00:00Z", "finished_at": "2026-09-24T09:01:00Z", "error": null },
+        "result": { "summary": "done" },
+        "change": {
+            "doc": doc, "base_version": clan["version"],
+            "read": read, "data_patch": patch,
+            "decisions": [{ "id": format!("d_01JB0E{}{}", field.len(), action.len()), "kind": "edit",
+                            "action": action, "rationale": "wrote it",
+                            "targets": [format!("{doc}#{field}")] }]
+        },
+        "trace": { "backend": "mock-backend", "usage": { "input_tokens": 0, "output_tokens": 0 } }
+    })
+}
+
+#[test]
+fn brief_maker_declares_its_fields_need_reasoning() {
+    let f = fixture_with(Some(BRIEF_PIPELINE));
+    let clan = f.session.clan_context_for_agent();
+    let why = refused_reason(&f, bare_edit(&clan, "insight", "draft"));
+    assert!(why.contains("(edit) carries no reasoning"), "{why}");
+    assert!(why.contains("insight"), "names the declared paths: {why}");
+    // A path the app did not declare needs none.
+    let (out, _) = settle(&f, bare_edit(&clan, "brief_note", "capture"));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+}
+
+#[test]
+fn the_research_tool_declares_campaign_selection_and_report() {
+    // Its behaviour before the rule moved out of the host: unchanged.
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    for field in ["campaign", "selection", "report"] {
+        let why = refused_reason(&f, bare_edit(&clan, field, "extract"));
+        assert!(why.contains("carries no reasoning"), "{field}: {why}");
+    }
+    // A Brief Maker field is not the Research Tool's to require.
+    let (out, _) = settle(&f, bare_edit(&clan, "insight", "draft"));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+}
+
+#[test]
+fn with_no_declaration_the_floor_still_holds() {
+    let f = fixture_with(None);
+    let clan = f.session.clan_context_for_agent();
+    // An edit is the app's to require; with no app, it needs none.
+    let (out, _) = settle(&f, bare_edit(&clan, "insight", "draft"));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    // A proposal always does.
+    let clan = f.session.clan_context_for_agent();
+    let why = refused_reason(&f, bare_edit(&clan, "audience", "propose"));
+    assert!(why.contains("carries no reasoning"), "{why}");
+    // So does a verdict.
+    let mut r = verdict_reply(&clan);
+    r["change"]["decisions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("reasoning");
+    let why = refused_reason(&f, r);
+    assert!(
+        why.contains("d_01JB0V01VER (verdict) carries no reasoning"),
+        "{why}"
+    );
+}
+
+#[test]
+fn a_declaration_the_host_cannot_read_refuses_the_change() {
+    for bad in [
+        "reasoning: [campaign]\n",
+        "reasoning:\n  edits: campaign\n",
+        "reasoning:\n  kinds: [ponder]\n",
+    ] {
+        let f = fixture_with(Some(bad));
+        let clan = f.session.clan_context_for_agent();
+        let why = refused_reason(&f, reply_for(&clan));
+        assert!(why.contains("app/pipeline.yaml `reasoning"), "{bad}: {why}");
+    }
 }

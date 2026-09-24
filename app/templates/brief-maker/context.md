@@ -2,7 +2,7 @@
 
 We are making a **creative brief** for an advertising campaign.
 
-The human drops in a messy brief — notes, a client PDF, mood images, audio — and the agent drafts the structured brief from it. The presentation (`human/index.html`) renders from `shared/data.yaml`; do not generate or edit HTML. Write structured fields via `patch-data` matching `agent/output-schema.json`; every write is attributed and appended to the decision chain.
+The human drops in a messy brief — notes, a client PDF, mood images, audio — and the middleware drafts the structured brief from it (`draft_brief`, `regenerate_field`: Extract, one Drafter per field, then the Judge; docs/contracts/middleware-api.md §10). The host applies what it returns; the view never writes it. The presentation (`human/index.html`) renders from `shared/data.yaml`; do not generate or edit HTML. Every write is attributed and appended to the decision chain.
 
 Fields to fill:
 - `project_name`, `client`, `background`

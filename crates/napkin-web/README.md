@@ -69,13 +69,13 @@ not JSON, no task, another kind — is charged.
 
 ## Deploying it
 
-One container, one process, no API key: the axum host and the shell.
+One container, one process, no model key: the axum host and the shell.
 
-Inference belongs to the visitor. They paste an Anthropic key, it is kept in
-their browser, and their browser calls Claude directly. The host assembles the
-prompt — schema, digests, the document's data and decision history, split for
-caching — and hands it over. So whoever runs this holds nobody's credentials
-and pays for nobody's drafts.
+The apps' work runs on the middleware (`docs/contracts/middleware-api.md`):
+point `proxies.middleware` in `<NAPKIN_CONFIG_DIR>/workspace.yaml` at it, and
+the host sends each task there and applies the change it returns. With none
+configured, an app on the middleware says so plainly; nothing is sent to the
+agent URL in its place. The browser never calls a model itself.
 
 ```bash
 docker build -t napkin .

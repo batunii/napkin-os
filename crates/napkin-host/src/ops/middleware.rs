@@ -50,11 +50,27 @@ pub const JOB: &str = "middleware";
 
 const CHAIN: &str = "agent/decision-chain.yaml";
 
+/// The error type a middleware request gets when this host has no middleware:
+/// no `proxies.middleware` in `workspace.yaml`, or a build with no network.
+pub const NO_MIDDLEWARE: &str = "no_middleware";
+
+/// The envelope a middleware request gets when none is configured. The error
+/// has the `{type, message}` shape of a middleware error (§4), so an app reads
+/// it the same way.
+pub fn no_middleware() -> Value {
+    serde_json::json!({
+        "ok": false, "status": 0, "endpoint": null, "data": null,
+        "error": { "type": NO_MIDDLEWARE,
+                   "message": "No middleware is configured for this workspace (proxies.middleware in workspace.yaml)." },
+    })
+}
+
 /// Refuse a reply that is not `napkin.middleware/1`.
 ///
-/// This check is load-bearing, not tidiness. `resolve_proxy` falls back to the
-/// generic agent URL when no `middleware` proxy is configured, and that agent
-/// answers `request_kind: "middleware"` with something of its own. Handing
+/// This check is load-bearing, not tidiness. A middleware request is never
+/// sent to the agent URL when no `middleware` proxy is configured (it is
+/// answered [`no_middleware`] instead), but a `proxies.middleware` endpoint
+/// pointed at the wrong service still answers with something of its own. Handing
 /// that to the app as if the middleware had spoken — or worse, applying a
 /// `change` out of it — is exactly the silent fall-through M4 forbids. So an
 /// answer that does not name this API is an error the app sees, whatever else
@@ -172,8 +188,12 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     let facts_append = entries(change, "facts_append")?;
     let findings_append = entries(change, "findings_append")?;
     let decisions = entries(change, "decisions")?;
+    let rule = ReasoningRule::of(clan)?;
     for d in &decisions {
-        check_reasoning(d, open_id)?;
+        check_reasoning(d, open_id, &rule)?;
+        // Every decision must also read whole into the chain's shape, before
+        // anything is built.
+        decision(ctx, reply, d, "")?;
     }
 
     if data_patch.is_none()
@@ -785,32 +805,136 @@ fn contest_reasoning(
     }
 }
 
-/// Decision kinds whose reasoning `napkin.middleware/1` requires on every
-/// decision it sends (middleware-api.md §3). `edit` is required only when it
-/// writes an agent-written field ([`writes_agent_field`]).
-pub const REASONED_KINDS: &[&str] = &["pin", "contest", "finding"];
+/// Decision kinds whose reasoning is required whatever the app declares
+/// (Contract 4 §3, R1): each is a judgement someone will ask "why" of. An app
+/// can add to this floor, never lower it.
+pub const REASONED_KINDS: &[&str] = &["pin", "contest", "finding", "verdict"];
 
-/// The data paths a middleware `edit` writes that make it an agent decision
-/// someone will ask "why" of: a campaign field, the selection, the report.
-/// An edit that only posts a chat message or indexes a material does not
-/// need one (it may still carry one).
-const AGENT_FIELDS: &[&str] = &["campaign", "selection", "report"];
+/// An `edit` with this action is a proposal (middleware-api.md §10.5): the
+/// value a person is asked to take. It is required to say why, always.
+pub const PROPOSE_ACTION: &str = "propose";
 
-/// True when a middleware decision must carry `reasoning`.
-pub fn requires_reasoning(d: &Value, doc_id: &str) -> bool {
-    let kind = d.get("kind").and_then(Value::as_str).unwrap_or("edit");
-    REASONED_KINDS.contains(&kind) || (kind == "edit" && writes_agent_field(d, doc_id))
+/// Which middleware decisions must carry `reasoning` (R1) — declared by the
+/// app, not known to the OS layer.
+///
+/// The app declares it in its `app/pipeline.yaml`, which travels in every
+/// document made from it:
+///
+/// ```yaml
+/// reasoning:
+///   kinds: [pin, contest, finding]          # added to the floor
+///   edits: [campaign, selection, report]    # an edit targeting a path at or under one of these
+/// ```
+///
+/// With no declaration the floor applies: every `pin`, `contest`, `finding`
+/// and `verdict`, and every `edit` whose action is `propose`. `edits` are
+/// dotted data paths (`campaign`, `objectives.commercial`), matched against a
+/// decision's `targets` on the open document after bracket keys are
+/// normalised (`materials[mat_1]` is `materials.mat_1`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ReasoningRule {
+    /// Kinds the app requires on top of [`REASONED_KINDS`].
+    pub kinds: Vec<String>,
+    /// Data paths an `edit` must say why it wrote.
+    pub edits: Vec<String>,
 }
 
-fn writes_agent_field(d: &Value, doc_id: &str) -> bool {
-    target_paths(d, doc_id).iter().any(|t| {
-        let top = t.split('.').next().unwrap_or_default();
-        AGENT_FIELDS.contains(&top)
-    })
+impl ReasoningRule {
+    /// The rule `pipeline` (the parsed `app/pipeline.yaml`, `Null` when the
+    /// document has none) declares. A `reasoning` block that is not the shape
+    /// above is an error — a declaration the host cannot read is not quietly
+    /// treated as none (M4).
+    pub fn from_pipeline(pipeline: &Value) -> HostResult<Self> {
+        let block = match pipeline.get("reasoning") {
+            None | Some(Value::Null) => return Ok(Self::default()),
+            Some(b @ Value::Object(_)) => b,
+            Some(_) => {
+                return Err(HostError::bad_request(
+                    "app/pipeline.yaml `reasoning` is not a map of `kinds` and `edits`",
+                ))
+            }
+        };
+        let list = |key: &str| -> HostResult<Vec<String>> {
+            match block.get(key) {
+                None | Some(Value::Null) => Ok(Vec::new()),
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .map(|i| match i.as_str().map(str::trim) {
+                        Some(s) if !s.is_empty() => Ok(s.to_string()),
+                        _ => Err(HostError::bad_request(format!(
+                            "app/pipeline.yaml `reasoning.{key}` holds something that is not a name"
+                        ))),
+                    })
+                    .collect(),
+                Some(_) => Err(HostError::bad_request(format!(
+                    "app/pipeline.yaml `reasoning.{key}` is not a list"
+                ))),
+            }
+        };
+        let kinds = list("kinds")?;
+        if let Some(k) = kinds
+            .iter()
+            .find(|k| !clan_sdk::decision::DECISION_KINDS.contains(&k.as_str()))
+        {
+            return Err(HostError::bad_request(format!(
+                "app/pipeline.yaml `reasoning.kinds` names {k:?}, which is not a decision kind"
+            )));
+        }
+        Ok(Self {
+            kinds,
+            edits: list("edits")?,
+        })
+    }
+
+    /// The rule the open document's app declares.
+    pub fn of(clan: &ClanFile) -> HostResult<Self> {
+        let pipeline = match clan.read_entry("app/pipeline.yaml") {
+            Ok(bytes) => {
+                let y: serde_yaml::Value = serde_yaml::from_slice(&bytes).map_err(|e| {
+                    HostError::bad_request(format!("app/pipeline.yaml does not parse: {e}"))
+                })?;
+                serde_json::to_value(y).map_err(|e| HostError::internal(e.to_string()))?
+            }
+            Err(_) => Value::Null,
+        };
+        Self::from_pipeline(&pipeline)
+    }
+
+    /// True when a middleware decision must carry `reasoning`.
+    pub fn requires(&self, d: &Value, doc_id: &str) -> bool {
+        let kind = d.get("kind").and_then(Value::as_str).unwrap_or("edit");
+        if REASONED_KINDS.contains(&kind) || self.kinds.iter().any(|k| k == kind) {
+            return true;
+        }
+        kind == "edit"
+            && (d.get("action").and_then(Value::as_str) == Some(PROPOSE_ACTION)
+                || target_paths(d, doc_id)
+                    .iter()
+                    .any(|t| self.edits.iter().any(|p| under(t, p))))
+    }
+
+    /// What the refusal says is required, in words.
+    fn describe(&self) -> String {
+        let mut kinds: Vec<&str> = REASONED_KINDS.to_vec();
+        kinds.extend(
+            self.kinds
+                .iter()
+                .map(String::as_str)
+                .filter(|k| !REASONED_KINDS.contains(k)),
+        );
+        let mut s = format!("{} decisions, and proposals", kinds.join(", "));
+        if !self.edits.is_empty() {
+            s.push_str(&format!(
+                ", and edits that write {} (as this document's app declares)",
+                self.edits.join(", ")
+            ));
+        }
+        s
+    }
 }
 
-/// Refuse a decision whose reasoning is malformed, or absent where it is
-/// required.
+/// Refuse a decision whose reasoning is malformed, or absent where the app's
+/// rule requires it.
 ///
 /// Refusal rather than accept-and-flag: reasoning is what the decider knew
 /// when it decided, so it cannot be supplied later without being invented,
@@ -819,14 +943,14 @@ fn writes_agent_field(d: &Value, doc_id: &str) -> bool {
 /// refusal names the decision and the gap, so the fix is at the source and a
 /// rerun lands it — the same rule as a finding citing a pin the document does
 /// not hold.
-fn check_reasoning(d: &Value, doc_id: &str) -> HostResult<()> {
+fn check_reasoning(d: &Value, doc_id: &str, rule: &ReasoningRule) -> HostResult<()> {
     let id = d.get("id").and_then(Value::as_str).unwrap_or("?");
     let kind = d.get("kind").and_then(Value::as_str).unwrap_or("edit");
     match d.get("reasoning") {
-        None | Some(Value::Null) if requires_reasoning(d, doc_id) => {
+        None | Some(Value::Null) if rule.requires(d, doc_id) => {
             Err(HostError::bad_request(format!(
-                "decision {id} ({kind}) carries no reasoning; napkin.middleware/1 requires it on \
-                 pin, contest and finding decisions and on edits that write campaign, selection or report"
+                "decision {id} ({kind}) carries no reasoning; napkin.middleware/1 requires it on {}",
+                rule.describe()
             )))
         }
         None | Some(Value::Null) => Ok(()),
@@ -923,35 +1047,37 @@ fn check_findings(new: &[Value], facts: &[serde_yaml::Value]) -> HostResult<()> 
     Ok(())
 }
 
+/// The decision fields the host owns: whatever the middleware put there, the
+/// recorded value is the host's (Contract 4 §3 — copied from `Ctx`, never from
+/// the body). A decision that said something else keeps what it said as
+/// `claimed_<field>`, so nothing it sent is lost.
+const HOST_OWNED: &[&str] = &["actor", "scope", "handler", "backend", "timestamp"];
+
 /// One middleware decision as the SDK's `Decision` holds it.
 ///
-/// Identity, kind, targets and cites are the decision's own fields, taken as
-/// the middleware sent them. Attribution is the context's: `actor` is always
-/// `process:middleware`, `handler` and `backend` are the reply's (a decision
-/// that names its own fills in only what the reply left out), `scope` is the
-/// one the shell resolved. `agent` keeps the middleware's claim — the body's
-/// `agent`, else the reply's handler — and `claimed_agent` records it too when
-/// it is not the actor. The rationale is the middleware's, verbatim, or the
-/// reasoning's one-line summary when it sent none; the reasoning is its own.
-/// `fields_changed` stays empty: a middleware decision says what it is about
-/// in `targets`, and the host does not know which of the patched keys each
-/// one accounts for.
+/// **Nothing the middleware sent is dropped.** The body is read whole into the
+/// SDK's struct: identity, kind, targets, cites, the verdict fields
+/// (`polarity`, `reason_code`, `taxonomy_version`, `reviewer_role`), `licence`,
+/// `fields_changed`, `superseded_by`, and every key the struct does not name —
+/// the flatten tail (`abstained`, `material_read`, `unread`,
+/// `proposed_value`, …) — survive as sent.
+///
+/// Attribution is the context's: `actor` is always `process:middleware`,
+/// `handler` and `backend` are the reply's (a decision that names its own
+/// fills in only what the reply left out), `scope` is the one the shell
+/// resolved, `timestamp` is when the host recorded it. Where the body said
+/// otherwise for one of those, its value is kept as `claimed_<field>`
+/// ([`HOST_OWNED`]). `agent` keeps the middleware's claim — the body's
+/// `agent`, else the reply's handler — and `claimed_agent` is the body's own
+/// when it sent one, else the agent when that is not the actor. The rationale
+/// is the middleware's, verbatim, or the reasoning's one-line summary when it
+/// sent none.
 fn decision(ctx: &Ctx, reply: &Value, d: &Value, now: &str) -> HostResult<Decision> {
     let s = |k: &str| d.get(k).and_then(Value::as_str);
     let id = s("id")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| HostError::bad_request("a decision has no id"))?;
-    let kind = s("kind").unwrap_or("edit");
-    let strings = |k: &str| -> Vec<String> {
-        d.get(k)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
+    let kind = s("kind").unwrap_or("edit").to_string();
 
     let mut ctx = ctx.clone();
     if ctx.handler.is_none() {
@@ -960,32 +1086,60 @@ fn decision(ctx: &Ctx, reply: &Value, d: &Value, now: &str) -> HostResult<Decisi
     if ctx.backend.is_none() {
         ctx.backend = s("backend").map(String::from);
     }
-
     let agent = s("agent")
         .or_else(|| reply.get("handler").and_then(Value::as_str))
         .unwrap_or(JOB)
         .to_string();
-    let mut out = attributed(&ctx, &agent, kind);
-    out.id = Some(id.to_string());
-    out.agent = agent;
-    out.action = s("action").unwrap_or(kind).to_string();
-    out.reasoning = match d.get("reasoning") {
-        None | Some(Value::Null) => None,
-        Some(r) => Some(serde_json::from_value(r.clone()).map_err(|e| {
-            HostError::bad_request(format!("decision {id}: reasoning is malformed ({e})"))
-        })?),
-    };
-    out.rationale = match (
-        s("rationale").filter(|r| !r.trim().is_empty()),
-        &out.reasoning,
-    ) {
-        (Some(r), _) => r.to_string(),
-        (None, Some(r)) => r.summary(),
-        (None, None) => String::new(),
-    };
-    out.timestamp = now.to_string();
-    out.targets = strings("targets");
-    out.cites = strings("cites");
+    let attribution = attributed(&ctx, &agent, &kind);
+
+    // The body, with the host-owned fields set aside and the fields the SDK
+    // requires filled, read into the struct in one go.
+    let mut body = d.as_object().cloned().unwrap_or_default();
+    let mut claims = Vec::new();
+    for key in HOST_OWNED {
+        if let Some(v) = body.remove(*key) {
+            claims.push((*key, v));
+        }
+    }
+    body.insert("kind".into(), Value::String(kind.clone()));
+    body.insert("agent".into(), Value::String(agent.clone()));
+    body.insert(
+        "action".into(),
+        Value::String(s("action").unwrap_or(&kind).to_string()),
+    );
+    body.insert("timestamp".into(), Value::String(now.to_string()));
+    let rationale = s("rationale").filter(|r| !r.trim().is_empty());
+    body.insert(
+        "rationale".into(),
+        Value::String(rationale.unwrap_or_default().to_string()),
+    );
+    if body.get("reasoning") == Some(&Value::Null) {
+        body.remove("reasoning");
+    }
+    let mut out: Decision = serde_json::from_value(Value::Object(body))
+        .map_err(|e| HostError::bad_request(format!("decision {id} is malformed ({e})")))?;
+
+    out.actor = attribution.actor;
+    out.handler = attribution.handler;
+    out.backend = attribution.backend;
+    out.scope = attribution.scope;
+    if out.claimed_agent.as_deref().map_or(true, str::is_empty) {
+        out.claimed_agent = attribution.claimed_agent;
+    }
+    if rationale.is_none() {
+        if let Some(r) = &out.reasoning {
+            out.rationale = r.summary();
+        }
+    }
+    let recorded = serde_json::to_value(&out).unwrap_or(Value::Null);
+    for (key, said) in claims {
+        if said.is_null() || recorded.get(key) == Some(&said) {
+            continue;
+        }
+        let said = serde_yaml::to_value(&said)
+            .map_err(|e| HostError::bad_request(format!("decision {id}: {key}: {e}")))?;
+        out.extra.insert(format!("claimed_{key}"), said);
+    }
     Ok(out)
 }
 
