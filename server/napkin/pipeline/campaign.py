@@ -113,6 +113,7 @@ def combine(doc, chunks) -> dict | None:
 class CampaignJob:
     def __init__(self, jid, doc, handler, clan, inp, caps, settings):
         self.id, self.doc, self.handler = jid, doc, handler
+        self.task = "start_campaign"
         self.caps, self.settings = caps, settings
         self.scope = caps.scope
         self.inp = inp
