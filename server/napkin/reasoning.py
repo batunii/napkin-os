@@ -9,8 +9,9 @@ of the foundation spec's decisions (OS-layer contract §3, middleware-api §3).
     attention        optional: why a person should look
 
 Where a decision comes from a model call, the MODEL writes `because`,
-`rejected`, `only_option`, `would_change_if` and `attention` (see
-`MODEL_SCHEMA`), and `from_model` keeps only what survives the cite check:
+`rejected`, `only_option`, `would_change_if` and `attention` — asked for as
+the `grounds` of its answer (`MODEL_SCHEMA`, `GUIDE`): the evidence in its
+input, not an account of how it thought, which a model may decline to give — and `from_model` keeps only what survives the cite check:
 a point whose cites are not all ids the model was given is dropped, and so is
 a point that states a figure without citing where it is. When nothing
 survives, the code's own points from the evidence it holds stand in, and the
@@ -25,16 +26,16 @@ import re
 LEVELS = ("low", "medium", "high")
 
 GUIDE = """
-Also return `reasoning` for your answer as a whole, in this shape:
-- because: the evidence, point by point. Each point cites the ids from the input it rests on
-  (material_id, pin id, finding id, source_id). A point that states a figure must cite where the
-  figure is. Cite only ids that appear in the input.
-- rejected: the alternatives you considered and why each lost. Empty only when there was
-  genuinely one option; then say why in only_option (otherwise only_option is null).
-- would_change_if: what new evidence would reverse it.
-- attention: a short reason a person should look (an uncertain call, thin evidence, a conflict,
-  something skipped that might matter), or null.
-Do not rate your own confidence: certainty is derived from the evidence elsewhere."""
+Also return `grounds` for your answer as a whole: the evidence in the input that supports it.
+- because: the supporting points, one per item of evidence. Each point cites the ids from the input
+  it rests on (material_id, pin id, finding id, source_id). A point that states a figure must cite
+  where the figure is. Cite only ids that appear in the input.
+- rejected: the other answers the input allowed and what in the input rules each out. Empty only
+  when the input allowed one answer; then say why in only_option (otherwise only_option is null).
+- would_change_if: what new evidence would change the answer.
+- attention: a short note when a person should check this (the evidence is thin, sources conflict,
+  something left out might matter), or null.
+Do not rate your own confidence: it is derived from the evidence elsewhere."""
 
 
 def _obj(props: dict) -> dict:

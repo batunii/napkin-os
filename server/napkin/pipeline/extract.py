@@ -36,7 +36,7 @@ never default, never use outside knowledge. Relative dates ("next spring") are n
 Markets are countries: return ISO 3166-1 alpha-2 codes (the United Kingdom is GB).
 Budget: report the amount and currency exactly as stated; do not convert.
 Slugs are lowercase snake_case (tv, bvod, ooh, audio, social_meta, tvc_30, social_cutdowns, ooh_6sheet).
-The reasoning is about what you read and what you left out: cite the material_id each point rests on.""" + rsn.GUIDE
+The grounds are for what was filled and what was left out: cite the material_id each point rests on.""" + rsn.GUIDE
 
 _Q = {"quote": {"type": "string"}, "material_id": {"type": "string"}}
 
@@ -68,7 +68,7 @@ SCHEMA = _obj({
     "constraints": {"type": "array", "items": _obj({"kind": {"type": "string", "enum": ["legal", "brand",
                                                                                          "mandatory"]},
                                                     "text": {"type": "string"}, **_Q})},
-    "reasoning": rsn.MODEL_SCHEMA,
+    "grounds": rsn.MODEL_SCHEMA,
 })
 
 FIELD_GUIDE = {
@@ -339,7 +339,7 @@ def run_extract(doc, base, clan, inp, handler, caps, skip=(), did=None, action="
     rationale = (f"Read {len(mats)} material(s) with one structured-output call; filled {len(written)} field(s) "
                  f"from verified spans{' and layer pins' if proposed else ''}; abstained on {len(abstained)}"
                  + (f"; held back {len(withheld)} human-owned" if withheld else "") + ".")
-    reasoning, why_notes = extract_reasoning(raw.get("reasoning"), mats, facts, proposed, campaign_patch, written,
+    reasoning, why_notes = extract_reasoning(raw.get("grounds"), mats, facts, proposed, campaign_patch, written,
                                              abstained, withheld, notes)
     notes += why_notes
     dec = decision(doc, did, "edit", handler, action, rationale,

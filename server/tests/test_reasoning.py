@@ -152,7 +152,7 @@ def test_select_reasoning_marks_an_inferred_skip(store):
     def select(p):
         return {"lenses": [{"lens": "category_codes", "run": False, "skip_markets": [],
                             "reason": "Nothing to read for these categories."}],
-                "reasoning": model_reasoning([("The category has no codes worth reading", [p["prompt_material_id"]])],
+                "grounds": model_reasoning([("The category has no codes worth reading", [p["prompt_material_id"]])],
                                              rejected=[("research every lens", "wasted spend")])}
     caps = caps_for(store, model=FakeModel({"select": select}))
     job = CampaignJob("job_t", DOC, "t@1.0", rclan(["IE"]), {"prompt": "BMW in Ireland.", "attachments": []}, caps,
@@ -162,3 +162,21 @@ def test_select_reasoning_marks_an_inferred_skip(store):
     r = valid([d])[0]["reasoning"]
     assert r["certainty"]["level"] == "medium" and "Category codes" in r["attention"]
     assert r["because"][0]["cites"] == [job.materials()[0].id]
+
+
+def test_a_skip_that_quotes_the_prompt_is_certain(store):
+    from napkin.pipeline.campaign import CampaignJob
+    from napkin.config import Settings
+
+    def select(p):
+        return {"lenses": [{"lens": "effectiveness_evidence", "run": True, "skip_markets": ["GB"],
+                            "reason": 'The prompt says "Effectiveness evidence only for Ireland".'}],
+                "grounds": model_reasoning([("The prompt limits effectiveness", [p["prompt_material_id"]])],
+                                           rejected=[("research everything", "the prompt limits a lens")])}
+    caps = caps_for(store, model=FakeModel({"select": select}))
+    job = CampaignJob("job_t", DOC, "t@1.0", rclan(["IE", "GB"]),
+                      {"prompt": "BMW in Ireland and GB. Effectiveness evidence only for Ireland, please.",
+                       "attachments": []}, caps, Settings())
+    job.stage_select()
+    r = valid([job.chunks[-1].decisions[0]])[0]["reasoning"]
+    assert r["certainty"]["level"] == "high" and "attention" not in r

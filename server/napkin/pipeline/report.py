@@ -31,8 +31,8 @@ ids it rests on. State no number that is not the value of a pin you cite (or wri
 you cite); the view renders every figure from the pins, so describing ("the larger market",
 "growing fastest") is usually better than restating. Never cite anything not in the input. Write a
 headline, two to four summary lines, and for each lens section one to three claims.
-The reasoning is about the report's reading as a whole: why the headline leads, what you chose not to
-say; cite the pin and finding ids each point rests on.""" + rsn.GUIDE
+The grounds are for the report as a whole: the pins and findings (by id) that support the headline
+and summary, and the other headlines the input would allow and what in it rules each out.""" + rsn.GUIDE
 
 FIELD_LABELS = {"brand": "Brand", "client_org": "Client", "categories": "Categories", "markets": "Markets",
                 "competitor_set": "Comparators", "audience": "The researched audience", "in_market": "In market",
@@ -49,7 +49,7 @@ def schema(cite_ids: list[str], lenses: list[str]) -> dict:
     return _obj({"headline": claim, "summary": {"type": "array", "items": claim},
                  "sections": {"type": "array", "items": _obj({"lens": {"type": "string", "enum": lenses or LENSES},
                                                               "claims": {"type": "array", "items": claim}})},
-                 "reasoning": rsn.MODEL_SCHEMA})
+                 "grounds": rsn.MODEL_SCHEMA})
 
 
 def compose(doc, clan, handler, caps):
@@ -194,7 +194,7 @@ def compose(doc, clan, handler, caps):
             for c in cites if c in pin_by]
     if dropped:
         log.info("report: dropped %d claim(s) by the cite rule: %s", len(dropped), json.dumps(dropped)[:600])
-    why = report_reasoning(raw.get("reasoning"), report, pin_by, fi_by, dropped, open_ct, brand)
+    why = report_reasoning(raw.get("grounds"), report, pin_by, fi_by, dropped, open_ct, brand)
     return report, cites, hits, why
 
 

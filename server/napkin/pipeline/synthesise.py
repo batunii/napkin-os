@@ -30,8 +30,9 @@ number that is not a pinned value; prefer describing direction ("higher", "growi
 figures — the view shows the figures from the pins. Propose at most one finding per lens.
 Optionally describe the researched audience in one or two sentences with the consumer pins it
 rests on (no figures at all), or return null.
-Give each finding (and the audience) its own reasoning: cite the pin ids each point rests on, and
-reject the readings of the pins you did not choose.""" + rsn.GUIDE.replace(" for your answer as a whole", " for each finding and the audience")
+Give each finding (and the audience) its own grounds: the pins that support it, by id, and the
+other statements the pins would allow and what in them rules each out.""" + rsn.GUIDE.replace(
+    " for your answer as a whole", " for each finding and the audience")
 
 
 def _obj(props: dict) -> dict:
@@ -44,11 +45,11 @@ def schema(pin_ids: list[str]) -> dict:
     return _obj({
         "findings": {"type": "array", "items": _obj({
             "lens": {"type": "string", "enum": LENSES}, "statement": {"type": "string"}, "cites": ids,
-            "markets": {"type": "array", "items": {"type": "string"}}, "reasoning": rsn.MODEL_SCHEMA})},
+            "markets": {"type": "array", "items": {"type": "string"}}, "grounds": rsn.MODEL_SCHEMA})},
         "audience": {"anyOf": [_obj({"definition": {"type": "string"}, "fact_ids": ids,
                                      "behaviours": {"type": "array", "items": stmt},
                                      "attitudes": {"type": "array", "items": stmt},
-                                     "reasoning": rsn.MODEL_SCHEMA}), {"type": "null"}]},
+                                     "grounds": rsn.MODEL_SCHEMA}), {"type": "null"}]},
     })
 
 
@@ -111,7 +112,7 @@ def run_synthesis(doc, base, clan, inp, handler, caps, seed=None, with_audience=
             fi["markets"] = mk
         findings.append(fi)
         r, why_notes = rsn.from_model(
-            item.get("reasoning"), decided=f"Proposed a {lens.replace('_', ' ')} finding for a person to verify.",
+            item.get("grounds"), decided=f"Proposed a {lens.replace('_', ' ')} finding for a person to verify.",
             known=by_id, certainty_=_derived(cited, fi["confidence"]),
             fallback=[rsn.point(_pin_line(f), f["id"]) for f in cited],
             would_change_if="a cited pin is revised, excluded or goes stale",
@@ -137,7 +138,7 @@ def run_synthesis(doc, base, clan, inp, handler, caps, seed=None, with_audience=
                 read = {"campaign.audience": None}
                 cited = [by_id[i] for i in fids]
                 r, why_notes = rsn.from_model(
-                    aud.get("reasoning"), decided="Proposed the researched audience from the consumer pins.",
+                    aud.get("grounds"), decided="Proposed the researched audience from the consumer pins.",
                     known=by_id, certainty_=_derived(cited, finding_confidence(cited)),
                     fallback=[rsn.point(_pin_line(f), f["id"]) for f in cited],
                     would_change_if="a person states the audience, or the consumer pins are revised",

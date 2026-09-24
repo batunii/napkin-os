@@ -567,7 +567,7 @@ def merge_reasoning(pins, contests, gaps, n_units, n_reused) -> dict:
     basis = ("lowest derived confidence of the pins (source tier + independent corroboration): "
              + ", ".join(f"{counts[l]} {l}" for l in reversed(rsn.LEVELS) if counts[l])) if pins else \
         "nothing was pinned"
-    attention = []
+    attention = [] if pins else ["Research pinned nothing; what was looked for is in the gaps."]
     if counts["low"]:
         attention.append(f"{counts['low']} pin(s) rest on thin evidence (low confidence).")
     if contests:

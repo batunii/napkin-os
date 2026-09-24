@@ -51,16 +51,16 @@ material (each with a material_id) list:
 - at most two category leaves from the given tree that the ask is about, most likely first, each with
   the quote that points at it. Choose from the tree only.
 Never guess what the material does not say.
-The reasoning is about which brand is the client's and why the others are not: cite the material_id
-of each quote you rely on.""" + rsn.GUIDE
+The grounds are for the client's brand: the quotes (by material_id) that make it the client's, and
+for each other brand named, what in the material makes it not the client's.""" + rsn.GUIDE
 
 SELECT_SYSTEM = """You plan the research for an advertising campaign ask. There are eight research lenses.
 Decide, for each lens, whether this ask needs it. Research everything by default: skip a lens (or skip it
 in some markets) ONLY when the prompt says to leave it out, limits it to certain markets, or asks only
 for other lenses, or when the lens plainly has nothing to read for these categories. Give the reason for
 every skip, quoting the prompt where it is the prompt's instruction.
-The reasoning is about the plan as a whole: cite the prompt's material_id for anything the prompt says;
-reject the plans you did not choose (research everything, skip more).""" + rsn.GUIDE
+The grounds are for the plan as a whole: what in the prompt (cite its material_id) supports each skip,
+and the other plans the prompt would allow (research everything, skip more) and what rules each out.""" + rsn.GUIDE
 
 CLASSIFY_SYSTEM = """Map a person's typed description of a product category to at most two leaves of the
 given category tree, most likely first. Return an empty list when nothing in the tree fits."""
@@ -79,14 +79,14 @@ def identify_schema(leaf_codes: list[str]) -> dict:
             "comparator": {"type": "boolean"}})},
         "client_org": {"anyOf": [_obj({"name": {"type": "string"}, **q}), {"type": "null"}]},
         "categories": {"type": "array", "items": _obj({"leaf": {"type": "string", "enum": leaf_codes}, **q})},
-        "reasoning": rsn.MODEL_SCHEMA,
+        "grounds": rsn.MODEL_SCHEMA,
     })
 
 
 SELECT_SCHEMA = _obj({"lenses": {"type": "array", "items": _obj({
     "lens": {"type": "string", "enum": LENSES}, "run": {"type": "boolean"},
     "skip_markets": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}})},
-    "reasoning": rsn.MODEL_SCHEMA})
+    "grounds": rsn.MODEL_SCHEMA})
 
 
 def classify_schema(leaf_codes):
@@ -391,7 +391,7 @@ class CampaignJob:
                 if c.get("leaf") in codes and sp and c["leaf"] not in [x[0] for x in cats]:
                     cats.append((c["leaf"], sp))
             self._identify_raw = {"brands": brands, "client": client, "categories": cats[:2],
-                                  "reasoning": raw.get("reasoning"),
+                                  "grounds": raw.get("grounds"),
                                   "material_ids": [m.id for m in self.materials()]}
         return self._identify_raw
 
@@ -711,7 +711,7 @@ class CampaignJob:
         level = rsn.lowest(l for l, _ in levels) if levels else "high"
         basis = "; ".join(b for l, b in levels if l == level) or "each field rests on a quote or a pin"
         r, _ = rsn.from_model(
-            raw.get("reasoning") if ev_material else None,
+            raw.get("grounds") if ev_material else None,
             decided=f"Settled {', '.join(f.replace('_', ' ') for f in fields) or 'nothing'} for the campaign.",
             known=raw.get("material_ids") or [m.id for m in self.materials()],
             certainty_=rsn.certainty(level, basis), fallback=ev_material, always=ev_pins,
@@ -766,7 +766,7 @@ class CampaignJob:
                      ["selection.lenses_skipped"] + [f"selection.lenses_skipped[{s['lens']}"
                                                      f"{'/' + s['market'] if 'market' in s else ''}]" for s in skipped],
                      [prompt.id] if prompt else [], fields_changed=["selection.lenses_skipped"],
-                     reasoning=self.select_reasoning(raw.get("reasoning"), prompt, pairs, skipped, markets))
+                     reasoning=self.select_reasoning(raw.get("grounds"), prompt, pairs, skipped, markets))
         by_lens = {}
         for l, m in pairs:
             by_lens.setdefault(l, []).append(m)
@@ -782,7 +782,12 @@ class CampaignJob:
         prompt's material id; certainty from the rules — a skip whose reason
         is the prompt's own words is certain, one the model inferred is not."""
         pid = [prompt.id] if prompt else []
-        inferred = [s for s in skipped if not (prompt and find_quote(prompt.text, s["reason"]))]
+
+        def quotes_prompt(reason):
+            """The reason is the prompt's words, or quotes them."""
+            spans = [reason] + re.findall(r'["\u201c]([^"\u201d]{8,})["\u201d]', reason)
+            return bool(prompt) and any(find_quote(prompt.text, x) for x in spans)
+        inferred = [s for s in skipped if not quotes_prompt(s["reason"])]
         if not skipped:
             level, basis = "high", "every lens runs in every market, the default"
         elif inferred:
