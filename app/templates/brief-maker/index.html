@@ -311,6 +311,12 @@
   .note-v p{margin:2px 0 0}
   .note-v ul{margin:4px 0 4px;padding-left:18px}
   .note-v .muted{color:inherit;opacity:.8}
+  .note-v p.fix{margin-top:6px}
+  .note-v a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+  .note-x{padding:7px 12px}
+  .note-v.flash{animation:vflash 1.2s ease-out}
+  @keyframes vflash{0%{box-shadow:0 0 0 3px var(--create-ink)}100%{box-shadow:0 0 0 0 transparent}}
+  @media (prefers-reduced-motion:reduce){.note-v.flash{animation:none}}
   .note-p{background:var(--amber-soft);color:var(--text)}
   .note-p .pb{min-width:0;flex:1;display:grid;gap:6px}
   .note-p .pv{font-family:var(--fieldFont);font-size:15px;line-height:1.55;white-space:pre-wrap}
@@ -638,10 +644,62 @@
   function newer(a,b){ return CHAIN.decisions.indexOf(a)<CHAIN.decisions.indexOf(b); }
   // The latest verdict on the field, and whether it is a bad one nobody has
   // answered: no person has written the field, or judged it, since.
-  function verdictOf(key){
-    var v=about(key).filter(isVerdict)[0]; if(!v) return null;
-    var answered=about(key).some(function(d){ return isHuman(d)&&newer(d,v); });
+  // A bad verdict on the field is answered by a later decision by a person
+  // about it, or by a later good verdict on it that gives a reason — the Judge
+  // passing the redraft (the host's /decisions counts it the same way).
+  function reasonedGood(d){ return isVerdict(d)&&d.polarity==='good'&&!!(hasReasoning(d)||String(d.rationale||'').trim()); }
+  function verdictState(v,key){
+    var answered=v.polarity==='bad'&&about(key).some(function(d){ return newer(d,v)&&(isHuman(d)||reasonedGood(d)); });
     return {d:v, bad:v.polarity==='bad', open:v.polarity==='bad'&&!answered};
+  }
+  function verdictOf(key){
+    var v=about(key).filter(isVerdict)[0]; return v?verdictState(v,key):null;
+  }
+  // A cross-field verdict: one check across fields with different top-level
+  // keys (a coherence rule). A field's own verdict names only its own keys.
+  function topsOf(d){
+    var out=[]; arr(d.targets).forEach(function(t){ var p=pathOf(t); if(p==null) return; var top=p.split('.')[0]; if(out.indexOf(top)===-1) out.push(top); });
+    return out;
+  }
+  function isCross(d){ return isVerdict(d)&&topsOf(d).length>1; }
+  // The field's own latest verdict, and the cross-field checks that name it
+  // (the newest of each check, by what it decided).
+  function ownVerdictOf(key){
+    var v=about(key).filter(function(d){ return isVerdict(d)&&!isCross(d); })[0]; return v?verdictState(v,key):null;
+  }
+  function crossVerdictsOf(key){
+    var seen={}, out=[];
+    about(key).filter(isCross).forEach(function(d){
+      var k=(hasReasoning(d)?d.reasoning.decided:d.rationale)||d.id; if(seen[k]) return; seen[k]=1; out.push(verdictState(d,key));
+    });
+    return out;
+  }
+  // Where a cross-field verdict is shown in full: the first field it names,
+  // in the order the brief reads.
+  function homeOf(d){
+    var ts=arr(d.targets).map(pathOf);
+    for(var i=0;i<FIELDS.length;i++){ if(ts.indexOf(FIELDS[i].key)!==-1) return FIELDS[i]; }
+    return null;
+  }
+  var TOP_LABEL={objectives:'objectives', desired_response:'desired response'};
+  function acrossOf(d){
+    return topsOf(d).map(function(t){
+      if(TOP_LABEL[t]) return TOP_LABEL[t];
+      var f=FIELDS.filter(function(x){ return x.key===t; })[0]; return f?f.label.toLowerCase():t.replace(/_/g,' ');
+    });
+  }
+  function listWords(xs){ return xs.length<2?xs.join(''):xs.slice(0,-1).join(', ')+' and '+xs[xs.length-1]; }
+  // A verdict's reason and its fix, apart. The Judge now puts the reason in
+  // its first point and "Fix: …" in attention; older verdicts joined them in
+  // attention ("<check>: <reason> Fix: <fix> A person answers…").
+  var ANSWER_TAIL=/\s*A person answers this before the brief locks\.\s*$/;
+  function reasonFix(d){
+    var r=hasReasoning(d)?d.reasoning:null, a=String(r&&r.attention||''), i=a.indexOf('Fix: ');
+    var fix=i>=0?a.slice(i+5).replace(ANSWER_TAIL,'').trim():'';
+    var pre=(i>=0?a.slice(0,i):a.replace(ANSWER_TAIL,'')).trim();
+    var bs=r?arr(r.because):[], rule=bs.filter(function(b){ return /^The rule: /.test(String(b.point||'')); })[0];
+    var reason=pre?pre.replace(/^[a-z_ ]+:\s*/,''):(bs[0]?String(bs[0].point||''):(d.rationale||''));
+    return {reason:reason, fix:fix, rule:rule?String(rule.point).replace(/^The rule: /,''):''};
   }
   // A proposal waits for the person while nothing has written the field since,
   // no decision names it, and nobody dismissed it. The newest one only.
@@ -766,7 +824,8 @@
   // field a person holds — each asks for the person.
   function notesHtml(f){
     if(CHAIN.state!=='ok') return '';
-    var h='', v=verdictOf(f.key), p=proposalOf(f.key), locked=!!get('locked');
+    var h='', v=ownVerdictOf(f.key), p=proposalOf(f.key), locked=!!get('locked');
+    crossVerdictsOf(f.key).forEach(function(c){ if(c.open) h+=crossNoteHtml(c,f); });
     if(v&&v.open){
       var r=hasReasoning(v.d)?v.d.reasoning:null;
       h+='<div class="note-v">'+fig('judge',{state:'needs-you',decorative:true})
@@ -784,7 +843,32 @@
     }
     return h;
   }
+  // A cross-field verdict in full once, on the first field it names; on the
+  // others, one line that points there.
+  function crossNoteHtml(c,f){
+    var d=c.d, home=homeOf(d), code=d.reason_code?' · '+esc(String(d.reason_code).replace(/_/g,' ')):'';
+    var across=listWords(acrossOf(d));
+    if(home&&home.key!==f.key){
+      return '<div class="note-v note-x">'+fig('judge',{state:'needs-you',decorative:true})
+        +'<div>Part of one check across '+esc(across)+code+': see <a href="#" class="act-goto" data-k="'+esc(home.key)+'">'+esc(home.label)+'</a>.</div></div>';
+    }
+    var rf=reasonFix(d);
+    return '<div class="note-v" data-cross="'+esc(d.id||'')+'">'+fig('judge',{state:'needs-you',decorative:true})
+      +'<div><b>The Judge failed one check across '+esc(across)+code+'</b>'
+      +'<p>'+esc(rf.reason)+'</p>'
+      +(rf.fix?'<p class="fix"><b>Fix:</b> '+esc(rf.fix)+'</p>':'')
+      +(rf.rule?'<p class="muted">The rule: '+esc(rf.rule)+'</p>':'')
+      +'<span class="muted">Edit any of these fields, or redraft, to answer it. A person answers it before the brief locks.</span></div></div>';
+  }
+  function gotoField(key){
+    var i=-1; FIELDS.forEach(function(x,j){ if(x.key===key) i=j; });
+    var row=document.querySelector('#fields .row[data-i="'+i+'"]'); if(!row) return;
+    var t=row.querySelector('.note-v[data-cross]')||row;
+    t.scrollIntoView({behavior:'smooth',block:'center'});
+    t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+  }
   function bindNotes(el,f){
+    el.querySelectorAll('.act-goto').forEach(function(g){ g.addEventListener('click',function(e){ e.preventDefault(); gotoField(g.getAttribute('data-k')); }); });
     var a=el.querySelector('.act-accept'), x=el.querySelector('.act-dismiss');
     if(a) a.addEventListener('click',function(){ acceptProposal(f); });
     if(x) x.addEventListener('click',function(){ dismissProposal(f); });
@@ -808,7 +892,8 @@
     if(CHAIN.state!=='ok'){ el.innerHTML=''; return; }
     var by={}, filled=0, passed=0, failed=[], props=[];
     FIELDS.forEach(function(f){
-      var v=verdictOf(f.key); if(v){ if(v.open) failed.push(f.label); else if(!v.bad) passed++; }
+      var v=ownVerdictOf(f.key), cx=crossVerdictsOf(f.key).some(function(c){ return c.open; });
+      if((v&&v.open)||cx) failed.push(f.label); else if(v&&!v.bad) passed++;
       if(proposalOf(f.key)) props.push(f.label);
       if(!hasVal(get(f.key))) return; filled++;
       var d=decisionsFor(f.key)[0]; var w=d?(isHuman(d)?'you':agentKeyOf(d)):''; if(w) by[w]=(by[w]||0)+1;
