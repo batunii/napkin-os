@@ -1091,7 +1091,7 @@ recommendation.
 | O3 | Whether the layers service keeps the per-identity supersede/contest rule (§4.4) or the middleware decides and the service only inserts | Keep it in the service: it must run in the append transaction, and moving it means a read-then-write race across HTTP. The middleware's merge (across runs) and contests (in the document) stay middleware-side, as the owner decided |
 | O4 | Same as O3 for `set_roster`'s key mapping (`roster.categories.primary` …) | Keep the route: the three keys are fixed here; the middleware still decides *when* a roster row is written |
 | O5 | Passages as a data block (`data.passages`) or a member (`shared/passages.yaml`) | Data block now (§6) |
-| O6 | Images: whether `claude -p --input-format stream-json` takes image blocks (the mock's vision path), and whether image-only PDFs get their pages rendered for transcription (engine did, with PyMuPDF) | The mock builder verifies the CLI first; if it cannot, the mock refuses images honestly and §8.1's image check runs only against a real endpoint. Page rendering belongs to the host's extraction (it already extracts PDF text), not the middleware — a host task |
+| O6 | Images: whether `claude -p --input-format stream-json` takes image blocks (the mock's vision path), and whether image-only PDFs get their pages rendered for transcription (engine did, with PyMuPDF) | The mock builder verifies the CLI first; if it cannot, the mock refuses images honestly and §8.1's image check runs only against a real endpoint. Page rendering belongs to the host's extraction (it already extracts PDF text), not the middleware — a host task. *The host now sends a picture attachment's bytes as `image`; rendering an image-only PDF's pages is still a TODO in `ops/read.rs` `splice_images` (it needs a PDF rasteriser in the host)* |
 | O7 | How carried upstream facts reach the middleware: `clan.facts` holds only the brief's own member; D6's carried upstream is not sent (the host's `clan_context_for_agent` has no `carried`) | Host sends `clan.carried: [{id, facts, findings}]`; the middleware cites carried pins by address `<upstream-doc-id>#facts[f_…]`. Until then a brief cites only pins in its own `clan.facts` |
 | O8 | Whether the research port receives the org for metering | Not in v1 (public-web questions); add `X-Napkin-Org` as informational only if billing needs it |
 | O9 | Where the Brief Maker rubric (the golden-brief field prompts, examples, limits, checks) lives — M2's principle says app-specific knowledge arrives as a declaration | The field map (app key ↔ loop ↔ packs kind) is declared in Brief Maker's `pipeline.yaml` (`middleware-api.md` §10.2); the rubric text is bundled with `draft_brief@1` and versioned with it, since a major pins behaviour. Move it into the template when a second brief app needs a different rubric |
@@ -1132,6 +1132,9 @@ For the two builds to fix; none is fixed by this document.
    to carry reasoning. The middleware sends it anyway (§10.7 there); the host
    rule should become "every middleware `edit` that writes a data path other
    than `intake.messages` or `materials`", or be declared per app.
+   *Fixed (task/brief-host): declared per app — the `reasoning` block of
+   `app/pipeline.yaml` over a floor of pin, contest, finding, verdict and
+   every proposal (`middleware-api.md` §3).*
 7. **The engine reads the model's self-reported confidence** (`fill_derivable_fields`,
    `confidence_floor: 0.6`; `golden_critic` low-confidence questions) — which
    Contract 3 §3 and R1 forbid. It does not port; certainty is derived
@@ -1145,8 +1148,12 @@ For the two builds to fix; none is fixed by this document.
 10. **Brief Maker's view writes the agent's output itself** (`agentWrite` →
     `patchData` with `actor: analysis-model`) — Contract 1 §5: the template
     never writes middleware output; the host applies the `change`.
+    *Fixed (task/brief-host): the view submits the tasks and polls; the host
+    applies.*
 11. **The host still defaults a task to `draft_brief`** (`prompt.rs:89`) — the
     M4 defect; it leaves with W2-C2 and must not be relied on.
+    *Fixed (task/brief-host): `prompt.rs` and the `/agent-prompt` route are
+    removed with the browser-side model call.*
 12. **`engine/packs_dist` has digests only and no Effie pack**, and
     `rag/packs.lock` lists no Effie pack, though Effie is named as a corpus
     (§3.6).

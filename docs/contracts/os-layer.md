@@ -38,9 +38,9 @@ transaction (P2). The desktop and wasm shells call it directly.
 
 ### What never enters the OS layer
 
-- Prompts, retrieval, model calls, gate logic. Those are middleware (M1). Today
-  `prompt.rs` knows what a creative brief is and defaults the task to
-  `draft_brief` — both leave with W2-C2.
+- Prompts, retrieval, model calls, gate logic. Those are middleware (M1).
+  (`prompt.rs`, which knew what a creative brief is and defaulted the task to
+  `draft_brief`, is gone, with the browser-side model call it served.)
 - Tenancy and identity decisions. The layer receives a resolved `Ctx`; it never
   derives scope from a request body (M3).
 - Database handles or credentials. It reaches storage only through its ports.
@@ -137,7 +137,7 @@ one Postgres transaction. This is the single write funnel — the version check
 | `polarity`, `reason_code`, `taxonomy_version`, `reviewer_role` | Verdicts |
 | `licence` | Classify: `{model, export, corpus}` per C2 |
 | `rationale` | Required for `resolve`, `verdict` with polarity bad, `lease` force-take, and `approve`. The plain one-line summary older readers show: with `reasoning`, `decided` + its first `because` point, unless the writer supplied one |
-| `reasoning` | Why, in the shape of the foundation spec's decisions (below). Optional in the format — a person's edit has none — and required of the middleware on the kinds `napkin.middleware/1` §3 names. Never rewritten by compression |
+| `reasoning` | Why, in the shape of the foundation spec's decisions (below). Optional in the format — a person's edit has none. Required of the middleware on every `pin`, `contest`, `finding` and `verdict` and every proposal, and on what the document's app declares in the `reasoning` block of its `app/pipeline.yaml` (`kinds`, and `edits`: the data paths an edit must say why it wrote) — the layer applies the declaration and knows no app's fields (`napkin.middleware/1` §3). Never rewritten by compression |
 | `#[serde(flatten)] rest` | Unknown fields survive a read-modify-write |
 
 Existing fields (`agent`, `action`, `timestamp`, `fields_changed`, `pinned`,

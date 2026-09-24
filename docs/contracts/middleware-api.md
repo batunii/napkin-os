@@ -238,9 +238,21 @@ Every change must leave the document valid against the campaign schemas
   equal the response's. Every envelope's and fact's `decision` names one of
   them.
 - **`reasoning`** (Contract 4 §3, the shape and its rules). **Required** on
-  every decision of kind `pin`, `contest` or `finding`, and on every `edit`
-  whose `targets` include a path under `campaign`, `selection` or `report` —
-  the agent-written fields. In the pipeline that is: extract (`extract`,
+  every decision of kind `pin`, `contest`, `finding` or `verdict`, on every
+  `edit` whose action is `propose`, and on whatever the document's app
+  declares in its `app/pipeline.yaml` (R1 is app knowledge, so the app
+  declares it and the host applies it — Contract 4 §3):
+
+  ```yaml
+  reasoning:
+    kinds: [...]      # decision kinds required on top of the floor above
+    edits: [...]      # dotted data paths: an edit whose targets lie at or under one must say why
+  ```
+
+  A declaration the host cannot read refuses the change (M4). The Research
+  Tool declares `edits: [campaign, selection, report]` — the agent-written
+  fields; Brief Maker declares its eighteen fields' top-level keys plus
+  `capture` and `review` (§10.2). For the Research Tool that is: extract (`extract`,
   `extract_ask`), identify (`identify` when it writes a field), the roster
   `lookup` pin, `select`, every `research_run`, the `research_merge` pin,
   every `open_contest`, every `synthesise_finding`, `propose_audience`, and
@@ -404,12 +416,16 @@ proxies:
     secret_ref: middleware_api                  # key in secrets.yaml
 ```
 
-**Configure `proxies.middleware` explicitly.** An unconfigured request kind
-falls back to `agent_url`, which is the briefing agent and does not speak this
-contract. The host refuses any `request_kind: middleware` reply that does not
-carry `"api": "napkin.middleware/1"` — the app sees an error naming the API,
-not the agent's answer, and nothing is applied — but every task will fail
-until the endpoint is set.
+**Configure `proxies.middleware` explicitly.** Other request kinds fall back
+to `agent_url`; `middleware` never does. With no `proxies.middleware` the host
+sends nothing and answers the task itself — the proxy envelope with `ok:
+false`, `data: null` and `error: { "type": "no_middleware", "message" }` —
+and a browser build with no network answers every task the same way. `GET
+clan://middleware` answers `{ "api": "napkin.middleware/1", "configured":
+bool }` — presence only, never the endpoint — so an app can say so on open.
+The host still refuses any reply that does not carry `"api":
+"napkin.middleware/1"` (an endpoint pointed at the wrong service): the app
+sees an error naming the API and nothing is applied.
 
 - Stand-in: `python3 mock-middleware/server.py` (stdlib only), `:8790`,
   `POST /v1/tasks`, `GET /healthz`. See `mock-middleware/README.md`.
@@ -909,14 +925,17 @@ tasks: a `psg_` resolves when `data.passages` holds it, a `cap_` when
 `data.capture.items` does. Every passage a decision cites is therefore written
 into `passages` by the same change.
 
-**Host work this needs** (not in this document's gift): the host must copy a
-middleware decision's `polarity`, `reason_code`, `taxonomy_version` and its
-flatten tail (`abstained`, `material_read`, `unread`, `proposed_value`) —
-today `ops/middleware.rs` `decision()` keeps only id, kind, agent, action,
-rationale, reasoning, targets and cites — and accept `verdict` among a
-middleware change's decision kinds; and Brief Maker's view must find a field's
-decisions by `targets` as well as `fields_changed` (a middleware decision's
-`fields_changed` is empty).
+**What the host keeps.** The host reads a middleware decision whole into
+the chain: `id`, `kind` (`verdict` included), `agent`, `action`, `targets`,
+`cites`, `rationale`, `reasoning`, the verdict fields (`polarity`,
+`reason_code`, `taxonomy_version`, `reviewer_role`), `licence`,
+`claimed_agent`, `fields_changed`, `superseded_by`, and every other key as
+sent — the flatten tail (`abstained`, `material_read`, `unread`,
+`proposed_value`, …). `actor`, `scope`, `handler`, `backend` and `timestamp`
+are the host's (§5); a decision that sent its own keeps it as
+`claimed_<field>`. Brief Maker's view finds a field's decisions by `targets`
+(what `clan://chain` returns), and by `fields_changed` for a person's
+patch-data, which has no targets.
 
 ### 10.8 The Judge
 
