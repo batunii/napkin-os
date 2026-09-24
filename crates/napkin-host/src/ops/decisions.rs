@@ -19,7 +19,9 @@
 //!
 //! The first two are cleared once a person has since decided about the
 //! decision itself or about every one of its targets, or it has been
-//! superseded. The rest are the lock list, items 1–5 of Contract 3 §11; an
+//! superseded; on a bad verdict, a later good verdict with a reason on a
+//! target also answers it there (never on a finding, which D1 leaves to a
+//! person). The rest are the lock list, items 1–5 of Contract 3 §11; an
 //! app may add rules of its own (the campaign's gated fields are one), which
 //! this does not know about.
 //!
@@ -716,12 +718,7 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
             if target.kind == "finding" {
                 continue;
             }
-            let answered = ctx.later(i, &address, |e| {
-                is_edit(e)
-                    || (e.is_verdict()
-                        && e.polarity.as_deref() == Some("good")
-                        && !e.rationale.trim().is_empty())
-            });
+            let answered = ctx.later(i, &address, |e| is_edit(e) || reasoned_good_verdict(e));
             if answered {
                 continue;
             }
@@ -767,9 +764,19 @@ fn asked_for(ctx: &Lookup) -> Vec<Attention> {
                 .enumerate()
                 .any(|(j, e)| ctx.after(j, i) && is_person(e) && refs(e))
         });
+        // A bad verdict is also answered, target by target, by a later good
+        // verdict with a reason (the Judge passing the redraft). Not on a
+        // finding: D1 wants a person to verify those.
+        let bad_verdict = d.is_verdict() && d.polarity.as_deref() == Some("bad");
+        let answered = |t: &String| {
+            let address = ctx.qualify(t);
+            ctx.later(i, &address, is_person)
+                || (bad_verdict
+                    && ctx.target(&address).kind != "finding"
+                    && ctx.later(i, &address, reasoned_good_verdict))
+        };
         let mut aimed = aims(d).peekable();
-        let every =
-            aimed.peek().is_some() && aimed.all(|t| ctx.later(i, &ctx.qualify(t), is_person));
+        let every = aimed.peek().is_some() && aimed.all(answered);
         if named || every {
             continue;
         }
@@ -840,6 +847,13 @@ fn is_edit(d: &Decision) -> bool {
             .iter()
             .any(|p| d.action.starts_with(p)),
     }
+}
+
+/// A good verdict that says why: it answers a bad verdict on the same target.
+fn reasoned_good_verdict(d: &Decision) -> bool {
+    d.is_verdict()
+        && d.polarity.as_deref() == Some("good")
+        && (!d.rationale.trim().is_empty() || d.reasoning.is_some())
 }
 
 fn who(d: &Decision) -> Who {

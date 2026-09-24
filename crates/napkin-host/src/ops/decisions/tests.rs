@@ -452,6 +452,93 @@ fn a_bad_verdict_is_answered_by_a_later_edit_or_a_reasoned_good_one() {
 }
 
 #[test]
+fn the_judge_passing_the_redraft_answers_its_own_bad_verdict_but_not_on_a_finding() {
+    // The Judge's bad verdict carries reasoning.attention; the badge counted it
+    // until a person decided, even after the Judge passed the redraft.
+    let chain = |target: &str, later: &str| {
+        format!(
+            "decisions:
+{later}- id: d_bad
+  kind: verdict
+  agent: draft_brief@1/judge
+  actor: process:middleware
+  action: judge
+  polarity: bad
+  targets: ['{DOC}#{target}']
+  rationale: Fails why_now.
+  reasoning:
+    decided: The background fails the rubric (why_now).
+    because: [{{ point: no catalyst }}]
+    only_option: the rubric decides
+    certainty: {{ level: medium, why: a model check decided }}
+    would_change_if: the field is rewritten
+    attention: Background fails why_now.
+  timestamp: 2026-09-24T10:00:00Z
+"
+        )
+    };
+    let good = |target: &str, reasoned: bool| {
+        let why = if reasoned {
+            "  rationale: Passes.
+  reasoning:
+    decided: The background passes the rubric.
+    because: [{ point: the launch is the catalyst }]
+    only_option: the rubric decides
+    certainty: { level: medium, why: a model check decided }
+    would_change_if: the field is rewritten
+"
+        } else {
+            "  rationale: ''
+"
+        };
+        format!(
+            "- id: d_good
+  kind: verdict
+  agent: regenerate_field@1/judge
+  actor: process:middleware
+  action: judge
+  polarity: good
+  targets: ['{DOC}#{target}']
+{why}  timestamp: 2026-09-24T11:00:00Z
+"
+        )
+    };
+
+    let open = decisions(&doc_with(&[(CHAIN_PATH, &chain("background", ""))])).unwrap();
+    assert_eq!(
+        codes(&open),
+        [("bad_verdict", Some("d_bad")), ("flagged", Some("d_bad"))]
+    );
+
+    // A later good verdict with a reason answers both the lock item and the flag.
+    let passed = chain("background", &good("background", true));
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &passed)])).unwrap();
+    assert!(v.attention.is_empty(), "{:?}", v.attention);
+
+    // One without a reason answers neither.
+    let bare = chain("background", &good("background", false));
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &bare)])).unwrap();
+    assert_eq!(
+        codes(&v),
+        [("bad_verdict", Some("d_bad")), ("flagged", Some("d_bad"))]
+    );
+
+    // A good verdict on another field does not answer it.
+    let elsewhere = chain("background", &good("audience", true));
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &elsewhere)])).unwrap();
+    assert_eq!(
+        codes(&v),
+        [("bad_verdict", Some("d_bad")), ("flagged", Some("d_bad"))]
+    );
+
+    // On a finding, only a person answers it (D1): an agent's good verdict
+    // leaves the flag standing.
+    let finding = chain("findings[fi_a]", &good("findings[fi_a]", true));
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &finding)])).unwrap();
+    assert_eq!(codes(&v), [("flagged", Some("d_bad"))]);
+}
+
+#[test]
 fn no_chain_is_an_empty_view_and_a_broken_one_says_so() {
     let v = decisions(&doc_with(&[])).unwrap();
     assert!(v.problem.is_none());
