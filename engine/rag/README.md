@@ -16,14 +16,18 @@ record of the client's own brief.
 ```
 middleware ──request──▶ rag_io.handle()
                           │  validate against schema/rag_io.v1.json
+                          │  retrieval.path: mix (default) | buckets
                           ▼
-                        brief_context.build()
-                          │  plan: pairs → query, keywords, filters
+     mix: brief_context.build_multi()          buckets: brief_context.build()
+       one query per brief field                 one query, four budgeted buckets
+       (mix_queries.LOOP37_SPECS — the same      plan: pairs → query, keywords, filters
+        queries the brief generator uses)        per bucket: hybrid search → collapse → budget
+       1 embed call · searches 4 at a time
+       · one validator call per field
                           │  scopes_for / tenants_for: authority → boundary
-                          │  per bucket: hybrid search → collapse → budget
                           │  egress check: drop anything outside the boundary
                           ▼
-middleware ◀─response── rag_io.response_from()
+middleware ◀─response── rag_io.response_from_multi()  (fields)  |  response_from()  (blocks)
 ```
 
 | Stage | Status | Component |

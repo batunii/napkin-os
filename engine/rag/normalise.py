@@ -115,7 +115,7 @@ SECTOR_TO_CATEGORY: dict[str, str] = {
 #                                       about hearing loss and driving hearing tests)
 #   PEDIGREE       -> fmcg             (IPA: Mars Petcare and Nestle Purina Petcare ->
 #                                       FMCG. The corpus is itself split on pet food —
-#                                       Friskies Petcare sits under Food & Drink — so
+#                                       one pet-food maker sits under Food & Drink — so
 #                                       this one is genuinely arguable)
 #   ANDREX, ANGEL SOFT, ZIPLOC -> fmcg (IPA: Kimberly-Clark, SCA, Scott, Henkel
 #                                       Consumer Adhesives -> FMCG)

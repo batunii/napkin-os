@@ -212,7 +212,8 @@ SENTINELS = {
 def test_every_live_request_field_reaches_build():
     """The guard against the pipeline.yaml failure: a field marked live must change what
     build() receives. Mark a field live without wiring it and this fails."""
-    exempt = {"contract_version", "run_id"}        # checked by their own tests
+    exempt = {"contract_version", "run_id",         # checked by their own tests
+              "retrieval.path"}                    # read by handle(), not build(): see test_mix_*
     base = {"run_id": "r", "authority": {}, "campaign": {}}
     base_args = json.dumps(rag_io.to_build_args(base)[0], sort_keys=True)
     checked = 0
@@ -236,7 +237,7 @@ def test_every_live_request_field_reaches_build():
 def test_run_id_is_echoed():
     """handle() echoes the request's run_id and stamps the response with the current
     contract version."""
-    resp = rag_io.handle(REQ, build=lambda pairs, **k: _ctx())
+    resp = rag_io.handle({**REQ, "retrieval": {"path": "buckets"}}, build=lambda pairs, **k: _ctx())
     assert resp["run_id"] == "r-1" and resp["contract_version"] == rag_io.version()
 
 
@@ -297,3 +298,60 @@ def test_notes_carry_widening_so_it_is_not_hidden():
     notes into the response, so widening is never hidden."""
     resp = rag_io.response_from(_ctx(), "r", ["adapter note"])
     assert resp["notes"] == ["adapter note", "exemplars: dropped category"]
+
+
+# ---- retrieval.path = mix (the default since 1.3.0) --------------------------------------
+def _multi(pairs, queries, **k):
+    """Fake build_multi: one exemplar per field, and the kwargs it was given."""
+    _multi.kwargs = k
+    return bc.MultiContext(fields={f: [_hit(f"ipa_{i}", "exemplars", year=2020)]
+                                   for i, f in enumerate(queries)}, trace={"calls": {"embed": 1}})
+
+
+def test_mix_is_the_default_and_answers_per_field():
+    """No retrieval.path: build_multi runs with the brief generator's five field queries,
+    and the response carries them in `fields` (blocks empty) and validates."""
+    called = []
+    resp = rag_io.handle(REQ, build=lambda *a, **k: called.append(1), build_multi=_multi)
+    assert not called
+    assert [f["field"] for f in resp["fields"]] == [k for k, _t, _q in __import__("mix_queries").LOOP37_SPECS]
+    assert resp["blocks"] == [] and resp["fields"][0]["hits"][0]["cite"] == "ipa_0"
+    assert rag_io.validate(resp, "response") == []
+
+
+def test_mix_queries_are_the_brief_generators():
+    """The field queries come from the campaign gist exactly as parse_brief builds them."""
+    import mix_queries
+    rag_io.handle(REQ, build_multi=lambda pairs, queries, **k: _multi.__setattr__("q", queries) or _multi(pairs, queries, **k))
+    assert _multi.q == mix_queries.queries_for(rag_io.gist_of(REQ))
+
+
+def test_mix_passes_scope_and_drops_the_bucket_budget():
+    """Authority reaches build_multi; a per-bucket token budget does not, and says so."""
+    req = {**REQ, "limits": {"token_budget": {"craft": 1000}}}
+    resp = rag_io.handle(req, build_multi=_multi)
+    assert "budget" not in _multi.kwargs and _multi.kwargs.get("tenant") == REQ["authority"].get("tenant")
+    assert any("token_budget" in n for n in resp["notes"])
+
+
+def test_buckets_path_still_uses_build():
+    """retrieval.path = buckets keeps the single-query, four-bucket path."""
+    resp = rag_io.handle({**REQ, "retrieval": {"path": "buckets"}}, build=lambda pairs, **k: _ctx(),
+                         build_multi=lambda *a, **k: pytest.fail("mix path used"))
+    assert resp["blocks"] and "fields" not in resp
+
+
+def test_mix_end_to_end_on_the_real_index(monkeypatch):
+    """handle() on the real local index, no network: keyword-only search (embedding off),
+    no validator. The response validates and every hit is citable and in scope."""
+    index = HERE / "_index_v4"
+    if not (index / "manifest.json").exists() and not any(index.glob("*")):
+        pytest.skip("local index _index_v4 not present")
+    import rag
+    monkeypatch.setenv("RAG_STORE", "local")
+    monkeypatch.setattr(rag, "embed_query", lambda *a, **k: None)
+    monkeypatch.setattr(bc, "default_chain", lambda: __import__("judge").Chain([]))
+    resp = rag_io.handle(REQ, index_dir=index)
+    assert rag_io.validate(resp, "response") == []
+    hits = [h for f in resp["fields"] for h in f["hits"]]
+    assert hits and all(h["cite"] and h["scope"] for h in hits)

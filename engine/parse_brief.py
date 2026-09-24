@@ -2334,18 +2334,11 @@ def _fmt(c):
 
 # Each loop maps a stage of the strategic process to a query built from the
 # brief gist. Retrieval grounds it in the planner playbooks + IPA evidence.
-LOOP37_SPECS = [
-    ("loop3_research", "Loop 3 · Research & category intelligence",
-     lambda g: f"how to research the category, competitors and audience for {g['audience']}; {g['problem']}"),
-    ("loop4_insight", "Loop 4 · Human insight & cultural tension",
-     lambda g: f"find the human insight and cultural tension for {g['audience']} given {g['problem']}"),
-    ("loop5_proposition", "Loop 5 · Single-minded proposition",
-     lambda g: f"single-minded proposition and key message to achieve {g['objective']}; {g['key_message']}"),
-    ("loop6_substantiation", "Loop 6 · Substantiation & effectiveness evidence",
-     lambda g: f"effectiveness evidence and proof a strategy delivers {g['objective']}; how brands grow"),
-    ("loop7_qa", "Loop 7 · Strategic QA & decision rules",
-     lambda g: f"common mistakes and decision rules to pressure-test {g['key_message']} for {g['objective']}"),
-]
+# The five per-field queries live in rag/mix_queries.py, shared with rag_io.handle's mix
+# path, so the middleware retrieves exactly as the brief generator does.
+if str(HERE / "rag") not in sys.path:
+    sys.path.insert(0, str(HERE / "rag"))
+from mix_queries import LOOP37_SPECS  # noqa: E402
 
 
 def _rerank_hits(query: str, hits: list, k: int) -> list:
@@ -2771,7 +2764,8 @@ def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
     pairs = {k: v for k, v in pairs.items() if v}
     pairs.update({k: v for k, v in (("problem", gist["problem"]), ("objective", gist["objective"]),
                                     ("audience", gist["audience"])) if v and k not in pairs})
-    queries = {key: re.sub(r"\s+", " ", qfn(gist)).strip() for key, _t, qfn in LOOP37_SPECS}
+    from mix_queries import queries_for
+    queries = queries_for(gist)
     mc = brief_context.build_multi(pairs, queries, index_dir=index_dir)
     loops = {}
     for key, title, _q in LOOP37_SPECS:
@@ -3126,6 +3120,40 @@ def write_rich_formats(md_text: str, md_file: Path, formats: list[str]) -> list[
 # MAIN
 # ---------------------------------------------------------------------------
 
+# Golden-brief field -> the capture key the retrieval reads it as (queries and filters).
+_GOLDEN_AS_CAPTURE = {"background": "background_context", "objectives": "objective",
+                      "audience": "target_audience", "competitor_context": "competitors_market",
+                      "tone_world_assets": "tone_and_brand", "mandatories": "mandatories",
+                      "budget_scope": "budget"}
+
+
+def _golden_text(v) -> str:
+    """A golden value (text, list or objectives/tfd dict) as one line of text."""
+    if isinstance(v, dict):
+        return "; ".join(str(x) for x in v.values() if x)
+    if isinstance(v, list):
+        return "; ".join(str(x) for x in v if x)
+    return str(v or "")
+
+
+def _retrieval_fields_from_golden(gb: dict) -> dict:
+    """The golden extraction as the capture-shaped fields loops_3_7 retrieves from, so
+    retrieval can start when the golden extraction lands (~21 s) instead of waiting for
+    the capture (~37 s). A client-stated SMP stands in for the key message. Measured
+    2026-09-24 on 3 briefs: ~30% of evidence items change, a blind judge scored the two
+    evidence sets 21 vs 20 (golden better on 2 of 3)."""
+    g = (gb or {}).get("fields") or {}
+    out = {cap: {"value": _golden_text(e.get("value")), "status": "fact"}
+           for gid, cap in _GOLDEN_AS_CAPTURE.items()
+           if isinstance(e := g.get(gid), dict) and e.get("source") != "missing" and _golden_text(e.get("value"))}
+    smp = g.get("smp") if isinstance(g.get("smp"), dict) else {}
+    if smp.get("source") == "client_stated" and _golden_text(smp.get("value")):
+        out["key_message"] = {"value": _golden_text(smp["value"]), "status": "fact"}
+    if "background_context" in out:
+        out["business_problem"] = out["background_context"]
+    return out
+
+
 class _Inline:
     """A stand-in for ThreadPoolExecutor that runs each submit() at once (BRIEF_PARALLEL=0):
     the same code path, the same futures, one step at a time."""
@@ -3213,10 +3241,22 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     from concurrent.futures import ThreadPoolExecutor
     parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
     toon = os.environ.get("BRIEF_CAPTURE", "toon").lower() != "json"
-    with ThreadPoolExecutor(max_workers=4) if parallel else _Inline() as ex:
+    # BRIEF_RETRIEVE_FROM=golden: retrieval reads the golden extraction and starts as soon
+    # as it lands, alongside the capture; "capture" (default) waits for the capture.
+    from_golden = (os.environ.get("BRIEF_RETRIEVE_FROM", "capture").lower() == "golden"
+                   and loops37 and golden)
+    with ThreadPoolExecutor(max_workers=5) if parallel else _Inline() as ex:
         f_cap = ex.submit(capture_toon, segs) if toon else None
         f_htw = ex.submit(how_to_win_toon, segs) if toon else None
         f_gold = ex.submit(extract_golden_brief, text) if golden else None
+        f_l37 = None
+        if from_golden:
+            def _retrieve_from_golden():
+                """Wait for the golden extraction, then retrieve from it (None if it failed)."""
+                gb0 = f_gold.result()
+                rf = _retrieval_fields_from_golden(gb0) if gb0 else {}
+                return loops_3_7({}, rf, synthesize=False) if rf else None
+            f_l37 = ex.submit(_retrieve_from_golden)
 
         llm = f_cap.result() if f_cap else None
         capture_format = "toon" if llm else "json"
@@ -3252,7 +3292,9 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         # Loops 3–7 (RAG) only when explicitly enabled — key is omitted otherwise, so
         # output is byte-for-byte identical to a Loops 1–2 run.
         if loops37:
-            out["loops3_7"] = loops_3_7(loop2, fields, synthesize=False)
+            l37_early = f_l37.result() if f_l37 else None
+            out["loops3_7"] = l37_early or loops_3_7(loop2, fields, synthesize=False)
+            out["loops3_7"]["retrieved_from"] = "golden" if l37_early else "capture"
         l37 = out.get("loops3_7") or {}
         f_synth = (ex.submit(_synthesize_loops37, l37["gist"], l37["intent"], l37["loops"])
                    if l37.get("synthesis_mode") == "deferred" else None)

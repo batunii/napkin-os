@@ -67,7 +67,7 @@ python3 -m pytest engine/rag/test_contract.py -q
 
 A second contract, separate from the chunk metadata above: what the middleware sends the
 RAG module and what it gets back. JSON Schema (draft 2020-12), so any language validates
-the same bytes. v1.2.0, `locked: false` until the middleware owner signs off.
+the same bytes. v1.3.0, `locked: false` until the middleware owner signs off. 1.3.0 added `retrieval.path` (`mix`, the default: one evidence set per brief field in `response.fields`, exactly as the brief generator retrieves; `buckets`: the single-query four-bucket path in `response.blocks`).
 
 - `authority` (tenant, authorised brand, reference brands with roles) is the only input
   that can reach the confidentiality boundary, and it rejects unknown keys.

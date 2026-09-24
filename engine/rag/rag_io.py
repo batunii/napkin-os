@@ -304,16 +304,69 @@ def response_from(ctx, run_id: str, notes: list[str] | None = None) -> dict:
     }
 
 
+# build_multi() takes these of to_build_args()'s keys; `budget` is a per-bucket token
+# budget and has no meaning for per-field retrieval.
+_MULTI_KWARGS = ("brand", "tenant", "context", "admission", "alt_categories")
+
+
+def gist_of(request: dict) -> dict:
+    """The brief gist the mix path's field queries are written from: the campaign's
+    problem, objective, audience and key_message ('' when absent)."""
+    c = request.get("campaign") or {}
+    return {k: str(c.get(k) or "") for k in ("problem", "objective", "audience", "key_message")}
+
+
+def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None = None) -> dict:
+    """Shape build_multi()'s MultiContext as $defs/response: `fields` carries one evidence
+    set per brief field (the brief generator's Loops 3-7), `blocks` is empty, and
+    prompt_text renders the fields in order."""
+    from brief_context import estimate_tokens
+    fields, parts = [], []
+    for key, hits in mc.fields.items():
+        fields.append({"field": key, "query": queries.get(key, ""), "hits": [_hit_out(h) for h in hits]})
+        if hits:
+            parts.append(f"## {key}\n" + "\n\n".join(f"[{h.cite}] {h.text}" for h in hits))
+    text = "\n\n".join(parts)
+    return {
+        "contract_version": version(),
+        "run_id": run_id,
+        "blocks": [],
+        "fields": fields,
+        "prompt_text": text,
+        "tokens": estimate_tokens(text),
+        "validation": (mc.trace or {}).get("validation"),
+        "notes": list(notes or []),
+        "trace": mc.trace,
+    }
+
+
 # ---- entry point -------------------------------------------------------------------
-def handle(request: dict, *, index_dir=None, build=None) -> dict:
-    """Validate, retrieve, respond. `build` is injectable for tests."""
+def handle(request: dict, *, index_dir=None, build=None, build_multi=None) -> dict:
+    """Validate, retrieve, respond. `build` / `build_multi` are injectable for tests.
+
+    retrieval.path picks the retrieval (default "mix", Sai 2026-09-24):
+      mix      one query per brief field through brief_context.build_multi(), exactly as
+               the brief generator retrieves (response `fields`);
+      buckets  one query into four budgeted buckets through brief_context.build()
+               (response `blocks`)."""
     problems = validate(request)
     if problems:
         raise RequestInvalid(problems)
+    kwargs, notes = to_build_args(request)
+    pairs = kwargs.pop("pairs")
+    if ((request.get("retrieval") or {}).get("path") or "mix") == "mix":
+        if build_multi is None:
+            from brief_context import build_multi
+        from mix_queries import queries_for
+        queries = queries_for(gist_of(request))
+        if "budget" in kwargs:
+            notes.append("limits.token_budget applies to retrieval.path=buckets only")
+        mc = build_multi(pairs, queries, index_dir=index_dir,
+                         **{k: v for k, v in kwargs.items() if k in _MULTI_KWARGS})
+        return response_from_multi(mc, queries, request["run_id"], notes)
     if build is None:
         from brief_context import build
-    kwargs, notes = to_build_args(request)
-    ctx = build(kwargs.pop("pairs"), index_dir=index_dir, **kwargs)
+    ctx = build(pairs, index_dir=index_dir, **kwargs)
     return response_from(ctx, request["run_id"], notes)
 
 
