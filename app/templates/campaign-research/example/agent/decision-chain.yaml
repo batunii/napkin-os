@@ -159,6 +159,20 @@ decisions:
     cites: [f_01JA0B6D6G, f_01JA0B6D7H, f_01JA0B3R5S, f_01JA0B2K7M, f_01JA0B2K8N, f_01JA0B4A1B, f_01JA0B4A2C, f_01JA0B5C4E, f_01JA0B8F9K]
     fields_changed: [campaign.audience, campaign.in_market, intake.messages]
     rationale: "Five findings from the merged pins, each labelled derived by the agent. Proposed campaign.audience from the consumer pins and fi_01JA0F4D; proposed campaign.in_market from the cider peak and fi_01JA0F5E. Confidence computed from the cited pins."
+    reasoning:
+      decided: "Proposed five findings, and campaign.audience and campaign.in_market from them."
+      because:
+        - point: "The IE consumer pins agree on a social, weeknight-at-home occasion"
+          cites: [f_01JA0B6D6G, f_01JA0B6D7H, f_01JA0B3R5S]
+        - point: "Prompted awareness differs sharply between IE and GB"
+          cites: [f_01JA0B2K7M, f_01JA0B2K8N]
+        - point: "The in-market window follows the cider peak and Orchard Hill's launch timing"
+          cites: [f_01JA0B8F9K, fi_01JA0F5E]
+      rejected:
+        - { option: "leave campaign.in_market empty", why: "the email's 'next spring' is a window the pins can narrow" }
+        - { option: "state the findings as facts", why: "nothing unverified may enter the layers; each is proposed until a person verifies it" }
+      certainty: { level: low, why: "fi_01JA0F5E rests on a single pin, so its derived confidence is low, and campaign.in_market leans on it" }
+      would_change_if: "a second source on the spring occasion, or a person verifying or rejecting the findings"
     timestamp: "2026-09-21T12:10:00Z"
   - id: d_01JA0D05CTV
     kind: contest
@@ -226,6 +240,17 @@ decisions:
     cites: [mat_prompt01]
     fields_changed: [selection.lenses_skipped, intake.messages]
     rationale: "Selected every lens in both markets except effectiveness_evidence in GB, which the prompt rules out."
+    reasoning:
+      decided: "Run every lens in both markets except effectiveness evidence in GB."
+      because:
+        - point: "The prompt says effectiveness cases only matter for Ireland, where the budget has to be sold in"
+          cites: [mat_prompt01]
+        - point: "The launch is in Ireland and GB, so every other lens runs in both"
+          cites: [mat_email01]
+      rejected:
+        - { option: "run effectiveness evidence in GB too", why: "the prompt rules it out, and it would spend a run on evidence nobody will use" }
+      certainty: { level: high, why: "the prompt states it in so many words" }
+      would_change_if: "the planner asks for GB effectiveness cases after all"
     timestamp: "2026-09-21T09:05:03Z"
   - id: d_01JA0D03IDN
     kind: edit
