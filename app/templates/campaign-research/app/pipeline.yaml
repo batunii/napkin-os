@@ -92,6 +92,14 @@ tasks:
     reads: the document as it now stands — campaign, selection, pins, findings (a rejected finding is never cited)
     writes: report (replaced whole), one intake message (role agent, stage report)
 
+# R1 (Contract 4 §3): which middleware decisions must carry reasoning. The host
+# requires it on every pin, contest, finding and verdict, and every proposal,
+# whatever an app says; this adds the edits that write the agent-written parts
+# of a campaign. An edit that only posts a chat message (intake.messages) or
+# indexes a material may omit it (it should still send it).
+reasoning:
+  edits: [campaign, selection, report]
+
 # Campaign -> retrieval pairs. The handoff mapping is stored here so it travels
 # with every document. Scope (tenant, brand) is NEVER in this mapping: the
 # middleware injects it from Ctx.
