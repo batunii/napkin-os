@@ -66,6 +66,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The shell's unit tests: Node's own runner, over esbuild bundles.
+      - name: Unit tests
+        run: npm test
+
       # `npm run build` is `tsc -b && vite build`, so this covers the
       # TypeScript type-check gate as well as the production build.
       - name: Type-check & build
