@@ -341,7 +341,7 @@ suite never makes one.
 |---|---|---|---|
 | model, anthropic wire | 14/14 | text 2.8 s, strict schema 4.8 s, retry turn 7.8 s, image 4.2 s | `claude-haiku-4-5` → haiku |
 | model, openai wire | 14/14 | text 2.8 s, strict schema 5.1 s, retry turn 7.7 s, image 3.9 s | `nvidia/llama-3.1-nemotron-nano-vl-8b-v1` → haiku |
-| retrieval | 34/34 | two retrieves over the five digests, 17.3 s and 11.7 s | sonnet |
+| retrieval | 34/34 | two retrieves over the five digests (15 sections), 17.3 s and 8.2 s, $0.048 and $0.031 | sonnet |
 | layers | 77/77 | under a second | none |
 | research | 32/32 | BMW EV market in IE, `max_sources` 3: 97.7 s and $0.42 for three sources (BMW Group Ireland, SIMI, CSO) with 3–4 quotes each; the repeat was a cache hit in 0.00 s | sonnet + WebSearch/WebFetch |
 
