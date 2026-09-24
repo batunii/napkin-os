@@ -1263,9 +1263,16 @@ MAXTOK_EXTRACT = 8000    # extraction / scorecard / golden: one big JSON. Was 25
                          # A ceiling, not a cost: billing is per token actually produced.
 
 
+# Per-request timeout for the OpenAI-compatible links (NIM, Groq, Cerebras, …). Was 300 s,
+# retried 3x: on 2026-09-24 a fallback gpt-oss link timed out three times and held one
+# brief for 941 s. 90 s still covers the slowest normal reply measured (~40 s).
+LINK_TIMEOUT_S = float(os.environ.get("BRIEF_LINK_TIMEOUT", "90"))
+
+
 def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
-                            timeout=300, system=None, max_tokens=None, json_mode=False, schema=None):
+                            timeout=None, system=None, max_tokens=None, json_mode=False, schema=None):
     """One code path for NVIDIA NIM, OpenAI, and Ollama — all OpenAI-compatible."""
+    timeout = timeout or LINK_TIMEOUT_S
     # NOTE: do NOT prepend a "detailed thinking off" system message for
     # Nemotron — on NIM a second system message displaces the real one and
     # the model ignores the JSON instruction entirely (verified 2026-06-10).
@@ -1413,6 +1420,20 @@ def list_models(provider="nim"):
     return ids
 
 
+# Models that think before answering by default (measured 2026-09-24: Opus 5.5 spent ~900
+# tokens thinking on a 220-token paragraph, even at effort low; Sonnet 5 ~150). Thinking
+# counts against max_tokens, so the pipeline's tight per-call ceilings (700 for a synthesis
+# paragraph) cut the answer off mid-JSON. They get this much extra room — a ceiling, billed
+# only when used. Opus 4.6 does not think by default and gets none.
+THINKING_HEADROOM = int(os.environ.get("BRIEF_THINKING_HEADROOM", "2500"))
+_THINKING_MODELS = ("claude-opus-5", "claude-sonnet-5", "claude-fable", "claude-mythos")
+
+
+def _thinking_headroom(model) -> int:
+    """Extra output tokens for a model that thinks by default; 0 for one that does not."""
+    return THINKING_HEADROOM if str(model or model_for("anthropic")).startswith(_THINKING_MODELS) else 0
+
+
 def _chat_anthropic(user, system=None, max_tokens=None, schema=None, model=None):
     """The Anthropic link. `schema` turns on structured outputs — the API constrains the
     response to that JSON Schema rather than the prompt merely asking for JSON.
@@ -1435,7 +1456,7 @@ def _chat_anthropic(user, system=None, max_tokens=None, schema=None, model=None)
     # `model` is the chain link's model. Before 2026-09-24 this always sent
     # model_for("anthropic"), so an explicit model= (the Sonnet judges) silently ran on Opus.
     msg = client.messages.create(model=model or model_for("anthropic"),
-                                 max_tokens=int(max_tokens or MAXTOK_EXTRACT),
+                                 max_tokens=int(max_tokens or MAXTOK_EXTRACT) + _thinking_headroom(model),
                                  system=system or EXTRACTION_SYSTEM,
                                  messages=[{"role": "user", "content": user}], **kw)
     # Take the first TEXT block rather than content[0]: a model configured with thinking

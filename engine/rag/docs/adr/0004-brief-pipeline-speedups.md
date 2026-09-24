@@ -46,7 +46,7 @@ Each is switchable: `BRIEF_CAPTURE=json`, `BRIEF_PARALLEL=0`, `BRIEF_BATCH_GATES
 | LLM calls | 66 | 57 |
 | cost (Opus 4.6) | $1.60 | $1.18 |
 | golden_critic health, summed | 143 | 145 |
-| blind Sonnet judge, summed /30 | 21 | 21 (old preferred 2, same 1 — on insight sharpness) |
+| blind judge, summed /30 (ran on Opus 4.6 — see correction below) | 21 | 21 (old preferred 2, same 1 — on insight sharpness) |
 | no-loss coverage | 67–77% | 86–94% |
 
 ## Consequences
@@ -73,3 +73,14 @@ The generator was also never told the schema's code rules, and its gate did not 
 `_rubric_hard` now runs golden_critic's own AUTO checks (strict word limit, one sentence,
 item cap, a stated 'why', think/feel/do filled), `_gen_field_system` states them, and a draft
 that breaks only those rules gets one repair rewrite before the field is given up.
+
+## Correction 2026-09-24 — the "Sonnet" judges ran on Opus 4.6
+
+Until 0fb52fc, `_call_link` sent every Claude call with `model_for("anthropic")`
+(claude-opus-4-6) whatever `model=` asked for. So every judge described as Sonnet 5 —
+compare_paths' path comparison, e2e_eval's blind old/new comparison, and the first
+`golden_critic --judge` scores (78 / 71 / 75, commit 17b3d73) — actually ran on Opus 4.6,
+the generator's own model: separate calls with no shared context, but the same model.
+The comparisons still compared like with like (both sides judged by the same model); the
+"independent judge" claim did not hold. Numbers re-measured with the real Sonnet 5 judge
+are recorded in the project plan (health_rescored_sonnet) and supersede 17b3d73's.
