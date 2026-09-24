@@ -31,7 +31,7 @@ from . import capture as cap_stage
 from .drafters import DraftContext, Drafter, _query, run_drafters
 from .fields import (KEYS, LABELS, RUBRIC_FIELDS, address, clean, drafter_of, field_map, field_paths, filled, get,
                      group_keys, holder, last_writer, locked, put, read_of, rubric_groups)
-from .judge import coherence, definition_of_done, failures, judge_field
+from .judge import FIX_MAX, clip, coherence, definition_of_done, failures, judge_field, sentence
 from .rubric import DEPENDENCIES, FAIL, PASS, REVIEW, health, reason_code
 
 log = logging.getLogger("napkin.brief")
@@ -485,7 +485,7 @@ class BriefJob:
                         values[k] = get(self.W, k)  # the brief keeps what it had
                         failed_keys.append(k)
                     self.set_state(live, "failed", "judge")
-                    self.notes.append("; ".join(f"{f['check']}: {f['reason']}" for f in fails)[:300])
+                    self.notes.append(clip("; ".join(f"{f['check']}: {f['reason']}" for f in fails), FIX_MAX))
                 else:
                     refs = self._place_draft(drafted, live, res, first_clean, patch, decisions, passages_out)
             elif self.task == "regenerate_field" and self.fm[self.field]["class"] == "captured" and self.field in live:
@@ -649,7 +649,9 @@ class BriefJob:
         deciding = [c for c in res["checks"] if c["status"] == FAIL] if bad else \
             [c for c in res["checks"] if c["status"] == PASS]
         review = [c for c in res["checks"] if c["status"] == REVIEW]
-        pts = [rsn.point(f"{c['check']} ({c['method']}): {c['note']}", cites + (rule_ids if c["method"] == "llm" else []))
+        pts = [rsn.point(f"{c['check']} ({c['method']}): {sentence(c['note'])}"
+                         + (f" Fix: {sentence(c['fix'])}" if c.get("fix") else ""),
+                         cites + (rule_ids if c["method"] == "llm" else []))
                for c in deciding[:8]]
         if not pts:
             pts = [rsn.point(f"No check failed; {len(review)} left for a person", cites)]
@@ -677,14 +679,19 @@ class BriefJob:
                         "judge", **extra)
 
     def _coherence_verdict(self, c, keys, cites, rule_ids):
-        r = rsn.make(f"The brief does not hold together: {c['id'].replace('_', ' ')}.",
-                     [rsn.point(f"{c['rule']} — {c['note']}", cites + rule_ids)],
+        """One check across several fields. The reason is the first point, whole;
+        the fix is the attention, after it — never joined into one clipped line."""
+        name = c["id"].replace("_", " ")
+        top = lambda k: "objectives" if k.startswith("objectives.") else LABELS.get(k.split(".")[0], LABELS[k])
+        across = ", ".join(dict.fromkeys(top(k) for k in keys))
+        cites_ = cites + rule_ids
+        r = rsn.make(f"The brief does not hold together: {name}, across {across}.",
+                     [rsn.point(sentence(c["note"]), cites_), rsn.point(f"The rule: {sentence(c['rule'])}", cites_)],
                      rsn.certainty("high" if c["method"] == "auto" else "medium",
                                    "an auto check decided" if c["method"] == "auto" else "a model check decided"),
                      "the fields it names are brought into line", only_option="the coherence rule decides",
-                     attention=f"{c['id'].replace('_', ' ')}: {c['note']}"
-                               + (f" Fix: {c['fix']}" if c.get("fix") else "")
-                               + " A person answers this before the brief locks.")
+                     attention=(f"Fix: {sentence(c['fix'])} " if c.get("fix") else "")
+                               + "A person answers this before the brief locks.")
         return self.dec(("coherence", c["id"], self.task), "verdict", "judge", keys, list(dict.fromkeys(cites + rule_ids)),
                         r, "judge", polarity="bad", reason_code=reason_code(c["id"]), taxonomy_version=TAXONOMY)
 

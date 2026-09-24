@@ -272,6 +272,48 @@ def test_judge_failure_gets_one_revision(tmp_path):
     assert host.data["review"]["judge"]["fields"]["insight"]["outcome"] == "revised"
 
 
+LONG_REASON = ("€1.2m spread across digital and OOH in two national markets (Ireland and Great Britain) is thin for "
+               "the stated ambition of reversing a three-year shelf-share decline against two well-capitalised "
+               "modern-whisky leaders (Suntory-backed Hibiki, Diageo-backed Roe & Co); GB OOH alone would consume most "
+               "of the budget before Ireland sees a single poster")
+LONG_FIX = "Either narrow geography to one market (lead with Ireland, phase GB later) or reduce the channel mix"
+
+
+def test_a_coherence_verdict_keeps_its_whole_reason_and_its_fix_apart(tmp_path):
+    def coherence(p):
+        return {r["id"]: ({"verdict": "fail", "reason": LONG_REASON, "fix": LONG_FIX} if r["id"] == "backbone_balance"
+                          else {"verdict": "pass", "reason": "holds together", "fix": None}) for r in p["rules"]}
+    model = FakeModel({"judge_coherence": coherence})
+    s = Server(tmp_path, model=model, retrieval=retrieval())
+    try:
+        host = Host()
+        run(s, host)
+    finally:
+        s.stop()
+    v = next(d for d in host.chain if d["kind"] == "verdict" and d["reasoning"]["decided"].startswith(
+        "The brief does not hold together: backbone balance"))
+    assert len({t.split("#", 1)[1].split(".")[0] for t in v["targets"]}) > 1  # one check across several fields
+    r = v["reasoning"]
+    # the reason whole, as a sentence, and first (the rationale older readers show is decided + it)
+    assert r["because"][0]["point"] == LONG_REASON + "."
+    assert r["because"][1]["point"].startswith("The rule: Budget ↔ objectives ↔ audience")
+    # the fix after it, apart, never glued onto a clipped reason
+    assert r["attention"] == f"Fix: {LONG_FIX}. A person answers this before the brief locks."
+    assert "Fix:" not in r["because"][0]["point"]
+    assert "across budget and scope, objectives, audience" in r["decided"]
+    check_change_rules(host)
+
+
+def test_clip_cuts_at_a_sentence_never_mid_word():
+    from napkin.brief.judge import clip, sentence
+    assert clip("short", 50) == "short"
+    t = "One whole sentence here. " + "word " * 40
+    assert clip(t, 40) == "One whole sentence here. …"
+    assert clip(t, 60).endswith("word…") and len(clip(t, 60)) <= 60
+    assert clip("alpha beta gamma delta", 14) == "alpha beta…"
+    assert sentence("no stop") == "no stop." and sentence("a stop.") == "a stop." and sentence("") == ""
+
+
 def test_failing_twice_is_not_written(tmp_path):
     model = FakeModel()
     model.fail_checks[("judge_smp", "not_a_tagline")] = 2

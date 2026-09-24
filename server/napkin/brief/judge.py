@@ -37,6 +37,31 @@ DOD_LLM = ("one_strategy", "no_solution_prescribed")
 DOD_FIELDS = {"one_strategy": ["insight", "smp", "reasons_to_believe", "desired_response"]}
 
 
+REASON_MAX, FIX_MAX = 900, 600
+
+
+def clip(text, n: int) -> str:
+    """`text` stripped, whole when it fits; otherwise cut at the last sentence
+    (or, failing that, word) that fits, with an ellipsis. A reason is never
+    cut mid-word, and what follows it (a fix) is never glued on mid-sentence."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= n:
+        return t
+    head = t[:n - 1]
+    ends = [head.rfind(p) + 1 for p in (". ", "; ", "! ", "? ")]
+    cut = max(ends)
+    if cut >= n // 2:  # whole sentences, and a mark that more was said
+        return head[:cut].rstrip() + " …"
+    cut = head.rfind(" ")
+    return (head[:cut] if cut > 0 else head).rstrip(" ,;:—-") + "…"
+
+
+def sentence(text) -> str:
+    """`text` as a sentence: ends with a full stop unless it already ends."""
+    t = str(text or "").strip()
+    return t if not t or t[-1] in ".!?…" else t + "."
+
+
 def _obj(props: dict) -> dict:
     return {"type": "object", "additionalProperties": False, "required": list(props), "properties": props}
 
@@ -76,9 +101,9 @@ def judge_field(model, rid: str, values: dict, rules: list[dict]) -> dict:
     for c in pending:
         r = res.get(c["check"]) or {}
         c["status"] = PASS if r.get("verdict") == "pass" else FAIL
-        c["note"] = (r.get("reason") or "").strip()[:300] or c["status"]
+        c["note"] = clip(r.get("reason"), REASON_MAX) or c["status"]
         if c["status"] == FAIL and (r.get("fix") or "").strip():
-            c["fix"] = r["fix"].strip()[:300]
+            c["fix"] = clip(r["fix"], FIX_MAX)
     return out
 
 
@@ -135,9 +160,9 @@ def coherence(model, values: dict, rules: list[dict], only: set | None = None) -
     for r in ask:
         v = res.get(r["id"]) or {}
         r["status"] = PASS if v.get("verdict") == "pass" else FAIL
-        r["note"] = (v.get("reason") or "").strip()[:300] or r["status"]
+        r["note"] = clip(v.get("reason"), REASON_MAX) or r["status"]
         if r["status"] == FAIL and (v.get("fix") or "").strip():
-            r["fix"] = v["fix"].strip()[:300]
+            r["fix"] = clip(v["fix"], FIX_MAX)
     return out, True, None
 
 
