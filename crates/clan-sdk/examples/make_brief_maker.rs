@@ -13,8 +13,8 @@
 //!
 //! The two contract files are why the pipeline is template-borne: every Brief
 //! Maker app instantiated from this template carries the same declaration of
-//! the briefing pipeline it runs through (engine/agent-server is the reference
-//! backend).
+//! the briefing pipeline it runs through (the middleware, napkin.middleware/1
+//! §10, resolves its tasks).
 
 use clan_sdk::{
     create, instantiate, make_template, pack_html, patch_requirements, validate, AppInfo,
@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Brief Maker".into(),
             app_id: "ie.napkin.brief-maker".into(),
             // 0.3: the Plan-zone identity and the agents at work.
-            version: "0.3.0".into(),
+            version: "0.4.0".into(),
             icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some("agent/output-schema.json".into()),
