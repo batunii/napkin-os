@@ -36,7 +36,7 @@ from common import (REPO, ClaudeCall, ClaudeFailure, Config, DiskCache, Peripher
 
 API = "napkin.retrieval/1"
 BACKEND = "claude-code-packs"
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 MAX_TEXT = 4000
 REQUEST_FIELDS = {"query", "k", "packs", "where", "purpose"}
 TAG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -452,6 +452,7 @@ class Retrieval:
         if env.get("_exit") or env.get("is_error") or str(env.get("subtype", "success")) != "success":
             raise PeripheralError(502, "upstream_failed",
                                   f"the retrieval CLI failed (exit {env.get('_exit')}, {env.get('subtype')})")
+        log(f"retrieval: {len(cands)} candidate sections, cost {env.get('total_cost_usd')}")
         out = env.get("structured_output")
         if not isinstance(out, dict) or not isinstance(out.get("picks"), list):
             raise PeripheralError(502, "upstream_failed", "the retrieval CLI returned no structured picks")
@@ -474,7 +475,8 @@ class Retrieval:
                 drops["not_verbatim"] += 1
                 continue
             text, truncated = cut(span)
-            ident = (pack.tag, sec.source, sec.heading, text)
+            # At most one passage per section, as an index of section chunks returns.
+            ident = (pack.tag, sec.source, sec.heading, idx)
             if ident in seen:
                 drops["duplicate"] += 1
                 continue
