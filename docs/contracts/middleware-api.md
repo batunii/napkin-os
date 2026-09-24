@@ -172,7 +172,11 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
   "decisions": [ { "id": "d_...", "kind": "edit | finding | contest | pin", "agent": "<handler>",
                    "action": "...", "rationale": "...", "targets": ["<doc-id>#<path>"],
                    "cites": ["f_...", "src_...", "mat_..."], "handler": "...", "backend": "...",
-                   "timestamp": "..." } ]
+                   "timestamp": "...",
+                   "reasoning": { "decided": "...", "because": [ { "point": "...", "cites": ["f_..."] } ],
+                                  "rejected": [ { "option": "...", "why": "..." } ],
+                                  "certainty": { "level": "high | medium | low", "why": "..." },
+                                  "would_change_if": "...", "attention": "..." } } ]
 }
 ```
 
@@ -228,6 +232,35 @@ Every change must leave the document valid against the campaign schemas
   `<doc-id>#<entity-keyed path>` (never positional), `handler` and `backend`
   equal the response's. Every envelope's and fact's `decision` names one of
   them.
+- **`reasoning`** (Contract 4 §3, the shape and its rules). **Required** on
+  every decision of kind `pin`, `contest` or `finding`, and on every `edit`
+  whose `targets` include a path under `campaign`, `selection` or `report` —
+  the agent-written fields. In the pipeline that is: extract (`extract`,
+  `extract_ask`), identify (`identify` when it writes a field), the roster
+  `lookup` pin, `select`, every `research_run`, the `research_merge` pin,
+  every `open_contest`, every `synthesise_finding`, `propose_audience`, and
+  `report` / `compose_report`. An `edit` that only posts a chat message or
+  indexes a material (`narrate`, an identify question, `stage_failed`) may
+  omit it; an implementation should still send it. Its rules:
+  - every id a `because` point cites resolves in the document as it stands
+    after the change — a pin, a finding, a decision, a material, a contest or
+    a gap, a value a contest holds, a source a pin or a contested value rests
+    on — or is an address on it (`<doc-id>#…`), or is a source in
+    `result.sources`;
+  - `certainty` is derived, never the model's: for a `pin` it is the lowest
+    derived confidence of the pins it targets; for a `finding` it is the
+    finding's derived confidence; for the rest, the implementation's stated
+    rule from the evidence (coverage for a run, verified quotes for an
+    extraction, how the brand was settled for identify);
+  - where a model call decided (extract, identify, select, synthesise,
+    report), the model may write `because`, `rejected`, `only_option`,
+    `would_change_if` and `attention`; the implementation checks every cite
+    against the ids the model was given, drops a point whose cites do not all
+    resolve or that states a figure without a cite, and, when no point is left,
+    writes its own from the evidence and sets `attention`;
+  - `rationale` is its one-line summary (`decided` + the first point) unless
+    the implementation sends its own; a host fills it from the reasoning when
+    it is empty.
 - **Staged writes** (any change sent on a reply before `done`, and every
   `start_campaign` change). A stage may be delivered more than once, so each
   must be recognisable as a repeat:
@@ -307,8 +340,16 @@ The template never writes middleware output. When a `clan://api-proxy` reply for
    `shared/data.yaml`, `facts_append` → `shared/facts.yaml`, `findings_append` →
    `shared/findings.yaml`, decisions appended with `actor: process:middleware`,
    `handler` and `backend` the response's, `scope` the one the host resolved,
-   and the decision's own `id`, `kind`, `targets`, `cites` and `rationale` as
-   fields (`claimed_agent` = its `agent` when that is not the actor);
+   and the decision's own `id`, `kind`, `targets`, `cites`, `rationale` and
+   `reasoning` as fields (`claimed_agent` = its `agent` when that is not the
+   actor). A change carrying a decision whose `reasoning` is required (§3) and
+   absent, or present and malformed, is refused whole —
+   `{ "applied": false, "reason": "decision d_… (pin) carries no reasoning; …" }`
+   — rather than accepted with a flag: reasoning is what the decider knew when
+   it decided and cannot be added later without being invented, and the
+   refusal names the decision so the fix lands at the source on a rerun. A
+   contest the host opens over a stale write (§4) carries the host's own
+   reasoning in the same shape;
 3. rebuilds `projection` (pins by fact id, findings by id, `built_from` hashes)
    per Contract 3 §5;
 4. emits the usual patch event so the view re-renders, and returns the envelope

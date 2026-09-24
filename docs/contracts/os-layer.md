@@ -136,12 +136,49 @@ one Postgres transaction. This is the single write funnel — the version check
 | `actor`, `handler`, `backend`, `scope` | Copied from `Ctx` — never from the body |
 | `polarity`, `reason_code`, `taxonomy_version`, `reviewer_role` | Verdicts |
 | `licence` | Classify: `{model, export, corpus}` per C2 |
-| `rationale` | Required for `resolve`, `verdict` with polarity bad, `lease` force-take, and `approve` |
+| `rationale` | Required for `resolve`, `verdict` with polarity bad, `lease` force-take, and `approve`. The plain one-line summary older readers show: with `reasoning`, `decided` + its first `because` point, unless the writer supplied one |
+| `reasoning` | Why, in the shape of the foundation spec's decisions (below). Optional in the format — a person's edit has none — and required of the middleware on the kinds `napkin.middleware/1` §3 names. Never rewritten by compression |
 | `#[serde(flatten)] rest` | Unknown fields survive a read-modify-write |
 
 Existing fields (`agent`, `action`, `timestamp`, `fields_changed`, `pinned`,
 `trace_ref`) stay. Every new field is optional, so every existing file still
 validates. Struct work is W1P-I5.
+
+#### `reasoning` — the spec's decision discipline, on every agent decision
+
+```yaml
+reasoning:
+  decided: Opened a contest on the flagship year; nothing is picked.   # one sentence
+  because:                                   # ≥ 1 point
+  - point: The market_structure/IE run says 2019
+    cites: [f_01JB…IE, src_01JB…]            # facts, findings, sources, materials, decisions, addresses
+  - point: The market_structure/GB run says 2020
+    cites: [f_01JB…GB]
+  rejected:                                  # the alternatives and why each lost
+  - { option: pick either value silently, why: nothing in the evidence says which run is right }
+  only_option: …                             # only when `rejected` is empty: why there was one option
+  certainty: { level: high, why: the values differ as their sources state them }
+  would_change_if: a primary source settles the value, or a person resolves the contest
+  attention: The runs disagree on the flagship year; a person should resolve it.   # optional
+```
+
+| Field | Rule |
+|---|---|
+| `decided` | Non-empty: what was decided, one sentence |
+| `because[]` | At least one point; every cite a non-empty id; a point that states a figure (holds a digit) cites where the figure is |
+| `rejected[]` | Each `{option, why}`, both non-empty. Empty only with a non-empty `only_option` saying why there was one option |
+| `certainty` | `level` one of `high` · `medium` · `low`, and a non-empty `why`. For anything resting on facts it is the **derived** confidence (source tier + corroboration, Contract 3 §6.1) and its basis — never self-reported |
+| `would_change_if` | Non-empty: what new evidence would reverse it |
+| `attention` | Optional, non-empty when present: why a person should look — an uncertain call, thin evidence, a contest, a skipped lens that might matter |
+
+It maps onto the foundation spec's decisions one to one: `decision` →
+`decided`, `because` → `because`, `rejected` → `rejected`, `reverses_if` →
+`would_change_if`; `certainty` and `attention` are what a reviewer needs that
+a design record does not. `validate` checks the shape wherever a decision
+carries one and requires it nowhere (the format cannot tell who decided);
+unknown fields inside it survive like the decision's own. The viewer renders
+it as the decision's readable block; `rationale` stays for every reader that
+predates it.
 
 ---
 

@@ -507,6 +507,15 @@ and §6; this app uses them as follows.
 Research merges open contests (`contest`) and record pins (`pin`); synthesis
 records `finding`. Every decision names its `targets[]` and what it `cites[]`.
 
+Every agent decision also says why in `reasoning` (Contract 4 §3; required on
+the kinds middleware-api.md §3 lists): what was decided, the evidence point by
+point with the pins, sources and materials each rests on, the alternatives
+that lost, the certainty — for pins and findings their derived confidence
+(§4, §6.1), never the model's — what would reverse it, and, when a person
+should look, why. A reviewer's mark may carry one too (`patch-data` takes an
+optional `reasoning`); it is never required of a person. The view's "why is
+this here" shows it compactly, falling back to `rationale`.
+
 ---
 
 ## 11. Lock prerequisites
