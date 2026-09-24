@@ -151,8 +151,10 @@ Campaign pairs in, four budgeted citable blocks out: `exemplars` (precedent), `c
 (how planners think), `rules` (never/always — selected by filter, never by similarity),
 `instructions` (what a good brief contains). Budgets are token targets (~8k total,
 `DEFAULT_BUDGET`); the top hit in a bucket is always kept. `plan()` turns pairs into a
-query, exact keywords and contract filters deterministically. The widening ladder drops
-`effectiveness_type` before `category`, on the creative director's ruling. The egress
+query, exact keywords and contract filters deterministically. The widening ladder first adds
+the brand's other categories, then drops `category`, then `effectiveness_type`: category is
+the weakest predictor of useful precedent (creative-director review,
+`engine/schema/REVIEW-cannes-categories.md`). The egress
 check removes any hit outside the authorised scopes or tenants and records it in the
 trace. Retrieve once per brief and freeze the result: it is the shared prompt prefix.
 
@@ -189,6 +191,11 @@ python3 rag.py retag --corpus <corpus>/rag --index ./_index_v3 --apply   # metad
 ```
 
 `migrate --replace` is destructive to a shared collection — ask first.
+
+**Moving off Qdrant (to AWS):** step-by-step instructions, the store contract, the traps
+(2048-d vectors vs pgvector's 2,000-d index limit, hybrid search not copied by `migrate`)
+and the requirements carried over from Qdrant are in
+[docs/vector-store-migration.md](docs/vector-store-migration.md). The Qdrant code is frozen.
 
 ### Evaluation — `golden.py`, `golden_check.py`, `tune.py`, `simulate.py`
 
@@ -530,6 +537,8 @@ rejected, consequences.
 | [0001](docs/adr/0001-rag-io-contract.md) | RAG I/O contract: JSON Schema, authority as the only boundary input, live/planned field status |
 | [0002](docs/adr/0002-tuning-rebaseline.md) | Tuning re-baseline after a holdout leak: defaults kept, gain is +2.0 points not +6.8 |
 | [0003](docs/adr/0003-validation-stage.md) | Validation stage: a backend chain with hard config errors and soft run-time fall-through, provisional calibration, one local call per brief |
+| [0004](docs/adr/0004-brief-pipeline-speedups.md) | Brief pipeline: TOON capture, sentence citations, stage graph, batched judge |
+| [0005](docs/adr/0005-claude-transport.md) | Claude transport: API key or Claude Code login (`claude -p`), switchable per run; parity settings; transport recorded in every output |
 
 ## Plans
 

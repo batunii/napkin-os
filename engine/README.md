@@ -36,6 +36,7 @@ cp .env.example .env        # then add your keys (see table below)
 napkin-brief samples/messy_brief_sample.txt                  # Loops 1–2 (works with zero keys)
 BRIEF_LOOPS37=1 napkin-brief <brief.pdf> --out outputs/x     # + RAG strategy (local index)
 RAG_STORE=qdrant BRIEF_LOOPS37=1 napkin-brief <brief.docx>   # + remote Qdrant RAG (shared DB)
+BRIEF_CLAUDE_TRANSPORT=cli napkin-brief <brief.docx>         # Claude calls on your Claude Code login, not the API key
 ```
 
 Outputs land in `outputs/<name>/`: `client_brief.md` (clean deliverable),
@@ -58,6 +59,7 @@ markdown with headless Chrome: `--headless=new --print-to-pdf`).
 | `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |
 | `BRIEF_BATCH_GATES` | `1` (default): one judge call ranks + gates all hero drafts; `0`: one gate call per draft |
 | `ANTHROPIC_API_KEY` | Claude (the default lead link; also the independent critic) |
+| `BRIEF_CLAUDE_TRANSPORT` | how Claude links are sent: `api` (default, the key above), `cli` (your Claude Code login via `claude -p`, no API credit used), `auto` (the key, switching to the Claude Code login if it has no credit or is rejected). Also `serve.py --claude-code / --api / --auto` and `e2e_eval.py --transport`. See [ADR 0005](rag/docs/adr/0005-claude-transport.md) |
 | `BRIEF_PROVIDER` | pin one provider as the lead link (the rest stay as fallback) |
 | `BRIEF_SMP_CANDIDATES` / `BRIEF_GOLDEN` | SMP draft count (default 6) / run the golden-brief pass |
 | `BRIEF_MAX_TOKENS` | override every call's output ceiling |

@@ -214,7 +214,10 @@ def trace_one(stem: str, path: str = "mix") -> dict:
             pi, po = _price(e["model"])
             e["usd"] = round(e["in"] / 1e6 * pi + e["out"] / 1e6 * po, 5)
     out = {"brief": stem, "path": path, "brief_secs": t_brief, "wall_secs": round(time.time() - t0, 1),
-           "score": score, "events": sorted(events, key=lambda e: e["start"])}
+           "claude_transport": pb.transport_used(),
+           "retrieval_fallback": ((brief.get("loops3_7") or {}).get("fallback") or {}).get("reason"),
+           "score": score,
+           "events": sorted(events, key=lambda e: e["start"])}
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"trace_{path}_{stem}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     return out
@@ -273,7 +276,13 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--paths", default="mix,loops")
     ap.add_argument("--trace", default=None, help="trace every call of ONE brief (a client_briefs stem)")
+    ap.add_argument("--transport", choices=("api", "cli", "auto"), default=None,
+                    help="how Claude links run: api (API key), cli (Claude Code login via `claude -p`), "
+                         "auto (API, switching to the CLI on a credit/auth failure). "
+                         "Default: BRIEF_CLAUDE_TRANSPORT, else api")
     a = ap.parse_args()
+    if a.transport:
+        os.environ["BRIEF_CLAUDE_TRANSPORT"] = a.transport
     if a.trace:
         t = trace_one(a.trace, a.paths.split(",")[0])
         print(json.dumps({"wall_secs": t["wall_secs"], "events": len(t["events"])}))
@@ -307,8 +316,10 @@ def main() -> None:
             finished[stem][path] = md
             l37 = brief.get("loops3_7") or {}
             row = {"brief": stem, "path": path, "seconds": secs, "error": err, **tally,
+                   "claude_transport": pb.transport_used(),
                    "validator_calls": ((l37.get("retrieval_trace") or {}).get("calls") or {}).get("validator"),
                    "rag_path_used": l37.get("rag_path"),
+                   "retrieval_fallback": (l37.get("fallback") or {}).get("reason"),
                    **(_quality(d / "brief_object.json", brief) if brief else {})}
             rows.append(row)
             print(f"  {stem} [{path}] {secs}s ${tally['cost_usd']} calls={tally['llm_calls']} "
