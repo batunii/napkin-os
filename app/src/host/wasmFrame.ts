@@ -9,6 +9,43 @@
 // can name this host, without pulling a 5 MB module onto the critical path of
 // a signed-in page that may never open a file on the device.
 
+/**
+ * What an app frame may reach when the document came from this device.
+ *
+ * The frame is sandboxed without `allow-same-origin`, so it already cannot
+ * touch the shell's storage, its offline copies or its service worker. This
+ * closes the other door: the app's own scripts sending the document somewhere.
+ * Every host call is a postMessage to the parent, so the frame needs no
+ * network at all — only its inline code, the assets the shim turns into blobs,
+ * and the typeface the published templates ask Google for.
+ *
+ * It does not stop a script navigating its own frame to an address it builds;
+ * no browser ships a CSP directive for that yet.
+ */
+export const FRAME_CSP = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  'font-src data: https://fonts.gstatic.com',
+  'img-src data: blob:',
+  'media-src data: blob:',
+  // An app that prints builds its layout in a child frame.
+  'frame-src blob: data:',
+  "connect-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+].join('; ')
+
+/** The policy goes first of all — ahead of the shim, and of anything the app
+ * put before its `<head>` — because a meta policy only governs what is parsed
+ * after it. After the doctype, so the page is not thrown into quirks mode. */
+function withPolicy(html: string): string {
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}">`
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(html)
+  if (doctype) return doctype[0] + meta + html.slice(doctype[0].length)
+  return meta + html
+}
+
 /** Put a shim ahead of every script the app has, not after them.
  *
  * Apps fetch on parse, not on DOMContentLoaded — the launcher asks for its app
@@ -80,5 +117,5 @@ const SHIM = `<script>(function(){
 
 /** Last pass over a composed app page before the frame loads it. */
 export function prepareFrameHtml(html: string): string {
-  return injectFirst(html, SHIM)
+  return withPolicy(injectFirst(html, SHIM))
 }
