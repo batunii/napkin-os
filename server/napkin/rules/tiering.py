@@ -24,7 +24,7 @@ PRIMARY_DOMAINS = {
     "cso.ie", "ons.gov.uk", "eurostat.ec.europa.eu", "destatis.de", "insee.fr", "census.gov",
     "oecd.org", "data.oecd.org", "imf.org", "worldbank.org", "iea.org",
     # regulators and state agencies (IE / GB / EU)
-    "seai.ie", "cru.ie", "comreg.ie", "centralbank.ie", "ccpc.ie", "asai.ie", "hpra.ie", "grai.ie",
+    "seai.ie", "cru.ie", "comreg.ie", "centralbank.ie", "ccpc.ie", "asai.ie", "adstandards.ie", "hpra.ie", "grai.ie",
     "rsa.ie", "ndls.ie", "revenue.ie", "citizensinformation.ie", "epa.ie", "bai.ie", "cnam.ie",
     "asa.org.uk", "cap.org.uk", "ofcom.org.uk", "ofgem.gov.uk", "fca.org.uk", "cma.gov.uk",
     "dvla.gov.uk", "gov.ie", "gov.uk", "europa.eu", "ec.europa.eu", "eea.europa.eu",

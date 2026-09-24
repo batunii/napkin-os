@@ -60,7 +60,8 @@ SYSTEM = """You extract facts for an advertising agency's research layer from we
 You are given ONE research lens and ONE market, the campaign's subject brand, comparators and
 category leaves, and sources with verbatim excerpts. Extract only facts an excerpt states.
 Each fact: what it is about (the category, the subject brand, or a named comparator), a short
-snake_case key_suffix (the lens namespace is added for you), the value (a number, a short
+snake_case key_suffix naming the measure, not the period (the lens namespace is added for you;
+the period goes in as_of, so "bev_share", never "bev_share_2025"), the value (a number, a short
 text, or a boolean), its unit, as_of (the date the figure describes or was published,
 YYYY-MM-DD, never in the future, or null), whether it is specific to this market, and the
 evidence: the source_id and the exact quote from that source's excerpts (character for
