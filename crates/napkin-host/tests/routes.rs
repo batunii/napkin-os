@@ -409,3 +409,16 @@ fn spinoff_offers_a_target_then_branches_into_it() {
     );
     assert_eq!(made.manifest().lineage.as_ref().unwrap().parents.len(), 2);
 }
+
+// An app on the middleware asks on open whether one is configured, so it can
+// say so plainly. Presence only: never the endpoint or its secret.
+#[test]
+fn the_middleware_route_says_only_whether_one_is_configured() {
+    let f = fixture();
+    let resp = get(&f, "/middleware");
+    assert_eq!(resp.status, 200);
+    let v = json(&resp);
+    assert_eq!(v["configured"], false);
+    assert_eq!(v["api"], "napkin.middleware/1");
+    assert_eq!(v.as_object().unwrap().len(), 2, "{v}");
+}

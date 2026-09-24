@@ -50,11 +50,27 @@ pub const JOB: &str = "middleware";
 
 const CHAIN: &str = "agent/decision-chain.yaml";
 
+/// The error type a middleware request gets when this host has no middleware:
+/// no `proxies.middleware` in `workspace.yaml`, or a build with no network.
+pub const NO_MIDDLEWARE: &str = "no_middleware";
+
+/// The envelope a middleware request gets when none is configured. The error
+/// has the `{type, message}` shape of a middleware error (§4), so an app reads
+/// it the same way.
+pub fn no_middleware() -> Value {
+    serde_json::json!({
+        "ok": false, "status": 0, "endpoint": null, "data": null,
+        "error": { "type": NO_MIDDLEWARE,
+                   "message": "No middleware is configured for this workspace (proxies.middleware in workspace.yaml)." },
+    })
+}
+
 /// Refuse a reply that is not `napkin.middleware/1`.
 ///
-/// This check is load-bearing, not tidiness. `resolve_proxy` falls back to the
-/// generic agent URL when no `middleware` proxy is configured, and that agent
-/// answers `request_kind: "middleware"` with something of its own. Handing
+/// This check is load-bearing, not tidiness. A middleware request is never
+/// sent to the agent URL when no `middleware` proxy is configured (it is
+/// answered [`no_middleware`] instead), but a `proxies.middleware` endpoint
+/// pointed at the wrong service still answers with something of its own. Handing
 /// that to the app as if the middleware had spoken — or worse, applying a
 /// `change` out of it — is exactly the silent fall-through M4 forbids. So an
 /// answer that does not name this API is an error the app sees, whatever else

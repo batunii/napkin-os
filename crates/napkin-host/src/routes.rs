@@ -211,10 +211,10 @@ pub fn dispatch(
     match path {
         #[cfg(feature = "native")]
         "/api-proxy" => HostResponse::error(500, "/api-proxy must be dispatched asynchronously"),
-        // In a browser build the page owns inference — it has the credentials
-        // and the network — so it answers this before the host ever sees it.
+        // A browser build has no network behind it and no middleware: a task
+        // is answered, plainly, that none is configured.
         #[cfg(not(feature = "native"))]
-        "/api-proxy" => HostResponse::error(501, "inference is handled by the page in this build"),
+        "/api-proxy" => HostResponse::json(200, &crate::ops::middleware::no_middleware()),
 
         "/edit-mode" => HostResponse::new(
             200,
@@ -301,6 +301,18 @@ pub fn dispatch(
                 &serde_json::json!(crate::prompt::build(&payload, &clan, "")),
             )
         }
+
+        // Whether a middleware request can go anywhere, so an app that runs
+        // on the middleware can say so plainly on open instead of failing on
+        // the first task. Only presence — never the endpoint or its secret.
+        "/middleware" => HostResponse::json(
+            200,
+            &serde_json::json!({
+                "api": crate::ops::middleware::API,
+                "configured": cfg!(feature = "native")
+                    && crate::config::configured(cfg, crate::ops::middleware::REQUEST_KIND),
+            }),
+        ),
 
         "/agent-endpoint" => {
             HostResponse::json(200, &serde_json::json!({ "endpoint": agent_base_url(cfg) }))

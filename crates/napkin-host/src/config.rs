@@ -120,3 +120,11 @@ pub fn resolve_proxy(cfg: &dyn HostConfig, kind: &str) -> (String, Option<String
     }
     (agent_base_url(cfg), None, None)
 }
+
+/// True when `workspace.yaml` names an endpoint for `kind` itself, rather than
+/// leaving it to the agent-URL fallback.
+pub fn configured(cfg: &dyn HostConfig, kind: &str) -> bool {
+    cfg.workspace()
+        .and_then(|ws| ws.proxies.get(kind).map(|p| !p.endpoint.trim().is_empty()))
+        .unwrap_or(false)
+}
