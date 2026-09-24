@@ -57,6 +57,8 @@ export const STRUCTURED_EDIT_BRIDGE = `
       rationale: opts.rationale || '',
       pinned: opts.pinned !== false
     };
+    // A person's structured reasoning, in the spec's shape; the host checks it.
+    if (opts.reasoning) body.reasoning = opts.reasoning;
     return fetch(clanScheme + '/patch-data', { method: 'POST', body: JSON.stringify(body) })
       .then(function(r) { return r.json(); })
       .then(function(res) {
