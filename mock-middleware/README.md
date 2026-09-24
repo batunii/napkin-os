@@ -129,6 +129,16 @@ to three pins. `status: proposed`, `derived_by synthesise_findings@1.0`,
 confidence per Contract 3 §6.1, one `finding` decision each. No pins is
 `400 invalid_input` — a finding must cite something.
 
+**Reasoning** — every decision carries `reasoning` (middleware-api.md §3,
+Contract 4 §3), written deterministically since no model runs: `because`
+points built from what the decision cites (a pin's entity, key and value with
+its sources; the materials, findings, sources and decisions it rests on),
+`rejected` from a fixed table per step, `certainty` derived (a pin decision's
+is the lowest confidence of its pins, a finding's is the finding's), and
+`attention` on contests, low-confidence pins and findings, thin runs and
+questions. The contract suite checks the shape and that every cite resolves,
+against this stand-in and the real middleware alike.
+
 **Stale base** — a job reads the document when it starts; its `done` change
 names that version in `base_version` even if later polls carry a newer
 `clan.version`, and carries `read` — what it read of every field its
