@@ -5,7 +5,7 @@
 import { useState } from 'react'
 
 import { useHasKey } from '../agent/key'
-import { host } from '../host'
+import { host, inferenceAllowed } from '../host'
 import ApiKeyDialog from './ApiKeyDialog'
 import './chrome.css'
 
@@ -25,7 +25,7 @@ function KeyGlyph() {
 export default function ApiKeyButton({ variant = 'toolbar' }: { variant?: 'toolbar' | 'floating' }) {
   const [open, setOpen] = useState(false)
   const present = useHasKey()
-  if (host.inference !== 'page') return null
+  if (host.inference !== 'page' || !inferenceAllowed()) return null
 
   const cls = ['ch-btn', present ? 'ch-btn-icon' : 'ch-btn-attn', variant === 'floating' && 'ch-btn-floating']
     .filter(Boolean).join(' ')

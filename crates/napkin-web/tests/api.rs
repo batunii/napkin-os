@@ -520,6 +520,38 @@ async fn without_a_build_the_shell_says_so_instead_of_404ing() {
     assert!(String::from_utf8_lossy(&reply.body).contains("npm run build"));
 }
 
+/// A server with a (stand-in) shell build to serve.
+fn server_with_shell() -> (Server, tempfile::TempDir) {
+    let shell = tempfile::tempdir().unwrap();
+    std::fs::write(
+        shell.path().join("index.html"),
+        "<!doctype html><title>shell</title>",
+    )
+    .unwrap();
+    std::fs::write(shell.path().join("sw.js"), "// worker").unwrap();
+    let mut s = server(40);
+    s.app = napkin_web::router(s.ctx.clone(), Some(shell.path()), false);
+    (s, shell)
+}
+
+#[tokio::test]
+async fn the_public_viewer_is_the_shell_and_starts_no_session() {
+    let (s, _shell) = server_with_shell();
+    for path in ["/view", "/view/"] {
+        let reply = get(&s, path, None).await;
+        assert_eq!(reply.status, StatusCode::OK, "{path}");
+        assert!(String::from_utf8_lossy(&reply.body).contains("<title>shell</title>"));
+        assert!(
+            reply.headers.get(header::SET_COOKIE).is_none(),
+            "{path} must not mint a tenant for someone who only opened a file"
+        );
+    }
+    // The installed app's worker is served beside it, also without a session.
+    let sw = get(&s, "/sw.js", None).await;
+    assert_eq!(sw.status, StatusCode::OK);
+    assert!(sw.headers.get(header::SET_COOKIE).is_none());
+}
+
 // ── Install and launch ───────────────────────────────────────────────────────
 
 fn a_template(app_id: &str, name: &str) -> Vec<u8> {

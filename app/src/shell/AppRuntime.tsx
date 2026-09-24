@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { host } from '../host'
+import { host, inferenceAllowed } from '../host'
 import type { ManifestInfo } from '../host'
 import { runInference } from '../agent/inference'
 import { getTheme, onThemeChange } from '../theme'
@@ -77,6 +77,9 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
       if (path === '/api-proxy') {
         let body: string
         try {
+          if (!inferenceAllowed()) {
+            throw new Error('the agent is not available for a file opened on this device')
+          }
           const raw = typeof msg.body === 'string' ? msg.body : '{}'
           const request = JSON.parse(raw || '{}') as { payload?: unknown }
           body = JSON.stringify(await runInference(request.payload ?? request))

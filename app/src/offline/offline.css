@@ -1,0 +1,133 @@
+/* Opening documents on the device: the viewer's home, offline copies, the
+   banner over a document open here, and the drop target. Tokens only (see
+   index.css), so all of it follows light, dark and an app's theme. */
+
+/* ── the device home ─────────────────────────────────────────────────────── */
+
+.dv {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 10vh 24px 48px;
+  background: var(--paper);
+}
+.dv > * { width: 100%; max-width: 680px; }
+
+.dv-open {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  border-radius: var(--r-panel);
+  border: 1px dashed var(--line);
+  background: var(--card);
+}
+.dv-open h1 {
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+.dv-open p { font-size: 15px; line-height: 1.55; color: var(--ink2); max-width: 54ch; }
+.dv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+
+.dv-copies { display: flex; flex-direction: column; gap: 10px; }
+.dv-hint { font-size: 13px; line-height: 1.5; color: var(--ink2); }
+
+/* ── offline copies ──────────────────────────────────────────────────────── */
+
+.off-list { list-style: none; display: flex; flex-direction: column; border-top: 1px solid var(--line-soft); }
+.off-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.off-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.off-meta b {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.off-meta small { font-family: var(--f-mono); font-size: 11px; color: var(--ink3); }
+.off-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.off-empty { font-size: 13px; line-height: 1.5; color: var(--ink2); }
+
+@media (max-width: 640px) {
+  .off-row { flex-direction: column; align-items: stretch; }
+  .off-actions { justify-content: flex-start; }
+}
+
+/* ── the banner over a document open on the device ──────────────────────── */
+
+.dv-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--soft);
+}
+.dv-banner-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.4; color: var(--ink2); }
+
+/* ── dropping a file ─────────────────────────────────────────────────────── */
+
+/* See useFileDrop: once a drag reaches the shell, frames stop swallowing it. */
+.dv-dragging iframe { pointer-events: none; }
+
+.dv-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+.dv-drop div {
+  padding: 22px 28px;
+  border-radius: var(--r-panel);
+  border: 2px dashed var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: var(--shadow-soft);
+}
+.dv-drop small { display: block; margin-top: 4px; font-size: 12.5px; font-weight: 400; color: var(--ink2); }
+
+/* ── a new build, ready to take over ─────────────────────────────────────── */
+
+.dv-update {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-soft);
+  background: var(--frost);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-soft);
+  font-size: 12.5px;
+  color: var(--ink2);
+}

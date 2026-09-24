@@ -18,6 +18,8 @@ interface Props {
   onToggleSidebar: () => void
   onWorkspace: () => void
   onSave: () => void
+  /** Keep a copy on this device for presenting offline. Absent where it makes no sense. */
+  onKeepOffline?: () => void
   onExport: (kind: 'html' | 'pdf') => void
   /** Identifies the open document, so "Continue in…" refetches when it changes. */
   docPath: string
@@ -40,7 +42,7 @@ function SidebarGlyph() {
 
 /** The document bar: studio home, title and status, file actions, panels. */
 export default function Toolbar({
-  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onExport,
+  title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport,
   docPath, onSpinoff, agentPanelOpen, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
@@ -76,6 +78,11 @@ export default function Toolbar({
       <span className="ch-bar-sep" />
       <button className="ch-btn" onClick={onOpenFile}>Open</button>
       <button className="ch-btn" onClick={onSave} title="Save a copy of this .clan to share">Save as</button>
+      {onKeepOffline && (
+        <button className="ch-btn" onClick={onKeepOffline} title="Keep a copy on this device, to present with no network">
+          Present offline
+        </button>
+      )}
       <button className="ch-btn" onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">Export</button>
       <button className="ch-btn" onClick={onWorkspace} title="Lineage & provenance">Lineage</button>
       <ContinueIn key={docPath} docPath={docPath} onSpinoff={onSpinoff} />

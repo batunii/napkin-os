@@ -11,9 +11,12 @@
 // new version of an app is republishing one file.
 //
 // Nothing here persists. Work leaves as a download, and a refresh is a clean
-// slate — which is the right default for a link anyone can open.
+// slate — which is the right default for a link anyone can open. (Offline
+// copies are kept by the shell, in IndexedDB, and handed to `openBytes`; this
+// module never stores anything.)
 
 import init, { NapkinHost } from '../wasm/napkin_wasm'
+import { prepareFrameHtml } from './wasmFrame'
 import type {
   Host,
   HostEvents,
@@ -45,51 +48,75 @@ interface AppEntry {
 
 const base = import.meta.env.BASE_URL || '/'
 
-let host: NapkinHost | null = null
 let ready: Promise<NapkinHost> | null = null
-let currentDoc: string | null = null
 
-/** Templates published beside the site. Fetched once, installed into the store. */
-async function loadApps(h: NapkinHost) {
-  let listed: AppEntry[]
-  try {
-    const resp = await fetch(`${base}apps.json`, { cache: 'no-cache' })
-    if (!resp.ok) return
-    listed = ((await resp.json()) as { apps?: AppEntry[] }).apps ?? []
-  } catch {
-    // No manifest is not fatal: the launcher still opens, just empty.
-    return
+/** The published templates, fetched once per page. Each fresh host installs
+ * them from these bytes rather than asking the network again. */
+let appBytes: Promise<Uint8Array<ArrayBuffer>[]> | null = null
+
+/** Templates published beside the site. */
+function fetchApps(): Promise<Uint8Array<ArrayBuffer>[]> {
+  appBytes ??= (async () => {
+    let listed: AppEntry[]
+    try {
+      const resp = await fetch(`${base}apps.json`, { cache: 'no-cache' })
+      if (!resp.ok) return []
+      listed = ((await resp.json()) as { apps?: AppEntry[] }).apps ?? []
+    } catch {
+      // No manifest is not fatal: the launcher still opens, just empty.
+      return []
+    }
+    const got = await Promise.all(
+      listed.map(async app => {
+        try {
+          const resp = await fetch(new URL(app.url, new URL(base, location.href)))
+          if (!resp.ok) throw new Error(`${resp.status}`)
+          return new Uint8Array(await resp.arrayBuffer())
+        } catch (e) {
+          console.error(`could not fetch ${app.app_id}`, e)
+          return null
+        }
+      }),
+    )
+    return got.filter(b => b !== null)
+  })()
+  return appBytes
+}
+
+/** A host with an empty store, holding only the published templates. */
+async function withApps(): Promise<NapkinHost> {
+  await init()
+  const h = new NapkinHost()
+  for (const bytes of await fetchApps()) {
+    try {
+      h.installApp(bytes)
+    } catch (e) {
+      console.error('could not install a published app', e)
+    }
   }
-  await Promise.all(
-    listed.map(async app => {
-      try {
-        const bytes = await (await fetch(new URL(app.url, new URL(base, location.href)))).arrayBuffer()
-        h.installApp(new Uint8Array(bytes))
-      } catch (e) {
-        console.error(`could not install ${app.app_id}`, e)
-      }
-    }),
-  )
+  return h
 }
 
 function boot(): Promise<NapkinHost> {
-  ready ??= (async () => {
-    await init()
-    const h = new NapkinHost()
-    await loadApps(h)
-    host = h
-    return h
-  })()
+  ready ??= withApps()
   return ready
 }
 
-function required(): NapkinHost {
-  if (!host) throw new Error('the host is still starting')
-  return host
-}
-
-function adopt(open: OpenResult): OpenResult {
-  currentDoc = open.path
+/**
+ * Open a `.clan` that came from outside the page — a drop, the file picker, the
+ * OS, an offline copy — in a host of its own.
+ *
+ * A document's app can list and open whatever else is in its store (`/recent`,
+ * `/open`). A file someone sent you should not learn the titles of your
+ * offline copies that way, so each one starts from a store holding only the
+ * published templates. Documents it creates or spins off join it there, as
+ * they would anywhere else.
+ */
+export async function openBytes(bytes: Uint8Array, label: string): Promise<OpenResult> {
+  const h = await withApps()
+  const id = `${label.replace(/[^\w.-]+/g, '-').slice(0, 60)}-${Date.now().toString(36)}`
+  const open = h.upload(bytes, id) as OpenResult
+  ready = Promise.resolve(h)
   return open
 }
 
@@ -126,19 +153,6 @@ function download(bytes: Uint8Array, filename: string) {
 function stem(title: string): string {
   const t = title.trim() || 'document'
   return t.replace(/[^\w.-]+/g, '-')
-}
-
-/** Put a shim ahead of every script the app has, not after them.
- *
- * Apps fetch on parse, not on DOMContentLoaded — the launcher asks for its app
- * list from an inline script in the body. A shim spliced at `</body>` installs
- * itself after that has already run and quietly does nothing. */
-function injectFirst(html: string, script: string): string {
-  const head = /<head\b[^>]*>/i.exec(html)
-  if (head) return html.slice(0, head.index + head[0].length) + script + html.slice(head.index + head[0].length)
-  const tag = /<html\b[^>]*>/i.exec(html)
-  if (tag) return html.slice(0, tag.index + tag[0].length) + script + html.slice(tag.index + tag[0].length)
-  return script + html
 }
 
 /**
@@ -185,10 +199,10 @@ function deliverExport(kind: string, filename: string, html: string) {
 }
 
 export const wasmHost: Host = {
-  openClan: async path => adopt((await boot()).open(path) as OpenResult),
-  openHome: async () => adopt((await boot()).openHome() as OpenResult),
+  openClan: async path => (await boot()).open(path) as OpenResult,
+  openHome: async () => (await boot()).openHome() as OpenResult,
   newDocumentFromApp: async (appId, title) =>
-    adopt((await boot()).newDocument(appId, title) as OpenResult),
+    (await boot()).newDocument(appId, title) as OpenResult,
 
   // A shared link cannot carry a document, because there is no server holding
   // one. Nothing to take.
@@ -213,64 +227,7 @@ export const wasmHost: Host = {
   clanOrigin: () => 'clan://localhost',
   frameLoad: 'srcdoc',
 
-  prepareAppHtml: html => {
-    const shim = `<script>(function(){
-  var f=window.fetch, seq=0, pending={};
-  window.addEventListener('message',function(e){
-    if(e.source!==window.parent) return;
-    var m=e.data;
-    if(m&&m.type==='clan:rpc-reply'&&pending[m.id]){pending[m.id](m);delete pending[m.id];}
-  });
-  function rpc(path,query,body){
-    return new Promise(function(resolve){
-      var id=++seq; pending[id]=resolve;
-      window.parent.postMessage({type:'clan:rpc',id:id,path:path,query:query,body:body},'*');
-    }).then(function(m){
-      // 204 and 304 may not carry a body; nothing here returns them, but a
-      // Response constructed with one would throw.
-      var body=(m.status===204||m.status===304)?null:m.body;
-      return new Response(body,{status:m.status,headers:m.headers||{}});
-    });
-  }
-  // There is no server: every clan:// call is a function call in the parent.
-  function split(u){
-    var m=/^(?:clan:\\/\\/localhost|http:\\/\\/clan\\.localhost)(\\/[^?]*)(?:\\?(.*))?$/.exec(u);
-    return m?{path:m[1],query:m[2]||''}:null;
-  }
-  window.fetch=function(input,init){
-    if(typeof input==='string'){
-      var t=split(input);
-      if(t) return rpc(t.path,t.query,(init&&init.body)||'');
-    }
-    return f.call(this,input,init);
-  };
-
-  // An <img src="clan://…/assets/x.png"> never reaches fetch, so asset URLs in
-  // the DOM are swapped for blobs as they appear. Mood boards depend on it.
-  var blobs={};
-  function resolveAsset(el){
-    var src=el.getAttribute('src')||'';
-    var t=split(src);
-    if(!t||t.path.indexOf('/assets/')!==0) return;
-    if(blobs[src]){el.src=blobs[src];return;}
-    rpc(t.path,t.query,'').then(function(r){return r.ok?r.blob():null;}).then(function(b){
-      if(b){blobs[src]=URL.createObjectURL(b);el.src=blobs[src];}
-    });
-  }
-  function sweep(root){
-    if(root.querySelectorAll) root.querySelectorAll('img[src]').forEach(resolveAsset);
-    if(root.tagName==='IMG') resolveAsset(root);
-  }
-  new MutationObserver(function(muts){
-    muts.forEach(function(m){
-      m.addedNodes.forEach(function(n){ if(n.nodeType===1) sweep(n); });
-      if(m.type==='attributes'&&m.target.tagName==='IMG') resolveAsset(m.target);
-    });
-  }).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});
-  document.addEventListener('DOMContentLoaded',function(){sweep(document);});
-})();</script>`
-    return injectFirst(html, shim)
-  },
+  prepareAppHtml: prepareFrameHtml,
 
   handleFromFrame: async (path, query, body) => {
     const resp = (await boot()).handle(path, query, body) as RawResponse
@@ -311,7 +268,7 @@ export const wasmHost: Host = {
 
   spinoffTargets: async () => (await boot()).spinoffTargets() as SpinoffTarget[],
   spinoffDocument: async (appId, title, map) =>
-    adopt((await boot()).spinoffDocument(appId, title ?? undefined, map ?? undefined) as OpenResult),
+    (await boot()).spinoffDocument(appId, title ?? undefined, map ?? undefined) as OpenResult,
 
   saveClanTo: async () => {
     const h = await boot()
@@ -338,11 +295,8 @@ export const wasmHost: Host = {
         const file = input.files?.[0]
         if (!file) return resolve(null)
         try {
-          const h = await boot()
-          const bytes = new Uint8Array(await file.arrayBuffer())
-          const id = `upload-${Date.now().toString(36)}`
-          const open = h.upload(bytes, id) as OpenResult
-          resolve(adopt(open).path)
+          const open = await openBytes(new Uint8Array(await file.arrayBuffer()), 'upload')
+          resolve(open.path)
         } catch (e) {
           console.error('upload failed', e)
           resolve(null)
@@ -375,8 +329,3 @@ export const wasmHost: Host = {
     return () => set.delete(handler as Handler)
   },
 }
-
-export { currentDoc as wasmCurrentDoc, required as wasmHostInstance }
-
-/// The backend this build talks to — see the alias in vite.config.ts.
-export { wasmHost as backendHost }

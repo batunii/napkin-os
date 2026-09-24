@@ -6,6 +6,11 @@ import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { isDesktop } from './host'
+import { registerServiceWorker } from './pwa/pwa'
+
+// The desktop serves its own files; a service worker is for the web.
+if (!isDesktop) registerServiceWorker()
 
 // Dev-only figure gallery at ?figures. The DEV check is a build-time constant,
 // so a production bundle drops the branch and the chunk with it.

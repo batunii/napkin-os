@@ -43,6 +43,8 @@ function session(): Promise<SessionInfo> {
     if (!r.ok) throw new Error(`no session: ${r.status}`)
     return r.json() as Promise<SessionInfo>
   })
+  // A page that started offline must be able to try again once it is back.
+  sessionOnce.catch(() => { sessionOnce = null })
   return sessionOnce
 }
 
@@ -139,6 +141,22 @@ function injectFirst(html: string, script: string): string {
     return html.slice(0, at) + script + html.slice(at)
   }
   return script + html
+}
+
+/**
+ * The open document as the server holds it now: its packed `.clan` and the
+ * manifest that describes it. What "Present offline" keeps.
+ *
+ * The same `/download` route "Save as" uses — the single-file handoff, which
+ * is exactly what N3 says an offline copy is: a snapshot, never a working
+ * copy. The manifest is read first, so a revision is never newer than the
+ * bytes stored with it.
+ */
+export async function fetchOpenDocument(): Promise<{ manifest: OpenResult['manifest']; bytes: ArrayBuffer }> {
+  const doc = requireDoc()
+  const { manifest } = await json<OpenView>(`/d/${encodeURIComponent(doc)}`)
+  const bytes = await (await request(`/d/${doc}/download`, { cache: 'no-store' })).arrayBuffer()
+  return { manifest, bytes }
 }
 
 export const httpHost: Host = {
@@ -321,6 +339,3 @@ export const httpHost: Host = {
     return () => source.removeEventListener(event, listener as EventListener)
   },
 }
-
-/// The backend this build talks to — see the alias in vite.config.ts.
-export { httpHost as backendHost }

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import type { OpenResult } from '../host'
+import type { DeviceSource } from '../offline/actions'
 
 export type Screen = 'home' | 'app'
 
@@ -15,4 +16,6 @@ export interface RunningApp {
   open: OpenResult
   htmlContent: string
   editMode: boolean
+  /** Set when the document is open on the device rather than on the server. */
+  source?: DeviceSource
 }
