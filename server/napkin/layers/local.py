@@ -263,9 +263,11 @@ class LocalLayers:
                 if same is not None:
                     fid = same["id"]
                 else:
+                    # Versions count per entity + key across markets, so the origin URI
+                    # (which carries no market) names exactly one row.
                     top = db.execute("SELECT MAX(version) FROM facts WHERE layer=? AND scope_org=? AND "
-                                     "scope_brand=? AND entity=? AND key=? AND market=?",
-                                     (layer, so, sb, entity, key, market)).fetchone()[0] or 0
+                                     "scope_brand=? AND entity=? AND key=?",
+                                     (layer, so, sb, entity, key)).fetchone()[0] or 0
                     version = top + 1
                     status = fact.get("status", "active")
                     supersedes = None

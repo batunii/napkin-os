@@ -67,3 +67,15 @@ def server(tmp_path):
     s = Server(tmp_path)
     yield s
     s.stop()
+
+
+REPO = __import__("pathlib").Path(__file__).resolve().parents[2]
+
+
+def contract_suite():
+    """The napkin.middleware/1 contract suite (docs/contracts/middleware-api.md §7),
+    found by what it tests rather than by where the stand-in keeps it."""
+    for p in sorted(REPO.glob("*/contract_test.py")):
+        if 'API = "napkin.middleware/1"' in p.read_text():
+            return p
+    raise FileNotFoundError("the napkin.middleware/1 contract suite")
