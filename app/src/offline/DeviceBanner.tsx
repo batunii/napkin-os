@@ -18,7 +18,7 @@ interface Props {
 export default function DeviceBanner({ source, onDownload }: Props) {
   return (
     <div className="dv-banner" role="status">
-      <span className="ch-chip">{source.kind === 'offline' ? 'Offline copy' : 'On this device'}</span>
+      <span className="ch-chip dv-banner-chip"><span className="ch-chip-dot" aria-hidden />{source.kind === 'offline' ? 'Offline copy' : 'On this device'}</span>
       <span className="dv-banner-text">
         {source.kind === 'offline'
           ? `Saved ${when(source.copy.savedAt)}. Changes you make here are not sent to the studio and are lost when you close it.`

@@ -36,10 +36,15 @@ export default function OfflineList({ copies, onOpen }: Props) {
       <ul className="off-list">
         {copies.map(copy => (
           <li key={copy.id} className="off-row">
+            <span className="off-icon" aria-hidden>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+                <path d="M4 1.8h5.2L12.5 5v9.2H4z" /><path d="M9 1.8V5.2h3.4M6.2 8.4h4M6.2 11h4" />
+              </svg>
+            </span>
             <div className="off-meta">
               <b>{copy.title}</b>
               <small>
-                {copy.appName ? `${copy.appName} · ` : ''}revision {copy.revision} · saved {when(copy.savedAt)} · {size(copy.size)}
+                {copy.appName && copy.appName !== copy.title ? `${copy.appName} · ` : ''}revision {copy.revision} · saved {when(copy.savedAt)} · {size(copy.size)}
               </small>
             </div>
             <div className="off-actions">

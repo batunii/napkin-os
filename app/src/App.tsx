@@ -390,6 +390,7 @@ export default function App() {
 
       {updateReady && (
         <div className="dv-update" role="status">
+          <span className="dv-dot" aria-hidden />
           A new version is ready.
           <button className="ch-btn" onClick={applyUpdate}>Reload</button>
         </div>
