@@ -65,7 +65,7 @@ markdown with headless Chrome: `--headless=new --print-to-pdf`).
 | `BRIEF_BASE_URL` / `BRIEF_LINK_COOLDOWN` | custom OpenAI-compatible endpoint / seconds a rate-limited link rests |
 | `BRIEF_VISION_*` | image-brief transcription model settings |
 | `GEMINI_API_KEY` / `OPENAI_API_KEY` | optional further chat links, auto-detected |
-| `BRIEF_RETRIEVE_FROM` | `capture` (default): retrieval waits for the Loop 1 capture; `golden`: retrieval starts from the golden extraction (~16 s earlier), capture as fallback |
+| `BRIEF_RETRIEVE_FROM` | `golden` (default): retrieval starts from the golden extraction, 16–26 s earlier, with the capture as fallback; `capture`: retrieval waits for the Loop 1 capture. A/B on 3 briefs: health 216 = 216, faster on every brief |
 | `BRIEF_THINKING_HEADROOM` / `BRIEF_LINK_TIMEOUT` | extra output tokens for Claude models that think by default (2500) / per-request timeout for OpenAI-compatible links (90 s) |
 | `CRITIC_MODEL` | model for `golden_critic.py --judge` (default `claude-sonnet-5`) |
 

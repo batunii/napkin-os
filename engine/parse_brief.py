@@ -3241,9 +3241,11 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     from concurrent.futures import ThreadPoolExecutor
     parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
     toon = os.environ.get("BRIEF_CAPTURE", "toon").lower() != "json"
-    # BRIEF_RETRIEVE_FROM=golden: retrieval reads the golden extraction and starts as soon
-    # as it lands, alongside the capture; "capture" (default) waits for the capture.
-    from_golden = (os.environ.get("BRIEF_RETRIEVE_FROM", "capture").lower() == "golden"
+    # BRIEF_RETRIEVE_FROM=golden (default since 2026-09-24): retrieval reads the golden
+    # extraction and starts as soon as it lands, alongside the capture; "capture" waits for
+    # the capture. A/B on 3 real briefs, Sonnet-judged: health 216 vs 216 in total (per
+    # brief 64/76/76 vs 75/63/78 — within run-to-run swing), 16-26 s faster per brief.
+    from_golden = (os.environ.get("BRIEF_RETRIEVE_FROM", "golden").lower() == "golden"
                    and loops37 and golden)
     with ThreadPoolExecutor(max_workers=5) if parallel else _Inline() as ex:
         f_cap = ex.submit(capture_toon, segs) if toon else None
