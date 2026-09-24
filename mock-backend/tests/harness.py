@@ -61,7 +61,8 @@ class Server:
             try:
                 urllib.request.urlopen(self.base + "/healthz", timeout=1).read()
                 return
-            except urllib.error.HTTPError:
+            except urllib.error.HTTPError as e:
+                e.close()
                 return          # up (e.g. 401 with a token)
             except OSError:
                 time.sleep(0.05)
