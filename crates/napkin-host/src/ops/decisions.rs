@@ -288,6 +288,11 @@ impl Lookup<'_> {
 
     /// Does decision `i` name `address` (or something inside it) as a target
     /// or a flag?
+    ///
+    /// A patch-data records no targets, only the top-level keys it wrote, and
+    /// `campaign` does not say which field changed. So an entry with no
+    /// targets also touches an address its rationale names — which is how
+    /// the views that write it say what they changed.
     fn touches(&self, i: usize, address: &str) -> bool {
         let d = &self.chain.decisions[i];
         let flags = d
@@ -297,12 +302,17 @@ impl Lookup<'_> {
             .into_iter()
             .flatten()
             .filter_map(|v| v.as_str().map(String::from));
-        aims(d).cloned().chain(flags).any(|t| {
+        let named = aims(d).cloned().chain(flags).any(|t| {
             let t = self.qualify(&t);
             t == address
                 || t.strip_prefix(address)
                     .is_some_and(|rest| rest.starts_with(['.', '[']))
-        })
+        });
+        named
+            || (d.targets.is_empty()
+                && address
+                    .split_once('#')
+                    .is_some_and(|(_, p)| mentions(&d.rationale, &format!("#{p}"))))
     }
 
     /// Some decision after `i` matching `pred` touches `address`.
@@ -358,6 +368,14 @@ impl Lookup<'_> {
                 (format!("Contest · {key}"), "contest")
             }
             [Seg::Name("decisions"), Seg::Key(id)] => (self.decision_label(id), "decision"),
+            [Seg::Name("materials"), Seg::Key(id)] => {
+                let name = here
+                    .then(|| self.data.get("materials")?.get(*id))
+                    .flatten()
+                    .and_then(|m| str_of(m, "name"))
+                    .unwrap_or(id);
+                (format!("Material · {name}"), "field")
+            }
             [Seg::Name(id)] if id.starts_with(clan_sdk::decision::DECISION_ID_PREFIX) => {
                 (self.decision_label(id), "decision")
             }
@@ -688,11 +706,12 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
             if answered {
                 continue;
             }
-            let why = clip(&d.rationale, 160);
+            // The verdict's own rationale is on its block; this says what is
+            // still owed.
             out.push(blocker(
                 "bad_verdict",
                 format!(
-                    "{} was marked bad by {}: “{why}” Revise it, or override the verdict with a reason, before lock.",
+                    "{} was marked bad by {}. Revise it, or override the verdict with a reason, before lock.",
                     target.label,
                     who(d).name
                 ),
@@ -771,6 +790,17 @@ fn aims(d: &Decision) -> std::slice::Iter<'_, String> {
     } else {
         d.targets.iter()
     }
+}
+
+/// `text` names `path` whole: `#campaign.name` is not named by
+/// `#campaign.name_long`.
+fn mentions(text: &str, path: &str) -> bool {
+    text.match_indices(path).any(|(at, _)| {
+        !text[at + path.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+    })
 }
 
 /// A person made it: the actor is `human:…`, or — on entries from before

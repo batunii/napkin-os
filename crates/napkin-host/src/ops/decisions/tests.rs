@@ -145,6 +145,15 @@ fn cites_resolve_to_what_they_name() {
     let detail = fact.detail.as_deref().unwrap();
     assert!(detail.starts_with("47% · as of 2026-06-30"), "{detail}");
 
+    let created = v
+        .decisions
+        .iter()
+        .find(|b| b.decision.id.as_deref() == Some("d_01JA0D01CRT"))
+        .unwrap();
+    let labels: Vec<_> = created.targets.iter().map(|t| t.label.as_str()).collect();
+    assert!(labels.contains(&"Material · Planner prompt"), "{labels:?}");
+    assert!(labels.contains(&"Campaign › Ask source"), "{labels:?}");
+
     let finding = &v.cites["fi_01JA0F1A"];
     assert_eq!(finding.kind, "finding");
     assert!(finding.detail.as_deref().unwrap().contains("verified"));
@@ -396,6 +405,26 @@ fn a_bad_verdict_is_answered_by_a_later_edit_or_a_reasoned_good_one() {
     );
     let v = decisions(&doc_with(&[(CHAIN_PATH, &chain(&edit))])).unwrap();
     assert!(v.attention.is_empty(), "{:?}", v.attention);
+
+    // A patch-data names only the top-level key it wrote; the view says which
+    // field in the rationale.
+    let patched = |field: &str| {
+        format!(
+            "- id: d_p
+  kind: edit
+  agent: human
+  actor: human:u_a
+  action: confirm
+  fields_changed: [campaign]
+  rationale: 'd_p · edit · {DOC}#campaign.{field} · confirmed from extracted'
+  timestamp: 2026-09-24T11:00:00Z
+"
+        )
+    };
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &chain(&patched("objective")))])).unwrap();
+    assert!(v.attention.is_empty(), "{:?}", v.attention);
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &chain(&patched("objective_2")))])).unwrap();
+    assert_eq!(codes(&v), [("bad_verdict", Some("d_v"))]);
 
     let unreasoned = format!(
         "- id: d_g
