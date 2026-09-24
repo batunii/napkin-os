@@ -11,15 +11,18 @@ import './StudioShell.css'
 interface Props {
   /** The home screen: the apps launcher. */
   children: ReactNode
+  /** Extra controls at the start of the tools, e.g. the Offline section. */
+  tools?: ReactNode
 }
 
 /** The studio frame: frosted top bar with the brand and the tools. */
-export default function StudioShell({ children }: Props) {
+export default function StudioShell({ children, tools }: Props) {
   return (
     <div className="studio">
       <header className="studio-top">
         <StudioLogo />
         <div className="studio-tools">
+          {tools}
           <ApiKeyButton />
           <ThemeToggle />
         </div>

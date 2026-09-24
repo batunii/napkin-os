@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import Toolbar from '../components/Toolbar'
 import Sidebar from '../components/Sidebar'
 import AgentPanel from '../components/AgentPanel'
@@ -17,12 +17,15 @@ interface Props {
   onHome: () => void
   onOpenFile: () => void
   onSave: () => void
+  onKeepOffline?: () => void
+  /** Shown under the toolbar — what a document open on the device says about itself. */
+  banner?: ReactNode
   onExport: (kind: 'html' | 'pdf') => void
   onSpinoff: (appId: string) => void
 }
 
 /** Chrome for one running app: toolbar + (collapsible) sidebar + render surface + panels. */
-export default function AppHost({ running, onHome, onOpenFile, onSave, onExport, onSpinoff }: Props) {
+export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff }: Props) {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false) // collapsed by default
@@ -44,12 +47,14 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onExport,
         sidebarOpen={sidebarOpen}
         onWorkspace={() => setWorkspaceOpen(true)}
         onSave={onSave}
+        onKeepOffline={onKeepOffline}
         onExport={onExport}
         docPath={open.path}
         onSpinoff={onSpinoff}
         loading={false}
         validation={open.validation}
       />
+      {banner}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {sidebarOpen && <Sidebar manifest={open.manifest} path={open.path} />}
         <main style={{ flex: 1, overflow: 'hidden', background: 'var(--paper)', display: 'flex', flexDirection: 'column' }}>

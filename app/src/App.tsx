@@ -3,8 +3,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { host } from './host'
+import { hasServer, host, onDevice, openOnDevice, serverless, switchToDevice, switchToServer } from './host'
 import type { InstalledApp, OpenResult } from './host'
+import DeviceBanner from './offline/DeviceBanner'
+import DeviceHome from './offline/DeviceHome'
+import OfflineDialog from './offline/OfflineDialog'
+import { isClanFile, keepOffline, pickFile, type DeviceSource } from './offline/actions'
+import { copyBytes, type OfflineCopy } from './offline/store'
+import { useFileDrop } from './offline/useFileDrop'
+import { applyUpdate, onLaunchFiles, useUpdateReady } from './pwa/pwa'
+import { LogoSpinner } from './brand/LogoSpinner'
 import { askAppToExport } from './shell/appExport'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
@@ -46,6 +54,20 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   // Toast raised by a trusted app via window.napkin.notify → clan://notify.
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null)
+  // On the device: the public viewer, a file opened here, an offline copy, or
+  // a signed-in page that could not reach the studio.
+  const [device, setDevice] = useState(onDevice)
+  const [unreachable, setUnreachable] = useState(false)
+  const [offlineOpen, setOfflineOpen] = useState(false)
+  // Work that takes a moment and has no screen of its own: starting the device
+  // host and opening a file in it, or saving an offline copy.
+  const [busy, setBusy] = useState<string | null>(null)
+  const updateReady = useUpdateReady()
+
+  const notify = useCallback((title: string, body: string, ms = 5000) => {
+    setToast({ title, body })
+    setTimeout(() => setToast(null), ms)
+  }, [])
 
   const refreshApps = useCallback(async () => {
     try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
@@ -54,6 +76,11 @@ export default function App() {
   // Open the home CLAN app as the current document and render it.
   const openHome = useCallback(async () => {
     resetTheme() // home and other apps use the default Napkin theme
+    // The web app on the device has its own home: open a file, or a copy.
+    if (onDevice() && !serverless) {
+      setScreen('home')
+      return
+    }
     try {
       const open = await host.openHome()
       const html = open.has_human_view ? await host.getHumanHtml() : ''
@@ -61,18 +88,73 @@ export default function App() {
       refreshApps() // views other than Apps may offer installed apps too
     } catch (e) {
       console.error('open_home failed', e)
-      setHome(null) // fall back to the native launcher
-      refreshApps()
+      setHome(null)
+      if (hasServer && (e instanceof TypeError || !navigator.onLine)) {
+        // The studio is out of reach, not broken: carry on as the viewer, so
+        // offline copies and files on this device still open.
+        switchToDevice()
+        setDevice(true)
+        setUnreachable(true)
+      } else {
+        refreshApps() // fall back to the native launcher
+      }
     }
     setScreen('home')
   }, [refreshApps])
 
-  const runArtifact = useCallback(async (open: OpenResult) => {
+  const runArtifact = useCallback(async (open: OpenResult, source?: DeviceSource) => {
     resetTheme() // clear any prior app's theme before this one (re)applies its own
     const html = open.has_human_view ? await host.getHumanHtml() : ''
-    setRunning({ artifactPath: open.path, open, htmlContent: html, editMode: false })
+    setRunning({ artifactPath: open.path, open, htmlContent: html, editMode: false, source })
     setScreen('app')
   }, [])
+
+  // A .clan from this device — dropped, chosen, handed over by the OS, or an
+  // offline copy. It opens in the tab and is never uploaded, whichever host
+  // the page was using before.
+  const openDeviceBytes = useCallback(async (bytes: Uint8Array, label: string, source: DeviceSource) => {
+    setLoading(true); setError(null); setBusy('Opening on this device…')
+    try {
+      const result = await openOnDevice(bytes, label)
+      setDevice(true)
+      if (result.is_template) setPendingLaunch(result)
+      else await runArtifact(result, source)
+    } catch (e) { setError(String(e)) } finally { setLoading(false); setBusy(null) }
+  }, [runArtifact])
+
+  const openLocalFile = useCallback(async (file: File) => {
+    if (!isClanFile(file)) {
+      setError(`${file.name} is not a .clan file.`)
+      return
+    }
+    await openDeviceBytes(new Uint8Array(await file.arrayBuffer()), file.name, { kind: 'file', name: file.name })
+  }, [openDeviceBytes])
+
+  const openOfflineCopy = useCallback(async (copy: OfflineCopy) => {
+    try {
+      await openDeviceBytes(await copyBytes(copy.id), `offline-${copy.id}`, { kind: 'offline', copy })
+    } catch (e) { setError(String(e)) }
+  }, [openDeviceBytes])
+
+  const chooseDeviceFile = useCallback(async () => {
+    const file = await pickFile()
+    if (file) await openLocalFile(file)
+  }, [openLocalFile])
+
+  const dragging = useFileDrop(openLocalFile)
+
+  // Chrome and Edge, installed: a .clan double-clicked in the OS.
+  const openLocalRef = useRef(openLocalFile)
+  useEffect(() => { openLocalRef.current = openLocalFile }, [openLocalFile])
+  useEffect(() => { onLaunchFiles(file => { openLocalRef.current(file) }) }, [])
+
+  const backToStudio = useCallback(() => {
+    switchToServer()
+    setDevice(false)
+    setUnreachable(false)
+    setRunning(null)
+    openHome()
+  }, [openHome])
 
   // Open a .clan path: templates → install prompt; documents → run.
   const openPath = useCallback(async (path: string) => {
@@ -85,9 +167,11 @@ export default function App() {
   }, [runArtifact])
 
   const handleOpenFile = useCallback(async () => {
+    // On the device, "Open" never means upload.
+    if (onDevice() && !serverless) return chooseDeviceFile()
     const selected = await host.pickClanToOpen()
     if (selected) await openPath(selected)
-  }, [openPath])
+  }, [openPath, chooseDeviceFile])
 
   const launchApp = useCallback(async (appId: string) => {
     setLoading(true); setError(null)
@@ -120,6 +204,21 @@ export default function App() {
     if (path) await host.saveClanTo(path).catch(console.error)
   }, [])
 
+  // "Present offline": keep the server's current copy of this document here.
+  const keepCurrentOffline = useCallback(async () => {
+    const r = runningRef.current
+    if (!r) return
+    setBusy('Saving for offline…')
+    try {
+      const copy = await keepOffline(r.open.path)
+      notify('Saved for offline', `“${copy.title}” now opens from Offline with no network. It is a snapshot: changes made to it there are not sent back.`, 7000)
+    } catch (err) {
+      notify('Could not save for offline', String(err))
+    } finally {
+      setBusy(null)
+    }
+  }, [notify])
+
   // OS-owned export: the host composes a standalone document from the open
   // file's data via the SDK, then the clan-export-request listener runs the
   // save dialog + finish_export. Works for every app, no in-view builder needed.
@@ -136,13 +235,19 @@ export default function App() {
 
   useEffect(() => {
     // openHome is async and sets no state synchronously: everything before its
-    // first await is resetTheme(), which only clears CSS custom properties. The
-    // setState calls all run after `await host.openHome()` — this is the
+    // first await is resetTheme(), which only clears CSS custom properties —
+    // or, on the device, a setScreen to the screen we are already on. The
+    // other setState calls all run after `await host.openHome()` — this is the
     // initial load from the host, i.e. the external-system synchronisation the
     // rule explicitly allows, not derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     openHome()
     host.takeLaunchFile().then(p => { if (p) openPath(p) }).catch(() => {})
+  }, [openHome, openPath])
+
+  useEffect(() => {
+    // Re-subscribed whenever the page changes host (`device`): events come
+    // from whichever one the open document lives in.
     // The host forwards launch/open requests that originate INSIDE a clan file
     // (e.g. a click in the home CLAN app), plus OS "open with" events.
     const subs = [
@@ -171,8 +276,10 @@ export default function App() {
       }),
       host.on('clan-theme-changed', colors => { applyTheme(colors) }),
     ]
-    return () => { subs.forEach(s => s.then(f => f())) }
-  }, [openHome, openPath, handleOpenFile, saveCurrent])
+    // A host that cannot be reached cannot subscribe either; that is not news.
+    subs.forEach(s => s.catch(() => {}))
+    return () => { subs.forEach(s => s.then(f => f()).catch(() => {})) }
+  }, [device, openPath, handleOpenFile, saveCurrent])
 
   const goHome = useCallback(() => { openHome() }, [openHome])
 
@@ -199,7 +306,14 @@ export default function App() {
 
   // Apps: the home CLAN app when the host has one (as home always was), the
   // native launcher when it couldn't load.
-  const apps = home ? (
+  const apps = device && !serverless ? (
+    <DeviceHome
+      onChooseFile={chooseDeviceFile}
+      onOpenCopy={openOfflineCopy}
+      onBackToStudio={hasServer ? backToStudio : undefined}
+      offline={unreachable}
+    />
+  ) : home ? (
     <AppRuntime
       htmlContent={home.html}
       hasHumanView={home.open.has_human_view}
@@ -221,11 +335,56 @@ export default function App() {
       )}
 
       {screen === 'app' && running ? (
-        <AppHost running={running} onHome={goHome} onOpenFile={handleOpenFile} onSave={saveCurrent} onExport={exportCurrent} onSpinoff={spinOff} />
+        <AppHost
+          running={running}
+          onHome={goHome}
+          onOpenFile={handleOpenFile}
+          onSave={saveCurrent}
+          onKeepOffline={!device && hasServer && !running.open.is_template ? keepCurrentOffline : undefined}
+          banner={device && !serverless ? (
+            <DeviceBanner
+              source={running.source ?? { kind: 'file', name: running.open.manifest.title }}
+              onDownload={saveCurrent}
+            />
+          ) : undefined}
+          onExport={exportCurrent}
+          onSpinoff={spinOff}
+        />
       ) : (
-        <StudioShell>
+        <StudioShell
+          tools={hasServer && !device ? (
+            <button className="ch-btn" onClick={() => setOfflineOpen(true)} title="Documents kept on this device">
+              Offline
+            </button>
+          ) : undefined}
+        >
           {apps}
         </StudioShell>
+      )}
+
+      {offlineOpen && <OfflineDialog onOpen={openOfflineCopy} onClose={() => setOfflineOpen(false)} />}
+
+      {dragging && (
+        <div className="dv-drop" aria-hidden>
+          <div>
+            Drop a .clan to open it here
+            <small>It stays on this device and is never uploaded.</small>
+          </div>
+        </div>
+      )}
+
+      {busy && (
+        <div className="dv-update" role="status" style={{ left: '50%', transform: 'translateX(-50%)', paddingRight: 14 }}>
+          <LogoSpinner size={16} label={busy} />
+          {busy}
+        </div>
+      )}
+
+      {updateReady && (
+        <div className="dv-update" role="status">
+          A new version is ready.
+          <button className="ch-btn" onClick={applyUpdate}>Reload</button>
+        </div>
       )}
 
       {pendingLaunch && (
