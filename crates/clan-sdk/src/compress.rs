@@ -411,6 +411,7 @@ mod tests {
             });
             d.extra
                 .insert("flags".into(), serde_yaml::Value::from("doc#campaign.x"));
+            d.reasoning = Some(crate::decision::tests::sample_reasoning());
             if i == 11 {
                 judged_id = d.id.clone().unwrap();
             }

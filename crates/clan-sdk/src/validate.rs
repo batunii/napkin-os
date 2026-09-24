@@ -265,7 +265,8 @@ fn content_checks(clan: &ClanFile, report: &mut ValidationReport) {
 }
 
 /// The typed-decision rules (OS-layer contract §3): ids are unique, `kind` is
-/// one the layer defines, and the kinds that must say why do.
+/// one the layer defines, the kinds that must say why do, and a structured
+/// `reasoning`, where a decision carries one, has its shape.
 fn decision_checks(chain: &DecisionChain, report: &mut ValidationReport) {
     let mut seen = std::collections::BTreeSet::new();
     for (i, d) in chain.decisions.iter().enumerate() {
@@ -286,6 +287,14 @@ fn decision_checks(chain: &DecisionChain, report: &mut ValidationReport) {
                 d.kind.as_deref().unwrap_or_default(),
                 DECISION_KINDS.join(", ")
             ));
+        }
+        if let Some(r) = &d.reasoning {
+            for problem in r.problems() {
+                report.content.push(format!(
+                    "decision-chain.yaml entry {i} ({}): {problem}",
+                    d.kind.as_deref().unwrap_or("decision")
+                ));
+            }
         }
         if d.requires_rationale() && d.rationale.trim().is_empty() {
             report.content.push(format!(

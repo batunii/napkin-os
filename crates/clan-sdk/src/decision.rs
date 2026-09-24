@@ -106,7 +106,16 @@ pub struct Decision {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub licence: Option<Licence>,
 
+    /// The plain one-line summary older readers show. When the decision has
+    /// [`reasoning`](Self::reasoning) this is its [`Reasoning::summary`] (or
+    /// whatever the writer supplied); compression only ever rewrites this.
     pub rationale: String,
+    /// Why, in the shape of the foundation spec's decisions: what was
+    /// decided, the evidence with its cites, the alternatives that lost, the
+    /// certainty and what would reverse it. Optional — a person's edit has
+    /// none — and never touched by compression.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<Reasoning>,
     pub timestamp: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields_changed: Vec<String>,
@@ -144,6 +153,154 @@ pub struct Licence {
     pub corpus: Option<bool>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_yaml::Value>,
+}
+
+/// The certainty levels a [`Reasoning`] may state.
+pub const CERTAINTY_LEVELS: &[&str] = &["high", "medium", "low"];
+
+/// A decision's structured reasoning (OS-layer contract §3): the discipline
+/// the foundation spec's own decisions follow — decision / because /
+/// rejected / reverses_if — written by whoever decided.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Reasoning {
+    /// One sentence: what was decided.
+    #[serde(default)]
+    pub decided: String,
+    /// The evidence, at least one point. A point that states a figure cites
+    /// where the figure is.
+    #[serde(default)]
+    pub because: Vec<ReasonPoint>,
+    /// The alternatives considered and why each lost.
+    #[serde(default)]
+    pub rejected: Vec<Rejected>,
+    /// Why there was nothing to reject, when `rejected` is empty: there was
+    /// genuinely one option, and this says so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only_option: Option<String>,
+    #[serde(default)]
+    pub certainty: Certainty,
+    /// What new evidence would reverse it.
+    #[serde(default)]
+    pub would_change_if: String,
+    /// Why a person should look, when the decider thinks one should: an
+    /// uncertain call, thin evidence, a contest, a skipped lens that might
+    /// matter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attention: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
+}
+
+/// One piece of evidence and the ids it rests on — facts, findings, sources,
+/// materials, decisions, or addresses.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReasonPoint {
+    pub point: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cites: Vec<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
+}
+
+/// An alternative that lost, and why.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Rejected {
+    pub option: String,
+    pub why: String,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
+}
+
+/// How sure, and on what basis. For anything resting on facts this is the
+/// DERIVED confidence (source tier + corroboration), never self-reported.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Certainty {
+    pub level: String,
+    pub why: String,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
+}
+
+impl Reasoning {
+    /// The one-line rationale older readers show: `decided`, then the first
+    /// point of evidence.
+    pub fn summary(&self) -> String {
+        let decided = self.decided.trim();
+        match self.because.first().map(|p| p.point.trim()) {
+            Some(p) if !p.is_empty() && !decided.is_empty() => {
+                let sep = if decided.ends_with(['.', '!', '?']) {
+                    " "
+                } else {
+                    ". "
+                };
+                format!("{decided}{sep}Because: {p}")
+            }
+            Some(p) if decided.is_empty() => p.to_string(),
+            _ => decided.to_string(),
+        }
+    }
+
+    /// What is wrong with its shape, if anything: an empty `decided`, no
+    /// `because` point, an empty point or cite, a point that states a figure
+    /// and cites nothing, a rejected alternative without its option or why,
+    /// no alternatives and no `only_option`, a certainty level outside
+    /// [`CERTAINTY_LEVELS`] or without its why, an empty `would_change_if`.
+    pub fn problems(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let blank = |s: &str| s.trim().is_empty();
+        if blank(&self.decided) {
+            out.push("reasoning.decided is empty".to_string());
+        }
+        if self.because.is_empty() {
+            out.push("reasoning.because has no point".to_string());
+        }
+        for (i, p) in self.because.iter().enumerate() {
+            if blank(&p.point) {
+                out.push(format!("reasoning.because[{i}] is empty"));
+            }
+            if p.cites.iter().any(|c| blank(c)) {
+                out.push(format!("reasoning.because[{i}] has an empty cite"));
+            }
+            if p.cites.is_empty() && states_figure(&p.point) {
+                out.push(format!(
+                    "reasoning.because[{i}] states a figure and cites nothing"
+                ));
+            }
+        }
+        for (i, r) in self.rejected.iter().enumerate() {
+            if blank(&r.option) || blank(&r.why) {
+                out.push(format!("reasoning.rejected[{i}] needs an option and a why"));
+            }
+        }
+        if self.rejected.is_empty() && self.only_option.as_deref().map_or(true, blank) {
+            out.push(
+                "reasoning.rejected is empty and only_option does not say why there was one option"
+                    .to_string(),
+            );
+        }
+        if !CERTAINTY_LEVELS.contains(&self.certainty.level.as_str()) {
+            out.push(format!(
+                "reasoning.certainty.level {:?} is not one of: {}",
+                self.certainty.level,
+                CERTAINTY_LEVELS.join(", ")
+            ));
+        }
+        if blank(&self.certainty.why) {
+            out.push("reasoning.certainty.why is empty".to_string());
+        }
+        if blank(&self.would_change_if) {
+            out.push("reasoning.would_change_if is empty".to_string());
+        }
+        if self.attention.as_deref().is_some_and(blank) {
+            out.push("reasoning.attention is present but empty".to_string());
+        }
+        out
+    }
+}
+
+/// True when `text` states a figure: it holds a digit.
+fn states_figure(text: &str) -> bool {
+    text.chars().any(|c| c.is_ascii_digit())
 }
 
 /// Reference to full context held in an external store (spec §13).
@@ -284,7 +441,7 @@ impl Decision {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const LEGACY: &str = "decisions:
@@ -375,6 +532,130 @@ mod tests {
         let old: OldDecision = serde_yaml::from_str(&yaml).unwrap();
         let again: Decision = serde_yaml::from_str(&serde_yaml::to_string(&old).unwrap()).unwrap();
         assert_eq!(again, d);
+    }
+
+    const REASONED: &str = "decisions:
+- id: d_01JB0MERGE1
+  kind: contest
+  agent: start_campaign@1.0
+  action: open_contest
+  rationale: 'Opened a contest on the flagship year; nothing is picked. Because: the IE run says 2019'
+  reasoning:
+    decided: Opened a contest on the flagship year; nothing is picked.
+    because:
+    - point: the IE run says 2019
+      cites:
+      - f_01JB0IE0001
+    - point: the GB run says 2020
+      cites:
+      - f_01JB0GB0001
+    rejected:
+    - option: pick either value silently
+      why: nothing says which run is right
+    certainty:
+      level: high
+      why: the two values are recorded as found
+    would_change_if: a primary source settles the year
+    attention: two runs disagree
+    viewer_hint: block
+  timestamp: 2026-09-24T10:00:00Z
+";
+
+    pub(crate) fn sample_reasoning() -> Reasoning {
+        Reasoning {
+            decided: "Pinned the IE share.".into(),
+            because: vec![ReasonPoint {
+                point: "CSO and SIMI both state 41%".into(),
+                cites: vec!["f_01JB0IE0001".into(), "src_cso".into()],
+                ..Default::default()
+            }],
+            rejected: vec![Rejected {
+                option: "the blog's 45%".into(),
+                why: "tertiary and alone".into(),
+                ..Default::default()
+            }],
+            certainty: Certainty {
+                level: "high".into(),
+                why: "primary tier, corroborated by an independent domain".into(),
+                ..Default::default()
+            },
+            would_change_if: "a newer CSO release revises it".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn reasoning_round_trips_byte_for_byte_with_unknown_fields() {
+        let chain = DecisionChain::from_yaml(REASONED.as_bytes()).unwrap();
+        let r = chain.decisions[0].reasoning.as_ref().unwrap();
+        assert_eq!(r.because.len(), 2);
+        assert_eq!(r.certainty.level, "high");
+        assert_eq!(r.attention.as_deref(), Some("two runs disagree"));
+        assert_eq!(r.extra["viewer_hint"], serde_yaml::Value::from("block"));
+        assert!(r.problems().is_empty(), "{:?}", r.problems());
+        assert_eq!(
+            String::from_utf8(chain.to_yaml().unwrap()).unwrap(),
+            REASONED
+        );
+    }
+
+    #[test]
+    fn a_decision_without_reasoning_writes_no_reasoning_key() {
+        let d = Decision::new("human", "edit", "Named it.", "2026-09-24T10:00:00Z");
+        assert!(!serde_yaml::to_string(&d).unwrap().contains("reasoning"));
+    }
+
+    #[test]
+    fn summary_is_decided_then_the_first_point() {
+        let r = sample_reasoning();
+        assert_eq!(
+            r.summary(),
+            "Pinned the IE share. Because: CSO and SIMI both state 41%"
+        );
+        let bare = Reasoning {
+            decided: "Asked".into(),
+            ..Default::default()
+        };
+        assert_eq!(bare.summary(), "Asked");
+    }
+
+    #[test]
+    fn problems_name_every_broken_part() {
+        assert!(sample_reasoning().problems().is_empty());
+        let empty = Reasoning::default().problems().join("\n");
+        for part in [
+            "decided is empty",
+            "because has no point",
+            "only_option",
+            "certainty.level",
+            "certainty.why",
+            "would_change_if",
+        ] {
+            assert!(empty.contains(part), "{part} in {empty}");
+        }
+
+        let mut r = sample_reasoning();
+        r.because[0].cites = vec![];
+        assert!(r.problems()[0].contains("states a figure and cites nothing"));
+        r.because[0].cites = vec![" ".into()];
+        assert!(r.problems()[0].contains("empty cite"));
+
+        let mut r = sample_reasoning();
+        r.rejected.clear();
+        assert_eq!(r.problems().len(), 1);
+        r.only_option = Some("the material names one brand".into());
+        assert!(r.problems().is_empty());
+
+        let mut r = sample_reasoning();
+        r.certainty.level = "certain".into();
+        assert!(r.problems()[0].contains("\"certain\" is not one of"));
+        // A point with no figure needs no cite.
+        let mut r = sample_reasoning();
+        r.because[0] = ReasonPoint {
+            point: "the email calls it ours".into(),
+            ..Default::default()
+        };
+        assert!(r.problems().is_empty());
     }
 
     #[test]

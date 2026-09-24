@@ -32,7 +32,9 @@ pub mod validate;
 pub use compress::{compress_chain, nlp_compress, CompressionConfig, Compressor};
 pub use container::{ClanBuilder, ClanFile, MANIFEST_PATH};
 pub use create::{create, export_static, CreateOptions};
-pub use decision::{Decision, DecisionChain, TraceRef};
+pub use decision::{
+    Certainty, Decision, DecisionChain, ReasonPoint, Reasoning, Rejected, TraceRef,
+};
 pub use error::{Error, Result};
 pub use export::{export_html, ExportOptions};
 pub use inject::{assemble, AgentContext, InjectOptions};

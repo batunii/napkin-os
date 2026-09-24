@@ -373,3 +373,118 @@ fn an_older_file_adopts_its_id_on_the_first_write() {
         open(patch_data_with(&next, &json!({"a": 2}), PatchDataOptions::default(), None).unwrap());
     assert_eq!(after.document_id(), old_id);
 }
+
+// ── structured reasoning ─────────────────────────────────────────────────
+
+const REASONED_CHAIN: &str = "decisions:
+- id: d_01JB0PIN0001
+  kind: pin
+  agent: start_campaign@1.0
+  actor: process:middleware
+  action: research_merge
+  rationale: 'Pinned 2 facts. Because: CSO and SIMI both state 41% for IE'
+  reasoning:
+    decided: Pinned 2 facts.
+    because:
+    - point: CSO and SIMI both state 41% for IE
+      cites: [f_01JB0IE0001, src_cso, src_simi]
+    rejected:
+    - option: the blog's 45%
+      why: tertiary and alone
+    certainty: { level: high, why: 'primary tier, corroborated' }
+    would_change_if: a newer CSO release revises it
+  timestamp: 2026-09-24T10:00:00Z
+- agent: human
+  action: patch-data
+  rationale: Named it.
+  timestamp: 2026-09-24T09:00:00Z
+";
+
+#[test]
+fn reasoning_is_validated_where_present_and_not_required() {
+    let base = doc();
+    // A chain where one decision reasons and a person's edit does not.
+    let clan = rebuilt(&base, CHAIN, REASONED_CHAIN.as_bytes(), |_| {});
+    strict_ok(&clan);
+    let chain = chain_of(&clan);
+    assert_eq!(
+        chain.decisions[0].reasoning.as_ref().unwrap().because[0].cites,
+        vec!["f_01JB0IE0001", "src_cso", "src_simi"]
+    );
+    assert!(chain.decisions[1].reasoning.is_none());
+
+    // A broken shape is reported, entry by entry.
+    let broken = REASONED_CHAIN
+        .replace("level: high", "level: sure")
+        .replace("    decided: Pinned 2 facts.\n", "    decided: ''\n");
+    let report = validate(&rebuilt(&base, CHAIN, broken.as_bytes(), |_| {}));
+    let text = report.display();
+    assert!(!report.is_content_valid());
+    assert!(
+        text.contains("entry 0 (pin): reasoning.decided is empty"),
+        "{text}"
+    );
+    assert!(text.contains("\"sure\" is not one of"), "{text}");
+}
+
+#[test]
+fn reasoning_survives_patch_data_and_pack() {
+    let base = doc();
+    let clan = rebuilt(&base, CHAIN, REASONED_CHAIN.as_bytes(), |_| {});
+    let before = entries_as_values(REASONED_CHAIN.as_bytes());
+
+    // A person's patch-data with reasoning of its own.
+    let body = json!({ "agent": "human", "action": "patch-data", "rationale": "",
+                       "reasoning": { "decided": "Kept the IE share.",
+                                      "because": [{ "point": "the client's own tracker agrees" }],
+                                      "rejected": [], "only_option": "nothing else was on the table",
+                                      "certainty": { "level": "medium", "why": "one tracker" },
+                                      "would_change_if": "the tracker is revised" } });
+    let typed: Decision = serde_json::from_value(json!({
+        "agent": "", "action": "", "rationale": "", "timestamp": "",
+        "reasoning": body["reasoning"] }))
+    .unwrap();
+    let next = open(
+        patch_data_with(
+            &clan,
+            &json!({"campaign": {"name": "Midweek"}}),
+            PatchDataOptions {
+                append_keys: vec![],
+                decision: Some(DecisionEntry {
+                    agent_name: "human".into(),
+                    action: "patch-data".into(),
+                    rationale: "Kept it.".into(),
+                    pinned: false,
+                    fields_changed: None,
+                    typed: Some(typed),
+                }),
+            },
+            None,
+        )
+        .unwrap(),
+    );
+    strict_ok(&next);
+    let after = entries_as_values(&next.read_entry(CHAIN).unwrap());
+    assert_eq!(&after[1..], &before[..], "the older entries are untouched");
+    let newest = &chain_of(&next).decisions[0];
+    assert_eq!(
+        newest.reasoning.as_ref().unwrap().only_option.as_deref(),
+        Some("nothing else was on the table")
+    );
+
+    // An agent's output carrying reasoning in its decision.
+    let out = AgentOutput::from_json(
+        &json!({ "mode": "data-update", "structured": { "b": 2 },
+                 "decision": { "agent": "analysis-model", "action": "set b", "rationale": "r",
+                               "reasoning": body["reasoning"] } })
+        .to_string(),
+    )
+    .unwrap();
+    let packed = open(pack(&next, out, PackOptions::default(), None).unwrap());
+    let d = &chain_of(&packed).decisions[0];
+    assert_eq!(d.reasoning.as_ref().unwrap().decided, "Kept the IE share.");
+    assert_eq!(
+        chain_of(&packed).decisions[2].reasoning,
+        chain_of(&clan).decisions[0].reasoning
+    );
+}
