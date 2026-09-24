@@ -47,7 +47,7 @@ Add `--write-projection` after editing `facts.yaml` or `findings.yaml`.
 ## The view (`index.html`)
 
 One page, rendered from `window.__CLAN__.data` and the chain (`clan://chain`).
-Top to bottom: the report, the conversation, the gates, then the ask, facts,
+Top to bottom: the report, the request (how the campaign started), the gates, then the ask, facts,
 findings, selection and history. The page carries no platform brand: the OS
 shell's bar brands it; the page shows "Research Tool" as a small title.
 
@@ -69,22 +69,40 @@ view:
 
 `by` is the host's actor, read from the chain: the upload is attributed to the
 person, so with a file attached the id is known before the message is written.
-With no file and no earlier human decision the intake asks for the user id.
+The host does not otherwise say who the viewer is, so with no file and no
+earlier human decision the id comes from a small disclosure under the form
+("Your user id, if the host cannot tell who you are"), which opens by itself
+when it is needed. When the host gains a "who am I" route, that field goes.
 
-**The conversation.** `intake.messages` in `at`-then-key order, plus the
-job's `result.messages` not written yet (marked *in flight*, de-duplicated by
-id). A stepper shows the six stages from `job.stage` / `job.progress`. Each
-agent message wears the stage's figure (static copies of the shell's
-`AgentFigure`). On open, the view polls the newest job once, unless its report
-has landed.
+**The request, shown as a form, not a chat.** `intake.messages` is read, not
+drawn as a thread. Once submitted, the start screen becomes three cards:
 
-**Questions.** A `needs_input` job's `job.question` shows as a bot message with
-one button per option: its origin ("You said this" with the quote, "We
-inferred this" with the pins, "You typed this"), the escape, and a text box
-when `allow_text`. A pick is the person's write, before `answer_question`
-(§16.3): the answer message and the field at `address`, `confirmed` from the
-option's origin (keeping `source` / `fact_ids`) or `stated`. Free text writes
-only the message; the middleware asks again with candidates.
+- *Your request* — the first user message as a filled form: the prompt, the
+  attachments as chips, the working name, who submitted it and when; then
+  one row per field the agent asked about, holding the latest answer
+  ("Subject brand · Lúnasa · confirmed by you", or "stated by you"), and any
+  words the person gave before the agent turned them into choices.
+- *Progress* — the six stages from `job.stage` / `job.progress`, the current
+  stage's agent figure (static copies of the shell's `AgentFigure`) and one
+  status line updated in place ("Research is researching Ireland and Great
+  Britain…"), under it the stage's latest narration. Every agent message is
+  kept, as plain lines, in a collapsed *Activity* disclosure; the job's
+  `result.messages` not written yet are marked *in flight*.
+- *The question* — only while the job is `needs_input`.
+
+On open, the view polls the newest job once, unless its report has landed.
+
+**The agent asks.** `job.question` shows as a focused card attributed to the
+stage's agent: its figure and name ("Identify asks"), the question as the
+heading, the agent's message as context, and form controls — one button per
+option with its origin ("You said this" with the quote, "We inferred this"
+with the pins, "You typed this"), the escape, and a labelled text field when
+`allow_text`. The card takes the focus once when it opens. A pick is the
+person's write, before `answer_question` (§16.3): the answer message and the
+field at `address`, `confirmed` from the option's origin (keeping `source` /
+`fact_ids`) or `stated`. Free text writes only the message; the middleware
+asks again with candidates. Once answered, the card goes and the answer is a
+row in *Your request*.
 
 **The report (§17)** is read-only: headline, summary, sections of `claim`
 (cites as chips linking to the pin or finding), `pins`, `finding`, `gap` and
@@ -96,6 +114,6 @@ decision newer than `built_at` touches `campaign.*` / `selection.*`;
 
 The document title follows `campaign.name` (`clan.setTitle`) when the name
 first appears, or while the title is still the app's default. The export
-(`clan:export`, Path B) carries the report and the conversation and drops the
-intake and every control.
+(`clan:export`, Path B) carries the report, the request with its answers and
+the progress, and drops the start screen, the open question and every control.
 
