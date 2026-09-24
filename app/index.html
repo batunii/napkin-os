@@ -14,9 +14,38 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..900&family=Geist+Mono:wght@400..600&display=swap" />
     <title>Napkin Studio OS</title>
+    <!-- Boot screen: the loading sign, until React mounts and replaces #root.
+         A hand-kept copy of src/brand/logoSpinnerMarkup.ts (same mark, same
+         quarter-turn, same reduced-motion pulse); the colours are the studio
+         tokens' values, since index.css is not loaded yet. -->
+    <script>
+      try { var t = localStorage.getItem('napkin.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t } catch (e) {}
+    </script>
+    <style>
+      .napkin-boot{--plan:#14161B;--create:#FF4F2E;--learn:#DADDE3;--produce:#8B919E;--paper:#FFFFFF;--ink2:#4A4F5C;
+        position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+        background:var(--paper);color:var(--ink2);font:500 13px/1 'Geist','Helvetica Neue',Arial,sans-serif;letter-spacing:-.01em}
+      @media (prefers-color-scheme:dark){:root:not([data-theme='light']) .napkin-boot{--plan:#F2F3F5;--learn:#3A3F48;--paper:#0F1114;--ink2:#A6ACB8}}
+      :root[data-theme='dark'] .napkin-boot{--plan:#F2F3F5;--learn:#3A3F48;--paper:#0F1114;--ink2:#A6ACB8}
+      .napkin-spinner-mark{display:block;animation:napkin-spinner-turn 1.6s cubic-bezier(.2,.8,.2,1) infinite}
+      @keyframes napkin-spinner-turn{0%{transform:rotate(0)}25%{transform:rotate(90deg)}50%{transform:rotate(180deg)}75%{transform:rotate(270deg)}100%{transform:rotate(360deg)}}
+      @keyframes napkin-spinner-breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.86);opacity:.55}}
+      @media (prefers-reduced-motion:reduce){.napkin-spinner-mark{animation:napkin-spinner-breathe 2.4s ease-in-out infinite}}
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="napkin-boot" role="status" aria-live="polite">
+      <svg class="napkin-spinner-mark" width="44" height="44" viewBox="0 0 22 22" aria-hidden="true">
+        <clipPath id="napkin-boot-clip"><circle cx="11" cy="11" r="11"/></clipPath>
+        <g clip-path="url(#napkin-boot-clip)" transform="rotate(-45 11 11)">
+          <rect x="0" y="0" width="11" height="11" fill="var(--plan)"/>
+          <rect x="11" y="0" width="11" height="11" fill="var(--create)"/>
+          <rect x="0" y="11" width="11" height="11" fill="var(--learn)"/>
+          <rect x="11" y="11" width="11" height="11" fill="var(--produce)"/>
+        </g>
+      </svg>
+      <span>Opening the studio…</span>
+    </div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

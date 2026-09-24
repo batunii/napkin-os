@@ -146,22 +146,24 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..800&display=swap">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
-    :root { color-scheme: dark; }
-    html[data-color-scheme="light"] { color-scheme: light; }
+    /* A bare fragment gets the studio's paper, ink and type (the values of
+       the shell's tokens, which do not cross into the frame). */
+    :root { color-scheme: light; --paper: #FFFFFF; --ink: #14161B; --line: #D6DAE2; }
+    html[data-color-scheme="dark"] { color-scheme: dark; --paper: #0F1114; --ink: #F2F3F5; --line: #2A2F38; }
     body {
-      background: #0f1117;
-      color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: 'Geist', 'Helvetica Neue', Arial, sans-serif;
       font-size: 15px;
       line-height: 1.65;
       -webkit-font-smoothing: antialiased;
     }
-    html[data-color-scheme="light"] body { background: #f7f8fb; color: #171c2b; }
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
   </style>
 </head>
 <body>

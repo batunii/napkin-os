@@ -13,7 +13,7 @@ import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
 import { AgentFigure } from '../../studio/AgentFigure'
 import { AGENTS } from '../../studio/model'
 import { agentOf } from './agentOf'
-import { LogoSpinner } from './LogoSpinner'
+import { LogoSpinner } from '../../brand/LogoSpinner'
 import { Block, StandaloneBlock } from './DecisionBlock'
 import './DecisionPanel.css'
 

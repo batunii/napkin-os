@@ -4,8 +4,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { host } from '../host'
-import { StudioMark } from '../brand/StudioMark'
 import { PoweredByClan } from '../brand/PoweredByClan'
+import { LogoSpinner } from '../brand/LogoSpinner'
 import type { InstalledApp } from './types'
 import '../components/chrome.css'
 import './Launcher.css'
@@ -62,12 +62,9 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
 
   return (
     <div className="ln">
+      {/* The bar above carries the product name; the page does not repeat it. */}
       <div className="ln-hero">
-        <div className="ln-banner">
-          <StudioMark size={40} />
-          <div>Napkin <span>Studio OS</span></div>
-        </div>
-        <div className="ln-sub">Let's start here.</div>
+        <h1 className="ln-banner">Let&rsquo;s start here.</h1>
       </div>
 
       <div className="ln-composer">
@@ -88,10 +85,12 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile }
             title="Send to agent (Enter)"
             aria-label="Send to agent"
           >
-            {sending ? '…' : '↑'}
+            ↑
           </button>
         </div>
       </div>
+
+      {sending && <LogoSpinner size="sm" label="Asking the agent…" style={{ alignSelf: 'center', width: 'auto', marginTop: 6 }} />}
 
       {result && (
         <div className="ln-result" data-error={result.error || undefined}>{result.text}</div>

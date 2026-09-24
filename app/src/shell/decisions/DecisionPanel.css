@@ -248,11 +248,6 @@
 .dp-cite blockquote { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--line); color: var(--ink); font-style: italic; }
 .dp-cite code { display: block; margin-top: 6px; font-family: var(--f-mono); font-size: 10px; color: var(--ink3); overflow-wrap: anywhere; }
 
-/* ── loading (stand-in for the shared LogoSpinner) ──────────────────────── */
-
-.dp-spinner { display: inline-flex; animation: dp-spin 1.4s linear infinite; }
-@keyframes dp-spin { to { transform: rotate(360deg); } }
-
 /* ── narrow screens: the panel covers the app, the toggle floats ────────── */
 
 @media (max-width: 760px) {

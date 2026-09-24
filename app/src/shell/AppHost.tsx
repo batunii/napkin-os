@@ -56,7 +56,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
         validation={open.validation}
       />
       {banner}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         {sidebarOpen && <Sidebar manifest={open.manifest} path={open.path} />}
         <main style={{ flex: 1, overflow: 'hidden', background: 'var(--paper)', display: 'flex', flexDirection: 'column' }}>
           <AppRuntime
