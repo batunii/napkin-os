@@ -2594,6 +2594,7 @@ dependencies = [
 name = "napkin-host"
 version = "1.2.1"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "clan-sdk",
  "pdf-extract",

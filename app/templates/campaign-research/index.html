@@ -20,7 +20,10 @@
   --green:#22C55E; --green-soft:#DCFCE7; --green-ink:#146C35;
   --amber:#F5A524; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
   --frost:rgba(255,255,255,.82);
-  --plan:#14161B; --plan-eye:#FFFFFF; --produce-eye:#14161B; --learn-eye:#14161B;
+  --plan:#14161B; --plan-fg:#FFFFFF; --plan-eye:#FFFFFF; --produce-eye:#14161B; --learn-eye:#14161B;
+  /* the Plan band: ground, what is written on it, and its quieter lines */
+  --zone-bg:var(--plan); --zone-fg:var(--plan-fg);
+  --zone-2:rgba(255,255,255,.68); --zone-3:rgba(255,255,255,.5); --zone-line:rgba(255,255,255,.16); --zone-tint:rgba(255,255,255,.08);
   --shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07);
   --shadow-lg:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.16);
   --ease:cubic-bezier(.2,.8,.2,1);
@@ -37,7 +40,8 @@
     --green-soft:#10281A; --green-ink:#6EE7A0;
     --amber-soft:#2A2110; --amber-ink:#F7C361;
     --frost:rgba(14,16,20,.8);
-    --plan:#F2F3F5; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
+    --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
+    --zone-2:rgba(15,17,20,.7); --zone-3:rgba(15,17,20,.52); --zone-line:rgba(15,17,20,.16); --zone-tint:rgba(15,17,20,.07);
     --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
     --shadow-lg:0 2px 6px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
   }
@@ -51,7 +55,8 @@
   --green-soft:#10281A; --green-ink:#6EE7A0;
   --amber-soft:#2A2110; --amber-ink:#F7C361;
   --frost:rgba(14,16,20,.8);
-  --plan:#F2F3F5; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
+  --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
+  --zone-2:rgba(15,17,20,.7); --zone-3:rgba(15,17,20,.52); --zone-line:rgba(15,17,20,.16); --zone-tint:rgba(15,17,20,.07);
   --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
   --shadow-lg:0 2px 6px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.55);
 }
@@ -347,20 +352,21 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
   main{padding:24px 16px 96px}
   .top-act{margin-left:0}
 }
-/* ---------- agent figures (static copies of the shell's AgentFigure) ---------- */
-.agent-figure{display:block;overflow:visible;flex:none;width:27px;height:36px}
-.agent-figure .af-shadow{fill:var(--ink);opacity:.08}
-.agent-figure .af-leg line{stroke:var(--ink);stroke-width:2;stroke-linecap:round}
-.agent-figure .af-leg rect{fill:var(--ink)}
-.agent-figure .af-fold{fill:#000;opacity:.14}
-.agent-figure .af-light{fill:#fff;opacity:.22}
-.agent-figure .af-leg,.agent-figure .af-body{transform-box:fill-box}
-.agent-figure .af-leg{transform-origin:50% 0}
-.working .agent-figure .af-leg-l{animation:af-step .55s ease-in-out infinite alternate}
-.working .agent-figure .af-leg-r{animation:af-step .55s ease-in-out infinite alternate-reverse}
-.working .agent-figure .af-body{animation:af-bob .275s ease-in-out infinite alternate}
-@keyframes af-step{from{transform:rotate(-9deg)}to{transform:rotate(9deg)}}
-@keyframes af-bob{from{transform:translateY(0)}to{transform:translateY(-1.2px)}}
+/* ---------- agent figures: the shell's, from the shared snippet (see <head>) ---------- */
+.agent-figure{width:27px;height:36px}
+
+/* ---------- the Plan band ----------
+   The Research Tool is a Plan tool: its identity is the Plan ground, ink,
+   inverting in dark like the studio's other ink. On it the figures are drawn
+   for the ground, the way the design draws them on Plan: ink bodies and legs
+   go light, their eyes go to the ground; slate and mist keep their tone.
+   Orange stays the accent for needs-you, never the app's colour. */
+.band{background:var(--zone-bg);color:var(--zone-fg);--ink:var(--zone-fg);--plan:var(--zone-fg);--plan-eye:var(--zone-bg)}
+.band .agent-figure .af-shadow{opacity:.18}
+.band .eyebrow{color:var(--zone-3)}
+.ident{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.ident svg{width:22px;height:22px;flex:none;display:block}
+.ident .kind{font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin-left:3px}
 
 /* ---------- the start of a campaign: a form, filled in step by step ---------- */
 section.start{margin-top:40px}
@@ -397,7 +403,7 @@ section.start{margin-top:40px}
 .step.done{color:var(--ink2)}
 .step.done i{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .step.now{color:var(--ink);background:var(--soft);font-weight:600}
-.step.now i{border-color:var(--ink);border-top-color:transparent;animation:spin 1s linear infinite}
+.step.now i{border-color:var(--ink);background:var(--ink);box-shadow:0 0 0 3px var(--line-soft)}
 .step.wait{color:var(--create-ink);background:var(--create-soft);font-weight:600}
 .step.wait i{border-color:var(--create);background:var(--create)}
 .step.fail{color:var(--create-ink)}
@@ -409,9 +415,12 @@ section.start{margin-top:40px}
 .nowline .t{display:grid;gap:2px;min-width:0}
 .nowline .t b{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .nowline .t span{font-size:13px;color:var(--ink2);overflow-wrap:anywhere}
-.nowline.wait{background:var(--create-soft)}
+.nowline.working{background:var(--zone-bg);color:var(--zone-fg);--ink:var(--zone-fg);--plan:var(--zone-fg);--plan-eye:var(--zone-bg)}
+.nowline.working .t span{color:var(--zone-2)}
+.nowline.working .agent-figure .af-shadow{opacity:.18}
+.nowline.wait{background:var(--create-soft);--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
 .nowline.wait .t b{color:var(--create-ink)}
-.nowline.err{background:var(--create-soft);color:var(--create-ink)}
+.nowline.err{background:var(--create-soft);color:var(--create-ink);--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
 .nowline.err .t span{color:var(--create-ink)}
 .nowline + .flag,.nowline + .notice{margin-top:10px}
 .fcard .flag{margin-top:10px}
@@ -474,15 +483,34 @@ button.q-opt[disabled]{cursor:wait;opacity:.6}
 .signas input{width:18ch;padding:4px 9px;font-size:12px;border-radius:999px}
 .signas p{margin:6px 0 0;max-width:60ch}
 
-/* the empty document: Brief Maker's intake, in this view's tokens */
-.apptitle{font-weight:600;font-size:14px;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
-body.fresh .nav,body.fresh .top-act,body.fresh #hero,body.fresh #gates,body.fresh #jobs,body.fresh section.region,body.fresh #docfoot{display:none!important}
+/* the empty document: the same intake pattern as Brief Maker — who does the
+   work on the Plan band, the ask beside it, one primary action. The top bar
+   is hidden until there is something in it: then the OS toolbar shows the
+   app's name as the document title, and the band carries the identity. */
+body.fresh .top,body.fresh #hero,body.fresh #gates,body.fresh #jobs,body.fresh section.region,body.fresh #docfoot{display:none!important}
 body.fresh section.start{margin-top:0}
-.intake{min-height:calc(100vh - 150px);display:flex;flex-direction:column;justify-content:center;gap:22px;max-width:680px;margin:0 auto;width:100%;padding:3vh 0 7vh}
-.intake .h1{font-size:clamp(32px,5.5vw,50px);font-weight:800;letter-spacing:-.045em;line-height:1.03;margin:10px 0 0;text-wrap:balance}
-.intake .lede{margin:0;color:var(--ink2);font-size:16px;line-height:1.6;max-width:56ch}
-.intake .figs{display:flex;gap:2px;align-items:flex-end;flex-wrap:wrap}
-.intake .figs .agent-figure{width:22px;height:30px}
+body.fresh main{padding-top:24px}
+.intake{min-height:calc(100vh - 110px);display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:28px;align-items:stretch;width:100%}
+.intake .intro{border-radius:18px;padding:32px 30px 26px;display:flex;flex-direction:column;gap:20px}
+.intake .h1{font-size:clamp(32px,4.4vw,50px);font-weight:800;letter-spacing:-.045em;line-height:1.03;margin:0;text-wrap:balance}
+.intake .lede{margin:0;color:var(--zone-2);font-size:15.5px;line-height:1.6;max-width:48ch}
+.intake .intro .ident{color:var(--zone-fg)}
+.intake .ask{display:flex;flex-direction:column;justify-content:center;gap:18px;padding:12px 0}
+.crew{display:grid;gap:6px;margin-top:auto}
+.crew .who{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--zone-2);padding:4px 10px 4px 6px;border-radius:12px;background:var(--zone-tint)}
+.crew .who b{color:var(--zone-fg);font-weight:600;font-size:13px;min-width:7.5em}
+.crew .agent-figure{width:22px;height:30px}
+@media (max-width:860px){.intake{grid-template-columns:1fr;min-height:0;gap:16px}.intake .intro{padding:22px 20px 18px;gap:14px}.crew{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.crew{grid-template-columns:1fr}.crew .who span{display:none}}
+/* the campaign's own header: on the Plan band */
+.hero.band{border-radius:18px;padding:22px 26px 24px;margin:18px 0 8px}
+.hero.band h1{color:var(--zone-fg)}
+.hero.band h1.empty{color:var(--zone-3)}
+.hero.band .sub{color:var(--zone-2)}
+.hero.band .sub .sep{color:var(--zone-line)}
+.hero.band .muted{color:var(--zone-3)}
+.hero.band .pill{background:transparent;border-color:var(--zone-line);color:var(--zone-fg)}
+@media (max-width:640px){.hero.band{padding:18px 16px 18px}}
 .btn.go{padding:10px 18px;font-size:14px;font-weight:600;border-radius:12px}
 .btn.go .arrow{transition:transform .2s var(--ease)}
 .btn.go:hover .arrow{transform:translateX(3px)}
@@ -571,11 +599,12 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   @page{margin:16mm}
 }
 </style>
+<!-- @napkin:agent-figures -->
 </head>
 <body>
 <header class="top no-print" role="banner">
   <div class="top-in">
-    <div class="apptitle">Research Tool</div>
+    <div class="ident"><svg viewBox="0 0 44 44" aria-hidden="true"><circle fill="currentColor" cx="22" cy="12" r="5"/><circle fill="currentColor" cx="12" cy="32" r="5"/><circle fill="currentColor" cx="32" cy="32" r="5"/><rect fill="currentColor" x="20.7" y="15" width="2.6" height="8"/><rect fill="currentColor" x="10.7" y="21.5" width="22.6" height="2.6"/><rect fill="currentColor" x="10.7" y="21.5" width="2.6" height="7"/><rect fill="currentColor" x="30.7" y="21.5" width="2.6" height="7"/></svg>Research Tool</div>
     <nav class="nav" aria-label="Sections">
       <a href="#report" id="nav-report-a" hidden>Report</a>
       <a href="#start" id="nav-start-a" hidden>Request</a>
@@ -598,7 +627,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
 
 <main id="doc">
   <div id="notices"></div>
-  <div class="hero" id="hero"></div>
+  <div class="hero band" id="hero"></div>
   <section class="report" id="report" aria-labelledby="h-report" hidden></section>
   <section class="start" id="start" aria-label="How this campaign started: your request, its progress and your answers" hidden></section>
   <div id="gates"></div>
@@ -1710,10 +1739,11 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     {k:'report',     l:'Report',           who:'Report'}
   ];
   var STAGE={}; STAGES.forEach(function(S,i){ S.i=i; STAGE[S.k]=S; });
-  // Static copies of the shell's approved figures (app/src/studio/AgentFigure.tsx),
-  // one per stage: extract, positioning, judge, market_structure, synthesis, drafter.
-  var FIG={"extract":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.697\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M24 9 L40 41 L8 41Z\" fill=\"var(--plan)\"></path><path class=\"af-fold\" d=\"M24 9 L40 41 L24 41Z\"></path><g class=\"af-emblem\"><g stroke=\"var(--plan-eye)\" stroke-width=\"1.5\" stroke-linecap=\"round\" fill=\"none\"><path d=\"M19.5 31.9 h9\"></path><path d=\"M19.5 35.1 h5.5\"></path></g></g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.6\" y=\"23\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"23\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","identify":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.841\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M24 3 L38.4 23.2 L24 43.4 L9.6 23.2Z\" fill=\"var(--produce)\"></path><path class=\"af-fold\" d=\"M24 3 L38.4 23.2 L24 43.4Z\"></path><path class=\"af-fold\" d=\"M9.6 23.2 L24 23.2 L24 43.4Z\"></path><g class=\"af-emblem\"><g><circle cx=\"24\" cy=\"28.6\" r=\"4.2\" stroke=\"var(--produce-eye)\" stroke-width=\"1.2\" stroke-linecap=\"round\" fill=\"none\"></circle><circle cx=\"24\" cy=\"28.6\" r=\"1.3\" fill=\"var(--produce-eye)\"></circle></g></g><g class=\"af-eyes\" fill=\"var(--produce-eye)\"><rect x=\"19.6\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","select":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.167\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"33\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"33\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M13 14 H31 V36 H13Z\" fill=\"var(--plan)\"></path><path d=\"M31 14 L36 11.5 V33.5 L31 36Z\" fill=\"var(--plan)\"></path><path d=\"M13 14 L18 11.5 H36 L31 14Z\" fill=\"var(--plan)\"></path><path class=\"af-fold\" d=\"M31 14 L36 11.5 V33.5 L31 36Z\"></path><path class=\"af-light\" d=\"M13 14 L18 11.5 H36 L31 14Z\"></path><g class=\"af-emblem\"><path d=\"M20.6 28.5 l2.3 2.3 l4.5 -4.6\" stroke=\"var(--plan-eye)\" stroke-width=\"1.7\" stroke-linecap=\"round\" fill=\"none\"></path></g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.6\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","research":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.496\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"33\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"33\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M13 14 H31 V36 H13Z\" fill=\"var(--produce)\"></path><path d=\"M31 14 L36 11.5 V33.5 L31 36Z\" fill=\"var(--produce)\"></path><path d=\"M13 14 L18 11.5 H36 L31 14Z\" fill=\"var(--produce)\"></path><path class=\"af-fold\" d=\"M31 14 L36 11.5 V33.5 L31 36Z\"></path><path class=\"af-light\" d=\"M13 14 L18 11.5 H36 L31 14Z\"></path><g class=\"af-emblem\"><g fill=\"var(--produce-eye)\"><rect x=\"19.4\" y=\"28.5\" width=\"2.2\" height=\"3\" rx=\"0.5\"></rect><rect x=\"22.799999999999997\" y=\"26.3\" width=\"2.2\" height=\"5.2\" rx=\"0.5\"></rect><rect x=\"26.2\" y=\"24.1\" width=\"2.2\" height=\"7.4\" rx=\"0.5\"></rect></g></g><g class=\"af-eyes\" fill=\"var(--produce-eye)\"><rect x=\"19.6\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18.5\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","synthesise":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.572\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M24 3 L38.4 23.2 L24 43.4 L9.6 23.2Z\" fill=\"var(--plan)\"></path><path class=\"af-fold\" d=\"M24 3 L38.4 23.2 L24 43.4Z\"></path><path class=\"af-fold\" d=\"M9.6 23.2 L24 23.2 L24 43.4Z\"></path><g class=\"af-emblem\"><path d=\"M24 24 Q24.6 27.4 28 28 Q24.6 28.6 24 32 Q23.4 28.6 20 28 Q23.4 27.4 24 24Z\" fill=\"var(--plan-eye)\"></path></g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.6\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"18\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>","report":"<svg class=\"agent-figure\" viewBox=\"0 0 48 64\" aria-hidden=\"true\" focusable=\"false\" style=\"--af-phase:0.038\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"></ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"40\" x2=\"19.5\" y2=\"58\"></line><rect x=\"18\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"40\" x2=\"28.5\" y2=\"58\"></line><rect x=\"27\" y=\"57\" width=\"4.8\" height=\"2.2\" rx=\"1.1\"></rect></g><g class=\"af-body\"><path d=\"M31.71 18.81 A12 12 0 1 0 28.1 39.28\" fill=\"none\" stroke=\"var(--learn)\" stroke-width=\"9.6\"></path><path d=\"M30.17 20.65 A9.6 9.6 0 1 0 27.28 37.02\" fill=\"none\" stroke=\"rgba(0,0,0,.14)\" stroke-width=\"4.8\"></path><g class=\"af-emblem\"></g><g class=\"af-eyes\" fill=\"var(--learn-eye)\"><rect x=\"19.6\" y=\"14\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect><rect x=\"26\" y=\"14\" width=\"2.4\" height=\"4\" rx=\"1.2\"></rect></g></g></svg>"};
-  function fig(stage){ return FIG[stage]||FIG.extract||''; }
+  // Each stage is drawn by one of the shell's approved figures, from the
+  // shared snippet the packer inlines (agentFigure; see <head>).
+  var STAGE_AGENT={extract:'extract', identify:'positioning', select:'judge', research:'market_structure', synthesise:'synthesis', report:'drafter'};
+  var IDENT_MARK='<svg viewBox="0 0 44 44" aria-hidden="true"><circle fill="currentColor" cx="22" cy="12" r="5"/><circle fill="currentColor" cx="12" cy="32" r="5"/><circle fill="currentColor" cx="32" cy="32" r="5"/><rect fill="currentColor" x="20.7" y="15" width="2.6" height="8"/><rect fill="currentColor" x="10.7" y="21.5" width="22.6" height="2.6"/><rect fill="currentColor" x="10.7" y="21.5" width="2.6" height="7"/><rect fill="currentColor" x="30.7" y="21.5" width="2.6" height="7"/></svg>';
+  function fig(stage, state){ return typeof agentFigure==='function'?agentFigure(STAGE_AGENT[stage]||'extract', {state:state, decorative:true}):''; }
   ICON.clip='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M10.5 4.5 5.8 9.2a1.6 1.6 0 0 0 2.3 2.3l4.9-4.9a3 3 0 0 0-4.3-4.3L3.8 7.2a4.4 4.4 0 0 0 6.2 6.2l3.5-3.5"/></svg>';
   ICON.send='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg>';
   ICON.doc='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M4 1.8h5.2L12.5 5v9.2H4Z M9 1.8V5h3.5"/></svg>';
@@ -1974,7 +2004,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     } else {
       var ln=lastNarration(T); stage=ln?ln.stage:'extract'; line='The job is not running here.'; sub=ln?ln.text:'';
     }
-    h+='<div class="nowline'+cls+'" role="status" aria-live="polite">'+fig(stage)+'<div class="t"><b>'+esc(line)+'</b>'+(sub?'<span>'+esc(sub)+'</span>':'')+'</div></div>';
+    h+='<div class="nowline'+cls+'" role="status" aria-live="polite">'+fig(stage, cls===' working'?'working':cls===' wait'?'needs-you':'idle')+'<div class="t"><b>'+esc(line)+'</b>'+(sub?'<span>'+esc(sub)+'</span>':'')+'</div></div>';
     if(j&&active&&j.applied===false&&j.reason&&j.reason!=='already applied') h+='<div class="flag amber"><div>The host did not apply the last change: '+esc(j.reason)+'</div></div>';
     if(j&&j.id&&j.error&&j.state!=='failed') h+='<div class="no-print" style="margin-top:10px"><button type="button" class="btn sm" data-act="chat-poll">Check again</button></div>';
     if(started&&!anyAgent&&!j&&!CHAT.sending) h+='<div class="no-print" style="margin-top:10px"><button type="button" class="btn sm primary" data-act="chat-retry">Start the research</button></div>';
@@ -1992,7 +2022,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var q=Q.q, ans=answerTo(q.id, T), busy=CHAT.answering===q.id, hid='qh-'+slug(q.id);
     var ctx=String(Q.text||'').replace(q.text||'\u0000','').trim();
     var h='<div class="fcard qcard no-print" id="qcard" tabindex="-1" role="group" aria-labelledby="'+hid+'" data-q="'+esc(q.id)+'">'
-      +'<div class="qc-who">'+fig(Q.stage)+'<span><b>'+esc(stageWho(Q.stage))+'</b> asks</span><span class="pill alert"><span class="d"></span>research waits for your answer</span></div>'
+      +'<div class="qc-who">'+fig(Q.stage,'needs-you')+'<span><b>'+esc(stageWho(Q.stage))+'</b> asks</span><span class="pill alert"><span class="d"></span>research waits for your answer</span></div>'
       +'<h3 class="qc-h" id="'+hid+'">'+esc(q.text)+'</h3>'
       +(ctx?'<p class="qc-ctx">'+esc(ctx)+'</p>':'');
     if(ans&&!busy){
@@ -2041,12 +2071,16 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       +'<div class="in"><label for="cmp-who">Your user id</label><span class="mono">human:</span><input type="text" id="cmp-who" value="'+esc(CHAT.who)+'" placeholder="e.g. u_aoife" autocomplete="username"></div>'
       +'<p>An attached file tells the host who you are. Without one, the record needs your id.</p></details>';
   }
+  // What each stage's agent does, in a line, for the intake band.
+  var STAGE_DOES={extract:'reads your prompt and what you attach', identify:'works out the brand and the category', select:'picks the lenses the ask calls for',
+    research:'researches each lens, market by market', synthesise:'turns pinned facts into findings', report:'writes the report, every claim cited'};
   function intakeHtml(){
     return '<div class="intake">'
-      +'<div><div class="eyebrow">Campaign research</div><h1 class="h1">Start a campaign.</h1></div>'
-      +'<p class="lede">Say what the client needs and drop in what they sent: the brief, the email, the deck. The agent works out the brand and the category, asks you when it cannot tell, researches the lenses your prompt calls for, and comes back with a report in which every claim cites a pinned fact or a finding.</p>'
-      +composerHtml()+signAsHtml()
-      +'<div class="figs" aria-hidden="true">'+STAGES.map(function(S){ return '<span title="'+esc(S.l)+'">'+fig(S.k)+'</span>'; }).join('')+'<span class="muted" style="font-size:12px;margin-left:6px">read the ask · brand and category · pick the lenses · research · synthesise · report</span></div>'
+      +'<div class="band intro"><div class="ident">'+IDENT_MARK+'Research Tool<span class="kind">Plan</span></div>'
+      +'<h1 class="h1">Start a campaign.</h1>'
+      +'<p class="lede">Say what the client needs and drop in what they sent: the brief, the email, the deck. The agents work out the brand and the category, ask you when they cannot tell, research the lenses your prompt calls for, and come back with a report in which every claim cites a pinned fact or a finding.</p>'
+      +'<div class="crew" aria-label="Who works on it">'+STAGES.map(function(S){ return '<div class="who">'+fig(S.k)+'<b>'+esc(S.who)+'</b><span>'+esc(STAGE_DOES[S.k]||S.l)+'</span></div>'; }).join('')+'</div></div>'
+      +'<div class="ask"><div class="eyebrow">The ask</div>'+composerHtml()+signAsHtml()+'</div>'
       +'</div>';
   }
   function renderChat(){

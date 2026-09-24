@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44">
+  <!-- Brief Maker's mark: a folded sheet with the brief's lines on it. One
+       colour on transparent: the home screen paints it in the Plan zone. -->
+  <path fill="black" fill-rule="evenodd" d="M12 8.5h14.2l5.8 5.8v21.2H12z M16.5 18h11v2.6h-11z M16.5 23h11v2.6h-11z M16.5 28h7v2.6h-7z"/>
+  <path fill="black" opacity="0.5" d="M27.4 7.6 33 13.2h-5.6z"/>
+</svg>

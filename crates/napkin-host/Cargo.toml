@@ -15,6 +15,8 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 # Timestamps on the decisions and projection a middleware change writes.
 chrono = { workspace = true }
+# An app's icon member, handed to the home screen inline as a data: URI.
+base64 = { workspace = true }
 
 # Everything below is native-only. A browser build drops all of it: there is no
 # filesystem to write a temp file to, no process to spawn a renderer in, and the

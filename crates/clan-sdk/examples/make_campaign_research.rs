@@ -33,6 +33,9 @@ use clan_sdk::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "shared/app_ui.rs"]
+mod app_ui;
+
 const APP_ID: &str = "ie.napkin.campaign-research";
 const PIPELINE_PATH: &str = "app/pipeline.yaml";
 const FACTS_PATH: &str = "shared/facts.yaml";
@@ -91,6 +94,7 @@ fn content_type(path: &str) -> &'static str {
     match Path::new(path).extension().and_then(|e| e.to_str()) {
         Some("yaml") => "application/yaml",
         Some("json") => "application/json",
+        Some("svg") => "image/svg+xml",
         _ => "text/plain",
     }
 }
@@ -143,7 +147,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "campaign-research.example.clan".to_string());
 
     let schema = fs::read_to_string(dir.join("schema.json"))?;
-    let index_html = fs::read_to_string(dir.join("index.html"))?;
+    // The agent figures are inlined at build (one snippet, both apps).
+    let index_html = app_ui::inline_figures(
+        &dir.join(".."),
+        &fs::read_to_string(dir.join("index.html"))?,
+    )?;
     let requirements = fs::read_to_string(dir.join("agent/requirements.yaml"))?;
     let context = fs::read_to_string(dir.join("context.md"))?;
 
@@ -174,6 +182,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         register(&mut builder, id, path, role, bytes);
     }
+    // The mark the home screen shows (app.icon names this member).
+    register(
+        &mut builder,
+        "app-icon",
+        app_ui::ICON_PATH,
+        "app-icon",
+        app_ui::icon_svg(&dir)?,
+    );
     let clan = ClanFile::from_bytes(builder.build()?)?;
 
     // 5. Stamp the app block and flip to a template.
@@ -182,8 +198,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         AppInfo {
             name: "Research Tool".into(),
             app_id: APP_ID.into(),
-            version: "0.1.0".into(),
-            icon: None,
+            // 0.2: the Plan-zone identity; figures from the shared snippet.
+            version: "0.2.0".into(),
+            icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],

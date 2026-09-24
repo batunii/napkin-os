@@ -71,11 +71,43 @@ pub fn scan_apps(store: &dyn DocStore) -> Vec<InstalledApp> {
                 name: a.name.clone(),
                 version: a.version.clone(),
                 path: id.to_string(),
-                icon: a.icon.clone(),
+                icon: displayable_icon(&clan, a.icon.as_deref()),
             });
         }
     }
     out
+}
+
+/// What a page can show for an app's icon. The manifest names an archive
+/// member (spec §28), which no page can fetch into, so an image member is
+/// handed over inline as a `data:` URI; a `data:` or http(s) value passes
+/// through; anything else is dropped (the home screen falls back to the
+/// app's initial). Capped, so a listing never carries a large picture.
+pub fn displayable_icon(clan: &ClanFile, icon: Option<&str>) -> Option<String> {
+    use base64::Engine as _;
+    const MAX_ICON_BYTES: usize = 64 * 1024;
+    let icon = icon?.trim();
+    if icon.starts_with("data:image/")
+        || icon.starts_with("https://")
+        || icon.starts_with("http://")
+    {
+        return Some(icon.to_string());
+    }
+    let ext = icon.rsplit('.').next()?.to_ascii_lowercase();
+    let media = match ext.as_str() {
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => return None,
+    };
+    clan.manifest().file_by_path(icon)?;
+    let bytes = clan.read_entry(icon).ok()?;
+    if bytes.len() > MAX_ICON_BYTES {
+        return None;
+    }
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Some(format!("data:{media};base64,{b64}"))
 }
 
 /// Recent document instances, newest first.
@@ -132,7 +164,7 @@ pub fn install_change(store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<(Insta
             name: a.name,
             version: a.version,
             path: dest.to_string(),
-            icon: a.icon,
+            icon: displayable_icon(&clan, a.icon.as_deref()),
         },
         change,
     ))
@@ -220,7 +252,7 @@ pub fn spinoff_targets(store: &dyn DocStore, source_app_id: Option<&str>) -> Vec
             app_id: app.app_id.clone(),
             name: app.name.clone(),
             version: app.version.clone(),
-            icon: app.icon.clone(),
+            icon: displayable_icon(&clan, app.icon.as_deref()),
             map: spec.map.clone(),
         });
     }
@@ -522,6 +554,62 @@ mod tests {
                 .collect(),
             pin_source_decisions: true,
         }
+    }
+
+    /// An app whose manifest names an icon member, the way the packers write one.
+    fn template_with_icon(icon_path: &str, bytes: &[u8]) -> Vec<u8> {
+        let base = blank("Iconic");
+        let mut b = ClanBuilder::new(base.manifest().clone());
+        for (path, data) in base.read_all_entries().unwrap() {
+            b.add_entry(path, data);
+        }
+        b.add_entry(icon_path, bytes.to_vec());
+        b.manifest_mut().files.push(clan_sdk::FileEntry {
+            id: "app-icon".into(),
+            path: icon_path.into(),
+            role: "app-icon".into(),
+            content_type: "image/svg+xml".into(),
+            priority: None,
+            sha256: None,
+        });
+        let clan = ClanFile::from_bytes(b.build().unwrap()).unwrap();
+        let mut info = app_info("Iconic", "ie.napkin.iconic", None);
+        info.icon = Some(icon_path.into());
+        make_template(&clan, info, MtOpts::default()).unwrap()
+    }
+
+    #[test]
+    fn an_icon_member_is_listed_inline_for_the_home_screen() {
+        use base64::Engine as _;
+        let store = MemStore::default();
+        let svg = b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'><circle cx='22' cy='22' r='9'/></svg>";
+        let installed = install_app(&store, template_with_icon("app/icon.svg", svg)).unwrap();
+        let listed = scan_apps(&store);
+        let icon = listed[0].icon.as_deref().expect("the icon is listed");
+        let b64 = icon
+            .strip_prefix("data:image/svg+xml;base64,")
+            .expect("as a data: URI");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .unwrap(),
+            svg
+        );
+        // Install says the same as the listing.
+        assert_eq!(installed.icon.as_deref(), Some(icon));
+    }
+
+    #[test]
+    fn an_icon_that_is_not_an_image_member_is_not_listed() {
+        let clan = ClanFile::from_bytes(template_with_icon("app/icon.svg", b"<svg/>")).unwrap();
+        // Missing member, wrong kind, passthrough.
+        assert_eq!(displayable_icon(&clan, Some("app/missing.svg")), None);
+        assert_eq!(displayable_icon(&clan, Some("human/index.html")), None);
+        assert_eq!(displayable_icon(&clan, None), None);
+        assert_eq!(
+            displayable_icon(&clan, Some("https://example.com/i.png")).as_deref(),
+            Some("https://example.com/i.png")
+        );
     }
 
     #[test]
