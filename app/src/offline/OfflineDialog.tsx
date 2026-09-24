@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import OfflineList from './OfflineList'
+import { LogoSpinner } from '../brand/LogoSpinner'
 import { useOfflineCopies } from './useOfflineCopies'
 import type { OfflineCopy } from './store'
 import '../components/chrome.css'
@@ -33,6 +34,7 @@ export default function OfflineDialog({ onOpen, onClose }: Props) {
           Copies kept here open with no network. Each is a snapshot of the document when you saved
           it: changes made to an offline copy are not sent back to the studio.
         </p>
+        {!copies && <LogoSpinner size="sm" label="Reading offline copies…" />}
         {copies && <OfflineList copies={copies} onOpen={copy => { onClose(); onOpen(copy) }} />}
         <div className="ch-actions">
           <button className="ch-btn ch-btn-quiet" onClick={onClose}>Close</button>

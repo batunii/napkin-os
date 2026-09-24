@@ -452,4 +452,6 @@
   .ch-side-left { left: 0; width: min(300px, 86vw); }
   .ch-side-right { right: 0; width: min(360px, 92vw); }
   .ch-toast { right: 16px; bottom: 16px; }
+  /* The right end of the footer holds the decisions toggle (DecisionPanel.css). */
+  .ch-footer { justify-content: flex-start; padding-left: 14px; }
 }
