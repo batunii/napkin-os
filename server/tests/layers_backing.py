@@ -36,7 +36,15 @@ import threading
 
 from napkin.util import iso, slug, uid
 from napkin.layers import origin_uri
-from taxonomy_seed import TREE
+from pathlib import Path
+
+# The taxonomy seed both the mock backend and the real layers service seed from
+# (peripherals.md §4.8): docs/contracts/peripherals/taxonomy.json.
+_TAX = json.loads((Path(__file__).resolve().parents[2] / "docs" / "contracts" / "peripherals" /
+                   "taxonomy.json").read_text())
+TREE = [(v["code"], v["name"], v["aliases"],
+         [(l["code"], l["name"], l["aliases"], l["regulated"], l["provisional"]) for l in v["leaves"]])
+        for v in _TAX["verticals"]]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS verticals(code TEXT PRIMARY KEY, name TEXT NOT NULL, aliases TEXT NOT NULL,

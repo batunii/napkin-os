@@ -1,0 +1,169 @@
+{
+  "taxonomy_version": "planner-research-taxonomy/0.1+derived",
+  "source": "Planner Research Taxonomy (category tree v0.1): 18 verticals / 108 leaves, plus provisional leaves derived where the taxonomy lists none a planner needs. Codes are <vertical>.<leaf> (Contract 3 §2.3). `regulated` marks leaves with their own regulatory code; aliases are the words a person types for the leaf. Moved from server/napkin/layers/taxonomy.py (contract 5 §4.8): the mock backend and the real layers service both seed from this file.",
+  "verticals": [
+    {"code": "automotive", "name": "Automotive", "aliases": ["cars", "motor", "motoring", "auto", "automobile", "vehicles"],
+      "leaves": [
+        {"code": "mass_market", "name": "Mass market new cars", "aliases": ["new cars", "mass market cars"], "regulated": false, "provisional": false},
+        {"code": "premium_luxury", "name": "Premium and luxury cars", "aliases": ["premium cars", "luxury cars", "premium", "luxury"], "regulated": false, "provisional": false},
+        {"code": "ev_charging", "name": "EV and charging", "aliases": ["ev", "evs", "electric vehicles", "electric vehicle", "electric cars", "electric car", "bev", "ev charging", "charging"], "regulated": false, "provisional": false},
+        {"code": "hybrid", "name": "Hybrid and plug-in hybrid cars", "aliases": ["hybrid", "hybrids", "phev", "plug-in hybrid", "plug in hybrid", "hybrid cars", "self-charging hybrid"], "regulated": false, "provisional": true},
+        {"code": "used_dealer", "name": "Used cars and dealer groups", "aliases": ["used cars", "dealers", "dealer groups"], "regulated": false, "provisional": false},
+        {"code": "finance_leasing", "name": "Car finance and leasing", "aliases": ["car finance", "leasing", "pcp"], "regulated": true, "provisional": false},
+        {"code": "aftermarket", "name": "Aftermarket, tyres, servicing", "aliases": ["tyres", "servicing", "aftermarket"], "regulated": false, "provisional": false},
+        {"code": "commercial", "name": "Vans and commercial", "aliases": ["vans", "commercial vehicles", "lcv"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "alcohol", "name": "Alcohol", "aliases": ["drinks", "alcoholic drinks", "booze"],
+      "leaves": [
+        {"code": "beer_stout", "name": "Beer and stout", "aliases": ["beer", "stout", "lager", "ale"], "regulated": true, "provisional": false},
+        {"code": "cider", "name": "Cider", "aliases": ["cider", "ciders"], "regulated": true, "provisional": false},
+        {"code": "irish_whiskey", "name": "Irish whiskey", "aliases": ["whiskey", "whisky"], "regulated": true, "provisional": false},
+        {"code": "white_spirits", "name": "Gin, vodka, white spirits", "aliases": ["gin", "vodka", "white spirits", "spirits", "rum"], "regulated": true, "provisional": false},
+        {"code": "wine", "name": "Wine", "aliases": ["wine"], "regulated": true, "provisional": false},
+        {"code": "rtd_seltzer", "name": "RTD and hard seltzer", "aliases": ["rtd", "hard seltzer", "ready to drink"], "regulated": true, "provisional": false},
+        {"code": "low_no", "name": "Low and no alcohol", "aliases": ["low alcohol", "no alcohol", "alcohol free", "alcohol-free", "non-alcoholic", "0.0", "no and low"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "soft_drinks", "name": "Soft drinks and hot beverages", "aliases": ["soft drinks", "beverages", "non-alcoholic drinks"],
+      "leaves": [
+        {"code": "carbonates", "name": "Carbonates", "aliases": ["carbonates", "fizzy drinks", "soda", "sodas", "cola", "tonic", "mixers", "lemonade"], "regulated": false, "provisional": false},
+        {"code": "energy_drinks", "name": "Energy drinks", "aliases": ["energy drinks", "energy drink"], "regulated": true, "provisional": false},
+        {"code": "water", "name": "Water", "aliases": ["water", "bottled water", "sparkling water"], "regulated": false, "provisional": false},
+        {"code": "juice_smoothies", "name": "Juice and smoothies", "aliases": ["juice", "smoothies"], "regulated": false, "provisional": false},
+        {"code": "tea_coffee", "name": "Tea and coffee at home", "aliases": ["tea", "coffee"], "regulated": false, "provisional": false},
+        {"code": "milks", "name": "Dairy and plant milks", "aliases": ["milk", "plant milk", "oat milk"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "food", "name": "Food and grocery brands", "aliases": ["food", "grocery brands", "fmcg food"],
+      "leaves": [
+        {"code": "snacks_confectionery", "name": "Snacks and confectionery", "aliases": ["snacks", "crisps", "chocolate", "confectionery", "sweets"], "regulated": true, "provisional": false},
+        {"code": "dairy", "name": "Dairy, cheese, butter", "aliases": ["dairy", "cheese", "butter", "yoghurt"], "regulated": false, "provisional": false},
+        {"code": "meat_plant_based", "name": "Meat and plant-based", "aliases": ["meat", "plant-based", "plant based"], "regulated": false, "provisional": false},
+        {"code": "ready_meals_frozen", "name": "Ready meals and frozen", "aliases": ["ready meals", "frozen food"], "regulated": false, "provisional": false},
+        {"code": "bakery_cereals", "name": "Bakery and cereals", "aliases": ["bread", "bakery", "cereal", "cereals"], "regulated": false, "provisional": false},
+        {"code": "baby_infant", "name": "Baby and infant", "aliases": ["baby food", "infant formula"], "regulated": true, "provisional": false},
+        {"code": "pet_food", "name": "Pet food", "aliases": ["pet food", "dog food", "cat food"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "household", "name": "Household and personal care", "aliases": ["household", "personal care"],
+      "leaves": [
+        {"code": "laundry_cleaning", "name": "Laundry and cleaning", "aliases": ["laundry", "cleaning", "detergent"], "regulated": false, "provisional": false},
+        {"code": "paper_tissue", "name": "Paper and tissue", "aliases": ["toilet paper", "tissue"], "regulated": false, "provisional": false},
+        {"code": "oral_care", "name": "Oral care", "aliases": ["toothpaste", "oral care"], "regulated": false, "provisional": false},
+        {"code": "skincare_body", "name": "Skincare and body", "aliases": ["skincare", "body care"], "regulated": false, "provisional": false},
+        {"code": "haircare", "name": "Haircare", "aliases": ["shampoo", "haircare"], "regulated": false, "provisional": false},
+        {"code": "deodorant_shaving", "name": "Deodorant and shaving", "aliases": ["deodorant", "shaving", "razors"], "regulated": false, "provisional": false},
+        {"code": "feminine_incontinence", "name": "Feminine and incontinence care", "aliases": ["feminine care", "incontinence"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "beauty_fashion", "name": "Beauty and fashion", "aliases": ["beauty", "fashion"],
+      "leaves": [
+        {"code": "cosmetics_fragrance", "name": "Cosmetics and fragrance", "aliases": ["cosmetics", "make-up", "makeup", "fragrance", "perfume"], "regulated": true, "provisional": false},
+        {"code": "high_street_fashion", "name": "High street fashion", "aliases": ["high street", "clothing"], "regulated": false, "provisional": false},
+        {"code": "luxury_designer", "name": "Luxury and designer", "aliases": ["designer", "luxury fashion"], "regulated": false, "provisional": false},
+        {"code": "sportswear", "name": "Sportswear and athleisure", "aliases": ["sportswear", "athleisure"], "regulated": false, "provisional": false},
+        {"code": "jewellery_watches", "name": "Jewellery and watches", "aliases": ["jewellery", "watches"], "regulated": false, "provisional": false},
+        {"code": "aesthetic_procedures", "name": "Aesthetic and cosmetic procedures", "aliases": ["aesthetics", "botox", "cosmetic surgery"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "retail", "name": "Retail", "aliases": ["retailers", "shops"],
+      "leaves": [
+        {"code": "grocery_multiples", "name": "Grocery multiples", "aliases": ["supermarkets", "grocery", "grocers"], "regulated": false, "provisional": false},
+        {"code": "discounters", "name": "Discounters", "aliases": ["discounters", "discount retail"], "regulated": false, "provisional": false},
+        {"code": "convenience_forecourt", "name": "Convenience and forecourt", "aliases": ["convenience stores", "forecourt"], "regulated": false, "provisional": false},
+        {"code": "department_stores", "name": "Department stores", "aliases": ["department stores"], "regulated": false, "provisional": false},
+        {"code": "diy_home", "name": "DIY, garden, homeware", "aliases": ["diy", "garden centres", "homeware retail"], "regulated": false, "provisional": false},
+        {"code": "ecommerce", "name": "E-commerce and marketplaces", "aliases": ["e-commerce", "ecommerce", "online retail", "marketplaces"], "regulated": false, "provisional": false},
+        {"code": "retail_media", "name": "Retail media networks", "aliases": ["retail media"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "qsr", "name": "QSR and food service", "aliases": ["qsr", "food service", "restaurants"],
+      "leaves": [
+        {"code": "fast_food", "name": "Fast food", "aliases": ["fast food", "burgers"], "regulated": true, "provisional": false},
+        {"code": "coffee_chains", "name": "Coffee chains", "aliases": ["coffee shops", "coffee chains"], "regulated": false, "provisional": false},
+        {"code": "casual_dining", "name": "Casual dining", "aliases": ["casual dining"], "regulated": false, "provisional": false},
+        {"code": "delivery_platforms", "name": "Delivery platforms", "aliases": ["food delivery", "delivery apps"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "finance", "name": "Financial services", "aliases": ["financial services", "finance", "banks", "banking"],
+      "leaves": [
+        {"code": "banking", "name": "Current accounts and banking", "aliases": ["current accounts", "bank", "banking"], "regulated": true, "provisional": false},
+        {"code": "cards_payments", "name": "Cards, payments, BNPL", "aliases": ["cards", "payments", "bnpl", "credit cards"], "regulated": true, "provisional": false},
+        {"code": "mortgages", "name": "Mortgages", "aliases": ["mortgage", "mortgages"], "regulated": true, "provisional": false},
+        {"code": "motor_home_insurance", "name": "Motor and home insurance", "aliases": ["car insurance", "home insurance", "motor insurance"], "regulated": true, "provisional": false},
+        {"code": "life_health_protection", "name": "Life, health, income protection", "aliases": ["life insurance", "income protection"], "regulated": true, "provisional": false},
+        {"code": "pensions_investments", "name": "Pensions and investments", "aliases": ["pensions", "investments"], "regulated": true, "provisional": false},
+        {"code": "fintech_crypto", "name": "Fintech and crypto", "aliases": ["fintech", "crypto"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "telco", "name": "Telco and connectivity", "aliases": ["telco", "telecoms", "connectivity"],
+      "leaves": [
+        {"code": "mobile_networks", "name": "Mobile networks", "aliases": ["mobile", "mobile networks", "phone networks"], "regulated": true, "provisional": false},
+        {"code": "broadband_home", "name": "Broadband and home", "aliases": ["broadband", "fibre"], "regulated": true, "provisional": false},
+        {"code": "tv_bundles", "name": "TV bundles and streaming add-ons", "aliases": ["tv bundles", "pay tv"], "regulated": true, "provisional": false},
+        {"code": "handsets_devices", "name": "Handsets and devices", "aliases": ["handsets", "phones"], "regulated": false, "provisional": false},
+        {"code": "b2b_connectivity", "name": "B2B connectivity and cloud", "aliases": ["b2b connectivity"], "regulated": false, "provisional": false},
+        {"code": "mvnos", "name": "MVNOs and challengers", "aliases": ["mvno", "mvnos"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "energy", "name": "Energy and utilities", "aliases": ["energy", "utilities"],
+      "leaves": [
+        {"code": "electricity_gas", "name": "Electricity and gas supply", "aliases": ["electricity", "gas", "energy supply"], "regulated": true, "provisional": false},
+        {"code": "solar_retrofit", "name": "Solar, heat pumps, retrofit", "aliases": ["solar", "heat pumps", "retrofit"], "regulated": true, "provisional": false},
+        {"code": "ev_charging_networks", "name": "EV charging networks", "aliases": ["charging networks", "public chargers", "charge points"], "regulated": true, "provisional": false},
+        {"code": "green_claims", "name": "Green claims and sustainability", "aliases": ["green claims", "sustainability"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "technology", "name": "Technology and electronics", "aliases": ["technology", "electronics", "tech"],
+      "leaves": [
+        {"code": "smartphones_wearables", "name": "Smartphones and wearables", "aliases": ["smartphones", "wearables"], "regulated": false, "provisional": false},
+        {"code": "home_electronics", "name": "TV, audio, home electronics", "aliases": ["tvs", "audio", "home electronics"], "regulated": false, "provisional": false},
+        {"code": "computing", "name": "Computing and peripherals", "aliases": ["computers", "laptops", "computing"], "regulated": false, "provisional": false},
+        {"code": "gaming", "name": "Gaming consoles and titles", "aliases": ["gaming", "video games", "consoles"], "regulated": true, "provisional": false},
+        {"code": "smart_home", "name": "Smart home", "aliases": ["smart home"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "software", "name": "Software, apps and AI", "aliases": ["software", "apps", "ai"],
+      "leaves": [
+        {"code": "consumer_apps", "name": "Consumer apps and subscriptions", "aliases": ["consumer apps", "subscriptions"], "regulated": false, "provisional": false},
+        {"code": "b2b_saas", "name": "B2B SaaS and cloud", "aliases": ["saas", "b2b software", "cloud"], "regulated": false, "provisional": false},
+        {"code": "ai_products", "name": "AI products and claims", "aliases": ["ai products", "ai tools"], "regulated": true, "provisional": false},
+        {"code": "developer_infra", "name": "Developer and infrastructure", "aliases": ["developer tools", "infrastructure"], "regulated": false, "provisional": false},
+        {"code": "cybersecurity", "name": "Cybersecurity", "aliases": ["cybersecurity", "security software"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "media", "name": "Media and entertainment", "aliases": ["media", "entertainment"],
+      "leaves": [
+        {"code": "streaming_broadcast", "name": "Streaming and broadcast", "aliases": ["streaming", "broadcast", "tv channels"], "regulated": false, "provisional": false},
+        {"code": "publishing_news", "name": "Publishing and news", "aliases": ["publishing", "news", "newspapers"], "regulated": false, "provisional": false},
+        {"code": "music_audio", "name": "Music and audio", "aliases": ["music", "podcasts"], "regulated": false, "provisional": false},
+        {"code": "cinema_film", "name": "Cinema and film", "aliases": ["cinema", "film", "movies"], "regulated": false, "provisional": false},
+        {"code": "live_events", "name": "Live events and festivals", "aliases": ["live events", "festivals", "concerts"], "regulated": false, "provisional": false},
+        {"code": "sport_sponsorship", "name": "Sport and sponsorship", "aliases": ["sport", "sponsorship"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "travel", "name": "Travel and hospitality", "aliases": ["travel", "hospitality", "tourism"],
+      "leaves": [
+        {"code": "airlines", "name": "Airlines", "aliases": ["airline", "airlines", "flights"], "regulated": true, "provisional": false},
+        {"code": "tourism_destinations", "name": "Tourism boards and destinations", "aliases": ["tourism boards", "destinations"], "regulated": false, "provisional": false},
+        {"code": "hotels_otas", "name": "Hotels and OTAs", "aliases": ["hotels", "ota", "booking sites"], "regulated": false, "provisional": false},
+        {"code": "ferries_rail_coach", "name": "Ferries, rail, coach", "aliases": ["ferries", "rail", "trains", "coach"], "regulated": false, "provisional": false},
+        {"code": "cruise_packages", "name": "Cruise and packages", "aliases": ["cruise", "package holidays"], "regulated": true, "provisional": false},
+        {"code": "travel_insurance_fx", "name": "Travel insurance and FX", "aliases": ["travel insurance", "fx", "currency exchange"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "health", "name": "Health and pharma", "aliases": ["health", "pharma", "healthcare"],
+      "leaves": [
+        {"code": "otc_medicines", "name": "OTC medicines", "aliases": ["otc", "over the counter medicines", "painkillers"], "regulated": true, "provisional": false},
+        {"code": "vitamins_supplements", "name": "Vitamins and supplements", "aliases": ["vitamins", "supplements"], "regulated": true, "provisional": false},
+        {"code": "private_health_insurance", "name": "Private health insurance", "aliases": ["health insurance"], "regulated": true, "provisional": false},
+        {"code": "hospitals_clinics", "name": "Hospitals, clinics, dental", "aliases": ["hospitals", "clinics", "dental"], "regulated": true, "provisional": false},
+        {"code": "prescription", "name": "Prescription (HCP only)", "aliases": ["prescription medicines"], "regulated": true, "provisional": false},
+        {"code": "public_health", "name": "Public health campaigns", "aliases": ["public health"], "regulated": true, "provisional": false},
+        {"code": "medical_devices_hearing", "name": "Medical devices and hearing", "aliases": ["medical devices", "hearing aids"], "regulated": true, "provisional": false}
+      ]},
+    {"code": "home_property", "name": "Home, property and construction", "aliases": ["property", "construction", "home"],
+      "leaves": [
+        {"code": "developers_agents", "name": "Developers and estate agents", "aliases": ["estate agents", "property developers"], "regulated": false, "provisional": false},
+        {"code": "property_portals", "name": "Property portals", "aliases": ["property portals"], "regulated": false, "provisional": false},
+        {"code": "furniture_homeware", "name": "Furniture and homeware", "aliases": ["furniture", "homeware"], "regulated": false, "provisional": false},
+        {"code": "building_materials", "name": "Building materials and trade", "aliases": ["building materials", "trade"], "regulated": false, "provisional": false},
+        {"code": "agri_rural", "name": "Agri and rural", "aliases": ["agri", "agriculture", "farming", "rural"], "regulated": false, "provisional": false}
+      ]},
+    {"code": "public", "name": "Public, charity, betting and education", "aliases": ["public sector", "charity", "education"],
+      "leaves": [
+        {"code": "government_agencies", "name": "Government and state agencies", "aliases": ["government", "state agencies"], "regulated": true, "provisional": false},
+        {"code": "political_referenda", "name": "Political and referenda", "aliases": ["political", "referendum", "elections"], "regulated": true, "provisional": false},
+        {"code": "charities_ngos", "name": "Charities and NGOs", "aliases": ["charities", "ngo", "ngos"], "regulated": false, "provisional": false},
+        {"code": "betting_gaming", "name": "Betting, gaming, lottery", "aliases": ["betting", "gambling", "lottery"], "regulated": true, "provisional": false},
+        {"code": "universities_colleges", "name": "Universities and colleges", "aliases": ["universities", "colleges"], "regulated": false, "provisional": false},
+        {"code": "recruitment_employer", "name": "Recruitment and employer brand", "aliases": ["recruitment", "employer brand"], "regulated": false, "provisional": false}
+      ]}
+  ]
+}

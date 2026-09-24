@@ -26,51 +26,25 @@ def src(uri, tier="primary"):
     return {"uri": uri, "tier": tier, "domain": uri.split("/")[2], "licence": "open"}
 
 
-def test_tree_seed(layers):
-    leaves = layers.leaves()
-    real = [l for l in leaves if not l["provisional"]]
-    assert len(real) == 108 and len({l["vertical"] for l in leaves}) == 18
-    codes = {l["code"] for l in leaves}
-    assert {"automotive.ev_charging", "automotive.hybrid"} <= codes
-    assert next(l for l in leaves if l["code"] == "automotive.hybrid")["provisional"]
+def test_protocol_methods_round_trip_through_the_client(layers):
+    """Each Layers method is one route; lookups that 404 come back as None.
+    (The store's own semantics are the layers service's, tested with it.)"""
+    assert any(l["code"] == "alcohol.cider" for l in layers.leaves())
     assert layers.vertical_of("automotive.hybrid")["name"] == "Automotive"
     assert layers.vertical_of("nope.nothing") is None  # 404 unknown_leaf -> None
-
-
-def test_find_maps_typed_names(layers):
-    assert layers.find("Automotive") == layers.vertical_of("automotive.hybrid")["leaves"]
-    assert layers.find("Ev hybrid") == ["automotive.ev_charging", "automotive.hybrid"]
     assert layers.find("cider") == ["alcohol.cider"]
-    assert layers.find("zzz") == []
-
-
-def test_append_is_append_only_with_supersession_and_contest(layers):
     s1 = layers.add_source(src("https://www.cso.ie/x"))
-    s2 = layers.add_source(src("https://www.simi.ie/x", "secondary"))
     assert layers.add_source(src("https://www.cso.ie/x")) == s1
     r1 = layers.append(fact(0.2, sources=[s1]), DEC)
-    assert r1["version"] == 1 and r1["status"] == "active" and r1["sources"] == [s1]
-    same = layers.append(fact(0.2, sources=[s2]), {**DEC, "id": "d_TEST000002"})  # corroboration
-    assert same["id"] == r1["id"] and set(same["sources"]) == {s1, s2}
-    newer = layers.append(fact(0.25, as_of="2026-06-30", sources=[s1]), DEC)
-    assert newer["version"] == 2 and newer["supersedes"] == r1["id"]
-    assert [r["id"] for r in layers.facts("category", "category/automotive.ev_charging")] == [newer["id"]]
-    older = layers.append(fact(0.3, as_of="2026-01-01", sources=[s2]), DEC)  # not newer: both contested
-    assert older["status"] == "contested"
-    assert {r["status"] for r in layers.facts("category", "category/automotive.ev_charging")} == {"contested"}
+    assert r1["version"] == 1 and r1["sources"] == [s1] and r1["origin"].endswith("market.bev_share@1")
+    assert layers.facts("category", "category/automotive.ev_charging", market="IE")[0]["id"] == r1["id"]
     assert layers.resolve(origin_uri("category", "category/automotive.ev_charging", "market.bev_share", 1))["value"] == 0.2
-    assert layers.resolve("fact://category/automotive.ev_charging/market.nothing@9") is None
-
-
-def test_brand_facts_are_scoped(store):
-    a = store.open({"org": "org/a", "brand": "brand/x"})
-    b = store.open({"org": "org/b", "brand": "brand/x"})
-    a.set_roster("brand/bmw", "BMW", ["automotive.ev_charging"], DEC, [])
-    assert a.roster("brand/bmw")["categories"] == ["automotive.ev_charging"]
-    assert b.roster("brand/bmw") is None
-    assert a.find_brands("bmw") == [("brand/bmw", "BMW")] and b.find_brands("bmw") == []
-    a.append(fact(0.2), DEC)  # category facts are shared
-    assert b.facts("category", "category/automotive.ev_charging")
+    assert layers.resolve("fact://category/automotive.ev_charging/market.nothing@9") is None  # 404 -> None
+    assert [s["id"] for s in layers.sources([s1, "src_unknown"])] == [s1]
+    assert layers.roster("brand/nobody") is None
+    layers.set_roster("brand/bmw", "BMW", ["automotive.ev_charging"], DEC, [s1])
+    assert layers.roster("brand/bmw")["categories"] == ["automotive.ev_charging"]
+    assert layers.find_brands("bmw") == [("brand/bmw", "BMW")]
 
 
 def test_scope_travels_in_headers_never_in_bodies(store):
