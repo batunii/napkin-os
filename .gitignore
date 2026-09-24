@@ -44,3 +44,6 @@ app/src/wasm/*
 
 # Templates packaged by `npm run apps` from app/templates/ — build output.
 app/public/apps/
+
+# Middleware runtime data (default knowledge-layers database)
+server/var/
