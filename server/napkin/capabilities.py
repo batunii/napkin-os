@@ -56,7 +56,9 @@ class ModelCap:
             raise ModelError("no model is configured", "server")
         attr = _attr_str(self._attr)
         kw = dict(usage=self._usage, attribution=attr, max_tokens=max_tokens, effort=effort, images=images,
-                  model=self._port.vision_model if vision else None)
+                  model=self._port.vision_model if vision else None,
+                  headers={"X-Napkin-Handler": str(self._attr.get("handler") or "-"),
+                           "X-Napkin-Job": str(self._attr.get("job") or "-")})
         if self._sem is None:
             return self._port.call(purpose, system, payload, schema, **kw)
         with self._sem:

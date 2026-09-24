@@ -52,10 +52,12 @@ def test_anthropic_structured_call_with_images_effort_and_usage():
     sdk = FakeSDK([(json.dumps(GOOD), "end_turn", U(10, 5, 3, 2))])
     u = Usage()
     out = port(sdk).call("transcribe", "sys", {"x": 1}, SCHEMA, usage=u, attribution="t", effort="high",
-                         images=[{"media_type": "image/png", "data": PNG}], model="vision-x")
+                         images=[{"media_type": "image/png", "data": PNG}], model="vision-x",
+                         headers={"X-Napkin-Handler": "h@1.0", "X-Napkin-Job": "job_1"})
     assert out == GOOD and u.as_dict() == {"input_tokens": 15, "output_tokens": 5}
     kw = sdk.calls[0]
     assert kw["model"] == "vision-x" and kw["system"] == "sys" and sdk.opts["max_retries"] == 1
+    assert kw["extra_headers"] == {"X-Napkin-Handler": "h@1.0", "X-Napkin-Job": "job_1"}
     content = kw["messages"][0]["content"]
     assert content[0] == {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG}}
     assert content[1]["text"].startswith("Task: transcribe\n\n<input>")
@@ -138,10 +140,12 @@ def test_openai_request_shape_images_and_think_stripped():
     ep = Endpoint([ok("<think>hmm</think>\n" + json.dumps(GOOD))])
     u = Usage()
     out = port(oa(ep)).call("extract", "the system", {"a": 1}, SCHEMA, usage=u, attribution="t", effort="high",
-                            images=[{"media_type": "image/png", "data": PNG}])
+                            images=[{"media_type": "image/png", "data": PNG}],
+                            headers={"X-Napkin-Handler": "h@1.0", "X-Napkin-Job": "job_1"})
     assert out == GOOD and u.as_dict() == {"input_tokens": 7, "output_tokens": 3}
     r = ep.requests[0]
     assert str(r.url) == "http://nim.test/v1/chat/completions" and r.headers["authorization"] == "Bearer key-1"
+    assert r.headers["x-napkin-handler"] == "h@1.0" and r.headers["x-napkin-job"] == "job_1"
     body = json.loads(r.content)
     assert body["model"] == "claude-opus-5"  # extra_body never overrides a key the port sets
     assert body["chat_template_kwargs"] == {"enable_thinking": False}

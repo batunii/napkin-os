@@ -125,11 +125,13 @@ class AnthropicWire:
                  for im in turn["images"]]
         return parts + [{"type": "text", "text": turn["text"]}]
 
-    def send(self, *, model, system, turns, schema, purpose, max_tokens, effort, timeout) -> Reply:
+    def send(self, *, model, system, turns, schema, purpose, max_tokens, effort, timeout, headers=None) -> Reply:
         kwargs = dict(model=model, max_tokens=max_tokens, system=system,
                       messages=[{"role": t["role"], "content": self._content(t)} for t in turns],
                       output_config={"format": {"type": "json_schema", "schema": schema},
                                      **({"effort": effort} if effort else {})})
+        if headers:
+            kwargs["extra_headers"] = dict(headers)
         try:
             resp = self.client.with_options(timeout=timeout, max_retries=1).messages.create(**kwargs)
         except Exception as e:  # transport / API failure: mapped to a kind, attributable
@@ -215,14 +217,14 @@ class OpenAIWire:
                  for im in turn["images"]]
         return parts + [{"type": "text", "text": turn["text"]}]
 
-    def send(self, *, model, system, turns, schema, purpose, max_tokens, effort, timeout) -> Reply:
+    def send(self, *, model, system, turns, schema, purpose, max_tokens, effort, timeout, headers=None) -> Reply:
         body = dict(self.extra)
         body.update(model=model, max_tokens=max_tokens,
                     messages=[{"role": "system", "content": system}]
                     + [{"role": t["role"], "content": self._content(t)} for t in turns],
                     response_format={"type": "json_schema",
                                      "json_schema": {"name": purpose, "schema": schema, "strict": True}})
-        headers = {"Content-Type": "application/json"}
+        headers = {**(headers or {}), "Content-Type": "application/json"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
         for attempt in (1, 2):
@@ -309,7 +311,10 @@ class ModelPort:
         return self.wire.api
 
     def call(self, purpose: str, system: str, payload: dict, schema: dict, *, usage: Usage, attribution: str,
-             max_tokens: int | None = None, effort: str | None = None, images=None, model: str | None = None) -> dict:
+             max_tokens: int | None = None, effort: str | None = None, images=None, model: str | None = None,
+             headers: dict | None = None) -> dict:
+        """`headers`: the attribution headers (`X-Napkin-Handler`, `X-Napkin-Job`,
+        peripherals.md §0.2) — metadata only, never auth, never content."""
         if not PURPOSE_RE.match(purpose or ""):
             raise ModelError(f"purpose {purpose!r} is not a slug", "invalid_request")
         images = check_images(images)
@@ -323,7 +328,8 @@ class ModelPort:
         for attempt in (1, 2):
             t0 = time.monotonic()
             reply = self.wire.send(model=model, system=system, turns=turns, schema=api_schema, purpose=purpose,
-                                   max_tokens=max_tokens or self.max_tokens, effort=effort, timeout=self.timeout)
+                                   max_tokens=max_tokens or self.max_tokens, effort=effort, timeout=self.timeout,
+                                   headers=headers)
             if reply.usage is None:
                 log.warning("model %s: the response carried no usage; counted as zero [%s]", purpose, attribution)
                 usage.add(0, 0)
