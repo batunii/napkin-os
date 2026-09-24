@@ -1,24 +1,30 @@
+import { existsSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Which host the shell talks to, decided at build time rather than sniffed —
-// it determines what gets bundled, and a 5 MB WebAssembly host has no business
-// in a build that is going to talk to a server anyway.
+// One bundle, every host. The web build talks to napkin-web and loads the
+// WebAssembly host only when a file is opened on the device; the serverless
+// build (`VITE_NAPKIN_HOST=wasm`, `npm run build:static`) is the same bundle
+// with the device host as the only one. See src/host/index.ts.
 //
-//   npm run build              -> talks to napkin-web over HTTP
-//   VITE_NAPKIN_HOST=wasm ...  -> no server at all; the host runs in the page
-const backend = process.env.VITE_NAPKIN_HOST === 'wasm' ? 'wasm' : 'http'
+// The WebAssembly module is build output (`npm run wasm`). A checkout without
+// it — CI's lint-and-build job, the Tauri build, the Docker shell stage — still
+// builds: the device host is swapped for a stub that says what is missing.
+const wasmBuilt = existsSync(fileURLToPath(new URL('./src/wasm/napkin_wasm.js', import.meta.url)))
 
 export default defineConfig({
   plugins: [react()],
   // Set for a project page, whose site lives under /<repo>/.
   base: process.env.VITE_BASE || '/',
   resolve: {
-    alias: {
-      '@backend': fileURLToPath(new URL(`./src/host/${backend}.ts`, import.meta.url)),
-    },
+    alias: wasmBuilt
+      ? []
+      : [{
+          find: /^\.\.\/wasm\/napkin_wasm$/,
+          replacement: fileURLToPath(new URL('./src/host/wasmMissing.ts', import.meta.url)),
+        }],
   },
   clearScreen: false,
   server: {

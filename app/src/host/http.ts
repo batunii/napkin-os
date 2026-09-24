@@ -43,6 +43,8 @@ function session(): Promise<SessionInfo> {
     if (!r.ok) throw new Error(`no session: ${r.status}`)
     return r.json() as Promise<SessionInfo>
   })
+  // A page that started offline must be able to try again once it is back.
+  sessionOnce.catch(() => { sessionOnce = null })
   return sessionOnce
 }
 
@@ -321,6 +323,3 @@ export const httpHost: Host = {
     return () => source.removeEventListener(event, listener as EventListener)
   },
 }
-
-/// The backend this build talks to — see the alias in vite.config.ts.
-export { httpHost as backendHost }
