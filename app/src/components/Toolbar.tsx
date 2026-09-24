@@ -26,6 +26,8 @@ interface Props {
   docPath: string
   onSpinoff: (appId: string) => void
   agentPanelOpen: boolean
+  /** False on a document opened on the device: the host refuses agent calls there. */
+  agentAvailable?: boolean
   sidebarOpen: boolean
   loading: boolean
   validation?: string
@@ -44,7 +46,7 @@ function SidebarGlyph() {
 /** The document bar: studio home, title and status, file actions, panels. */
 export default function Toolbar({
   title, isTemplate, trusted, onHome, onOpenFile, onToggleAgent, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport,
-  docPath, onSpinoff, agentPanelOpen, sidebarOpen, loading, validation,
+  docPath, onSpinoff, agentPanelOpen, agentAvailable = true, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
   return (
@@ -87,10 +89,14 @@ export default function Toolbar({
       <button className="ch-btn" onClick={() => onExport('pdf')} title="Export a standalone PDF (composed from this document's data)">Export</button>
       <button className="ch-btn" onClick={onWorkspace} title="Lineage & provenance">Lineage</button>
       <ContinueIn key={docPath} docPath={docPath} onSpinoff={onSpinoff} />
-      <button className="ch-btn" aria-pressed={agentPanelOpen} onClick={onToggleAgent}>
-        Agent
-      </button>
-      <ApiKeyButton />
+      {agentAvailable && (
+        <>
+          <button className="ch-btn" aria-pressed={agentPanelOpen} onClick={onToggleAgent}>
+            Agent
+          </button>
+          <ApiKeyButton />
+        </>
+      )}
       <ThemeToggle />
     </div>
   )

@@ -23,10 +23,12 @@ interface Props {
   banner?: ReactNode
   onExport: (kind: 'html' | 'pdf') => void
   onSpinoff: (appId: string) => void
+  /** False on a document opened on the device, where the agent is not available. */
+  agentAvailable?: boolean
 }
 
 /** Chrome for one running app: toolbar + (collapsible) sidebar + render surface + panels. */
-export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff }: Props) {
+export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff, agentAvailable = true }: Props) {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false) // collapsed by default
@@ -44,6 +46,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
         onOpenFile={onOpenFile}
         onToggleAgent={() => setAgentPanelOpen(o => !o)}
         agentPanelOpen={agentPanelOpen}
+        agentAvailable={agentAvailable}
         onToggleSidebar={() => setSidebarOpen(o => !o)}
         sidebarOpen={sidebarOpen}
         onWorkspace={() => setWorkspaceOpen(true)}
@@ -68,7 +71,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
           />
         </main>
         <DecisionPanel docPath={open.path} />
-        {agentPanelOpen && <AgentPanel onClose={() => setAgentPanelOpen(false)} />}
+        {agentAvailable && agentPanelOpen && <AgentPanel onClose={() => setAgentPanelOpen(false)} />}
       </div>
       <footer className="ch-footer">
         <PoweredByClan />
