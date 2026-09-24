@@ -72,24 +72,33 @@ def _nim_call(prompt_text: str, max_tokens: int = 400) -> "dict | None":
 
 # ----------------------------------------------------------------- utilities
 def _words(s) -> list[str]:
+    """Split a value into whitespace-separated words; None or '' gives []."""
     return str(s or "").strip().split()
 
 
 def _wc(s) -> int:
+    """Word count of a value (see _words)."""
     return len(_words(s))
 
 
 def _sentences(s) -> list[str]:
+    """Split text into sentences on runs of . ! ? followed by whitespace or the end of the
+    text, dropping blank pieces. A decimal such as 2.5 does not split."""
     return [x for x in re.split(r"[.!?]+(?:\s|$)", str(s or "").strip()) if x.strip()]
 
 
 def _list_items(v) -> list[str]:
+    """Return a field's items: a list keeps its truthy entries; any other value is split on
+    '·', ';', newlines and commas outside parentheses, blank pieces dropped."""
     if isinstance(v, list):
         return [x for x in v if x]
     return [x.strip() for x in re.split(r"[·;\n]|,(?![^()]*\))", str(v or "")) if x.strip()]
 
 
 def _is_filled(v) -> bool:
+    """True when a value carries content: a non-blank string, a list with a truthy item, a
+    dict with at least one non-blank value, or any other value whose str() is non-blank.
+    None is empty."""
     if v is None:
         return False
     if isinstance(v, list):
@@ -100,15 +109,20 @@ def _is_filled(v) -> bool:
 
 
 def _val(brief, fid):
+    """Return the value of field `fid` in a golden brief, or None when the field is absent."""
     return (brief.get("fields", {}).get(fid) or {}).get("value")
 
 
 def _entry(brief, fid):
+    """Return field `fid`'s entry ({value, source, confidence, ...}) from a golden brief, or
+    {} when it is absent."""
     return brief.get("fields", {}).get(fid) or {}
 
 
 # ------------------------------------------------- auto evaluators (1:1 port)
 def _within_limit(f, v):
+    """Auto check: the word count is at most the field's max_words and at least its
+    min_words (each bound applies only when set). Returns (status, note)."""
     n = _wc(v)
     if f.get("max_words") and n > f["max_words"]:
         return FAIL, f"{n}/{f['max_words']} words"
@@ -118,28 +132,40 @@ def _within_limit(f, v):
 
 
 def _max_items(f, v):
+    """Auto check: the value has at most max_items items (counted by _list_items; the cap
+    defaults to 99). Returns (status, note)."""
     n = len(_list_items(v))
     cap = f.get("max_items", 99)
     return (PASS, f"{n} items") if n <= cap else (FAIL, f"{n} > {cap}")
 
 
 def _single_sentence(f, v):
+    """Auto check: the value is at most one sentence (counted by _sentences).
+    Returns (status, note)."""
     n = len(_sentences(v))
     return (PASS, "1 sentence") if n <= 1 else (FAIL, f"{n} sentences")
 
 
 def _single_minded(f, v):
+    """Auto check for one idea: REVIEW (never FAIL) when the text contains a comma,
+    ' and ', ' & ', '·', ';' or '/', thousands separators such as 10,000 excepted;
+    otherwise PASS. Returns (status, note)."""
     s = re.sub(r",(?=\d{3}\b)", "", str(v or ""))
     listy = re.search(r"(,| and | & |·|;|/)", s)
     return (REVIEW, "may carry >1 idea") if listy else (PASS, "one idea")
 
 
 def _reveals_why(f, v):
+    """Auto check: PASS when the text states a motivation ('because', 'so the job' or
+    'which means', case-insensitive), else FAIL. Returns (status, note)."""
     ok = re.search(r"\bbecause\b|\bso the job\b|\bwhich means\b", str(v or ""), re.I)
     return (PASS, "states a 'why'") if ok else (FAIL, "no motivation ('because…')")
 
 
 def _shape_filled(f, v):
+    """Auto check for the structured fields (three_levels, all_three): PASS only when
+    every key in the field's `shape` is filled in the value dict; a non-dict value counts
+    as none filled. Returns (status, 'n/total')."""
     o = v if isinstance(v, dict) else {}
     shape = f.get("shape", [])
     have = [k for k in shape if _is_filled(o.get(k))]
@@ -148,18 +174,27 @@ def _shape_filled(f, v):
 
 
 def _has_constraint(f, v):
+    """Auto check: PASS when the value is filled and mentions a digit or a constraint
+    cue (budget, media, a currency sign, prioritise, scope, cities, national), else FAIL.
+    Returns (status, note)."""
     ok = _is_filled(v) and re.search(
         r"\d|budget|media|€|\$|£|prioritise|scope|cities|national", str(v or ""), re.I)
     return (PASS, "constraint set") if ok else (FAIL, "no constraint")
 
 
 def _has_deliverables(f, v):
+    """Auto check: PASS when the text matches a deliverable cue (a digit, ×, OOH,
+    social, TV, print, radio, deliver, live, cutdown, or any word ending in 's'), else
+    REVIEW, never FAIL. The cues are loose, so most multi-word text passes.
+    Returns (status, note)."""
     ok = re.search(r"\d|×|x\d|s\b|OOH|social|TV|print|radio|deliver|live|cutdown",
                    str(v or ""), re.I)
     return (PASS, "deliverables listed") if ok else (REVIEW, "check deliverables")
 
 
 def _names_rivals(f, v):
+    """Auto check: PASS when the value is filled and longer than four words, else FAIL.
+    It checks length only, not that rivals are named. Returns (status, note)."""
     return (PASS, "category read present") if _is_filled(v) and _wc(v) > 4 else (FAIL, "too thin")
 
 
@@ -179,6 +214,8 @@ AUTO = {
 
 # ----------------------------------------------------------------- validation
 def _field_required(field, brief) -> bool:
+    """True when the schema field is required: `required` is set, or
+    `required_unless_brief_type` is set and the brief's meta.brief_type is not in it."""
     if field.get("required"):
         return True
     unless = field.get("required_unless_brief_type")
@@ -188,6 +225,11 @@ def _field_required(field, brief) -> bool:
 
 
 def _run_field_checks(field, brief):
+    """Run every rubric check of one schema field against the brief. An empty field
+    gives REVIEW ('empty') for all its checks; an auto check with an AUTO evaluator runs it;
+    'ownable' FAILs when competitor_context is empty and is otherwise left to the agent;
+    every other check is REVIEW ('agent to judge' for llm checks, 'human to confirm'
+    otherwise). Returns {id, label, filled, hero, checks}."""
     v = _val(brief, field["id"])
     filled = _is_filled(v)
     checks = []
@@ -211,6 +253,12 @@ def _run_field_checks(field, brief):
 
 
 def _derive_open_questions(schema, brief):
+    """Derive open questions from the brief's fields, at most one per field:
+    'Missing: <label>' (high) for an empty required field, else 'Confirm with client'
+    (high) when its source is 'missing', else a low-confidence question (medium) for a
+    filled field below the schema's confidence_floor (default 0.6). The brief's own
+    open_questions are appended, except those blocking a field that already has a derived
+    question. Returns the list."""
     floor = schema.get("confidence_floor", 0.6)
     out = []
     for f in schema["fields"]:
@@ -234,6 +282,10 @@ def _derive_open_questions(schema, brief):
 
 
 def _run_dependencies(schema, brief):
+    """Evaluate the schema's cross-field dependencies: rtb_supports_smp and
+    response_ladders FAIL when any of their fields is empty and are otherwise REVIEW for the
+    agent; ownable_needs_competitors PASSes when competitor_context is filled, else FAILs;
+    any other dependency is REVIEW. Returns [{id, rule, method, status, note}]."""
     results = []
     for d in schema["dependencies"]:
         all_filled = all(_is_filled(_val(brief, fid)) for fid in d["fields"])
@@ -253,9 +305,19 @@ def _run_dependencies(schema, brief):
 
 
 def _run_dod(schema, brief, field_results, open_questions):
+    """Evaluate the gate's definition-of-done items, in schema order:
+    all_required_filled; objectives_linked (the objectives three_levels check, else REVIEW);
+    smp_single (PASS when the SMP's single_sentence and within_limit both pass, FAIL when
+    single_sentence fails, else REVIEW); rtb_supports_smp (REVIEW when reasons_to_believe
+    is filled, else FAIL); evaluation_present (gate.evaluation_criteria is non-blank);
+    open_questions_clear (FAIL on any high-severity question); within_limits (no
+    within_limit or max_items check FAILs). Any other item is REVIEW.
+    Returns [{id, rule, method, status}]."""
     by_id = {fr["id"]: fr for fr in field_results}
 
     def chk(fid, cid):
+        """Return the status of check `cid` on field `fid`, or None when the field or the
+        check is absent."""
         fr = by_id.get(fid)
         if not fr:
             return None
@@ -295,6 +357,10 @@ def _run_dod(schema, brief, field_results, open_questions):
 
 
 def _health(field_results, dod, open_questions) -> int:
+    """Health score 0–100. Every check weighs 2 on a hero field and 1 otherwise; PASS earns
+    its full weight, REVIEW half, FAIL nothing, and base = earned / total weight (0 when
+    there are no checks). The penalty is 0.04 per FAILed definition-of-done item plus 0.03
+    per high-severity open question. Returns round((base - penalty) * 100) clamped to 0–100."""
     total = score = 0.0
     for fr in field_results:
         w = 2 if fr["hero"] else 1
@@ -308,6 +374,11 @@ def _health(field_results, dod, open_questions) -> int:
 
 
 def validate(schema, brief):
+    """Validate a golden brief against the schema (port of golden-brief.js validate()):
+    field rubric checks, derived open questions, dependency checks, definition of done and
+    health. Makes no LLM calls: llm checks stay REVIEW until run_critic or
+    run_critic_one_call judges them. Returns {fields, dependencies, definition_of_done,
+    open_questions, health}."""
     field_results = [_run_field_checks(f, brief) for f in schema["fields"]]
     open_questions = _derive_open_questions(schema, brief)
     dependencies = _run_dependencies(schema, brief)
@@ -347,6 +418,7 @@ def _cap(node):
 
 
 def _join(*parts):
+    """Join the filled parts, each via str(), with ' — '; None when no part is filled."""
     vals = [str(p) for p in parts if _is_filled(p)]
     return " — ".join(vals) if vals else None
 
@@ -363,6 +435,8 @@ def from_brief_object(bo: dict) -> dict:
     fields: dict = {}
 
     def put(fid, node, fallback=None):
+        """Set fields[fid] from a Captured node via _cap ({value, source, plus
+        confidence when known}), using `fallback` when the node gives no value."""
         v, src, conf = _cap(node)
         if v is None and fallback is not None:
             v, src, conf = _cap(fallback)
@@ -698,10 +772,15 @@ def quality_split(schema, brief, validation) -> dict:
 
 # ------------------------------------------------------------------ report
 def _fmt_status(s):
+    """Four-character report label for a check status: PASS, FAIL, or '····' for review."""
     return {"pass": "PASS", "fail": "FAIL", "review": "····"}[s]
 
 
 def report(name, validation):
+    """Format a validation as a plain-text report: the health, one line per field (hero
+    flag, filled or EMPTY, each check's status), the definition-of-done FAILs, the open
+    questions with the high count, and how many llm checks on filled fields still await the
+    critic. Returns the text."""
     lines = [f"\n=== {name} — Golden Brief health: {validation['health']}/100 ==="]
     for fr in validation["fields"]:
         flag = "HERO " if fr["hero"] else "     "
@@ -720,6 +799,12 @@ def report(name, validation):
 
 
 def main(argv):
+    """CLI. With --all [dir] (default outputs/client_briefs_v4) print a scoreboard of health,
+    definition-of-done FAILs and high open questions for every dir/*/brief_object.json,
+    best first. With a path, print that brief's report; --critic runs the per-field NIM
+    critic and --judge the one-call independent judge (both make LLM calls), each followed
+    by a fresh report; then print the quality split; --prompts prints the first per-check
+    critic prompt. With no arguments print the module docstring."""
     schema = json.loads(SCHEMA_PATH.read_text())
     show_prompts = "--prompts" in argv
     run_critic_flag = "--critic" in argv

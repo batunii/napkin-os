@@ -77,6 +77,8 @@ _STATS_LOCK = __import__("threading").Lock()   # loops 3–7 retrieval/rerank ru
 
 
 def _stats_reset():
+    """Zero the LLM call ledger (_LLM_STATS) under the stats lock, by_provider
+    included. run() calls it at the start of every brief, so each snapshot covers one run."""
     with _STATS_LOCK:
         _LLM_STATS.clear()
         _LLM_STATS.update({"calls": 0, "http_attempts": 0, "input_chars": 0,
@@ -85,6 +87,10 @@ def _stats_reset():
 
 
 def _stats_call(provider_label: str, in_chars: int):
+    """Count one outbound request to a link in the LLM call ledger: bumps `calls`,
+    adds `in_chars` (system + user prompt length) to `input_chars` and tallies the request
+    under by_provider[provider_label]. Initialises the ledger first when run() has not reset
+    it (a direct call from a test or script). Instrumentation only."""
     if not _LLM_STATS:
         _stats_reset()
     with _STATS_LOCK:
@@ -95,6 +101,9 @@ def _stats_call(provider_label: str, in_chars: int):
 
 
 def _stats_usage(usage: dict | None, out_chars: int):
+    """Add one reply to the LLM call ledger: `out_chars` to `output_chars`, and the
+    provider's usage prompt_tokens / completion_tokens when a usage dict is given (missing
+    or None counts as 0). Initialises the ledger when it is empty. Instrumentation only."""
     if not _LLM_STATS:
         _stats_reset()
     with _STATS_LOCK:
@@ -272,6 +281,8 @@ def segment(text: str) -> list[str]:
     buf: list[str] = []
 
     def flush():
+        """Join the buffered lines into one block, append it to `blocks` and clear the
+        buffer; a no-op when the buffer is empty."""
         if buf:
             blocks.append(" ".join(buf).strip())
             buf.clear()
@@ -332,13 +343,25 @@ KEYWORD_CUES = {
 
 
 def _cap(value, status="fact", quote=None, conf=0.6):
+    """Build one Captured entry {value, status, source_quote, confidence} as the heuristic
+    extractor records it (status 'fact', confidence 0.6 unless given)."""
     return {"value": value, "status": status, "source_quote": quote, "confidence": conf}
 
 
 def extract_heuristic(segments):
+    """Keyless Loop 1 capture: map each segment to at most one field by rule.
+    A `Label: text` segment whose label contains a LABEL_MAP key goes to that field; any
+    other segment goes to the first KEYWORD_CUES field with a matching cue (case-insensitive
+    substring). The whole segment is stored as both value and source_quote. A LIST_FIELDS
+    field collects every match; a single-value field keeps only its first match, and later
+    matches are not stored but still count as used.
+    Returns (fields, used): field id -> Captured entry (a list for list fields), and the set
+    of segment indexes that were mapped, which build_ledger takes as the ledger's mapping."""
     fields, used = {}, set()
 
     def add(field, idx, seg):
+        """Record `seg` under `field` (appended for a list field, first match
+        wins for a single-value field) and mark segment `idx` as used either way."""
         if field in LIST_FIELDS:
             fields.setdefault(field, []).append(_cap(seg, quote=seg))
         elif field not in fields:
@@ -460,6 +483,8 @@ FORBIDDEN_DO_VERBS = ("engage with", "explore the", "interact with", "connect wi
 
 
 def _field_by_id(schema, fid):
+    """Return the schema field definition whose id is `fid`, or None when the schema
+    has no such field."""
     for f in schema.get("fields", []):
         if f.get("id") == fid:
             return f
@@ -622,6 +647,9 @@ def _fv(field) -> str:
 
 
 def _word_count(v) -> int:
+    """Count whitespace-separated words in a value, recursing into dict values and list
+    items so a structured field is counted as a whole. Any other value is counted via
+    str(), so None counts as one word."""
     if isinstance(v, dict):
         return sum(_word_count(x) for x in v.values())
     if isinstance(v, list):
@@ -941,6 +969,8 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         smp_ipa, smp_methods, smp_ev = insight_ipa, insight_methods, insight_ev
 
     def val(fid):
+        """Return golden field `fid` as text (via _fv), or '' when it is absent.
+        Reads golden_fields live, so it sees values generated earlier in this fill."""
         f = golden_fields.get(fid)
         return _fv(f) if f else ""
 
@@ -1214,6 +1244,10 @@ def resolve_provider() -> str:
 
 
 def model_for(provider: str) -> str:
+    """Return the model id for `provider`: BRIEF_MODEL when set, 'claude-opus-4-6' for
+    anthropic, else the provider's default in PROVIDERS ('?' for an unknown provider).
+    Used for the run's extraction_mode label and as the default model of the Anthropic path,
+    the loop synthesis and a pinned provider's lead link."""
     if os.environ.get("BRIEF_MODEL"):
         return os.environ["BRIEF_MODEL"]
     if provider == "anthropic":
@@ -1242,6 +1276,9 @@ def _clip_brief(text: str, limit: int = CLIP_JUDGE) -> str:
 
 
 def _user_msg(text, schema):
+    """Build the user message for extract_llm: the brief-object schema as indented JSON,
+    cut to its first 2,500 characters, then the client brief clipped to CLIP_EXTRACT at a
+    sentence or line boundary."""
     return (f"SCHEMA KEYS:\n{json.dumps(schema, indent=2)[:2500]}\n\n"
             f"CLIENT BRIEF:\n\"\"\"\n{_clip_brief(text, CLIP_EXTRACT)}\n\"\"\"")
 
@@ -1504,6 +1541,9 @@ _COOLDOWN_SECS = float(os.environ.get("BRIEF_LINK_COOLDOWN", "45"))
 
 
 def _cooldown(provider, model):
+    """Put the provider:model link on cooldown after an HTTP 429: store a monotonic
+    deadline _COOLDOWN_SECS from now (BRIEF_LINK_COOLDOWN, default 45 s) in _LINK_COOLDOWN.
+    _model_chain drops links that are still cooling, unless every link is."""
     import time
     _LINK_COOLDOWN[f"{provider}:{model}"] = time.monotonic() + _COOLDOWN_SECS
 
@@ -1831,6 +1871,8 @@ def _loads_lenient(raw):
     then every balanced {...} span (largest first), each with a trailing-comma
     repair pass. Returns dict/list or None."""
     def _try(s):
+        """Parse `s` as JSON, then once more with trailing commas before } or ]
+        removed. Returns the parsed value, or None when both attempts fail."""
         for candidate in (s, re.sub(r",\s*([}\]])", r"\1", s)):
             try:
                 return json.loads(candidate)
@@ -1950,12 +1992,24 @@ def _normalize_llm(d):
 # ---------------------------------------------------------------------------
 
 def _norm(s):
+    """Normalise text for ledger matching: lower-case it and drop every character that is
+    not a-z, 0-9 or a space. A list or tuple (LLMs sometimes return one) is joined with
+    spaces first; any other value goes through str()."""
     if isinstance(s, (list, tuple)):  # LLMs sometimes return a list of values
         s = " ".join(str(x) for x in s)
     return re.sub(r"[^a-z0-9 ]", "", str(s).lower())
 
 
 def build_ledger(segments, used_idx, fields, source_name, how_to_win=None, open_qs=None):
+    """Build the Loop 1 no-loss ledger: which brief segments the capture accounts for.
+    When `used_idx` is given (the heuristic path) it is taken as the mapped set as is. When
+    it is None (an LLM capture), quotes are collected from the captured fields (source_quote
+    and value), the how_to_win items (evidence and point) and the open-question texts, all
+    normalised with _norm. A segment is mapped when its normalised text contains, or is
+    contained in, one quote, or when it has at least 4 distinct words and 70% or more of
+    them appear in a single quote.
+    Returns {total_segments, mapped_segments, coverage_pct (one decimal; 0.0 with no
+    segments), unmapped: [{segment, source_ref}]}, source_ref being `source_name`."""
     if used_idx is None:
         used_idx = set()
         quotes = []
@@ -2040,6 +2094,8 @@ EVAL_CRITERIA_QUESTION = (
 
 
 def review_loop1(ledger, fields):
+    """Loop 1 self-review: flag ledger coverage below 85% and any captured values whose
+    status is 'assumption'. Returns {passed, flags}; passed only when there are no flags."""
     flags = []
     if ledger["coverage_pct"] < 85:
         flags.append(f"Coverage {ledger['coverage_pct']}% < 85% — "
@@ -2053,6 +2109,8 @@ def review_loop1(ledger, fields):
 
 
 def review_loop2(loop2):
+    """Loop 2 self-review: flag each of problem, objective and audience that is absent or
+    has an empty value. Returns {passed, flags}; passed only when there are no flags."""
     missing = [k for k in ("problem", "objective", "audience")
                if not loop2.get(k) or not loop2[k].get("value")]
     flags = [f"Agency brief missing: {m}" for m in missing]
@@ -2074,6 +2132,7 @@ AUDIENCE_CLICHES = re.compile(
 
 
 def _dim(dimension, verdict, evidence, fix=""):
+    """Build one scorecard dimension row {dimension, verdict, evidence, fix}."""
     return {"dimension": dimension, "verdict": verdict,
             "evidence": evidence, "fix": fix}
 
@@ -2082,6 +2141,8 @@ def scorecard_heuristic(fields):
     """No-API scorecard: presence + cheap quality cues only. The LLM judge is
     the real test; this keeps the pipeline keyless-safe."""
     def items(key):
+        """Return the captured entries for `key` that have a value, as a list (a
+        single entry is wrapped); non-dict items are skipped."""
         v = fields.get(key)
         return [x for x in (v if isinstance(v, list) else [v])
                 if isinstance(x, dict) and x.get("value")]
@@ -2172,6 +2233,10 @@ def score_betterbriefs(text, fields):
 # ---------------------------------------------------------------------------
 
 def _val(fields, key):
+    """Return a captured field's value for shaping. A list field joins its non-empty values
+    (Captured dicts or plain strings) with '; '; a dict field returns its 'value' unchanged.
+    Returns None for an absent or empty field, and also for a field stored as a bare
+    string, which is not a Captured entry."""
     v = fields.get(key)
     if isinstance(v, list):
         parts = []
@@ -2188,6 +2253,8 @@ def shape_loop2(fields, llm_open_qs):
     """Map Loop-1 capture into an agency-brief shape + open questions.
     Deterministic so it runs without an API; LLM open-questions used if present."""
     def slot(text):
+        """Wrap a value as a Loop 2 slot: status 'fact' when the value is truthy, else
+        'gap'."""
         return {"value": text, "status": "fact" if text else "gap"}
 
     scope_bits = [b for b in (_val(fields, "deliverables"), _val(fields, "budget"),
@@ -2218,6 +2285,8 @@ def shape_loop2(fields, llm_open_qs):
     rank = {"blocker": 0, "important": 1, "nice_to_have": 2}
 
     def _q_rank(q):
+        """Sort key for open questions: blocker 0, important 1, nice_to_have 2, and 3 for
+        anything else (an unknown or absent priority, or a bare-string question)."""
         pr = q.get("priority") if isinstance(q, dict) else None
         return rank.get(pr, 3) if isinstance(pr, str) else 3
 
@@ -2247,6 +2316,9 @@ STATUS_TAG = {"fact": "", "assumption": " _(assumption)_", "gap": " _(gap)_"}
 
 
 def _fmt(c):
+    """Render one Captured entry for review.md: its value followed by its STATUS_TAG
+    (nothing for a fact or an unknown status), or '_not stated_' when the entry is empty or
+    its value is None or ''."""
     if not c or c.get("value") in (None, ""):
         return "_not stated_"
     return f"{c['value']}{STATUS_TAG.get(c.get('status', 'fact'), '')}"
@@ -2288,7 +2360,10 @@ def _rerank_hits(query: str, hits: list, k: int) -> list:
     if ordered is not None:
         return ordered[:k]
     def _snippet(t):
-        return re.sub(r'\\s+', ' ', t)[:200]
+        """Clip passage text to 200 characters for the rerank listing. The pattern is a
+        raw string with a doubled backslash, so it matches a literal backslash followed by one
+        or more 's' characters, not whitespace: in practice newlines and runs of spaces are kept."""
+        return re.sub(r'\s+', ' ', t)[:200]
     listing = "\n".join(f"[{i}] {h.get('citation','')}: {_snippet(h.get('text',''))}"
                         for i, h in enumerate(hits))
     obj = _json_call(
@@ -2414,6 +2489,10 @@ def _capsule_text(v) -> str:
 
 
 def _brief_gist(loop2, fields) -> dict:
+    """Build the gist the Loops 3–7 queries are written from: problem, objective, audience
+    and key_message. Each is the Loop 2 slot's text, falling back to the Loop 1 capture
+    (business_problem; objective, then success_metrics; target_audience; key_message), and
+    '' when neither has it. Returns a dict of four strings."""
     g = {k: _capsule_text(loop2.get(k))
          for k in ("problem", "objective", "audience", "key_message")}
     g["problem"] = g["problem"] or _val(fields, "business_problem") or ""
@@ -2754,6 +2833,10 @@ def render_client_brief(brief) -> str:
     title = m.get("project") or m.get("client") or "Client brief"
 
     def gv(fid):                      # golden value, else loop-2 fallback for the FACTS only
+        """Return golden field `fid`'s value. When it is empty, only background,
+        objectives and audience fall back to the Loop 2 slot (problem, objective, audience);
+        every other field, the generated strategy fields included, returns its empty value so
+        the section renders as to be agreed."""
         f = gf.get(fid)
         v = f.get("value") if isinstance(f, dict) else f
         if v:
@@ -2770,6 +2853,8 @@ def render_client_brief(brief) -> str:
     TBD = "_To be agreed — see open questions._"
 
     def text_section(heading, value):
+        """Append a '## heading' section: the value as text, or the to-be-agreed
+        placeholder when it is empty, then a blank line."""
         L.append(f"## {heading}")
         L.append(str(value) if value else TBD)
         L.append("")
@@ -2838,6 +2923,12 @@ def render_client_brief(brief) -> str:
 
 
 def render_markdown(brief):
+    """Render review.md, the team-facing record of a run (not the client deliverable):
+    the Loop 1 capture (FIELD_TITLES order, then any extra fields the LLM returned), the
+    win-rules, the Loop 1 self-review with the no-loss ledger and its unmapped segments, the
+    BetterBriefs scorecard when present, the Loop 2 slots, open questions and self-review,
+    then the Loops 3–7 narrative and the generated-field RAG provenance when those ran.
+    Returns the markdown text."""
     m, l1, l2 = brief["meta"], brief["loop1_capture"], brief["loop2_brief"]
     led = l1["no_loss_ledger"]
     title = m.get("project") or m.get("client") or "Client brief"
@@ -2978,6 +3069,8 @@ _PDF_GLYPHS = {"✅": "[PASS]", "⚠️": "[!]", "⚠": "[!]", "❌": "[FAIL]", 
 
 
 def _find_xelatex() -> str | None:
+    """Return the path of the xelatex binary: from PATH, else the MacTeX default
+    /Library/TeX/texbin/xelatex when it exists, else None."""
     return shutil.which("xelatex") or next(
         (p for p in ("/Library/TeX/texbin/xelatex",) if Path(p).exists()), None)
 
@@ -3058,6 +3151,48 @@ class _Inline:
 
 def run(path: Path | None, client=None, project=None, loops37=False, golden=False,
         raw_text: str | None = None, source_name: str | None = None) -> dict:
+    """Run the briefing pipeline on one brief and return the brief object (main() writes it
+    to brief_object.json). Resets the LLM call ledger first.
+
+    Parameters:
+      path         the brief file to ingest; not read when raw_text is given.
+      client       client label, copied into meta.
+      project      project label, copied into meta.
+      loops37      also run Loops 3–7 (retrieval) and, when they ran and loop2_golden
+                   exists, the zone-3 generation (fill_derivable_fields).
+      golden       run the schema-grounded extraction (extract_golden_brief) -> loop2_golden.
+      raw_text     brief text already in hand (pasted email, stdin, --text, or a file with
+                   --attach context folded in); skips ingest().
+      source_name  source label for meta.source_files and the ledger; defaults to
+                   'pasted-input' with raw_text, else path.name.
+
+    Stage graph (a 4-worker thread pool; the arrows are waits):
+      capture_toon ∥ how_to_win_toon ∥ extract_golden_brief (golden only), all on the raw
+      brief -> shape_loop2 + review_loop2, build_ledger + review_loop1 on the capture ->
+      score_betterbriefs (in the pool) ∥ loops_3_7(synthesize=False) (this thread) ->
+      fill_derivable_fields ∥ _synthesize_loops37 (only when synthesis was deferred).
+      Generation open questions are appended to loop2_brief.open_questions.
+
+    Env switches:
+      BRIEF_CAPTURE=json   skip the TOON capture calls and use extract_llm's JSON capture.
+      BRIEF_PARALLEL=0     run the same steps one at a time (_Inline); the fill reads it too.
+      BRIEF_BATCH_GATES=0  read by fill_derivable_fields: gate each value with the rubric and
+                           territory gates instead of one batched judge call (default on).
+
+    Capture fallbacks: TOON capture (how_to_win from its own call) -> JSON extract_llm
+    (how_to_win from its reply; a finished how_to_win_toon result is discarded) ->
+    extract_heuristic (no how_to_win, no LLM open questions, extraction_mode 'heuristic').
+    meta.capture_format records which one ran.
+
+    Returns a dict with:
+      meta                    client, project, source_files, parsed_at, parser_version,
+                              extraction_mode, capture_format, prompt_version, and llm_stats
+                              (the call ledger plus wall_seconds).
+      loop1_capture           fields, how_to_win, no_loss_ledger, review.
+      loop2_brief             the shaped brief, its open_questions and review.
+      betterbriefs_scorecard  the BetterBriefs judge (or its heuristic fallback).
+      loops3_7                only when loops37 is set.
+      loop2_golden            only when the golden extraction returned a result."""
     _stats_reset()
     _t_run0 = dt.datetime.now()
     schema = json.loads((HERE / "brief_object.schema.json").read_text())
@@ -3147,6 +3282,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
 
 
 def main():
+    """CLI entry point. Parses the arguments, resolves the input (inline --text, '-' or piped
+    stdin, or a file path; --attach files are ingested and appended as supporting context)
+    and calls run(). Loops 3–7 run with --loops37 or BRIEF_LOOPS37; the golden extraction
+    runs with --golden, BRIEF_GOLDEN, or whenever Loops 3–7 run. --provider and --model set
+    BRIEF_PROVIDER and BRIEF_MODEL; --check lists the provider's models and exits.
+    Writes brief_object.json, client_brief.md (the deliverable), review.md and any --format
+    docx/pdf into --out (default outputs/<slug of --project or the source name>), then
+    prints a run summary. Exits with a message when the input or an attachment is missing."""
     ap = argparse.ArgumentParser(description="Briefing tool MVP — Loops 1 & 2")
     ap.add_argument("brief", nargs="?", default=None,
                     help="path to brief (.txt/.md/.docx/.pdf/.eml or an image .png/.jpg), "
