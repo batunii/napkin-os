@@ -1,4 +1,6 @@
-/* The studio frame: the bar, and under it the home screen filling the rest. */
+/* The studio frame: the bar, and under it the home screen filling the rest.
+   The bar is the same height, blur and hairline as the document bar
+   (chrome.css .ch-bar), so the OS layer does not jump when an app opens. */
 
 .studio { display: flex; flex-direction: column; height: 100vh; background: var(--paper); color: var(--ink); }
 
@@ -9,7 +11,8 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 12px 24px;
+  height: var(--toolbar-h);
+  padding: 0 14px 0 20px;
   background: var(--frost);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
@@ -22,5 +25,5 @@
 .studio-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 @media (max-width: 640px) {
-  .studio-top { padding: 10px 16px; gap: 10px; }
+  .studio-top { padding: 0 12px 0 16px; gap: 10px; }
 }

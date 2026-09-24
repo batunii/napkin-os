@@ -18,7 +18,7 @@ export default function StudioShell({ children }: Props) {
   return (
     <div className="studio">
       <header className="studio-top">
-        <StudioLogo />
+        <StudioLogo size={15} />
         <div className="studio-tools">
           <ApiKeyButton />
           <ThemeToggle />
