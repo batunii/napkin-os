@@ -49,9 +49,16 @@ code{background:#1e2d45;padding:.15em .4em;border-radius:4px}</style>
 fn shell_service(static_dir: Option<&Path>) -> Router<Arc<AppCtx>> {
     match static_dir {
         // Any unknown path falls back to index.html: the shell owns its routes.
-        Some(dir) => Router::new().fallback_service(
-            ServeDir::new(dir).not_found_service(ServeFile::new(dir.join("index.html"))),
-        ),
+        Some(dir) => Router::new()
+            // The public viewer: anyone with a .clan, no account. It is the
+            // shell, answered as a page that exists — the installed app's
+            // `file_handlers` launch here — and, like every shell path, outside
+            // the session layer: no tenant is minted for a visitor to it.
+            .route_service("/view", ServeFile::new(dir.join("index.html")))
+            .route_service("/view/", ServeFile::new(dir.join("index.html")))
+            .fallback_service(
+                ServeDir::new(dir).not_found_service(ServeFile::new(dir.join("index.html"))),
+            ),
         None => Router::new().fallback(|| async { Html(NO_BUILD) }),
     }
 }
