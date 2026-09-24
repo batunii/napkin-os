@@ -221,6 +221,14 @@ fn a_different_major_keeps_the_documents_own_view() {
 }
 
 #[test]
+fn an_older_install_of_the_same_major_keeps_the_documents_own_view() {
+    let f = Fixture::new(template("1.3.0", &[]), Some(template("1.2.0", &[])));
+    let open = f.session.open(f.doc.clone()).unwrap();
+    assert_eq!(open.view_source, ViewSource::Document);
+    assert!(f.session.human_html().unwrap().contains("VIEW 1.3.0"));
+}
+
+#[test]
 fn an_app_that_is_not_installed_keeps_the_documents_own_view() {
     let f = Fixture::new(v1(), None);
     let open = f.session.open(f.doc.clone()).unwrap();

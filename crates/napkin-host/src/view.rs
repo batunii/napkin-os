@@ -111,6 +111,14 @@ pub fn major(version: &str) -> Option<u64> {
     parts[0].parse().ok()
 }
 
+/// `(MAJOR, MINOR, PATCH)` of a version [`major`] accepts, missing parts as 0.
+fn triple(version: &str) -> Option<(u64, u64, u64)> {
+    major(version)?;
+    let mut it = version.trim().split('.').map(|p| p.parse::<u64>().ok());
+    let mut next = || it.next().flatten().unwrap_or(0);
+    Some((next(), next(), next()))
+}
+
 /// `doc`, shown with the library's view of its app when the library has one
 /// it may use, else as it is. `public_key` is the publisher key the library
 /// template's trust is verified against — [`crate::session::NAPKIN_PUBLIC_KEY`]
@@ -181,6 +189,14 @@ fn find(store: &dyn DocStore, doc: &Document, public_key: &str) -> Result<Librar
         return Err(format!(
             "installed {}@{} is major {have}, the document is major {want}",
             app.app_id, installed.version
+        ));
+    }
+    // "Latest" never means going backwards: an install older than the
+    // version the document was made with keeps the document's own view.
+    if triple(&installed.version) < triple(&app.version) {
+        return Err(format!(
+            "installed {}@{} is older than the document's {}",
+            app.app_id, installed.version, app.version
         ));
     }
     if !template.has_entry(ENTRY) {

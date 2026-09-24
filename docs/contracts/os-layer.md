@@ -19,7 +19,7 @@ spec wins and this document is a defect to report.
 ## 1. Where it sits
 
 ```
- App — the frozen snapshot inside each document, sandboxed iframe
+ App — the installed version (same major) from the app library, sandboxed iframe
       │  clan:// contract, versioned
  ─────┼───────────────────────────────────────────────────────────────
  Shells   server/ FastAPI (authoritative) │ Tauri │ napkin-wasm
@@ -301,8 +301,13 @@ Still open: what unsealing means (W5-Z1).
 
 ## 8. Routes — contract v1
 
-`/capabilities` reports `contract: 1`. Live documents carry frozen apps (M1),
-so the route surface is a contract they depend on: add freely, never redefine.
+`/capabilities` reports `contract: 1`. A document is shown with the installed
+version of its app when that version has the same major and is not older than
+the one the document was made with; otherwise with the copy it carries (owner
+decision, 2026-09-24 — M2's `name@major` rule applied to views). The copy in
+the `.clan` is what export, handoff and the offline presenter use, and old
+majors still run, so the route surface is a contract apps depend on: add
+freely, never redefine.
 
 - Existing routes stay as they are: `/patch`, `/patch-data`, `/fork`,
   `/upload-asset`, `/assets/*`, `/chain`, `/api-proxy`, `/spinoff`,
