@@ -572,13 +572,17 @@
   // ---------- who does Brief Maker's work (decision N4, middleware-api §10) ----------
   // Three workers, all real: the middleware reports which of them is on which
   // field (`result.fields[key].by`), and the chain says which of them wrote
-  // or judged it. Plain names, as the shell's model.ts gives them.
+  // or judged it. Who they are comes from the shared crew (NapkinAgents, in
+  // the snippet the packer inlines): Brief Maker reads, drafts and judges, and
+  // gets the agents every app uses for that work.
+  var CREW_OK=typeof NapkinAgents==='object';
   var CREW=[
-    {k:'extract', name:'Extract', does:'Reads every file you attach, in the client’s own words.'},
-    {k:'drafter', name:'Drafter', does:'One per strategy field, all drafting at once.'},
-    {k:'judge',   name:'Judge',   does:'Checks every field, then the brief as a whole.'}
+    {w:'read',  k:'extract', name:'Extract', does:'Reads every file you attach, in the client’s own words.'},
+    {w:'draft', k:'drafter', name:'Drafter', does:'One per strategy field, all drafting at once.'},
+    {w:'judge', k:'judge',   name:'Judge',   does:'Checks every field, then the brief as a whole.'}
   ];
-  var AGENT_NAME={extract:'Extract', drafter:'Drafter', judge:'Judge'};
+  if(CREW_OK) CREW.forEach(function(c){ c.k=NapkinAgents.forWork(c.w); c.name=NapkinAgents.name[c.k]; });
+  var AGENT_NAME={}; CREW.forEach(function(c){ AGENT_NAME[c.k]=c.name; });
   // `only`: the crew members to show (default: all). A state is one the
   // figures know (working, needs-you, idle), or done.
   function crewHtml(states, texts, only){
@@ -592,12 +596,11 @@
   // Who wrote a decision, as a person would say it: by what the write claimed
   // (`agent`), not who was signed in when it landed (`actor`).
   function isHuman(d){ return !!d&&(d.agent==='human'||/^human[:]/.test(String(d.agent||''))); }
+  // The shared crew's rule, the one the shell's decision panel uses. Anything
+  // it cannot place in Brief Maker is drafting, the one open-ended job here.
   function agentKeyOf(d){
     if(!d) return '';
-    var a=String(d.agent||''), act=String(d.action||'');
-    if(d.kind==='verdict'||d.polarity||/\/judge$|judge/i.test(a)) return 'judge';
-    if(/\/extract$/.test(a)||/extract|capture/i.test(act)) return 'extract';
-    return 'drafter';
+    return (CREW_OK&&NapkinAgents.ofDecision(d))||'drafter';
   }
   function whoName(d){ return isHuman(d)?'You':(AGENT_NAME[agentKeyOf(d)]||d.agent); }
   var YOU='<span class="you" aria-hidden="true">you</span>';

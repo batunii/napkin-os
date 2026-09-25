@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Brief Maker".into(),
             app_id: "ie.napkin.brief-maker".into(),
             // 0.3: the Plan-zone identity and the agents at work.
-            version: "0.4.0".into(),
+            version: "0.5.0".into(),
             icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some("agent/output-schema.json".into()),

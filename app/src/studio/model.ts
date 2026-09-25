@@ -115,52 +115,134 @@ export function agentLabel(key: AgentKey, instance?: string): string {
   return instance ? `${AGENTS[key].name} · ${instance}` : AGENTS[key].name
 }
 
-// ── how each agent looks ────────────────────────────────────────────────────
+// ── what an app's step is doing ────────────────────────────────────────────
+// The shared crew every app draws from. An app does not pick figures: it says
+// what each of its steps is doing, and the step gets that agent. Brief Maker
+// reads, drafts and judges; the Research Tool reads, researches, synthesises,
+// judges (which lenses) and drafts (the report). A new app names its steps the
+// same way and gets the same people. The template apps get this through the
+// shared snippet (figureSnippet.tsx, `NapkinAgents`).
 
-/** Folded-paper bodies. `dome` and `hex` joined the prototype's six. */
-export type ShapeName = 'star' | 'tube' | 'zig' | 'pyramid' | 'block' | 'gem' | 'dome' | 'hex'
+/** The five kinds of work. `research` also names the lens it is on. */
+export type Work = 'read' | 'research' | 'synthesise' | 'draft' | 'judge'
 
-/** A small mark on the body, so agents that share a shape still read apart. */
-export type Emblem = 'none' | 'bars' | 'target' | 'dots' | 'stripe' | 'wave' | 'lines' | 'seal' | 'spark' | 'tick'
+export const WORKS: readonly Work[] = ['read', 'research', 'synthesise', 'draft', 'judge']
+
+/** Who does each kind of work. Research is per lens (AGENT_OF_LENS). */
+export const AGENT_FOR_WORK: Readonly<Record<Exclude<Work, 'research'>, AgentKey>> = {
+  read: 'extract',
+  synthesise: 'synthesis',
+  draft: 'drafter',
+  judge: 'judge',
+}
+
+/** Research with no lens named: the first lens researcher stands for the stage. */
+const RESEARCH_DEFAULT: LensAgentKey = 'market_structure'
+
+/** The agent doing a kind of work; for research, on that lens. */
+export function agentForWork(work: Work, lens?: string): AgentKey {
+  if (work === 'research') return AGENT_OF_LENS[lens as LensId] ?? RESEARCH_DEFAULT
+  return AGENT_FOR_WORK[work]
+}
 
 /**
- * Body colours, palette only. `--create` is not here: it is reserved for
- * "needs you", and a body in it would read as a permanent alarm.
- *   ink   — the agents either side of the lenses (Extract, Synthesis) and the Judge
- *   slate — the eight lens researchers
- *   mist  — the Drafter
+ * The kind of work a handler, or a step inside one, is doing. Keys are
+ * handler names without the @version, and the actions multi-step handlers
+ * record (`start_campaign` records extract, identify, select, …).
  */
-export type Tone = 'ink' | 'slate' | 'mist'
+export const WORK_OF_STEP: Readonly<Record<string, Work>> = {
+  extract: 'read', extract_ask: 'read', capture: 'read', identify: 'read', lookup: 'read', transcribe: 'read',
+  research: 'research', research_lens: 'research',
+  synthesise: 'synthesise', synthesise_findings: 'synthesise',
+  draft: 'draft', draft_brief: 'draft', regenerate_field: 'draft', report: 'draft', compose_report: 'draft', drafter: 'draft',
+  judge: 'judge', select: 'judge', verdict: 'judge', golden_critic: 'judge',
+}
+
+/** What a decision says about who made it, in whichever words the writer used. */
+export interface WhoWrote {
+  /** The decision's `agent`, or the handler that acted (`napkin/brief/judge`, `draft_brief@1`). */
+  agent?: string
+  action?: string
+  kind?: string
+  polarity?: string
+  lens?: string
+  targets?: readonly string[]
+}
+
+const lastPart = (s: string) => s.split('/').pop()!.replace(/@.*$/, '').toLowerCase()
+
+/**
+ * The agent behind a decision, or null for a person or a process with no
+ * figure. The one rule every app and the shell use (the snippet carries a
+ * copy; tests/agentFigures.test.ts holds the two together).
+ */
+export function agentOfDecision(d: WhoWrote): AgentKey | null {
+  const who = String(d.agent ?? '')
+  if (!who || who === 'human' || /^human:/.test(who)) return null
+  if (d.kind === 'verdict' || d.polarity) return 'judge'
+  if (d.kind === 'finding') return 'synthesis'
+  const work = WORK_OF_STEP[lastPart(who)] ?? WORK_OF_STEP[String(d.action ?? '').toLowerCase()]
+    ?? (/judge|critic/i.test(who) ? 'judge' : /extract|capture/i.test(who + ' ' + (d.action ?? '')) ? 'read'
+      : /draft/i.test(who) ? 'draft' : undefined)
+  if (!work) return null
+  if (work !== 'research') return AGENT_FOR_WORK[work]
+  const lens = LENS_IDS.find(l => [d.lens ?? '', d.action ?? '', ...(d.targets ?? [])].some(t => t.includes(l)))
+  return lens ? AGENT_OF_LENS[lens] : null
+}
+
+// ── how each agent looks ────────────────────────────────────────────────────
+// The owner's character sheet, "01 / Graphic characters" (2026-09-24): 2D, bold
+// colour, clear personalities. Flat bodies, thin ink legs, a face, and one mark
+// each where the sheet gives one.
+
+export type ShapeName =
+  | 'star' | 'crescent' | 'stack' | 'triangle' | 'column' | 'card' | 'diamond' | 'dome' | 'hex'
+
+/** A small mark on the body, so agents that share a shape still read apart. */
+export type Emblem = 'none' | 'bars' | 'target' | 'dots' | 'mouth' | 'wave' | 'page' | 'spark' | 'tick'
+
+/**
+ * The sheet's six colours. Ink follows the theme (it is the studio's ink, and
+ * goes light on a Plan band or in dark mode); the other five are fixed. Coral
+ * is the sheet's, kept apart from --create, which stays "needs you".
+ */
+export type Tone = 'ink' | 'cobalt' | 'coral' | 'marigold' | 'iris' | 'mint'
 
 export interface AgentLook {
   shape: ShapeName
   emblem: Emblem
   tone: Tone
+  /** A second colour on the body (Rhythm's small coral diamond). */
+  accent?: Tone
+  /** The mark in white rather than the face colour (Synthesis's spark). */
+  lightMark?: boolean
 }
 
-/** Every (shape, emblem, tone) triple is different; the eight lenses also differ by shape alone. */
 export const LOOK_OF: Readonly<Record<AgentKey, AgentLook>> = {
-  extract:          { shape: 'pyramid', emblem: 'lines',  tone: 'ink' },
-  market_structure: { shape: 'block',   emblem: 'bars',   tone: 'slate' },
-  positioning:      { shape: 'gem',     emblem: 'target', tone: 'slate' },
-  culture:          { shape: 'dome',    emblem: 'dots',   tone: 'slate' },
-  codes:            { shape: 'hex',     emblem: 'stripe', tone: 'slate' },
-  rhythm:           { shape: 'zig',     emblem: 'none',   tone: 'slate' },
-  media:            { shape: 'pyramid', emblem: 'wave',   tone: 'slate' },
-  regulation:       { shape: 'tube',    emblem: 'seal',   tone: 'slate' },
-  effectiveness:    { shape: 'star',    emblem: 'none',   tone: 'slate' },
-  synthesis:        { shape: 'gem',     emblem: 'spark',  tone: 'ink' },
-  drafter:          { shape: 'tube',    emblem: 'none',   tone: 'mist' },
-  judge:            { shape: 'block',   emblem: 'tick',   tone: 'ink' },
+  extract:          { shape: 'triangle', emblem: 'page',   tone: 'ink' },
+  market_structure: { shape: 'column',   emblem: 'bars',   tone: 'cobalt' },
+  positioning:      { shape: 'diamond',  emblem: 'target', tone: 'iris' },
+  culture:          { shape: 'dome',     emblem: 'dots',   tone: 'coral' },
+  codes:            { shape: 'hex',      emblem: 'mouth',  tone: 'mint' },
+  rhythm:           { shape: 'stack',    emblem: 'none',   tone: 'iris', accent: 'coral' },
+  media:            { shape: 'triangle', emblem: 'wave',   tone: 'cobalt' },
+  regulation:       { shape: 'crescent', emblem: 'spark',  tone: 'mint' },
+  effectiveness:    { shape: 'star',     emblem: 'none',   tone: 'marigold' },
+  synthesis:        { shape: 'diamond',  emblem: 'spark',  tone: 'iris', lightMark: true },
+  drafter:          { shape: 'crescent', emblem: 'none',   tone: 'marigold' },
+  judge:            { shape: 'card',     emblem: 'tick',   tone: 'ink' },
 }
 
 /**
- * Theme-following CSS colours for a tone: the body, and the eyes and emblem
- * drawn on it. The tokens still carry the prototype's department names;
- * only their colours are used.
+ * CSS colours for a tone: the body, and the face and mark drawn on it. Ink
+ * uses the studio's --plan pair, so it inverts wherever the page does; the
+ * rest are AgentFigure.css's fixed palette with a fixed dark face.
  */
 export const TONE_VARS: Readonly<Record<Tone, { body: string; mark: string }>> = {
   ink: { body: 'var(--plan)', mark: 'var(--plan-eye)' },
-  slate: { body: 'var(--produce)', mark: 'var(--produce-eye)' },
-  mist: { body: 'var(--learn)', mark: 'var(--learn-eye)' },
+  cobalt: { body: 'var(--af-cobalt)', mark: 'var(--af-mark)' },
+  coral: { body: 'var(--af-coral)', mark: 'var(--af-mark)' },
+  marigold: { body: 'var(--af-marigold)', mark: 'var(--af-mark)' },
+  iris: { body: 'var(--af-iris)', mark: 'var(--af-mark)' },
+  mint: { body: 'var(--af-mint)', mark: 'var(--af-mark)' },
 }

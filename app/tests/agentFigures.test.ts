@@ -54,3 +54,31 @@ test('every agent is in the snippet, and the helper sets state and label', () =>
   assert.match(agentFigure('extract', { decorative: true }), /aria-hidden="true"/)
   assert.equal(agentFigure('nobody'), '')
 })
+
+// The shared crew: the snippet's copy of the rule gives what model.ts gives.
+test('NapkinAgents in the snippet agrees with model.ts', async () => {
+  const { agentOfDecision, agentForWork, WORKS, LENS_IDS } = await import('../src/studio/model.ts')
+  const s = read('templates/shared/agent-figures.html')
+  const script = s.slice(s.indexOf('<script>') + 8, s.indexOf('</script>'))
+  const crew = new Function(`${script}; return NapkinAgents`)() as {
+    forWork(w: string, lens?: string): string
+    ofDecision(d: Record<string, unknown>): string | null
+    figure(w: string, o?: Record<string, unknown>, lens?: string): string
+  }
+  for (const w of WORKS) assert.equal(crew.forWork(w), agentForWork(w), w)
+  for (const l of LENS_IDS) assert.equal(crew.forWork('research', l), agentForWork('research', l), l)
+  const cases: Record<string, unknown>[] = [
+    { agent: 'human' }, { agent: 'human:shrey' }, { agent: '' },
+    { agent: 'extract_ask' }, { agent: 'napkin/brief/extract' }, { agent: 'napkin/brief', action: 'capture verbatim' },
+    { agent: 'draft_brief@1' }, { agent: 'napkin/brief/drafter' }, { agent: 'regenerate_field@1' },
+    { agent: 'napkin/brief/judge' }, { agent: 'golden_critic' }, { agent: 'draft_brief', kind: 'verdict' },
+    { agent: 'draft_brief', polarity: 'bad' },
+    { agent: 'start_campaign', action: 'identify' }, { agent: 'start_campaign', action: 'select' },
+    { agent: 'start_campaign', action: 'report' }, { agent: 'start_campaign', action: 'mystery' },
+    { agent: 'synthesise_findings' }, { agent: 'x', kind: 'finding' },
+    { agent: 'research_lens', lens: 'media_spend' }, { agent: 'research_lens', targets: ['d#lenses.regulation_clearance'] },
+    { agent: 'research_lens' },
+  ]
+  for (const c of cases) assert.equal(crew.ofDecision(c), agentOfDecision(c), JSON.stringify(c))
+  assert.match(crew.figure('judge', { state: 'needs-you' }), /aria-label="Judge,.*needs you"/)
+})

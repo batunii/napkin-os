@@ -500,6 +500,9 @@ body.fresh main{padding-top:24px}
 .crew .who{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--zone-2);padding:4px 10px 4px 6px;border-radius:12px;background:var(--zone-tint)}
 .crew .who b{color:var(--zone-fg);font-weight:600;font-size:13px;min-width:7.5em}
 .crew .agent-figure{width:22px;height:30px}
+.crew .who.many{flex-wrap:wrap;row-gap:4px;padding-top:8px}
+.crew .lensrow{display:flex;gap:2px;flex:none;flex-basis:100%}
+.crew .lensrow .agent-figure{width:15px;height:20px}
 @media (max-width:860px){.intake{grid-template-columns:1fr;min-height:0;gap:16px}.intake .intro{padding:22px 20px 18px;gap:14px}.crew{grid-template-columns:1fr 1fr}}
 @media (max-width:520px){.crew{grid-template-columns:1fr}.crew .who span{display:none}}
 /* the campaign's own header: on the Plan band */
@@ -1739,11 +1742,17 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     {k:'report',     l:'Report',           who:'Report'}
   ];
   var STAGE={}; STAGES.forEach(function(S,i){ S.i=i; STAGE[S.k]=S; });
-  // Each stage is drawn by one of the shell's approved figures, from the
-  // shared snippet the packer inlines (agentFigure; see <head>).
-  var STAGE_AGENT={extract:'extract', identify:'positioning', select:'judge', research:'market_structure', synthesise:'synthesis', report:'drafter'};
+  // Who does each stage comes from the shared crew (NapkinAgents, in the
+  // snippet the packer inlines; see <head>): a stage says what kind of work it
+  // is, and gets the agent every app uses for that work. Reading the ask and
+  // working out the brand is Extract's; picking the lenses is the Judge's;
+  // research is one agent per lens.
+  var STAGE_WORK={extract:'read', identify:'read', select:'judge', research:'research', synthesise:'synthesise', report:'draft'};
+  var CREW_OK=typeof NapkinAgents==='object';
+  function stageAgent(k,lens){ return CREW_OK?NapkinAgents.forWork(STAGE_WORK[k]||'read',lens):''; }
+  if(CREW_OK) STAGES.forEach(function(S){ S.who=S.k==='research'?'The researchers':(NapkinAgents.name[stageAgent(S.k)]||S.who); });
   var IDENT_MARK='<svg viewBox="0 0 44 44" aria-hidden="true"><circle fill="currentColor" cx="22" cy="12" r="5"/><circle fill="currentColor" cx="12" cy="32" r="5"/><circle fill="currentColor" cx="32" cy="32" r="5"/><rect fill="currentColor" x="20.7" y="15" width="2.6" height="8"/><rect fill="currentColor" x="10.7" y="21.5" width="22.6" height="2.6"/><rect fill="currentColor" x="10.7" y="21.5" width="2.6" height="7"/><rect fill="currentColor" x="30.7" y="21.5" width="2.6" height="7"/></svg>';
-  function fig(stage, state){ return typeof agentFigure==='function'?agentFigure(STAGE_AGENT[stage]||'extract', {state:state, decorative:true}):''; }
+  function fig(stage, state, lens){ return CREW_OK?agentFigure(stageAgent(stage,lens)||'extract', {state:state, decorative:true}):''; }
   ICON.clip='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M10.5 4.5 5.8 9.2a1.6 1.6 0 0 0 2.3 2.3l4.9-4.9a3 3 0 0 0-4.3-4.3L3.8 7.2a4.4 4.4 0 0 0 6.2 6.2l3.5-3.5"/></svg>';
   ICON.send='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg>';
   ICON.doc='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M4 1.8h5.2L12.5 5v9.2H4Z M9 1.8V5h3.5"/></svg>';
@@ -2074,12 +2083,25 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   // What each stage's agent does, in a line, for the intake band.
   var STAGE_DOES={extract:'reads your prompt and what you attach', identify:'works out the brand and the category', select:'picks the lenses the ask calls for',
     research:'researches each lens, market by market', synthesise:'turns pinned facts into findings', report:'writes the report, every claim cited'};
+  // One row per agent, in the order they first work: Extract reads the ask and
+  // works out the brand, so it is one row doing both.
+  function crewRows(){
+    var by={}, rows=[];
+    STAGES.forEach(function(S){
+      var id=S.k==='research'?'research':(stageAgent(S.k)||S.k), does=STAGE_DOES[S.k]||S.l;
+      if(by[id]){ by[id].does.push(does); return; }
+      rows.push(by[id]={k:S.k, who:S.who, does:[does], research:S.k==='research'});
+    });
+    return rows;
+  }
   function intakeHtml(){
     return '<div class="intake">'
       +'<div class="band intro"><div class="ident">'+IDENT_MARK+'Research Tool<span class="kind">Plan</span></div>'
       +'<h1 class="h1">Start a campaign.</h1>'
       +'<p class="lede">Say what the client needs and drop in what they sent: the brief, the email, the deck. The agents work out the brand and the category, ask you when they cannot tell, research the lenses your prompt calls for, and come back with a report in which every claim cites a pinned fact or a finding.</p>'
-      +'<div class="crew" aria-label="Who works on it">'+STAGES.map(function(S){ return '<div class="who">'+fig(S.k)+'<b>'+esc(S.who)+'</b><span>'+esc(STAGE_DOES[S.k]||S.l)+'</span></div>'; }).join('')+'</div></div>'
+      +'<div class="crew" aria-label="Who works on it">'+crewRows().map(function(r){
+        var f=r.research&&CREW_OK?'<span class="lensrow">'+NapkinAgents.lenses.map(function(l){ return fig('research',undefined,l); }).join('')+'</span>':fig(r.k);
+        return '<div class="who'+(r.research?' many':'')+'">'+f+'<b>'+esc(r.who)+'</b><span>'+esc(r.does.join('; '))+'</span></div>'; }).join('')+'</div></div>'
       +'<div class="ask"><div class="eyebrow">The ask</div>'+composerHtml()+signAsHtml()+'</div>'
       +'</div>';
   }
