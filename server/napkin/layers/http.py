@@ -144,7 +144,12 @@ class HttpLayers:
     # -- sources -------------------------------------------------------------
     def add_source(self, source: dict) -> str:
         src = {k: v for k, v in source.items() if v is not None and k != "id"}
-        out = self._req("POST", "/v1/layers/sources", body={"source": src}, key=idem("source", src["uri"]))
+        # Keyed by the whole body, not the URI: two researchers citing one URL
+        # with different titles are two requests, and the service's own rule
+        # (one row per URI, `created: false`) makes the second a no-op. A
+        # URI-only key made the second a 409 idempotency_conflict.
+        out = self._req("POST", "/v1/layers/sources", body={"source": src},
+                        key=idem("source", json.dumps(src, sort_keys=True)))
         if not isinstance(out.get("id"), str):
             raise LayersError("layers add_source returned no id")
         return out["id"]

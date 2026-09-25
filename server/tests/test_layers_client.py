@@ -47,6 +47,16 @@ def test_protocol_methods_round_trip_through_the_client(layers):
     assert layers.find_brands("bmw") == [("brand/bmw", "BMW")]
 
 
+def test_one_url_cited_twice_with_different_titles_is_one_source(layers):
+    """Two lens researchers can cite the same URL, each with the title it saw.
+    The second write is not a replay of the first, so it must not reuse its
+    idempotency key (that was a 409 idempotency_conflict that failed research);
+    the service's one-row-per-URI rule hands back the same id."""
+    a = layers.add_source({**src("https://www.cso.ie/x"), "title": "Vehicle licensing 2025"})
+    b = layers.add_source({**src("https://www.cso.ie/x"), "title": "Vehicles Licensed for the First Time"})
+    assert a == b
+
+
 def test_scope_travels_in_headers_never_in_bodies(store):
     svc = store.service
     L = store.open({"org": "org/a", "brand": "brand/x"}, {"handler": "h@1.0", "job": "job_1"})
