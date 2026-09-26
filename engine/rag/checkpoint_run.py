@@ -101,16 +101,32 @@ def main() -> None:
     ap.add_argument("--briefs", default="mamaliga-engleza,employer-awareness-campaign-brief,friskies-engleza")
     ap.add_argument("--arms", default="before,after")
     ap.add_argument("--label", default=None)
+    ap.add_argument("--reuse", default=None,
+                    help="an earlier checkpoint dir whose arms (those not named in --arms) are copied "
+                         "instead of re-run, e.g. the 'before' arm, which does not change between checkpoints")
     a = ap.parse_args()
     label = a.label or dt.datetime.now().strftime("%Y-%m-%d_%H%M")
     out = ENGINE / "outputs" / "e2e" / f"checkpoint_{label}"
-    arms = {"before": (Path(a.before), {"RAG_VALIDATOR": "none"}),
-            "after": (Path(a.after), {}),
-            "after_novalidator": (Path(a.after), {"RAG_VALIDATOR": "none"})}
-    arms = {k: arms[k] for k in a.arms.split(",") if k in arms}
+    all_arms = {"before": (Path(a.before), {"RAG_VALIDATOR": "none"}),
+                "after": (Path(a.after), {}),
+                "after_novalidator": (Path(a.after), {"RAG_VALIDATOR": "none"})}
+    arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
     briefs = [b.strip() for b in a.briefs.split(",") if b.strip()]
+    if a.reuse:
+        prev = json.loads((Path(a.reuse) / "rows.json").read_text())
+        for arm, prev_rows in prev.items():
+            if arm in arms or not prev_rows:
+                continue
+            rows[arm] = prev_rows
+            arms = {arm: all_arms[arm], **arms}          # reused arms first in the report
+            out.mkdir(parents=True, exist_ok=True)
+            if (Path(a.reuse) / arm).exists() and not (out / arm).exists():
+                shutil.copytree(Path(a.reuse) / arm, out / arm)
+            print(f"[{arm}] reused from {a.reuse}", file=sys.stderr, flush=True)
     for arm, (tree, env_extra) in arms.items():
+        if rows.get(arm):
+            continue                                       # reused
         (out / arm).mkdir(parents=True, exist_ok=True)
         for stem in briefs:
             print(f"[{arm}] {stem} …", file=sys.stderr, flush=True)

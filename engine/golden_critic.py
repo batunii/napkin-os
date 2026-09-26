@@ -81,10 +81,17 @@ def _wc(s) -> int:
     return len(_words(s))
 
 
+_ABBREV_RE = re.compile(r"\b(Dr|Mr|Mrs|Ms|Mx|St|Prof|Sr|Jr|vs|No|Co|Ltd|Inc|Corp|etc|approx|e\.g|i\.e|[A-Z])\.(?=\s)")
+
+
 def _sentences(s) -> list[str]:
     """Split text into sentences on runs of . ! ? followed by whitespace or the end of the
-    text, dropping blank pieces. A decimal such as 2.5 does not split."""
-    return [x for x in re.split(r"[.!?]+(?:\s|$)", str(s or "").strip()) if x.strip()]
+    text, dropping blank pieces. A decimal such as 2.5 does not split, and neither does the
+    full stop of a title or abbreviation ('Dr. Oetker', 'e.g.', an initial): on 2026-09-26
+    a one-sentence SMP starting 'Dr. Oetker no-boil mămăligă …' counted as two, failed the
+    one-sentence code rule and was dropped from the brief."""
+    text = _ABBREV_RE.sub(lambda m: m.group(1).replace(".", "\x00") + "\x00", str(s or "").strip())
+    return [x.replace("\x00", ".") for x in re.split(r"[.!?]+(?:\s|$)", text) if x.strip()]
 
 
 def _list_items(v) -> list[str]:

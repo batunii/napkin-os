@@ -154,3 +154,13 @@ def test_angle_seeds_are_the_sourced_proposition_types():
     for word in ("killer fact", "promise", "emotional benefit", "big idea"):
         assert word in joined
     assert "judged" not in joined and "settles for" not in joined
+
+
+def test_sentence_counter_ignores_titles_and_abbreviations():
+    """'Dr. Oetker …' is one sentence, so is 'Acme Ltd. every day' and 'J. K. Rowling'; real
+    sentence breaks still count (bug found on the 2026-09-26 checkpoint run)."""
+    assert len(gc._sentences("Dr. Oetker no-boil mămăligă removes the guilt of choosing convenience.")) == 1
+    assert len(gc._sentences("We work with Acme Ltd. every day. Really.")) == 2
+    assert len(gc._sentences("J. K. Rowling wrote it. Twice!")) == 2
+    assert len(gc._sentences("Prices from 2.5 euro a pack.")) == 1
+    assert pb._rubric_hard(SMP, "Dr. Oetker keeps the making in your hands.") == []

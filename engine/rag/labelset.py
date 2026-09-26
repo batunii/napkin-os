@@ -125,10 +125,8 @@ def _doc_text(path: Path) -> str:
     if suf in (".txt", ".md"):
         return path.read_text(errors="replace")
     if suf == ".docx":
-        import docx
-        d = docx.Document(str(path))
-        cells = [c.text for t in d.tables for r in t.rows for c in r.cells]
-        return "\n".join([p.text for p in d.paragraphs] + cells)
+        import parse_brief                       # one document-order reader for both paths (audit critic-G1)
+        return parse_brief.docx_text(path)
     if suf == ".pdf":
         import pypdf
         return "\n".join(pg.extract_text() or "" for pg in pypdf.PdfReader(str(path)).pages)

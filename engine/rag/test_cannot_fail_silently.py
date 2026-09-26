@@ -733,7 +733,7 @@ def test_fill_starts_before_the_capture_returns(monkeypatch):
         return {"fields": {"business_problem": {"value": "p", "status": "fact"}}, "how_to_win": {}, "open_questions": []}
     def score(text, fields=None):
         score_started.set(); return {"mode": "llm", "dimensions": []}
-    def fill(gf, l37, schema, brief_text=""):
+    def fill(gf, l37, schema, brief_text="", **kw):
         fill_started.set(); return {"insight": {"value": "i"}}, [{"question": "Agree the SMP.", "blocks_field": "smp"}]
     monkeypatch.setattr(pb, "capture_toon", cap)
     monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})
@@ -767,7 +767,7 @@ def test_parallel_off_runs_the_same_graph(monkeypatch):
     monkeypatch.setattr(pb, "extract_golden_brief", lambda text: {"fields": {"background": {"value": "b", "source": "client_stated"}}})
     monkeypatch.setattr(pb, "loops_3_7", lambda loop2, fields, **kw: {"enabled": True, "loops": {}, "gist": {}, "intent": "x",
                                                                         "synthesis_mode": "none"})
-    monkeypatch.setattr(pb, "fill_derivable_fields", lambda gf, l37, schema, brief_text="": ({}, []))
+    monkeypatch.setattr(pb, "fill_derivable_fields", lambda gf, l37, schema, brief_text="", **kw: ({}, []))
     out = pb.run(None, loops37=True, golden=True, raw_text=BRIEF)
     assert list(out)[:4] == ["meta", "loop1_capture", "loop2_brief", "betterbriefs_scorecard"]
     assert out["loops3_7"]["retrieved_from"] == "golden" and "loop2_golden" in out
