@@ -1816,7 +1816,8 @@ class _NoEvidence(RuntimeError):
 class NoClaudeAvailable(RuntimeError):
     """The chain is Claude-only and no route to Claude exists (no API key for transport
     api, no `claude` CLI for transport cli). Raised by run() before any call, so a brief is
-    never quietly written by another model (Sai, 2026-09-25)."""
+    never quietly written by another model (Sai, 2026-09-25), and at the end of a run in
+    which not one Claude call answered, so a heuristic brief is never returned as normal."""
 
 
 class _Refused(RuntimeError):
@@ -4684,6 +4685,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     # it walked is kept beside it. A non-Claude link that answered is named in
     # meta.fallback_links so the brief is never mistaken for a Claude brief.
     answered = stats.get("answered_by") or {}
+    # Every Claude call failed mid-run (a usage limit hit partway, an outage): the stages
+    # fell back to heuristics and the result is not a Claude brief. The start-of-run check
+    # only proves a route exists; this proves one answered (as_sent run, 2026-09-26: 36
+    # failed links, a heuristic brief returned as normal).
+    if (provider == "anthropic" and not _allow_nonclaude() and not answered
+            and (stats.get("calls") or 0) > 0):
+        raise NoClaudeAvailable("every Claude call in this run failed (usage limit or outage); "
+                                "no brief was written. Retry when Claude answers.")
     if answered and mode != "heuristic":
         # Routed runs answer on several models; the label names the extraction job's model
         # (the one that read the brief), not whichever model answered the most calls.

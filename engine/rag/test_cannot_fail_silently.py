@@ -799,3 +799,23 @@ def test_parallel_off_runs_the_same_graph(monkeypatch):
     out = pb.run(None, loops37=True, golden=True, raw_text=BRIEF)
     assert list(out)[:4] == ["meta", "loop1_capture", "loop2_brief", "betterbriefs_scorecard"]
     assert out["loops3_7"]["retrieved_from"] == "golden" and "loop2_golden" in out
+
+
+def test_a_run_where_no_claude_call_answered_is_an_error(monkeypatch):
+    """Every Claude link fails mid-run (a usage limit hit partway): the stages fall back to
+    heuristics, and run() must raise NoClaudeAvailable instead of returning that brief as
+    normal (as_sent run 2026-09-26)."""
+    monkeypatch.setenv("BRIEF_PROVIDER", "anthropic")
+    monkeypatch.delenv("BRIEF_ALLOW_NONCLAUDE", raising=False)
+    def dead(user, system=None, max_tokens=None, schema=None, model=None):
+        """Test stub: stands in for `_chat_anthropic` in test_a_run_where_no_claude_call_answered_is_an_error."""
+        pb._stats_call(f"anthropic:{model}", 10)
+        raise RuntimeError("usage limit reached")
+    monkeypatch.setattr(pb, "_chat_anthropic", dead)
+    monkeypatch.setenv("BRIEF_CLAUDE_TRANSPORT", "api")
+    try:
+        pb.run(None, raw_text="Acme sells packs. The brief is short.", golden=True)
+    except pb.NoClaudeAvailable as e:
+        assert "every Claude call" in str(e)
+    else:
+        raise AssertionError("a run with no Claude answer returned a brief")
