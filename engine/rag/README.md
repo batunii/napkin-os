@@ -388,6 +388,13 @@ python3 judge.py check --backends jev,local --deadline 5
 
 ### jev validation backend — `judge_jev.py`
 
+**jev as a checker (2026-09-26, ADR 0011):** `jev_checks.py` reuses the backend through
+`JevBackend.ask()` (same lock and deadline) for four checks in the brief pipeline: RTB
+and desired-response figures (fail at p(unsupported) >= 0.9), scorecard verdicts
+(disputes flagged at p >= 0.9, verdict kept), the retrieval category when no upstream
+category is given (p >= 0.85, never `other`), and synthesis sentences against their cited
+passages (marked in the review file). `BRIEF_JEV_CHECKS=0` turns them off.
+
 **What it is.** The TypeSafe jev backend for the validation stage. For each retrieved passage it asks jev one calibrated yes/no question (a *Noul*): "Is PASSAGE directly useful evidence for this brief?" It is the only calibrated backend in the chain: `score` is jev's own probability, `value` is `score >= threshold`, and `why` is always None. It can be written and tested without access; when a key arrives, install the SDK, set the key and put `jev` first in `RAG_VALIDATOR`.
 
 **Interface.**
@@ -525,7 +532,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `QDRANT_CLUSTER_ENDPOINT`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | — | Qdrant backend |
 | `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
 | `BRIEF_FULLTEXT` | unset | `1` = A/B arm: the brief generator reads evidence spans (capped 1200 / 800 chars) instead of 220 / 160-char snippets |
-| `BRIEF_SYNTH_MODEL` | model chain default | model for the per-loop synthesis paragraphs (now one call per loop, in parallel) |
+| `BRIEF_SYNTH_MODEL` | unset: the `synth` route, Sonnet 5 (ADR 0011) | pins one model for the per-loop synthesis paragraphs (one call per loop, in parallel), over the route |
 | `RAG_PATH` | `mix` | Which retrieval feeds the brief generator (`loops_3_7`): `mix` = each loop's per-field query through `brief_context.build_multi()` (scope, admission, budgets, widening, validation; ~1.4s warm); `loops` = the previous per-loop retrieve + rerank + case packs. Chosen 2026-09-23; `loops` stays one switch away until Shrey's finished-brief test |
 | `RAG_VALIDATION_MODE` | `order` | `order` re-sorts by validator score and drops nothing; `gate` also drops what fails the threshold (measured unsafe for briefs: keeps 1/24 useful client exemplars) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
@@ -561,6 +568,7 @@ rejected, consequences.
 | [0008](docs/adr/0008-audience-rule-examples-provenance.md) | The audience rule, sourced examples, and where provenance marks go (review and lineage, not the client page) |
 | [0009](docs/adr/0009-hallucination-at-the-source.md) | Hallucination at the source: stop invention entering the brief (audit batch 2) |
 | [0010](docs/adr/0010-retrieval-wait-closed.md) | The local store answers in under a second: filter masks, one store per process, warm-up |
+| [0011](docs/adr/0011-model-routes-and-jev-checks.md) | Model routes by job, a judge never on its writer's model, and jev as a checker (figures, scorecard, category, synthesis) |
 
 ## Plans
 

@@ -17,6 +17,13 @@ def _placeholder_claude_key(monkeypatch):
     """A placeholder ANTHROPIC_API_KEY for run()'s availability check, only when none is set."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-placeholder-never-sent")
+    # jev checks (ADR 0011) off unless a test turns them on with a fake backend: the real
+    # backend would read TYPESAFE_API_KEY from engine/.env and try the network.
+    monkeypatch.setenv("BRIEF_JEV_CHECKS", "0")
+    import sys as _sys
+    jc = _sys.modules.get("jev_checks")
+    if jc is not None:
+        monkeypatch.setattr(jc, "_backend", None)
     yield
 
 

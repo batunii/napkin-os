@@ -608,6 +608,32 @@ class JevBackend:
         except Exception:      # noqa: BLE001 — a failed warm-up costs nothing but the attempt
             return False
 
+    def ask(self, state: dict, questions: dict, *, deadline_s: float | None = None):
+        """Any jev questions about one state, outside retrieval validation: the brief
+        checks in jev_checks.py (RTB figures, scorecard verdicts, category, synthesis
+        support). Same lock as score() (one request at a time per client, the SSL fix),
+        same deadline-aware transport and error mapping. `questions` are raw SDK
+        dictionaries ({name: {"type": "noul"|"choice", "instructions", "criteria"}}),
+        at most `batch_questions` per request. Returns the SDK response (its `nouls` and
+        `choices` maps); raises BackendUnavailable on any failure."""
+        budget = float(deadline_s or self.deadline_s)
+        started = time.monotonic()
+        with self._score_lock:
+            deadline_at = started + budget
+            timeout = deadline_at - time.monotonic()
+            if timeout <= 0:
+                raise BackendUnavailable(f"{NAME}: deadline passed before the request was sent", kind="timeout")
+            _request_deadline.at = deadline_at
+            try:
+                return self._client.system_one(state=state, questions=questions, model=self.model,
+                                               timeout=timeout)
+            except BackendUnavailable:
+                raise
+            except Exception as exc:
+                raise _map_error(exc) from exc
+            finally:
+                _request_deadline.at = None
+
     # ---- the Backend protocol ---------------------------------------------------------
     def describe(self) -> dict:
         """What this backend is running, for the trace: model, capacity, threshold and

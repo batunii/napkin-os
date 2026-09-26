@@ -770,7 +770,7 @@ def extract_golden_brief(raw_text: str) -> "dict | None":
     if not system:
         return None
     user = _brief_block(raw_text, CLIP_EXTRACT)
-    obj = _json_call(user, system=system, retries=1, max_tokens=MAXTOK_EXTRACT,
+    obj = _json_call(user, system=system, retries=1, max_tokens=MAXTOK_EXTRACT, route="extract",
                      accept=lambda o: isinstance(o, dict) and isinstance(o.get("fields"), dict)
                      and bool(o["fields"]))
     return _repair_quotes(obj, raw_text) if obj else obj
@@ -1072,6 +1072,42 @@ MAXTOK_BATCH_JUDGE = 3000   # one verdict per candidate x test (reasons on failu
                             # 1500 could truncate on 6 SMP drafts x 5 tests; a ceiling, not a cost.
 
 
+def _value_items(value) -> list:
+    """The checkable items of a field value: a list's strings, a dict's values (think /
+    feel / do), or the value itself."""
+    if isinstance(value, list):
+        return [str(v) for v in value if str(v).strip()]
+    if isinstance(value, dict):
+        return [str(v) for v in value.values() if str(v).strip()]
+    return [str(value)] if str(value or "").strip() else []
+
+
+def _jev_figure_failures(field, candidates, allowed_text) -> dict:
+    """{candidate index: [hard failure, ...]} for RTB and desired-response drafts whose
+    figures jev says are not in the brief at p(unsupported) >= jev_checks.FIGURE_FAIL_P
+    (Sai, 2026-09-26; lab: AUC 0.997, precision 1.0 at that line). One jev request for
+    every item of every draft. {} for other fields, when there is no brief text, or when
+    jev cannot answer (the code number check still runs; the gap is logged once)."""
+    if allowed_text is None or field.get("id") not in GROUNDED_FIELDS:
+        return {}
+    flat = [(i, it) for i, c in enumerate(candidates) for it in _value_items(c.get("value"))]
+    if not flat:
+        return {}
+    try:
+        _load_retriever()
+        import jev_checks
+    except Exception:          # noqa: BLE001 — retrieval package unavailable: no jev
+        return {}
+    ps = jev_checks.figures_supported(allowed_text, [it for _, it in flat])
+    out: dict = {}
+    for (i, it), pr in zip(flat, ps or []):
+        if pr is not None and (1.0 - pr) >= jev_checks.FIGURE_FAIL_P:
+            out.setdefault(i, []).append(
+                f"jev: a figure in \"{it[:70]}\" is not in the brief (p unsupported {1 - pr:.2f}) "
+                "— remove it or use a figure the brief states")
+    return out
+
+
 def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", territory=None,
                     allowed_text: "str | None" = None) -> list:
     """Rank the candidates AND run every llm rubric test (and, for the SMP, the two territory
@@ -1142,7 +1178,10 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
                     '{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short, '
                     'ONLY when pass is false"}}}, "ranking": [candidate indexes, best first], '
                     '"why": "one line on the winner"}'),
-            retries=1, max_tokens=MAXTOK_BATCH_JUDGE, whole=True)
+            retries=1, max_tokens=MAXTOK_BATCH_JUDGE, whole=True,
+            # the judge is never the writer (ADR 0011): exclude the writer job's lead model
+            route=judge_route(field.get("id", "")),
+            exclude=(route_models(writer_route(field.get("id", ""))) or [None])[0])
     judge = judge if isinstance(judge, dict) else {}
     n = len(candidates)
     results = judge.get("results") if isinstance(judge.get("results"), dict) else {}
@@ -1157,6 +1196,7 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
     order = [i for i in order if 0 <= i < n]
     order = list(dict.fromkeys(order)) + [i for i in range(n) if i not in order]
     judged_tests = [r["id"] for r in llm_tests] + (["own_territory", "brand_only"] if territory else [])
+    jev_bad = _jev_figure_failures(field, candidates, allowed_text)
     out = []
     for rank, i in enumerate(order):
         c = candidates[i]
@@ -1172,6 +1212,7 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
             bad = _numbers_not_in(c["value"], allowed_text)
             if bad:
                 hard.append(f"figures not in the brief: {', '.join(bad)} — remove or replace with a stated fact")
+        hard.extend(jev_bad.get(i, []))
         verdicts = {tid: _verdict(res, tid) for tid in judged_tests}
         missing = [tid for tid, v in verdicts.items() if v is None]
         if missing:
@@ -1206,7 +1247,7 @@ def _refine_field(field, value, note: str = ""):
     user = (f"DRAFT '{field['label']}' to sharpen:\n{json.dumps(value)}\n"
             + (f"\nDirector's note: {note}\n" if note else "")
             + "Return the improved value in the same JSON shape.")
-    raw = _json_call(user, system=system, max_tokens=MAXTOK_GEN)
+    raw = _json_call(user, system=system, max_tokens=MAXTOK_GEN, route=writer_route(field.get("id", "")))
     return raw if isinstance(raw, dict) and raw.get("value") else None
 
 
@@ -1244,7 +1285,7 @@ def _smp_territory(brief_text: str, competitor_ctx: str) -> "dict | None":
                 "ownable edge as the brief itself describes it). Be concrete and short. Return ONLY raw "
                 'JSON: {"rival": "competitor name", "avoid": "the concept they own + synonyms", '
                 '"own": "the white space this brand should claim"}'),
-        retries=1, max_tokens=MAXTOK_GEN,
+        retries=1, max_tokens=MAXTOK_GEN, route="hero_judge",
         accept=lambda o: isinstance(o, dict) and bool(o.get("own")) and bool(o.get("avoid"))
         and bool(o.get("rival")))
     if isinstance(obj, dict) and obj.get("own") and obj.get("avoid") and obj.get("rival"):
@@ -1496,7 +1537,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     f"{SMP_ANGLE_SEEDS[i % len(SMP_ANGLE_SEEDS)]}" for i in range(n_cand))
                 u += f"\nANGLES — one per draft:\n{seeds}"
             batched = _json_call(u, system=_gen_field_system(field, n=n_cand, has_precedents=has_precedents),
-                                 max_tokens=MAXTOK_GEN * 2, whole=True,
+                                 max_tokens=MAXTOK_GEN * 2, whole=True, route=writer_route(fid),
                                  accept=lambda o: bool(_coerce_candidates(o)))
             candidates = _coerce_candidates(batched)[:n_cand]
         if not candidates:
@@ -1507,7 +1548,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                 if fid == "smp" and territory:
                     seed = SMP_ANGLE_SEEDS[i % len(SMP_ANGLE_SEEDS)]
                     u += f"\nANGLE FOR THIS DRAFT (pull the idea this way, do not name the angle): {seed}"
-                raw = _json_call(u, system=system, max_tokens=MAXTOK_GEN)
+                raw = _json_call(u, system=system, max_tokens=MAXTOK_GEN, route=writer_route(fid))
                 if isinstance(raw, dict) and raw.get("value"):
                     candidates.append(raw)
         if not candidates:
@@ -1988,6 +2029,9 @@ def _chat_anthropic(user, system=None, max_tokens=None, schema=None, model=None)
     kw = {}
     if schema:
         kw["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
+    effort = getattr(_EFFORT_TL, "effort", None)
+    if effort and _thinking_headroom(model):          # effort exists only on thinking models
+        kw.setdefault("output_config", {})["effort"] = effort
     # max_tokens was hardcoded at 4000, which ignored every caller's ceiling — a judge
     # call asking for 500 was allocated 4000.
     # `model` is the chain link's model. Before 2026-09-24 this always sent
@@ -2140,6 +2184,69 @@ CLI_TIMEOUT_S = float(os.environ.get("BRIEF_CLI_TIMEOUT", "240"))
 _CLI_DEFAULT_EFFORT = {"claude-opus-5-5": "medium"}
 
 
+# ---------------------------------------------------------------------------
+# Model routes (Sai, 2026-09-26; ADR 0011). Each call names its JOB, and the job picks
+# the model: one model everywhere forced one trade-off everywhere (Opus 4.6 invents
+# figures in RTBs; Opus 5.5 thinks on a 7-second competitor lookup). Rules: a judge is
+# never the model that wrote what it judges; extraction stays on the strongest writer
+# until an A/B shows another model keeps full capture coverage. Each route is
+# [model, fallback], Claude only. BRIEF_ROUTE_<JOB>="model[,fallback]" overrides one
+# route; BRIEF_ROUTES=0, an explicit BRIEF_MODEL or BRIEF_MODEL_CHAIN, or a non-Anthropic provider falls back
+# to the single-model chain (the whole-pipeline swaps the comparisons use).
+# ---------------------------------------------------------------------------
+HAIKU = "claude-haiku-4-5-20251001"
+ROUTES = {
+    "extract":         ("claude-opus-4-6", "claude-opus-5-5"),   # capture, golden extraction
+    "hero":            ("claude-opus-4-6", "claude-opus-5-5"),   # insight/SMP drafts, refine, other fields
+    "grounded_writer": ("claude-opus-5-5", "claude-opus-4-6"),   # RTB, desired response: 0/8 vs 11 invented figures
+    "hero_judge":      ("claude-opus-5-5", "claude-sonnet-5"),   # insight/SMP judges, territory map
+    "judge":           ("claude-sonnet-5", HAIKU),               # every other field's judge
+    "mechanical":      ("claude-sonnet-5", HAIKU),               # scorecard, how-to-win, rerank
+    "synth":           ("claude-sonnet-5", HAIKU),               # loop syntheses (Sai: Sonnet, not Haiku)
+}
+# Effort per job on thinking models (Opus 5.5, Sonnet 5): judges and mechanical calls
+# answer a rule, so they think little. None = the model's own default.
+ROUTE_EFFORT = {"hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
+GROUNDED_FIELDS = ("reasons_to_believe", "desired_response")
+HERO_FIELDS = ("insight", "smp")
+_EFFORT_TL = threading.local()       # the effort of the call in flight on this thread
+
+
+def routes_active() -> bool:
+    """True when calls are routed by job: BRIEF_ROUTES is not 0, no BRIEF_MODEL or
+    BRIEF_MODEL_CHAIN pins the whole pipeline, and the lead provider is Anthropic."""
+    return (os.environ.get("BRIEF_ROUTES", "1") != "0" and not os.environ.get("BRIEF_MODEL")
+            and not os.environ.get("BRIEF_MODEL_CHAIN", "").strip()
+            and resolve_provider() == "anthropic")
+
+
+def route_models(route: "str | None", exclude: "str | None" = None) -> "list | None":
+    """The models for a job, lead first (BRIEF_ROUTE_<JOB> overrides the table), minus
+    `exclude` (a judge's writer). None when routing is off or the job is unknown; [] when
+    the exclusion left nothing, which the caller treats as no judge available."""
+    if not route or route not in ROUTES or not routes_active():
+        return None
+    env = os.environ.get(f"BRIEF_ROUTE_{route.upper()}", "").strip()
+    models = [m.strip() for m in env.split(",") if m.strip()] if env else list(ROUTES[route])
+    return [m for m in dict.fromkeys(models) if m != exclude]
+
+
+def writer_route(field_id: str) -> str:
+    """The job that writes a golden field: grounded_writer for RTB and desired response,
+    hero for everything else."""
+    return "grounded_writer" if field_id in GROUNDED_FIELDS else "hero"
+
+
+def judge_route(field_id: str) -> str:
+    """The job that judges a golden field: hero_judge for insight and SMP, judge otherwise."""
+    return "hero_judge" if field_id in HERO_FIELDS else "judge"
+
+
+def model_routes() -> dict:
+    """Every job's models as this run resolves them, for meta.model_routes ({} when off)."""
+    return {r: route_models(r) for r in ROUTES} if routes_active() else {}
+
+
 # Set once `auto` has switched this process to the CLI (credit/auth failure on the API).
 # The switch expires after CLI_FALLBACK_TTL_S so a server re-checks the API instead of
 # staying on the slower CLI until restart after one auth hiccup (audit critic-G11).
@@ -2224,7 +2331,8 @@ def _chat_claude_cli(user, system=None, max_tokens=None, schema=None, model=None
     env = {**os.environ,
            "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(int(max_tokens or MAXTOK_EXTRACT) + _thinking_headroom(model))}
     if _thinking_headroom(model):
-        cmd += ["--effort", os.environ.get("BRIEF_CLI_EFFORT") or _CLI_DEFAULT_EFFORT.get(model, "high")]
+        cmd += ["--effort", os.environ.get("BRIEF_CLI_EFFORT") or getattr(_EFFORT_TL, "effort", None)
+                or _CLI_DEFAULT_EFFORT.get(model, "high")]
     else:
         env["MAX_THINKING_TOKENS"] = "0"          # the API path does not think on these models
     if schema:
@@ -2313,6 +2421,7 @@ def _chat(user, system=None, model=None, max_tokens=None):
     """Provider-agnostic chat. Walks the model chain (see _model_chain) and returns the
     first link's raw text, or None if every link failed (callers fall back to heuristic)."""
     _stats_logical()
+    _EFFORT_TL.effort = None
     for provider, m in _model_chain(model):
         try:
             raw = _call_link(provider, m, user, system=system, max_tokens=max_tokens)
@@ -2346,7 +2455,8 @@ def _note_answer(provider: str, m: str):
 
 
 def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens=None,
-               schema=None, parse=None, whole=False, only_model=False, info=None):
+               schema=None, parse=None, whole=False, only_model=False, info=None,
+               route=None, exclude=None):
     """Chat call that must return JSON, with provider juggling: each chain link gets up to
     `retries`+1 tries; unparseable output (or one rejected by `accept`) advances to the next
     link. Returns the first usable object, or None if the whole chain is exhausted.
@@ -2360,59 +2470,76 @@ def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens
     A reply cut off at the output cap is retried once with 1.5x the cap on the same link,
     then the next link; a refusal is logged and counted, then the next link."""
     _stats_logical()
+    routed = None if (model or only_model) else route_models(route, exclude)
     if only_model and model:
         chain = [(_provider_for_model(model) or "anthropic", model)]
+    elif routed is not None:
+        # A routed call walks its job's own models (ADR 0011), not the default chain, so
+        # a judge can never fall back onto its writer. Cooling links are skipped unless
+        # every one is cooling.
+        import time as _t
+        now = _t.monotonic()
+        chain = [("anthropic", m) for m in routed]
+        chain = [l for l in chain if _LINK_COOLDOWN.get(f"{l[0]}:{l[1]}", 0.0) <= now] or chain
+        if not chain:
+            print(f"[!] route {route}: no model left after excluding the writer ({exclude}); unjudged.",
+                  file=sys.stderr)
+            return None
     else:
         chain = _model_chain(model)
-    reader = parse or (functools.partial(_loads_lenient, whole=True) if whole else _loads_lenient)
-    for provider, m in chain:
-        cap, grew = max_tokens, False
-        attempt = 0
-        while attempt <= retries:
-            try:
-                raw = _call_link(provider, m, user, system=system, max_tokens=cap,
-                                 json_mode=parse is None, schema=schema)
-            except _RateLimited:
-                _cooldown(provider, m)
-                print(f"[i] link {provider}:{m} rate-limited; cooling {int(_COOLDOWN_SECS)}s, next link…",
-                      file=sys.stderr)
-                break
-            except _Truncated as e:
-                if not grew:
-                    cap, grew = int((cap or MAXTOK_EXTRACT) * 1.5), True
-                    print(f"[i] {e}; retrying once with {cap} tokens.", file=sys.stderr)
-                    continue                     # same link, more room, not counted as a retry
-                print(f"[!] {e} again at {cap} tokens; next link…", file=sys.stderr)
-                break
-            except _Refused as e:
-                print(f"[!] {e}; next link…", file=sys.stderr)
-                break
-            except Exception as e:
-                print(f"[i] link {provider}:{m} failed ({e.__class__.__name__}); next link…",
-                      file=sys.stderr)
-                break                            # this link is down — go to the next one
-            if not raw:
-                break
-            raw = re.sub(r"^```(?:json|toon)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            obj = reader(raw)
-            if obj is not None and (accept is None or accept(obj)):
-                _note_answer(provider, m)
-                if isinstance(info, dict):
-                    info["link"] = f"{provider}:{m}"
-                return obj
-            attempt += 1
-            if attempt <= retries:
-                print(f"[i] {provider}:{m} unclean/unusable JSON; retrying once.", file=sys.stderr)
-        # link exhausted → fall through to the next provider in the chain
-    print("[i] no provider in the chain returned usable JSON.", file=sys.stderr)
-    return None
+    _EFFORT_TL.effort = ROUTE_EFFORT.get(route) if routed is not None else None
+    try:
+        reader = parse or (functools.partial(_loads_lenient, whole=True) if whole else _loads_lenient)
+        for provider, m in chain:
+            cap, grew = max_tokens, False
+            attempt = 0
+            while attempt <= retries:
+                try:
+                    raw = _call_link(provider, m, user, system=system, max_tokens=cap,
+                                     json_mode=parse is None, schema=schema)
+                except _RateLimited:
+                    _cooldown(provider, m)
+                    print(f"[i] link {provider}:{m} rate-limited; cooling {int(_COOLDOWN_SECS)}s, next link…",
+                          file=sys.stderr)
+                    break
+                except _Truncated as e:
+                    if not grew:
+                        cap, grew = int((cap or MAXTOK_EXTRACT) * 1.5), True
+                        print(f"[i] {e}; retrying once with {cap} tokens.", file=sys.stderr)
+                        continue                     # same link, more room, not counted as a retry
+                    print(f"[!] {e} again at {cap} tokens; next link…", file=sys.stderr)
+                    break
+                except _Refused as e:
+                    print(f"[!] {e}; next link…", file=sys.stderr)
+                    break
+                except Exception as e:
+                    print(f"[i] link {provider}:{m} failed ({e.__class__.__name__}); next link…",
+                          file=sys.stderr)
+                    break                            # this link is down — go to the next one
+                if not raw:
+                    break
+                raw = re.sub(r"^```(?:json|toon)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+                obj = reader(raw)
+                if obj is not None and (accept is None or accept(obj)):
+                    _note_answer(provider, m)
+                    if isinstance(info, dict):
+                        info["link"] = f"{provider}:{m}"
+                    return obj
+                attempt += 1
+                if attempt <= retries:
+                    print(f"[i] {provider}:{m} unclean/unusable JSON; retrying once.", file=sys.stderr)
+            # link exhausted → fall through to the next provider in the chain
+        print("[i] no provider in the chain returned usable JSON.", file=sys.stderr)
+        return None
+    finally:
+        _EFFORT_TL.effort = None           # never leaks into the next call on this thread
 
 
 def extract_llm(text, schema):
     """Provider-agnostic extractor. Walks the model chain (BRIEF_MODEL_CHAIN); a link that
     returns valid-but-empty JSON is skipped so extraction lands on a clean-JSON model.
     Returns a dict, or None to fall back to heuristic."""
-    obj = _json_call(_user_msg(text, schema), max_tokens=MAXTOK_EXTRACT,
+    obj = _json_call(_user_msg(text, schema), max_tokens=MAXTOK_EXTRACT, route="extract",
                      accept=lambda o: isinstance(o, dict) and isinstance(o.get("fields"), dict)
                      and bool(o["fields"]))
     out = _normalize_llm(obj) if obj is not None else None
@@ -2578,7 +2705,7 @@ def capture_toon(segs: list[str]) -> "dict | None":
     if not segs:
         return None
     obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
-                     system=CAPTURE_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon,
+                     system=CAPTURE_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon, route="extract",
                      accept=lambda o: isinstance(o.get("fields"), dict) and bool(o["fields"]))
     if not obj:
         return None
@@ -2605,7 +2732,7 @@ def how_to_win_toon(segs: list[str]) -> dict:
     if not segs:
         return {}
     obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
-                     system=HOW_TO_WIN_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon,
+                     system=HOW_TO_WIN_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon, route="mechanical",
                      accept=lambda o: any(k in o for k in HOW_TO_WIN_KEYS))
     out = {}
     for k in HOW_TO_WIN_KEYS:
@@ -2955,6 +3082,30 @@ def scorecard_heuristic(fields):
             "mode": "heuristic"}
 
 
+def _jev_scorecard(text, dims) -> "dict | None":
+    """jev as a checker on the scorecard (Sai, 2026-09-26): its own pass / vague / missing
+    per dimension, written onto each row as `jev`, plus the dimensions where jev disagrees
+    at p >= jev_checks.DISPUTE_P. The scorecard's verdict stands: jev's accuracy on this
+    rubric is unmeasured until the CD/planner labels return. None when jev cannot answer."""
+    try:
+        _load_retriever()
+        import jev_checks
+    except Exception:          # noqa: BLE001
+        return None
+    got = jev_checks.check_scorecard(text, dims)
+    if not got:
+        return None
+    disputes = []
+    for d in dims:
+        j = got.get(d.get("dimension"))
+        if j:
+            d["jev"] = j
+            if j["choice"] != d.get("verdict") and j["p"] >= jev_checks.DISPUTE_P:
+                disputes.append(d["dimension"])
+    agree = sum(1 for d in dims if d.get("jev") and d["jev"]["choice"] == d.get("verdict"))
+    return {"agrees": agree, "checked": sum(1 for d in dims if d.get("jev")), "disputes": disputes}
+
+
 def score_betterbriefs(text, fields=None):
     """LLM judge against the BetterBriefs rubric; heuristic fallback (from `fields`, which
     may be None when the call is made before the capture lands: run() then rebuilds the
@@ -2962,7 +3113,8 @@ def score_betterbriefs(text, fields=None):
     case, one row per dimension (the first wins), and evidence the judge quotes must be in
     the brief, else the row is marked and downgraded to 'vague' (audit J11: 'Pass' used to
     read as vague and 'Multiple' as single, hiding the split-this-brief warning)."""
-    obj = _json_call(_brief_block(text, CLIP_EXTRACT), system=SCORECARD_SYSTEM, max_tokens=MAXTOK_EXTRACT)
+    obj = _json_call(_brief_block(text, CLIP_EXTRACT), system=SCORECARD_SYSTEM, max_tokens=MAXTOK_EXTRACT,
+                     route="mechanical")
     if not isinstance(obj, dict) or not isinstance(obj.get("dimensions"), list):
         return scorecard_heuristic(fields or {})
     hay = _norm_quote(text)
@@ -2990,7 +3142,8 @@ def score_betterbriefs(text, fields=None):
         sm = {}
     multiple = str(sm.get("verdict") or "").strip().lower() == "multiple"
     split = sm.get("split_into")
-    return {"dimensions": dims,
+    jev = _jev_scorecard(text, dims)
+    return {"dimensions": dims, **({"jev_check": jev} if jev else {}),
             "single_mindedness": {
                 "verdict": "multiple" if multiple else "single",
                 "split_into": [str(s) for s in split] if (multiple and isinstance(split, list)) else []},
@@ -3135,7 +3288,7 @@ def _rerank_hits(query: str, hits: list, k: int) -> list:
         system=("You are a retrieval reranker for a strategy brief. Rank the passages by how directly "
                 "each one helps answer the QUERY — most useful first. Demote passages that merely share "
                 "words but miss the intent. Return ONLY raw JSON: {\"ranking\": [passage indexes, best first]}"),
-        retries=1, max_tokens=MAXTOK_JUDGE)
+        retries=1, max_tokens=MAXTOK_JUDGE, route="mechanical")
     if isinstance(obj, dict) and isinstance(obj.get("ranking"), list):
         order = [i for i in obj["ranking"] if isinstance(i, int) and 0 <= i < len(hits)]
         order += [i for i in range(len(hits)) if i not in order]   # keep any the judge dropped
@@ -3316,7 +3469,48 @@ def _check_synthesis(para: str, gist: dict, loop: dict) -> str:
         loop["names_removed"] = removed
     if uncited[0]:
         loop["uncited"] = uncited[0]
-    return para
+    return _jev_mark_unsupported(para, loop)
+
+
+_UNSUPPORTED_MARK = " (not supported by its cited source)"
+
+
+def _jev_mark_unsupported(para: str, loop: dict) -> str:
+    """jev as a checker on a loop synthesis (Sai, 2026-09-26): each sentence that cites
+    this loop's evidence is asked whether its cited passages support it; one jev
+    probability of support at or below 1 - jev_checks.DISPUTE_P appends a mark and counts
+    in loop['unsupported']. Marks only (the synthesis is read by the review file alone,
+    and this question is unmeasured against sources). Unchanged when jev cannot answer."""
+    ev = loop.get("evidence") or []
+    sources = {}
+    for e in ev:
+        key = str(e.get("citation", "")).strip()
+        if key:
+            sources[key] = e.get("text") or e.get("snippet") or ""
+    if not sources or not para:
+        return para
+    sents = re.split(r"(?<=[.!?])\s+(?=[A-Z(])", para)
+    asked = []
+    for snt in sents:
+        cites = [f"{m.group(1).strip()} › {m.group(2).strip()}" for m in _CITE_RE.finditer(snt)]
+        cites = [c.split(" › ", 1)[1] if c.lower().startswith("source › ") else c for c in cites]
+        asked.append((snt, cites))
+    try:
+        _load_retriever()
+        import jev_checks
+    except Exception:          # noqa: BLE001
+        return para
+    ps = jev_checks.synthesis_support(asked, sources)
+    if not ps:
+        return para
+    out, n = [], 0
+    for (snt, _c), pr in zip(asked, ps):
+        if pr is not None and pr <= 1.0 - jev_checks.DISPUTE_P:
+            snt, n = snt.rstrip() + _UNSUPPORTED_MARK, n + 1
+        out.append(snt)
+    if n:
+        loop["unsupported"] = n
+    return " ".join(out)
 
 
 def _synthesize_loops37(gist, intent, loops) -> str:
@@ -3346,7 +3540,7 @@ def _synthesize_loops37(gist, intent, loops) -> str:
             f"### {key} — {d['title']}\nRETRIEVED EVIDENCE:\n{ev}\n\n"
             'Return JSON only: {"paragraph": "..."}')
         obj = _json_call(user, system="You are a precise strategy planner. Output JSON only.",
-                         model=synth_model, max_tokens=MAXTOK_SYNTH_ONE, info=info,
+                         model=synth_model, max_tokens=MAXTOK_SYNTH_ONE, info=info, route="synth",
                          schema={"type": "object", "properties": {"paragraph": {"type": "string"}},
                                  "required": ["paragraph"], "additionalProperties": False})
         para = obj.get("paragraph") if isinstance(obj, dict) else None
@@ -3426,12 +3620,13 @@ def _loops37_from_digests(loop2, fields, synthesize=True) -> dict | None:
 EVIDENCE_MAX_CHARS = 6000
 
 
-def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True) -> dict:
+def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True, facets=None) -> dict:
     """Loops 3–7: classify intent → build queries from the Loop-2 brief → retrieve
     top-k playbooks + effectiveness evidence → ground a short strategy with
     citations. Retrieval-only; degrades to a disabled stub if the index is absent.
     synthesize=False skips the five synthesis calls (synthesis_mode "deferred") so run()
-    can make them in parallel with the hero fields."""
+    can make them in parallel with the hero fields. `facets` (brief_facets) adds the
+    category filter and brand / competitor keywords on the mix path."""
     try:
         retriever = _load_retriever()
     except Exception as e:                            # never crash the run over RAG
@@ -3550,7 +3745,9 @@ def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True) -> dict:
         if rag_path == "mix":
             # A mix failure goes to the digests, NOT to the loops path: the loops path would hit
             # the same failing store again, five requests at up to 240 s each (audit RAG-2/C3).
-            loops, retrieval_trace = _loops_via_mix(gist, fields, index_dir)
+            loops, retrieval_trace = _loops_via_mix(gist, fields, index_dir, facets=facets)
+            if isinstance(retrieval_trace, dict) and facets:
+                retrieval_trace["facets"] = facets
         if loops is None:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=len(LOOP37_SPECS)) as pool_ex:
@@ -3605,7 +3802,40 @@ def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True) -> dict:
         return _digests(f"retrieval failed mid-run: {e.__class__.__name__}: {e}")
 
 
-def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
+def brief_facets(text: str, upstream: dict | None = None) -> dict:
+    """Brand, category and competitors for retrieval (Sai, decision 4, 2026-09-26): the
+    upstream category and brand research first; with no upstream category, jev's choice
+    among the 18 locked categories when it is at least jev_checks.CATEGORY_MIN_P sure and
+    not 'other'; otherwise none (retrieval runs unfiltered, as before, and says why).
+    Brand and competitors come from upstream only: the capture's competitor field is a
+    paragraph, and the keyword slot takes exact names. Never raises."""
+    up = upstream or {}
+    comps = up.get("competitors")
+    comps = [c for c in (comps if isinstance(comps, list) else str(comps or "").split(",")) if str(c).strip()]
+    out = {"brand": str(up.get("brand") or "").strip() or None, "competitors": [str(c).strip() for c in comps],
+           "category": None, "category_source": None}
+    cat = str(up.get("category") or "").strip().lower()
+    try:
+        _load_retriever()
+        import jev_checks
+        if cat in jev_checks.CATEGORY_DESC and cat != "other":
+            out.update(category=cat, category_source="upstream")
+            return out
+        got = jev_checks.choose_category(text)
+    except Exception as e:     # noqa: BLE001
+        out["category_note"] = f"no category: {e.__class__.__name__}"
+        return out
+    if got and got["category"] != "other" and got["p"] >= jev_checks.CATEGORY_MIN_P:
+        out.update(category=got["category"], category_source="jev", category_p=got["p"])
+    elif got:
+        out["category_note"] = (f"jev chose {got['category']} at p={got['p']}: 'other' or below "
+                                f"{jev_checks.CATEGORY_MIN_P}, so no category filter")
+    else:
+        out["category_note"] = "jev unavailable: no category filter"
+    return out
+
+
+def _loops_via_mix(gist, fields, index_dir=None, facets=None) -> tuple[dict, dict]:
     """Loops 3-7 evidence from the mix path: each LOOP37_SPECS query through
     brief_context.build_multi() in one pass. Returns (loops, trace) in exactly the shape
     the loops path produces — citation "doc › section", framework, category (doc_kind,
@@ -3618,6 +3848,16 @@ def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
     pairs = {k: v for k, v in pairs.items() if v}
     pairs.update({k: v for k, v in (("problem", gist["problem"]), ("objective", gist["objective"]),
                                     ("audience", gist["audience"])) if v and k not in pairs})
+    # Decision 4 (ADR 0011): category filter and brand / competitor keywords. Until now the
+    # capture's field names matched no filter or keyword slot, so every brief ran
+    # unfiltered (audit JL-8 / RAG-9).
+    fac = facets or {}
+    if fac.get("category"):
+        pairs["category"] = fac["category"]
+    if fac.get("brand"):
+        pairs["brand"] = fac["brand"]
+    if fac.get("competitors"):
+        pairs["competitors"] = ", ".join(fac["competitors"])
     from mix_queries import queries_for
     queries = queries_for(gist)
     # The validator sees the brief, not only a 500-character templated query: the gist
@@ -4204,7 +4444,8 @@ class _Inline:
 
 
 def run(path: Path | None, client=None, project=None, loops37=False, golden=False,
-        raw_text: str | None = None, source_name: str | None = None) -> dict:
+        raw_text: str | None = None, source_name: str | None = None,
+        upstream: dict | None = None) -> dict:
     """Run the briefing pipeline on one brief and return the brief object (main() writes it
     to brief_object.json). Resets the LLM call ledger first.
 
@@ -4219,6 +4460,10 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                    --attach context folded in); skips ingest().
       source_name  source label for meta.source_files and the ledger; defaults to
                    'pasted-input' with raw_text, else path.name.
+      upstream     facts from the system's category and brand research steps, when they
+                   ran: {"brand", "category" (a contract enum value), "competitors" (a
+                   list of names)}. Retrieval filters and keywords read these first; with
+                   no upstream category, jev picks one from the brief (decision 4, ADR 0011).
 
     Stage graph (a 4-worker thread pool; the arrows are waits):
       capture_toon ∥ how_to_win_toon ∥ extract_golden_brief (golden only), all on the raw
@@ -4286,11 +4531,21 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                    and loops37 and golden)
     golden_schema = (json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
                      if loops37 else None)
-    with _stats_scope() as ledger, (ThreadPoolExecutor(max_workers=8) if parallel else _Inline()) as ex:
+    with _stats_scope() as ledger, (ThreadPoolExecutor(max_workers=10) if parallel else _Inline()) as ex:
         f_score = ex.submit(_scoped(score_betterbriefs), text, None)     # text only: t=0
         if loops37:
             ex.submit(_warm_validator)               # pay the validator's cold start now
             ex.submit(_warm_store)                   # and the store's (rows, matrix, BM25)
+        # Brand / category / competitors for retrieval: upstream research, else jev's
+        # category choice, alongside the opening calls (one jev request, under a second).
+        f_facets = ex.submit(_scoped(brief_facets), text, upstream) if loops37 else None
+
+        def _facets():
+            """The facets once ready (waits at most 20 s); None if they failed."""
+            try:
+                return f_facets.result(timeout=20) if f_facets else None
+            except Exception:  # noqa: BLE001 — no facets = retrieval unfiltered, as before
+                return None
         f_cap = ex.submit(_scoped(capture_toon), segs) if toon else None
         f_htw = ex.submit(_scoped(how_to_win_toon), segs) if toon else None
         f_gold = ex.submit(_scoped(extract_golden_brief), text) if golden else None
@@ -4302,7 +4557,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 try:
                     gb0 = f_gold.result()
                     rf = _retrieval_fields_from_golden(gb0) if gb0 else {}
-                    return loops_3_7({}, rf, synthesize=False) if rf else None
+                    return loops_3_7({}, rf, synthesize=False, facets=_facets()) if rf else None
                 except Exception as e:
                     print(f"[!] retrieval from the golden extraction failed "
                           f"({e.__class__.__name__}: {e}); retrying from the capture.", file=sys.stderr)
@@ -4356,7 +4611,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             l37_early = f_l37.result() if f_l37 else None
             if l37_early is None:
                 try:
-                    l37_early_or_cap = loops_3_7(loop2, fields, synthesize=False)
+                    l37_early_or_cap = loops_3_7(loop2, fields, synthesize=False, facets=_facets())
                 except Exception as e:
                     print(f"[!] retrieval failed ({e.__class__.__name__}: {e}); Loops 3-7 skipped.",
                           file=sys.stderr)
@@ -4430,8 +4685,13 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     # meta.fallback_links so the brief is never mistaken for a Claude brief.
     answered = stats.get("answered_by") or {}
     if answered and mode != "heuristic":
-        out["meta"]["extraction_mode"] = max(answered, key=answered.get)
+        # Routed runs answer on several models; the label names the extraction job's model
+        # (the one that read the brief), not whichever model answered the most calls.
+        ext = set(route_models("extract") or [])
+        pool = {l: n for l, n in answered.items() if l.split(":", 1)[-1] in ext} or answered
+        out["meta"]["extraction_mode"] = max(pool, key=pool.get)
     out["meta"]["model_chain"] = [f"{p}:{m}" for p, m in _model_chain()] if provider else []
+    out["meta"]["model_routes"] = model_routes()        # job -> [model, fallback] (ADR 0011)
     fallback_links = sorted(l for l in answered if not l.startswith("anthropic:"))
     if provider == "anthropic" and fallback_links:
         out["meta"]["fallback_links"] = fallback_links

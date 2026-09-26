@@ -257,8 +257,11 @@ def test_refine_failure_keeps_the_chosen_draft(monkeypatch):
 # ---------- change 4: cut-off and refused replies are caught (F8 / BW3 / F7 / G4) ----------
 
 def _chain(monkeypatch, links):
-    """A fake model chain of `links` [(provider, model)]; returns the list of attempts."""
+    """A fake model chain of `links` [(provider, model)]; returns the list of attempts.
+    Routing is off: these tests are about walking a chain, and a routed call walks its
+    job's own models instead (ADR 0011, covered in test_model_routes.py)."""
     attempts = []
+    monkeypatch.setenv("BRIEF_ROUTES", "0")
     monkeypatch.setattr(pb, "_model_chain", lambda model=None: list(links))
     return attempts
 
