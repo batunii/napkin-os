@@ -2,20 +2,105 @@
  "_doc": "Registry of evaluation checkpoints for eval_history.py and the Brief Eval Tracker page. One entry per measured code state: which outputs/e2e/checkpoint_<dir> holds it, which arm, what changed, and whether it is comparable (same briefs, normal login speed). Brief names stay in the git-ignored outputs, never here.",
  "tracker_url": "https://claude.ai/artifact/8wB1KGbm7vFqkTcSscmdyi",
  "checkpoints": [
-  {"id": "f9366c8", "order": 0, "dir": "checkpoint_48a6f0d", "arm": "before", "commit": "f9366c8", "date": "2026-09-26", "role": "baseline",
-   "what": "Before the audit fixes: ragAdded plus the transport switch, validator off", "comparable": true},
-  {"id": "48a6f0d", "order": 1, "dir": "checkpoint_48a6f0d", "arm": "after", "commit": "48a6f0d", "date": "2026-09-26", "role": "change",
+  {
+   "id": "f9366c8",
+   "order": 0,
+   "dir": "checkpoint_48a6f0d",
+   "arm": "before",
+   "commit": "f9366c8",
+   "date": "2026-09-26",
+   "role": "baseline",
+   "what": "Before the audit fixes: ragAdded plus the transport switch, validator off",
+   "comparable": true
+  },
+  {
+   "id": "48a6f0d",
+   "order": 1,
+   "dir": "checkpoint_48a6f0d",
+   "arm": "after",
+   "commit": "48a6f0d",
+   "date": "2026-09-26",
+   "role": "change",
    "what": "Batch 1 (can't fail silently), batch 3 (retrieval that counts), jev on, SMP rules",
-   "comparable": false, "note": "Claude Code login throttled (calls ~10x slower) and jev's concurrency bug left 3 of 5 loops unvalidated; stopped after 2 of 3 briefs"},
-  {"id": "9b824ab", "order": 2, "dir": "checkpoint_9b824ab", "arm": "after", "commit": "9b824ab", "date": "2026-09-26", "role": "change",
-   "what": "Audience rule from the literature, sourced examples, provenance marks, jev calls serialised", "comparable": true},
-  {"id": "1f9ee7f", "order": 3, "dir": "checkpoint_1f9ee7f", "arm": "after", "commit": "1f9ee7f", "date": "2026-09-26", "role": "change",
-   "what": "Batch 2 (hallucination at the source), abbreviation-aware sentence counter", "comparable": true},
-  {"id": "d45bd57", "order": 4, "dir": "checkpoint_d45bd57", "arm": "after", "commit": "d45bd57", "date": "2026-09-26", "role": "change",
-   "what": "Batch 2 leftovers: grounded app regeneration, quote repair, insight as hypothesis, transcription tag", "comparable": true},
-  {"id": "d45bd57-jev-off", "order": 5, "dir": "checkpoint_d45bd57_jevab", "arm": "after_novalidator", "commit": "d45bd57", "date": "2026-09-26", "role": "variant",
-   "what": "Same code as d45bd57 with jev switched off (decision 3: what jev alone adds)", "comparable": true},
-  {"id": "9b06017", "order": 6, "dir": "checkpoint_9b06017", "arm": "after", "commit": "9b06017", "date": "2026-09-26", "role": "change",
-   "what": "Retrieval wait closed: filter masks, one store per process, warm-up (evidence unchanged)", "comparable": true}
+   "comparable": false,
+   "note": "Claude Code login throttled (calls ~10x slower) and jev's concurrency bug left 3 of 5 loops unvalidated; stopped after 2 of 3 briefs"
+  },
+  {
+   "id": "9b824ab",
+   "order": 2,
+   "dir": "checkpoint_9b824ab",
+   "arm": "after",
+   "commit": "9b824ab",
+   "date": "2026-09-26",
+   "role": "change",
+   "what": "Audience rule from the literature, sourced examples, provenance marks, jev calls serialised",
+   "comparable": true
+  },
+  {
+   "id": "1f9ee7f",
+   "order": 3,
+   "dir": "checkpoint_1f9ee7f",
+   "arm": "after",
+   "commit": "1f9ee7f",
+   "date": "2026-09-26",
+   "role": "change",
+   "what": "Batch 2 (hallucination at the source), abbreviation-aware sentence counter",
+   "comparable": true
+  },
+  {
+   "id": "d45bd57",
+   "order": 4,
+   "dir": "checkpoint_d45bd57",
+   "arm": "after",
+   "commit": "d45bd57",
+   "date": "2026-09-26",
+   "role": "change",
+   "what": "Batch 2 leftovers: grounded app regeneration, quote repair, insight as hypothesis, transcription tag",
+   "comparable": true
+  },
+  {
+   "id": "d45bd57-jev-off",
+   "order": 5,
+   "dir": "checkpoint_d45bd57_jevab",
+   "arm": "after_novalidator",
+   "commit": "d45bd57",
+   "date": "2026-09-26",
+   "role": "variant",
+   "what": "Same code as d45bd57 with jev switched off (decision 3: what jev alone adds)",
+   "comparable": true
+  },
+  {
+   "id": "9b06017",
+   "order": 6,
+   "dir": "checkpoint_9b06017",
+   "arm": "after",
+   "commit": "9b06017",
+   "date": "2026-09-26",
+   "role": "change",
+   "what": "Retrieval wait closed: filter masks, one store per process, warm-up (evidence unchanged)",
+   "comparable": true
+  },
+  {
+   "id": "30e890f",
+   "order": 7,
+   "dir": "checkpoint_30e890f",
+   "arm": "after",
+   "commit": "30e890f",
+   "date": "2026-09-26",
+   "role": "change",
+   "what": "Model routes by job (RTB and judges off Opus 4.6, syntheses on Sonnet) and jev as a checker (RTB figures, scorecard, category, synthesis)",
+   "comparable": true
+  },
+  {
+   "id": "30e890f-hero55",
+   "order": 8,
+   "dir": "checkpoint_30e890f_hero55",
+   "arm": "after_hero55",
+   "commit": "30e890f",
+   "date": "2026-09-26",
+   "role": "variant",
+   "what": "Same code as 30e890f with insight and SMP drafts + sharpening on Opus 5.5 (their judges fall to Sonnet 5)",
+   "comparable": true
+  }
  ]
 }
