@@ -11,7 +11,8 @@ Each arm runs engine/rag/e2e_eval.py --trace <stem> --transport cli in its own t
 RAG_STORE=local RAG_INDEX=_index_v4; the trace (calls, cost, seconds, health judged once
 by Sonnet 5, per-check fails) is moved to outputs/e2e/checkpoint_<label>/<arm>/. The
 before arm runs with RAG_VALIDATOR=none (the old code discarded validation anyway); the
-after arm runs with the tree's default (jev on); `after_novalidator` isolates jev.
+after arm runs with the tree's default (jev on); `after_novalidator` isolates jev;
+`after_hero55` writes the insight and SMP on Opus 5.5.
 
 Limits, stated on every report: one judge sample per brief per arm, three briefs, so only
 swings above roughly 13 health points are distinguishable from run-to-run noise (audit
@@ -109,7 +110,10 @@ def main() -> None:
     out = ENGINE / "outputs" / "e2e" / f"checkpoint_{label}"
     all_arms = {"before": (Path(a.before), {"RAG_VALIDATOR": "none"}),
                 "after": (Path(a.after), {}),
-                "after_novalidator": (Path(a.after), {"RAG_VALIDATOR": "none"})}
+                "after_novalidator": (Path(a.after), {"RAG_VALIDATOR": "none"}),
+                # insight/SMP drafts and sharpening on Opus 5.5 (their judges then fall to
+                # Sonnet 5, since a judge never runs on its writer's model; ADR 0011)
+                "after_hero55": (Path(a.after), {"BRIEF_ROUTE_HERO": "claude-opus-5-5,claude-opus-4-6"})}
     arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
     briefs = [b.strip() for b in a.briefs.split(",") if b.strip()]

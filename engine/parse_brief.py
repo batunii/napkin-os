@@ -4687,8 +4687,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     if answered and mode != "heuristic":
         # Routed runs answer on several models; the label names the extraction job's model
         # (the one that read the brief), not whichever model answered the most calls.
-        ext = set(route_models("extract") or [])
-        pool = {l: n for l, n in answered.items() if l.split(":", 1)[-1] in ext} or answered
+        # Lead first, then the fallback: counting both let Opus 5.5 (RTB, hero judges)
+        # outvote the Opus 4.6 extraction (checkpoint 30e890f).
+        pool = {}
+        for m in (route_models("extract") or []):
+            pool = {l: n for l, n in answered.items() if l.split(":", 1)[-1] == m}
+            if pool:
+                break
+        pool = pool or answered
         out["meta"]["extraction_mode"] = max(pool, key=pool.get)
     out["meta"]["model_chain"] = [f"{p}:{m}" for p, m in _model_chain()] if provider else []
     out["meta"]["model_routes"] = model_routes()        # job -> [model, fallback] (ADR 0011)

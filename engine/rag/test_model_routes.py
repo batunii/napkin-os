@@ -137,3 +137,22 @@ def test_every_pipeline_call_names_its_job(monkeypatch):
     for r in ("mechanical", "extract", "hero_judge", "hero", "judge"):
         assert r in routes, (r, routes)
     assert ("hero_judge", "claude-opus-4-6") in calls and ("judge", "claude-opus-5-5") in calls
+
+
+def test_extraction_label_names_the_extraction_model(monkeypatch):
+    """meta.extraction_mode names the extraction job's lead model even when more calls
+    were answered by other models (Opus 5.5 answered 8 calls to Opus 4.6's 7 on
+    checkpoint 30e890f and took the label)."""
+    fake = {"loop1_capture": {"fields": {}, "how_to_win": {}, "open_questions": []}}
+    monkeypatch.setattr(pb, "capture_toon", lambda segs: fake["loop1_capture"])
+    monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})
+    monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {"mode": "llm", "dimensions": []})
+    real = pb._stats_snapshot
+    def snap():
+        """Test stub: stands in for `_stats_snapshot` in test_extraction_label_names_the_extraction_model."""
+        d = real()
+        d["answered_by"] = {"anthropic:claude-opus-5-5": 8, "anthropic:claude-opus-4-6": 7, "anthropic:claude-sonnet-5": 9}
+        return d
+    monkeypatch.setattr(pb, "_stats_snapshot", snap)
+    out = pb.run(None, raw_text="Acme sells packs. The brief is short.")
+    assert out["meta"]["extraction_mode"] == "anthropic:claude-opus-4-6"
