@@ -108,11 +108,38 @@ def get_store(name: str | None = None, **kwargs) -> VectorStore:
     n = store_name(name)
     if n not in REGISTRY:
         raise StoreConfigError(f"Unknown RAG_STORE={n!r}. Known: {', '.join(sorted(REGISTRY))}")
+    key = _memo_key(n, kwargs)
+    if key is not None and key in _MEMO:
+        return _MEMO[key]
     mod_name, cls_name = REGISTRY[n].split(":")
     cls = getattr(importlib.import_module(mod_name), cls_name)
     store = cls(**kwargs)
     store.name = n
+    if key is not None:
+        _MEMO.clear()                    # one live index per process; a rebuilt file replaces it
+        _MEMO[key] = store
     return store
+
+
+# One local store per process (2026-09-27). Each brief used to open a fresh LocalStore
+# and re-read the 356 MB chunks.jsonl (~9 s), and rebuild its matrix and BM25 index -
+# ADR 0001 called it "a known dev-only cost", but the local index is what every run
+# uses until the AWS move. The key includes the file's size and mtime, so a rebuilt or
+# retagged index is picked up on the next call. RAG_STORE_MEMO=0 turns it off.
+_MEMO: dict = {}
+
+
+def _memo_key(n: str, kwargs: dict):
+    """(index path, size, mtime) for the local store when memoising is on, else None."""
+    if n != "local" or os.environ.get("RAG_STORE_MEMO", "1") == "0" or set(kwargs) - {"index_dir"}:
+        return None
+    from store_local import LocalStore           # resolves index_dir exactly as the store does
+    probe = LocalStore(kwargs.get("index_dir"))
+    try:
+        st = probe.chunks_path.stat()
+    except OSError:
+        return None                              # no file yet: nothing worth keeping
+    return (str(probe.chunks_path.resolve()), st.st_size, st.st_mtime_ns)
 
 
 def list_stores() -> list[str]:

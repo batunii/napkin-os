@@ -955,6 +955,21 @@ def default_chain():
     return judge.chain_from_env()
 
 
+def warm_store(index_dir=None) -> dict:
+    """Open the process's store and build its rows, matrix and keyword index before the
+    brief's retrieval needs them (2026-09-27: the first build_multi in a process spent
+    ~23 s doing this on the critical path). Returns the store's warm() report, {} for a
+    store without one (Qdrant). Never raises: parse_brief.run() submits it alongside the
+    opening calls and ignores failures, which retrieval then reports itself."""
+    try:
+        import rag
+        store = rag.open_store(index_dir)
+        warm = getattr(store, "warm", None)
+        return warm() if callable(warm) else {}
+    except Exception:      # noqa: BLE001
+        return {}
+
+
 def warm_validator() -> dict:
     """Pay the validator chain's cold start before a brief's validations need it: every
     backend in RAG_VALIDATOR that offers warm() (jev: one ~400-token request) is called

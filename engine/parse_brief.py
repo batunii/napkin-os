@@ -4132,6 +4132,20 @@ def _mark_provenance(out: dict) -> None:
     out["loop2_golden"]["provenance"] = prov
 
 
+def _warm_store() -> None:
+    """Build the local store's rows, vector matrix and keyword index while the opening
+    Claude calls run (brief_context.warm_store), so retrieval starts warm. A no-op for a
+    remote store; never raises into the run."""
+    try:
+        _load_retriever()
+        import brief_context
+        w = brief_context.warm_store()
+        if w:
+            print(f"[i] store warm-up: {w}", file=sys.stderr)
+    except Exception as e:      # noqa: BLE001
+        print(f"[i] store warm-up skipped ({e.__class__.__name__}: {e})", file=sys.stderr)
+
+
 def _warm_validator() -> None:
     """Warm the RAG validator chain (brief_context.warm_validator) while the capture runs,
     so the five per-field validations do not each pay jev's cold start (audit JL-1). A
@@ -4276,6 +4290,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         f_score = ex.submit(_scoped(score_betterbriefs), text, None)     # text only: t=0
         if loops37:
             ex.submit(_warm_validator)               # pay the validator's cold start now
+            ex.submit(_warm_store)                   # and the store's (rows, matrix, BM25)
         f_cap = ex.submit(_scoped(capture_toon), segs) if toon else None
         f_htw = ex.submit(_scoped(how_to_win_toon), segs) if toon else None
         f_gold = ex.submit(_scoped(extract_golden_brief), text) if golden else None

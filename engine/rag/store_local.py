@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Iterator
 
@@ -40,8 +41,18 @@ class LocalStore(VectorStore):
     """VectorStore over index/chunks.jsonl, held fully in memory after the first read.
 
     Also offers hybrid search (dense + BM25) and get() by chunk id, which the Qdrant store
-    mirrors so local and remote retrieval agree. The row list, BM25 index, NumPy matrix
-    and id map are each built lazily and thrown away on every write."""
+    mirrors so local and remote retrieval agree. The row list, BM25 index, NumPy matrix,
+    id map, per-field filter columns and filter results are each built lazily and thrown
+    away on every write.
+
+    Filtering (2026-09-27): a metadata filter used to run filters.matches() over every
+    row for every query and widening round - ~110k calls and 20-27 s per brief on the
+    ~20k-chunk index, the largest single wait in the pipeline. Each filtered field is now
+    factorised once into integer codes (one per distinct str() value, -1 for absent), so
+    eq / ne / in / nin / exists become NumPy comparisons, and the resulting row list is
+    cached per filter. Range operators (gt/gte/lt/lte) keep the exact matches() loop, on
+    that field only, because they compare raw values, not their str() form. The result
+    is the same row list, in the same order, as the loop gave (test_store_local_masks)."""
     name = "local"
 
     def __init__(self, index_dir: Path | str | None = None):
@@ -54,6 +65,11 @@ class LocalStore(VectorStore):
         self._bm25: BM25 | None = None
         self._mat = None                       # numpy matrix of all vectors, built lazily
         self._by_id: dict[str, dict] | None = None
+        self._cols: dict[str, tuple] = {}      # field -> (codes array, {str value: code})
+        self._where_cache: dict[str, list[int]] = {}
+        # build_multi searches five fields in parallel threads: without this lock each
+        # thread read the 356 MB file and built its own BM25 on a cold store (2026-09-27)
+        self._build_lock = threading.RLock()
 
     # -- files --------------------------------------------------------------
     @property
@@ -70,13 +86,15 @@ class LocalStore(VectorStore):
         """All rows, read from chunks.jsonl on the first call and cached. A missing file
         is an empty index, not an error."""
         if self._cache is None:
-            rows: list[dict] = []
-            if self.chunks_path.exists():
-                with open(self.chunks_path, encoding="utf-8") as fh:
-                    for line in fh:
-                        if line.strip():
-                            rows.append(json.loads(line))
-            self._cache = rows
+            with self._build_lock:
+                if self._cache is None:
+                    rows: list[dict] = []
+                    if self.chunks_path.exists():
+                        with open(self.chunks_path, encoding="utf-8") as fh:
+                            for line in fh:
+                                if line.strip():
+                                    rows.append(json.loads(line))
+                    self._cache = rows
         return self._cache
 
     def _write(self, rows: list[dict]) -> None:
@@ -93,6 +111,8 @@ class LocalStore(VectorStore):
         self._bm25 = None
         self._mat = None
         self._by_id = None
+        self._cols = {}
+        self._where_cache = {}
 
     def write_manifest(self, extra: dict) -> None:
         """Write manifest.json: the current row count (`chunks`) and vector `dim`, plus
@@ -136,12 +156,70 @@ class LocalStore(VectorStore):
         self._write(list(rows))
         return len(rows)
 
+    WHERE_CACHE_MAX = 512
+
     def _filtered(self, where: dict | None) -> list[int]:
-        """Row indexes passing the metadata filter (all rows when no filter)."""
+        """Row indexes passing the metadata filter (all rows when no filter), ascending.
+        Vectorised over per-field codes when NumPy is installed, cached per filter; the
+        plain matches() loop otherwise. Same rows either way."""
         rows = self._rows()
         if not where:
             return list(range(len(rows)))
-        return [i for i, r in enumerate(rows) if _filters.matches(r.get("metadata") or {}, where)]
+        norm = _filters.normalise(where)                 # raises FilterError as before
+        if _np is None or not rows:
+            return [i for i, r in enumerate(rows) if _filters.matches(r.get("metadata") or {}, where)]
+        key = json.dumps(sorted((f, op, sorted(map(str, v)) if op in ("in", "nin") else v)
+                                for f, (op, v) in norm.items()), default=str)
+        hit = self._where_cache.get(key)
+        if hit is not None:
+            return list(hit)
+        mask = _np.ones(len(rows), dtype=bool)
+        for field, (op, value) in norm.items():
+            mask &= self._field_mask(field, op, value)
+            if not mask.any():
+                break
+        out = _np.flatnonzero(mask).tolist()
+        if len(self._where_cache) >= self.WHERE_CACHE_MAX:
+            self._where_cache.clear()
+        self._where_cache[key] = out
+        return list(out)
+
+    def _column(self, field: str) -> tuple:
+        """(codes, vocab) for one metadata field over all rows: codes[i] is the integer
+        for str(value) of row i, or -1 when the field is absent or None - the same
+        presence rule filters.matches() uses. Built once per field, under the lock."""
+        col = self._cols.get(field)
+        if col is not None:
+            return col
+        rows = self._rows()
+        with self._build_lock:
+            col = self._cols.get(field)
+            if col is None:
+                vocab: dict[str, int] = {}
+                codes = _np.empty(len(rows), dtype=_np.int32)
+                for i, r in enumerate(rows):
+                    v = (r.get("metadata") or {}).get(field)
+                    codes[i] = -1 if v is None else vocab.setdefault(str(v), len(vocab))
+                col = self._cols[field] = (codes, vocab)
+        return col
+
+    def _field_mask(self, field: str, op: str, value) -> "object":
+        """Boolean mask of rows whose `field` passes (op, value), matching filters.matches()."""
+        rows = self._rows()
+        if op in ("gt", "gte", "lt", "lte"):             # raw-value comparison: exact loop
+            return _np.fromiter((_filters.matches(r.get("metadata") or {}, {field: {op: value}})
+                                 for r in rows), dtype=bool, count=len(rows))
+        codes, vocab = self._column(field)
+        present = codes != -1
+        if op == "exists":
+            return present if bool(value) else ~present
+        if op in ("eq", "ne"):
+            c = vocab.get(str(value), -2)
+            same = codes == c
+            return same if op == "eq" else ~same     # ne: absent rows pass (-1 != c)
+        wanted = [vocab[str(v)] for v in value if str(v) in vocab]
+        inside = _np.isin(codes, wanted) if wanted else _np.zeros(len(rows), dtype=bool)
+        return inside if op == "in" else ~inside     # nin: absent rows pass
 
     def _dense_top(self, qvec: list[float], idxs: list[int], n: int) -> list[tuple[float, int]]:
         """Top-n (score, row index) by cosine over the given row indexes. NumPy when
@@ -149,7 +227,9 @@ class LocalStore(VectorStore):
         rows = self._rows()
         if _np is not None and rows:
             if self._mat is None:
-                self._mat = _np.asarray([r["vector"] for r in rows], dtype=_np.float32)
+                with self._build_lock:
+                    if self._mat is None:
+                        self._mat = _np.asarray([r["vector"] for r in rows], dtype=_np.float32)
             sub = self._mat[idxs] if len(idxs) != len(rows) else self._mat
             scores = sub @ _np.asarray(qvec, dtype=_np.float32)
             top = _np.argsort(-scores)[:n]
@@ -198,8 +278,24 @@ class LocalStore(VectorStore):
     def bm25(self) -> BM25:
         """Built lazily from the rows on first use; rebuilt after any write."""
         if self._bm25 is None:
-            self._bm25 = self.build_bm25()
+            with self._build_lock:
+                if self._bm25 is None:
+                    self._bm25 = self.build_bm25()
         return self._bm25
+
+    def warm(self) -> dict:
+        """Build everything a search needs - rows, vector matrix, BM25 index - once, so the
+        first brief's retrieval does not pay it on the critical path. Returns what it
+        built with seconds; parse_brief.run() calls it beside the opening Claude calls."""
+        import time as _time
+        t = _time.time()
+        n = self.count()
+        if _np is not None and n:
+            with self._build_lock:
+                if self._mat is None:
+                    self._mat = _np.asarray([r["vector"] for r in self._rows()], dtype=_np.float32)
+        self.bm25()
+        return {"rows": n, "secs": round(_time.time() - t, 1)}
 
     def search_hybrid(self, qvec: list[float], qtext: str, k: int = 5, where: dict | None = None,
                       n: int = 50, rrf_k: int = 10, weights: tuple[float, float] = (1.0, 1.0)
