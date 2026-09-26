@@ -19,6 +19,7 @@ import parse_brief as pb  # noqa: E402
 class _Proc:
     """A finished subprocess, shaped like subprocess.CompletedProcess."""
     def __init__(self, stdout="", stderr="", returncode=0):
+        """Test stub: stands in for `__init__` in _Proc."""
         self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
 
 
@@ -184,6 +185,7 @@ def test_usage_limit_raises_rate_limited(cli):
 def test_timeout_raises_runtime_error(cli, monkeypatch):
     """A hung CLI is a failed link, not a hung brief."""
     def hang(*a, **k):
+        """Test stub: stands in for `hang` in test_timeout_raises_runtime_error."""
         raise subprocess.TimeoutExpired(cmd="claude", timeout=1)
     monkeypatch.setattr(subprocess, "run", hang)
     with pytest.raises(RuntimeError, match="timed out"):
@@ -247,6 +249,7 @@ def test_auto_switches_on_no_credit_and_stays_switched(auto):
     cli_calls, api_calls, mp = auto
 
     def no_credit(user, **k):
+        """Test stub: stands in for `no_credit` in test_auto_switches_on_no_credit_and_stays_switched."""
         api_calls.append(user)
         raise BadRequestError("Your credit balance is too low to access the Anthropic API.")
     mp.setattr(pb, "_chat_anthropic", no_credit)
@@ -261,6 +264,7 @@ def test_auto_does_not_switch_on_a_transient_error(auto):
     cli_calls, _, mp = auto
 
     def limited(user, **k):
+        """Test stub: stands in for `limited` in test_auto_does_not_switch_on_a_transient_error."""
         raise RateLimitError("429")
     mp.setattr(pb, "_chat_anthropic", limited)
     with pytest.raises(RateLimitError):
@@ -284,6 +288,7 @@ def test_explicit_api_never_falls_back(monkeypatch):
     monkeypatch.setattr(pb, "_CLI_FALLBACK", {"on": False})
 
     def no_credit(user, **k):
+        """Test stub: stands in for `no_credit` in test_explicit_api_never_falls_back."""
         raise BadRequestError("Your credit balance is too low")
     monkeypatch.setattr(pb, "_chat_anthropic", no_credit)
     monkeypatch.setattr(pb, "_chat_claude_cli", lambda *a, **k: pytest.fail("CLI used on transport=api"))

@@ -125,6 +125,7 @@ def test_list_and_tfd_fields_are_not_judged_as_hero_lines(monkeypatch):
     purity / single-mindedness framing (live check 2026-09-25)."""
     seen = {}
     def judge(user, system=None, **k):
+        """Test stub: stands in for `judge` in test_list_and_tfd_fields_are_not_judged_as_hero_lines."""
         seen[k.get("_field") or system[:60]] = system
         return _pass_all(user)
     monkeypatch.setattr(pb, "_json_call", judge)
@@ -145,6 +146,7 @@ def test_territory_test_is_positively_worded_and_fails_on_false(monkeypatch):
     `not_rival_line`; a false verdict fails the line with the judge's reason."""
     seen = {}
     def judge(user, **k):
+        """Test stub: stands in for `judge` in test_territory_test_is_positively_worded_and_fails_on_false."""
         seen["user"] = user
         return {"ranking": [0], "results": {"0": {"a": {"pass": True}, "own_territory": {"pass": True},
                                                   "brand_only": {"pass": False, "why": "any bank could"}}}}
@@ -266,6 +268,7 @@ def test_truncated_reply_is_retried_with_more_room_then_next_link(monkeypatch):
     truncation moves to the next link. The partial text is never parsed."""
     attempts = _chain(monkeypatch, [("anthropic", "m1"), ("anthropic", "m2")])
     def link(provider, m, user, max_tokens=None, **k):
+        """Test stub: stands in for `link` in test_truncated_reply_is_retried_with_more_room_then_next_link."""
         attempts.append((m, max_tokens))
         if m == "m1":
             raise pb._Truncated("cut")
@@ -279,6 +282,7 @@ def test_refusal_is_loud_and_goes_to_the_next_link(monkeypatch, capsys):
     """A refusal is printed with '[!]' and counted; the chain moves on."""
     _chain(monkeypatch, [("anthropic", "m1"), ("anthropic", "m2")])
     def link(provider, m, user, **k):
+        """Test stub: stands in for `link` in test_refusal_is_loud_and_goes_to_the_next_link."""
         if m == "m1":
             raise pb._Refused("anthropic:m1: the model declined")
         return '{"ok": 1}'
@@ -291,17 +295,24 @@ def test_api_stop_reasons_raise(monkeypatch):
     """_chat_anthropic raises _Truncated on max_tokens and _Refused on refusal, and records
     cache tokens separately."""
     class Msgs:
+        """Test stub class: stands in for `Msgs` in test_api_stop_reasons_raise."""
         stop = "max_tokens"
         def create(self, **kw):
+            """Test stub: stands in for `create` in test_api_stop_reasons_raise."""
             class T:
+                """Test stub class: stands in for `T` in test_api_stop_reasons_raise."""
                 type, text = "text", '{"partial": '
             class U:
+                """Test stub class: stands in for `U` in test_api_stop_reasons_raise."""
                 input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens = 100, 50, 40, 0
             class R:
+                """Test stub class: stands in for `R` in test_api_stop_reasons_raise."""
                 content, usage, stop_reason = [T()], U(), Msgs.stop
             return R()
     class Client:
+        """Test stub class: stands in for `Client` in test_api_stop_reasons_raise."""
         def __init__(self, **kw):
+            """Test stub: stands in for `__init__` in test_api_stop_reasons_raise."""
             self.messages = Msgs()
     monkeypatch.setitem(sys.modules, "anthropic", types.SimpleNamespace(Anthropic=Client))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
@@ -329,6 +340,7 @@ def test_tournament_and_judge_calls_ask_for_whole_replies(monkeypatch):
     """The batched generation and the batched judge pass whole=True to _json_call."""
     seen = {"gen_batch": [], "judge_batch": [], "other": []}
     def fake(user, system=None, **kw):
+        """Test stub: stands in for `fake` in test_tournament_and_judge_calls_ask_for_whole_replies."""
         system = system or ""
         if '"candidates"' in system:
             seen["gen_batch"].append(kw.get("whole"))
@@ -354,6 +366,7 @@ def test_golden_extraction_reaches_second_link(monkeypatch):
     accept). Before: three tries on link 1, link 2 never."""
     attempts = _chain(monkeypatch, [("anthropic", "m1"), ("nim", "m2")])
     def link(provider, m, user, **k):
+        """Test stub: stands in for `link` in test_golden_extraction_reaches_second_link."""
         attempts.append(m)
         return '{"note": "nothing"}' if m == "m1" else '{"fields": {"insight": {"value": "x", "source": "inferred"}}}'
     monkeypatch.setattr(pb, "_call_link", link)
@@ -366,6 +379,7 @@ def test_json_call_retries_the_same_link_when_accept_rejects_a_parseable_reply(m
     attempts = _chain(monkeypatch, [("anthropic", "m1"), ("anthropic", "m2")])
     replies = iter(['{"n": 1}', '{"n": 2}'])
     def link(provider, m, user, **k):
+        """Test stub: stands in for `link` in test_json_call_retries_the_same_link_when_accept_rejects_a_parseable_reply."""
         attempts.append(m)
         return next(replies)
     monkeypatch.setattr(pb, "_call_link", link)
@@ -413,14 +427,17 @@ class _UpRetriever:
     """A store that answers the availability check and then fails every request."""
     @staticmethod
     def index_available(index_dir=None):
+        """Test stub: stands in for `index_available` in _UpRetriever."""
         return True
 
     @staticmethod
     def index_label(index_dir=None):
+        """Test stub: stands in for `index_label` in _UpRetriever."""
         return "qdrant:up"
 
     @staticmethod
     def retrieve(*a, **k):
+        """Test stub: stands in for `retrieve` in _UpRetriever."""
         raise RuntimeError("store died mid-run")
 
 
@@ -459,6 +476,7 @@ def test_retrieval_failure_never_escapes_run(monkeypatch):
     monkeypatch.setattr(pb, "extract_golden_brief", lambda text: {"fields": {"background": {"value": "b", "source": "client_stated"}}})
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {"mode": "llm"})
     def boom(*a, **k):
+        """Test stub: stands in for `boom` in test_retrieval_failure_never_escapes_run."""
         raise RuntimeError("retrieval bug")
     monkeypatch.setattr(pb, "loops_3_7", boom)
     out = pb.run(None, loops37=True, golden=True, raw_text=BRIEF)
@@ -501,6 +519,7 @@ def test_run_raises_a_clear_error_with_no_route_to_claude(monkeypatch):
 def _stub_capture(monkeypatch, answered=()):
     """Stub every stage of run(); the capture records `answered` links as if they answered."""
     def cap(segs):
+        """Test stub: stands in for `cap` in _stub_capture."""
         for label in answered:
             pb._stats_answered(label)
         return {"fields": {"business_problem": {"value": "p", "status": "fact"}}, "how_to_win": {}, "open_questions": []}
@@ -530,6 +549,7 @@ def test_a_nonclaude_answer_is_named_in_meta_and_on_stderr(monkeypatch, capsys):
     _stub_capture(monkeypatch)
     real_cap = pb.capture_toon
     def cap(segs):
+        """Test stub: stands in for `cap` in test_a_nonclaude_answer_is_named_in_meta_and_on_stderr."""
         pb._note_answer("nim", "openai/gpt-oss-20b"); pb._note_answer("nim", "openai/gpt-oss-20b")
         return real_cap(segs)
     monkeypatch.setattr(pb, "capture_toon", cap)
@@ -552,6 +572,7 @@ def test_critic_never_runs_on_another_model(monkeypatch):
     monkeypatch.setenv("BRIEF_MODEL_CHAIN", "anthropic:claude-sonnet-5,anthropic:claude-opus-4-6")
     monkeypatch.delenv("BRIEF_PROVIDER", raising=False)
     def link(provider, m, user, **k):
+        """Test stub: stands in for `link` in test_critic_never_runs_on_another_model."""
         tried.append(m)
         if m == "claude-sonnet-5":
             raise RuntimeError("BadRequestError")
@@ -606,6 +627,7 @@ def test_stats_snapshot_is_a_deep_copy_and_scoped_per_run(monkeypatch):
 def test_synthesis_label_is_the_answering_link(monkeypatch):
     """loops3_7.synthesis_mode names the link that wrote the paragraphs."""
     def fake(user, info=None, **k):
+        """Test stub: stands in for `fake` in test_synthesis_label_is_the_answering_link."""
         if isinstance(info, dict):
             info["link"] = "anthropic:claude-opus-5-5"
         return {"paragraph": "Grounded paragraph."}
@@ -729,11 +751,14 @@ def test_fill_starts_before_the_capture_returns(monkeypatch):
     the scorecard is submitted before the capture returns."""
     fill_started, score_started = threading.Event(), threading.Event()
     def cap(segs):
+        """Test stub: stands in for `cap` in test_fill_starts_before_the_capture_returns."""
         assert score_started.wait(5) and fill_started.wait(5), "fill or scorecard did not start before the capture finished"
         return {"fields": {"business_problem": {"value": "p", "status": "fact"}}, "how_to_win": {}, "open_questions": []}
     def score(text, fields=None):
+        """Test stub: stands in for `score` in test_fill_starts_before_the_capture_returns."""
         score_started.set(); return {"mode": "llm", "dimensions": []}
     def fill(gf, l37, schema, brief_text="", **kw):
+        """Test stub: stands in for `fill` in test_fill_starts_before_the_capture_returns."""
         fill_started.set(); return {"insight": {"value": "i"}}, [{"question": "Agree the SMP.", "blocks_field": "smp"}]
     monkeypatch.setattr(pb, "capture_toon", cap)
     monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})

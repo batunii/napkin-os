@@ -348,8 +348,10 @@ def test_an_explicit_model_reaches_the_claude_call(monkeypatch):
             """Fake reply."""
             sent["model"] = kw["model"]
             class T:
+                """Test stub class: stands in for `T` in test_an_explicit_model_reaches_the_claude_call."""
                 type, text = "text", "{}"
             class R:
+                """Test stub class: stands in for `R` in test_an_explicit_model_reaches_the_claude_call."""
                 content, usage = [T()], None
             return R()
     class Client:

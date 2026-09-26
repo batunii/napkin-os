@@ -101,6 +101,7 @@ def test_build_multi_forwards_context_to_the_judge(monkeypatch):
     class Rec(FakeBackend):
         """Records the Query it was asked."""
         def score(self, query, passages, *, deadline_s):
+            """Test stub: stands in for `score` in test_build_multi_forwards_context_to_the_judge."""
             seen.append(query)
             return super().score(query, passages, deadline_s=deadline_s)
     bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([Rec()]), context="brief gist " * 1000)
@@ -150,6 +151,7 @@ def test_jev_score_sends_the_passages_bucket_question():
     class Client:
         """Answers every Noul with 0.7 and records the questions."""
         def system_one(self, state, questions, *, model, timeout):
+            """Test stub: stands in for `system_one` in test_jev_score_sends_the_passages_bucket_question."""
             sent.append(questions)
             import types
             return types.SimpleNamespace(
@@ -171,6 +173,7 @@ def test_apply_validation_hands_the_bucket_to_the_backend():
     class Rec(FakeBackend):
         """Records the passages."""
         def score(self, query, passages, *, deadline_s):
+            """Test stub: stands in for `score` in test_apply_validation_hands_the_bucket_to_the_backend."""
             seen.extend(passages)
             return super().score(query, passages, deadline_s=deadline_s)
     bc._apply_validation({"exemplars": [hit("e1", "exemplars")], "craft": [hit("c1", "craft")]},
@@ -202,6 +205,7 @@ def test_a_slow_backend_within_its_own_deadline_is_still_used():
         """Declares its own deadline; answers after a short sleep."""
         deadline_s = 8.0
         def score(self, query, passages, *, deadline_s):
+            """Test stub: stands in for `score` in test_a_slow_backend_within_its_own_deadline_is_still_used."""
             assert deadline_s == 8.0
             time.sleep(0.05)
             return super().score(query, passages, deadline_s=deadline_s)
@@ -214,8 +218,10 @@ def test_warm_validator_calls_each_backends_warm_and_never_raises(monkeypatch):
     class Warmable(FakeBackend):
         """A backend with a warm-up."""
         def __init__(self, ok):
+            """Test stub: stands in for `__init__` in test_warm_validator_calls_each_backends_warm_and_never_raises."""
             super().__init__(); self.ok, self.warmed = ok, 0
         def warm(self):
+            """Test stub: stands in for `warm` in test_warm_validator_calls_each_backends_warm_and_never_raises."""
             self.warmed += 1
             if not self.ok:
                 raise RuntimeError("cold")
@@ -253,11 +259,13 @@ def test_unconfigured_validator_runs_the_brief_unvalidated_and_says_so(monkeypat
     monkeypatch.setattr(pb, "_load_retriever", lambda: None)
 
     def boom():
+        """Test stub: stands in for `boom` in test_unconfigured_validator_runs_the_brief_unvalidated_and_says_so."""
         raise jb.BackendNotConfigured("jev: TYPESAFE_API_KEY is not set")
     monkeypatch.setattr(bc, "brief_chain", boom)
     seen = {}
 
     def build_multi(pairs, queries, **kw):
+        """Test stub: stands in for `build_multi` in test_unconfigured_validator_runs_the_brief_unvalidated_and_says_so."""
         seen.update(kw)
         return types.SimpleNamespace(fields={}, trace={})
     monkeypatch.setattr(bc, "build_multi", build_multi)
@@ -278,6 +286,7 @@ def test_jev_score_calls_from_several_threads_run_one_at_a_time():
     class Client:
         """Counts overlapping calls; answers every Noul with 0.6."""
         def system_one(self, state, questions, *, model, timeout):
+            """Test stub: stands in for `system_one` in test_jev_score_calls_from_several_threads_run_one_at_a_time."""
             with lock:
                 in_flight[0] += 1; peak[0] = max(peak[0], in_flight[0])
             time.sleep(0.02)
@@ -288,6 +297,7 @@ def test_jev_score_calls_from_several_threads_run_one_at_a_time():
     b = jj.JevBackend(Client(), env={}, concurrency=1)
     out = {}
     def one(i):
+        """Test stub: stands in for `one` in test_jev_score_calls_from_several_threads_run_one_at_a_time."""
         out[i] = b.score(jb.Query(f"q{i}"), [jb.Passage(f"p{i}", "t", "craft")], deadline_s=5)
     ts = [threading.Thread(target=one, args=(i,)) for i in range(5)]
     [t.start() for t in ts]; [t.join(5) for t in ts]
@@ -302,6 +312,7 @@ def test_jev_warm_makes_one_tiny_request_and_swallows_failures():
     class Client:
         """Fails."""
         def system_one(self, state, questions, *, model, timeout):
+            """Test stub: stands in for `system_one` in test_jev_warm_makes_one_tiny_request_and_swallows_failures."""
             calls.append(questions)
             raise RuntimeError("down")
     assert jj.JevBackend(Client(), env={}).warm() is False and len(calls) == 1

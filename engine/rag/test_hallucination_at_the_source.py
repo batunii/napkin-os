@@ -134,6 +134,7 @@ def test_rtb_user_prompt_carries_the_allowed_facts(monkeypatch):
     """fill_derivable_fields hands the RTB writer the ALLOWED FACTS block."""
     seen = []
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in test_rtb_user_prompt_carries_the_allowed_facts."""
         seen.append((system or "", user))
         if "judging candidate" in (system or ""):
             import re
@@ -189,6 +190,7 @@ def test_rationale_names_not_in_the_material_are_removed(monkeypatch):
     entry records it."""
     seen = []
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in test_rationale_names_not_in_the_material_are_removed."""
         seen.append(system or "")
         if "judging candidate" in (system or ""):
             import re
@@ -245,6 +247,7 @@ def test_synthesis_prompt_forbids_unsupplied_names_and_run_totals_the_checks(mon
     """The synthesis prompt carries the rule; loops3_7 carries uncited and names_removed totals."""
     seen = {}
     def fake(user, info=None, **k):
+        """Test stub: stands in for `fake` in test_synthesis_prompt_forbids_unsupplied_names_and_run_totals_the_checks."""
         seen["user"] = user
         return {"paragraph": "Apply the framework (nowhere › X) with Acme Corp Ltd."}
     monkeypatch.setattr(pb, "_json_call", fake)
@@ -272,6 +275,7 @@ def test_writer_context_labels_inferred_dependencies_as_assumptions(monkeypatch)
     bare 'background: …' for a client-stated one."""
     seen = []
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in test_writer_context_labels_inferred_dependencies_as_assumptions."""
         seen.append(user)
         if '"candidates"' in (system or ""):
             return {"candidates": [{"value": "d, because it holds", "confidence": 0.9}] * 4}

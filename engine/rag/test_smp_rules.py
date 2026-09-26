@@ -21,6 +21,7 @@ LLM = {c["id"]: c for c in SMP["rubric"] if c["method"] == "llm"}
 def _judge(monkeypatch, verdicts: dict, why: dict | None = None):
     """A batched judge that answers the given {test_id: bool} for candidate 0, True otherwise."""
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in _judge."""
         import re
         tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
         res = {t: {"pass": verdicts.get(t, True), "why": (why or {}).get(t, "")} for t in tests}
@@ -92,6 +93,7 @@ def test_gate_notes_and_flags_are_stored_on_the_entry(monkeypatch):
     verdicts can be audited later."""
     calls = []
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in test_gate_notes_and_flags_are_stored_on_the_entry."""
         import re
         system = system or ""
         if system.startswith("You map strategic white space"):
@@ -139,6 +141,7 @@ def test_judge_prompt_no_longer_bans_and_and_names_copy_devices(monkeypatch):
     the copy devices instead of 'restated taglines'."""
     seen = {}
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in test_judge_prompt_no_longer_bans_and_and_names_copy_devices."""
         seen["system"] = system
         return {"ranking": [0, 1], "results": {"0": {t: {"pass": True} for t in LLM}, "1": {t: {"pass": True} for t in LLM}}}
     monkeypatch.setattr(pb, "_json_call", fake)

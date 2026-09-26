@@ -139,6 +139,7 @@ def test_generator_and_judge_show_several_shapes_and_the_contrast(monkeypatch):
     assert "STYLE REFERENCES" in system
     seen = {}
     def fake(user, system=None, **k):
+        """Test stub: stands in for `fake` in test_generator_and_judge_show_several_shapes_and_the_contrast."""
         seen["user"] = user
         return {"ranking": [0], "results": {"0": {c["id"]: {"pass": True} for c in F["smp"]["rubric"] if c["method"] == "llm"}}}
     monkeypatch.setattr(pb, "_json_call", fake)

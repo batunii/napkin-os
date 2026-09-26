@@ -23,6 +23,7 @@ def test_draft_degrade_keeps_golden_and_says_so(monkeypatch):
     starts 'Degraded run (<reason>)'."""
     calls = []
     def fake_run(path, **kw):
+        """Test stub: stands in for `fake_run` in test_draft_degrade_keeps_golden_and_says_so."""
         calls.append(kw)
         if kw["loops37"]:
             raise RuntimeError("store stalled")
@@ -40,6 +41,7 @@ def test_no_claude_is_a_clear_error_not_a_retry(monkeypatch):
     """NoClaudeAvailable propagates (a non-2xx for the app), with no second run."""
     calls = []
     def fake_run(path, **kw):
+        """Test stub: stands in for `fake_run` in test_no_claude_is_a_clear_error_not_a_retry."""
         calls.append(kw)
         raise parse_brief.NoClaudeAvailable("no Claude")
     monkeypatch.setattr(parse_brief, "run", fake_run)
@@ -72,6 +74,7 @@ def test_regen_is_grounded_and_rule_checked(monkeypatch):
     replies = iter([{"reasons_to_believe": ["73% of buyers repurchased"], "rationale": "r"},
                     {"reasons_to_believe": ["Still 73% repurchased"], "rationale": "r"}])
     def fake(user, system=None, accept=None, **k):
+        """Test stub: stands in for `fake` in test_regen_is_grounded_and_rule_checked."""
         seen.append(user)
         obj = next(replies)
         return obj if accept(obj) else None
@@ -89,6 +92,7 @@ def test_regen_is_grounded_and_rule_checked(monkeypatch):
     assert "single_sentence: 2 sentences" in server._regen_rule_failures("single_minded_proposition", "One. Two.", None)
     empty_ok = False
     def empty(user, system=None, accept=None, **k):
+        """Test stub: stands in for `empty` in test_regen_is_grounded_and_rule_checked."""
         nonlocal empty_ok
         empty_ok = accept({"reasons_to_believe": []})
         return None

@@ -110,6 +110,9 @@ def _regen_rule_failures(app_field: str, value, brief_input: str | None) -> list
 
 
 def _golden_rubric(app_field: str) -> str:
+    """The golden-brief rubric text for an app field (its prompt, tests and limits from
+    golden_brief.schema.json), for the regeneration prompt. "" when the field has no
+    golden counterpart or the schema cannot be read."""
     gid = GOLDEN_IDS.get(app_field)
     if not gid:
         return ""
@@ -131,6 +134,8 @@ def _golden_rubric(app_field: str) -> str:
 
 
 def _accumulate(stats: dict | None, kind: str, wall: float):
+    """Add one request's call count, tokens and wall time to the server totals behind
+    GET /stats. Thread-safe."""
     with _TOTALS_LOCK:
         TOTALS[kind] += 1
         TOTALS["wall_secs"] += wall
@@ -142,6 +147,8 @@ def _accumulate(stats: dict | None, kind: str, wall: float):
 
 
 def _assemble_text(payload: dict, clan_data: dict) -> str:
+    """The brief text the engine reads: the request input (or the clan's brief_input),
+    then each attachment's extracted text under its own heading."""
     text = str(payload.get("input") or clan_data.get("brief_input") or "").strip()
     attachments = payload.get("attachments") or clan_data.get("reference_assets") or []
     for att in attachments:
@@ -175,6 +182,11 @@ def _derive_names(text: str, clan_data: dict) -> dict:
 
 
 def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
+    """draft_brief: research dossier, then parse_brief.run(), then map_brief() to the app's
+    fields. Returns (HTTP status, fields). No input text is a 400. A failure with Loops
+    3-7 on is retried once without them, keeping the golden extraction, and the draft's
+    rationale starts "Degraded run (reason)". NoClaudeAvailable is re-raised, so the app
+    gets a non-2xx instead of a brief written by another model."""
     clan_data = (clan or {}).get("data") or {}
     text = _assemble_text(payload, clan_data)
     if not text:
@@ -248,6 +260,11 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
 
 
 def do_regen(payload: dict, clan: dict) -> tuple[int, dict]:
+    """regenerate_field: rewrite one app field. The prompt carries the client brief as data
+    and the field's golden rubric; factual fields may use only the brief's facts. The
+    value is rule-checked in code (single sentence, word limits, figures not in the
+    brief); a failure is retried once with the failures named, then returned as a 422.
+    An empty list is not accepted. Returns (HTTP status, {field: value, rationale})."""
     field = str(payload.get("field") or "")
     if field not in FIELD_TYPES:
         print(f"[!] regenerate_field for unknown field {field!r}", file=sys.stderr)
@@ -325,10 +342,14 @@ def do_regen(payload: dict, clan: dict) -> tuple[int, dict]:
 
 
 class Handler(BaseHTTPRequestHandler):
+    """The engine's HTTP API: GET /stats and POST with {payload, clan} for draft_brief or
+    regenerate_field."""
+
     def log_message(self, *a):  # keep stdout for our own structured lines
-        pass
+        """Silence the default per-request access log."""
 
     def _send(self, code: int, obj: dict):
+        """Write `obj` as a JSON response with status `code`."""
         body = json.dumps(obj).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -337,6 +358,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        """GET /stats: the running totals; anything else is a 404."""
         if self.path.rstrip("/") == "/stats":
             with _TOTALS_LOCK:
                 self._send(200, dict(TOTALS))
@@ -344,6 +366,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        """Route the payload's task to do_regen or do_draft (the default). Any exception is
+        logged with its traceback and returned as a 500."""
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -362,6 +386,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    """Start the threaded server on 127.0.0.1:PORT and print the provider and switches."""
     provider = parse_brief.resolve_provider()
     print(f"Napkin brief engine server on :{PORT}  "
           f"(provider={provider}, loops37={_env_flag('BRIEF_LOOPS37')}, "

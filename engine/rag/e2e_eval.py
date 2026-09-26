@@ -193,6 +193,7 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     def timed(kind, fn, describe=None):
         """Wrap a RAG call to log its duration (and, via `describe(result)`, what answered)."""
         def wrapper(*a, **k):
+            """Call `fn` and append a timed event, even when it raises."""
             t = time.time(); res = None
             try:
                 res = fn(*a, **k)

@@ -192,6 +192,14 @@ python3 rag.py retag --corpus <corpus>/rag --index ./_index_v3 --apply   # metad
 
 `migrate --replace` is destructive to a shared collection — ask first.
 
+**Local store speed (2026-09-27, ADR 0010):** `get_store("local")` keeps one store per
+process, keyed on the chunks file's path, size and mtime, so a rebuilt index is picked up.
+Metadata filters are cached NumPy masks over per-field codes (range operators keep the
+exact loop), and the lazy builds are serialised, so parallel searches load the file once.
+`parse_brief.run()` warms the store beside the opening Claude calls
+(`brief_context.warm_store()`). A brief's retrieval: ~0.7 s warm, ~6 s cold, from 23-30 s.
+A warm store holds about 810 MB.
+
 **Moving off Qdrant (to AWS):** step-by-step instructions, the store contract, the traps
 (2048-d vectors vs pgvector's 2,000-d index limit, hybrid search not copied by `migrate`)
 and the requirements carried over from Qdrant are in
@@ -514,7 +522,8 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `RAG_PATH` | `mix` | Which retrieval feeds the brief generator (`loops_3_7`): `mix` = each loop's per-field query through `brief_context.build_multi()` (scope, admission, budgets, widening, validation; ~1.4s warm); `loops` = the previous per-loop retrieve + rerank + case packs. Chosen 2026-09-23; `loops` stays one switch away until Shrey's finished-brief test |
 | `RAG_VALIDATION_MODE` | `order` | `order` re-sorts by validator score and drops nothing; `gate` also drops what fails the threshold (measured unsafe for briefs: keeps 1/24 useful client exemplars) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
-| `RAG_VALIDATOR` | unset (off) | Validation chain in priority order, e.g. `nemotron,local`; `jev` first once `TYPESAFE_API_KEY` is set |
+| `RAG_VALIDATOR` | unset: `jev` on the brief path (Sai, 2026-09-26), off for `rag_io` callers | Validation chain in priority order, e.g. `jev,nemotron`; `none` switches it off on the brief path |
+| `RAG_STORE_MEMO` | `1` | `0` opens a fresh local store on every `get_store()` call instead of one per process (ADR 0010) |
 | `RAG_VALIDATOR_DEADLINE_S` | `3.0` | Per-call deadline for backends that declare none |
 | `RAG_LOCAL_RERANKER`, `RAG_LOCAL_DEVICE` | `BAAI/bge-reranker-v2-m3`, mps/cpu | Local cross-encoder |
 | `RAG_NEMOTRON_CHARS`, `RAG_NEMOTRON_QUERY_CHARS` | `1500`, `1000` | Nemotron input clipping (a calibration file refuses a mismatch) |
@@ -540,6 +549,11 @@ rejected, consequences.
 | [0003](docs/adr/0003-validation-stage.md) | Validation stage: a backend chain with hard config errors and soft run-time fall-through, provisional calibration, one local call per brief |
 | [0004](docs/adr/0004-brief-pipeline-speedups.md) | Brief pipeline: TOON capture, sentence citations, stage graph, batched judge |
 | [0005](docs/adr/0005-claude-transport.md) | Claude transport: API key or Claude Code login (`claude -p`), switchable per run; parity settings; transport recorded in every output |
+| [0006](docs/adr/0006-cannot-fail-silently.md) | Cannot fail silently: every gate can fail, every failure is visible (audit batch 1) |
+| [0007](docs/adr/0007-smp-rules-from-the-literature.md) | The SMP rules come from the literature, not from a template |
+| [0008](docs/adr/0008-audience-rule-examples-provenance.md) | The audience rule, sourced examples, and where provenance marks go (review and lineage, not the client page) |
+| [0009](docs/adr/0009-hallucination-at-the-source.md) | Hallucination at the source: stop invention entering the brief (audit batch 2) |
+| [0010](docs/adr/0010-retrieval-wait-closed.md) | The local store answers in under a second: filter masks, one store per process, warm-up |
 
 ## Plans
 

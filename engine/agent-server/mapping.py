@@ -82,6 +82,8 @@ def _to_list(v) -> list[str]:
 
 
 def _format_question(q) -> str:
+    """One open question as the app shows it: "[priority] question — why it matters".
+    A non-dict question is shown as its string form."""
     if not isinstance(q, dict):
         return str(q)
     text = str(q.get("question", "")).strip()
@@ -103,17 +105,21 @@ def map_brief(brief: dict, clan_data: dict | None = None) -> dict:
     gf = (brief.get("loop2_golden") or {}).get("fields") or {}
 
     def g(key):
+        """A golden-brief field's value."""
         return _fv(gf.get(key))
 
     def l2v(key):
+        """A Loop 2 brief field's value."""
         return _fv(l2.get(key))
 
     def l1v(key):
+        """A Loop 1 capture field's value."""
         return _fv(l1f.get(key))
 
     out: dict = {}
 
     def put(key, value):
+        """Set an app field unless the value is empty (empty values are omitted)."""
         if value not in (None, "", [], {}):
             out[key] = value
 
