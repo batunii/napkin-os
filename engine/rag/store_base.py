@@ -121,7 +121,7 @@ def get_store(name: str | None = None, **kwargs) -> VectorStore:
     return store
 
 
-# One local store per process (2026-09-27). Each brief used to open a fresh LocalStore
+# One local store per process (2026-09-26). Each brief used to open a fresh LocalStore
 # and re-read the 356 MB chunks.jsonl (~9 s), and rebuild its matrix and BM25 index -
 # ADR 0001 called it "a known dev-only cost", but the local index is what every run
 # uses until the AWS move. The key includes the file's size and mtime, so a rebuilt or

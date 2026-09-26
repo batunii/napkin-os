@@ -45,7 +45,7 @@ class LocalStore(VectorStore):
     id map, per-field filter columns and filter results are each built lazily and thrown
     away on every write.
 
-    Filtering (2026-09-27): a metadata filter used to run filters.matches() over every
+    Filtering (2026-09-26): a metadata filter used to run filters.matches() over every
     row for every query and widening round - ~110k calls and 20-27 s per brief on the
     ~20k-chunk index, the largest single wait in the pipeline. Each filtered field is now
     factorised once into integer codes (one per distinct str() value, -1 for absent), so
@@ -68,7 +68,7 @@ class LocalStore(VectorStore):
         self._cols: dict[str, tuple] = {}      # field -> (codes array, {str value: code})
         self._where_cache: dict[str, list[int]] = {}
         # build_multi searches five fields in parallel threads: without this lock each
-        # thread read the 356 MB file and built its own BM25 on a cold store (2026-09-27)
+        # thread read the 356 MB file and built its own BM25 on a cold store (2026-09-26)
         self._build_lock = threading.RLock()
 
     # -- files --------------------------------------------------------------

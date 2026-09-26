@@ -1,6 +1,6 @@
 # ADR 0010 — The local store answers in under a second: masks, one store per process, warm-up
 
-Status: accepted (2026-09-27; step 1 of the optimisation plan in project_plan.clan) ·
+Status: accepted (2026-09-26; step 1 of the optimisation plan in project_plan.clan) ·
 Findings: not an audit finding (found by profiling the BMW anatomy run); closes the local
 half of CC10 and N8 · Code: `engine/rag/store_local.py` (`_filtered`, `_column`,
 `_field_mask`, `warm`, the build lock), `engine/rag/store_base.py` (`get_store`,

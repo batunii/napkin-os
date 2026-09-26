@@ -192,7 +192,7 @@ python3 rag.py retag --corpus <corpus>/rag --index ./_index_v3 --apply   # metad
 
 `migrate --replace` is destructive to a shared collection — ask first.
 
-**Local store speed (2026-09-27, ADR 0010):** `get_store("local")` keeps one store per
+**Local store speed (2026-09-26, ADR 0010):** `get_store("local")` keeps one store per
 process, keyed on the chunks file's path, size and mtime, so a rebuilt index is picked up.
 Metadata filters are cached NumPy masks over per-field codes (range operators keep the
 exact loop), and the lazy builds are serialised, so parallel searches load the file once.
@@ -206,6 +206,13 @@ and the requirements carried over from Qdrant are in
 [docs/vector-store-migration.md](docs/vector-store-migration.md). The Qdrant code is frozen.
 
 ### Evaluation — `golden.py`, `golden_check.py`, `tune.py`, `simulate.py`
+
+**Checkpoint log (2026-09-26):** `checkpoint_run.py` measures a commit on the three test
+briefs against the frozen baseline; `eval_checkpoints.json` registers each measured code
+state (dir, arm, what changed, comparable or not); `eval_history.py` assembles every
+checkpoint into `outputs/e2e/eval_history.json`, which Claude writes into the
+[Brief Eval Tracker](https://claude.ai/artifact/8wB1KGbm7vFqkTcSscmdyi) page's database
+after each run. After a checkpoint: add its registry entry, run `eval_history.py`, push.
 
 `golden.py` builds 11,651 cases from the corpus's own "Retrieval Queries" with a 1-in-5
 held-out split. Held-out recall@5 **0.928**, recall@10 **0.945** (290 cases, re-measured

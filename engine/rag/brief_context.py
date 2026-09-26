@@ -957,7 +957,7 @@ def default_chain():
 
 def warm_store(index_dir=None) -> dict:
     """Open the process's store and build its rows, matrix and keyword index before the
-    brief's retrieval needs them (2026-09-27: the first build_multi in a process spent
+    brief's retrieval needs them (2026-09-26: the first build_multi in a process spent
     ~23 s doing this on the critical path). Returns the store's warm() report, {} for a
     store without one (Qdrant). Never raises: parse_brief.run() submits it alongside the
     opening calls and ignores failures, which retrieval then reports itself."""

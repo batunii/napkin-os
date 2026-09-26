@@ -1,7 +1,7 @@
 """The local store's vectorised filter returns exactly the rows filters.matches() does,
 for every operator, absent fields, numbers vs strings and lists; results are cached per
 filter and dropped on write; get_store keeps one local store per process and picks up a
-rebuilt index (2026-09-27, retrieval hole). Offline, tiny temp indexes.
+rebuilt index (2026-09-26, retrieval hole). Offline, tiny temp indexes.
 Run: cd engine/rag && python3 -m pytest -q test_store_local_masks.py
 """
 from __future__ import annotations
