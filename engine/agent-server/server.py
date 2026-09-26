@@ -54,8 +54,10 @@ PORT = int(os.environ.get("NAPKIN_AGENT_PORT", "8787"))
 
 _env_flag = lambda name, default="0": os.environ.get(name, default).strip().lower() in ("1", "true", "yes")
 
-# One draft at a time: parse_brief keeps run-scoped module globals (_LLM_STATS
-# is reset per run), so concurrent runs would corrupt each other's ledgers.
+# One draft at a time. parse_brief.run() keeps its call ledger per run (a thread-scoped
+# ledger since 2026-09-25, so a regen or name-derivation call next to a draft no longer
+# pollutes its numbers); the lock remains so two drafts do not compete for the same
+# rate limits and the same Claude Code login at once.
 _DRAFT_LOCK = threading.Lock()
 
 _TOTALS_LOCK = threading.Lock()
@@ -154,7 +156,8 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
     research_summary = None
     if research is not None and _env_flag("BRIEF_RESEARCH", "1"):
         try:
-            _dossier, research_summary = research.gather(text, clan_data)
+            with parse_brief._stats_scope():        # research calls stay out of the brief's ledger
+                _dossier, research_summary = research.gather(text, clan_data)
         except Exception:
             print("[!] research failed (continuing without dossier):", file=sys.stderr)
             traceback.print_exc()
@@ -167,17 +170,26 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
                                     project=clan_data.get("project_name"),
                                     loops37=loops37, golden=golden,
                                     raw_text=engine_input, source_name="napkin-intake")
-        except Exception:
+        except parse_brief.NoClaudeAvailable:
+            raise                                   # a clear error, never another model's brief
+        except Exception as e:
             if not loops37:
                 raise
-            # Loops 3–7 retrieval errors (Qdrant/network/dim mismatch) escape
-            # run(); a good Loops 1–2 brief is still worth returning.
-            print("[!] loops37 run failed — retrying with loops37 off:", file=sys.stderr)
+            # Since 2026-09-25 retrieval and the strategy fill contain their own failures
+            # (parse_brief: loops_3_7 falls back to digests, fill_derivable_fields leaves a
+            # field open), so this retry is rare. When it does run, the golden extraction is
+            # kept and the draft SAYS it is degraded: meta.degraded is read by
+            # mapping.build_rationale, so the planner sees why the draft is thin instead of
+            # a normal-looking brief with no strategy (audit CC13/C4/N6).
+            reason = f"{e.__class__.__name__}: {str(e)[:160]}"
+            print(f"[!] loops37 run failed ({reason}) — retrying with loops37 off, golden kept:",
+                  file=sys.stderr)
             traceback.print_exc()
             brief = parse_brief.run(None, client=clan_data.get("client"),
                                     project=clan_data.get("project_name"),
-                                    loops37=False, golden=False,
+                                    loops37=False, golden=True,
                                     raw_text=engine_input, source_name="napkin-intake")
+            brief.setdefault("meta", {})["degraded"] = f"retrieval and strategy fill failed: {reason}"
     wall = time.time() - t0
 
     fields = map_brief(brief, clan_data)
@@ -185,7 +197,8 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
     if ctx:
         fields["context"] = ctx
     try:
-        fields.update(_derive_names(text, clan_data))
+        with parse_brief._stats_scope():            # its call must not land in the brief's ledger
+            fields.update(_derive_names(text, clan_data))
     except Exception:
         print("[!] name derivation failed (non-fatal):", file=sys.stderr)
         traceback.print_exc()
@@ -232,7 +245,8 @@ def do_regen(payload: dict, clan: dict) -> tuple[int, dict]:
         return isinstance(v, list) if ftype == "array" else isinstance(v, str) and v.strip()
 
     t0 = time.time()
-    obj = parse_brief._json_call(user, system=system, retries=1, max_tokens=800, accept=accept)
+    with parse_brief._stats_scope():                # a regen next to a running draft: separate ledgers
+        obj = parse_brief._json_call(user, system=system, retries=1, max_tokens=800, accept=accept)
     wall = time.time() - t0
     if not obj:
         print(f"[!] regen {field}: provider chain exhausted (no keys or all links failed)",

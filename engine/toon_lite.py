@@ -22,9 +22,11 @@ Supported (all a model is asked to produce):
 
 Leniency, each deliberate:
   * `[N]` is never trusted — rows are read until the indentation ends.
-  * A row with MORE cells than fields: the surplus is joined back into the first field
-    (tables put the free-text `value`/`point` first, so a stray delimiter lands there).
-    A row with FEWER cells is padded with None.
+  * A row with MORE cells than fields: all-numeric surplus cells under a `src` /
+    `source_refs` last column are extra sentence numbers and join into src ('11 31');
+    any other surplus is joined back into the first field (tables put the free-text
+    `value`/`point` first, so a stray delimiter lands there). A row with FEWER cells is
+    padded with None.
   * A table row the model wrapped onto a new line (so the next line is neither a row nor
     a `key:`) is joined back onto the row above. Measured 2026-09-23: one wrapped row
     at indent 0 made a whole 27-point how_to_win reply unreadable.
@@ -92,12 +94,24 @@ def _split_row(line: str, delim: str) -> list[str]:
     return cells
 
 
+_INT = re.compile(r"^\s*\d+\s*$")
+
+
 def _row(line: str, fields: list[str], delim: str) -> dict:
-    """A table row as a dict; surplus cells rejoin the first field, missing ones are None."""
+    """A table row as a dict; missing cells are None. Surplus cells: when the header's LAST
+    field is `src` / `source_refs` and the surplus cells are all whole numbers, they are
+    extra sentence numbers the model wrote as cells ('point|11|31') and are joined into
+    src with spaces ('11 31'); otherwise the surplus rejoins the FIRST field (a stray
+    delimiter in free text). Measured 2026-09-24: 38 of 73 how-to-win rows on Opus 4.6
+    took the second rule when they needed the first (audit H6)."""
     cells = _split_row(line, delim)
     extra = len(cells) - len(fields)
     if extra > 0:
-        cells = [delim.join(cells[:extra + 1])] + cells[extra + 1:]
+        tail = cells[len(fields) - 1:]
+        if fields and fields[-1] in ("src", "source_refs") and all(_INT.match(c) for c in tail):
+            cells = cells[:len(fields) - 1] + [" ".join(c.strip() for c in tail)]
+        else:
+            cells = [delim.join(cells[:extra + 1])] + cells[extra + 1:]
     cells += [""] * (len(fields) - len(cells))
     return {f: _scalar(c) for f, c in zip(fields, cells)}
 

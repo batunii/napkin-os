@@ -57,7 +57,8 @@ markdown with headless Chrome: `--headless=new --print-to-pdf`).
 | `BRIEF_LOOPS37` / `BRIEF_RERANK` / `BRIEF_HERO_CANDIDATES` | stage toggles |
 | `BRIEF_CAPTURE` | `toon` (default): Loop 1 capture in TOON citing sentence numbers, how_to_win in its own call; `json`: the one-call JSON capture |
 | `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |
-| `BRIEF_BATCH_GATES` | `1` (default): one judge call ranks + gates all hero drafts; `0`: one gate call per draft |
+| `BRIEF_ALLOW_NONCLAUDE` | unset (default): with Claude as the lead link the chain is Claude-only, and a run with no route to Claude stops with a clear error; `1`: non-Claude links stay as fallbacks (not for production; a brief they answer is named in `meta.fallback_links`). See [ADR 0006](rag/docs/adr/0006-cannot-fail-silently.md) |
+| `BRIEF_CLI_FALLBACK_TTL` | seconds an `auto` switch to the Claude Code login lasts before the API is tried again (600) |
 | `ANTHROPIC_API_KEY` | Claude (the default lead link; also the independent critic) |
 | `BRIEF_CLAUDE_TRANSPORT` | how Claude links are sent: `api` (default, the key above), `cli` (your Claude Code login via `claude -p`, no API credit used), `auto` (the key, switching to the Claude Code login if it has no credit or is rejected). Also `serve.py --claude-code / --api / --auto` and `e2e_eval.py --transport`. See [ADR 0005](rag/docs/adr/0005-claude-transport.md) |
 | `BRIEF_PROVIDER` | pin one provider as the lead link (the rest stay as fallback) |

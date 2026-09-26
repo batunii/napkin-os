@@ -795,18 +795,27 @@ class MultiContext:
         return {h.cite: h for hs in self.fields.values() for h in hs}
 
 
+# The brief-writer fields, most-read first: the insight and proposition writers read their
+# loop's evidence; the RTB writer reads loop 6. Cross-field dedupe in build_multi lets
+# these claim a shared hit before the research and QA loops, which only review.md reads.
+MIX_DEDUPE_FIRST = ("loop4_insight", "loop5_proposition", "loop6_substantiation")
+
+
 def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_field: int = 5,
                 brand: str | None = None, tenant: str | None = None, context: str = "",
                 admission: dict | None = None, chain=None, alt_categories=(),
-                candidates: int = CANDIDATES) -> MultiContext:
+                candidates: int = CANDIDATES, dedupe_first: tuple = MIX_DEDUPE_FIRST) -> MultiContext:
     """The mix path, fast: every field query through brief_context's pipeline in one pass.
 
     What build() does per brief, done once per brief here — plan, scopes, tenants, store,
-    ONE batched embedding call for all queries, ONE validator call across all fields'
-    candidates — with the field x bucket searches run concurrently. Each field keeps its
-    own query (the reason the mix beat path A on real briefs) and gets up to `per_field`
-    hits, deduplicated across fields in field order. Thin buckets widen as in build().
-    Egress: any hit outside the authorised scopes/tenants is removed and recorded."""
+    ONE batched embedding call for all queries, ONE validator call per field across its
+    buckets' candidates — with the field x bucket searches run concurrently. Each field
+    keeps its own query (the reason the mix beat path A on real briefs) and gets up to
+    `per_field` hits, deduplicated across fields in `dedupe_first` order then query order.
+    The validator's order (and, in gate mode, its drops) and the admission refusals are
+    what the fill reads. `context` (the brief gist) reaches the validator with every
+    query. Thin buckets widen as in build(). Egress: any hit outside the authorised
+    scopes/tenants is removed and recorded."""
     import rag
     from concurrent.futures import ThreadPoolExecutor
     t0 = __import__("time").time()
@@ -846,17 +855,30 @@ def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_fie
     groups = {f"{f}|{b}": found[(f, b)] for f, b in jobs}
 
     def validate(f):
-        """Validate one field's buckets against that field's query."""
+        """Validate one field's buckets against that field's query. Returns the field, the
+        run record and the validated buckets, which REPLACE the fused ones below: before
+        2026-09-25 _apply_validation wrote into this copy and the copy was dropped, so the
+        validator's order, the gate's drops and the admission refusals never reached the
+        evidence (audit RAG-1: every validator A/B so far was A/A)."""
         g = {k: v for k, v in groups.items() if k.startswith(f + "|")}
-        return f, _apply_validation(g, chain, query=texts[f], context=context, admission=admission)
+        rec = _apply_validation(g, chain, query=texts[f], context=context, admission=admission)
+        return f, rec, g
     with ThreadPoolExecutor(max_workers=len(texts)) as ex:
-        per_field_validation = dict(ex.map(validate, list(texts)))
+        validated = list(ex.map(validate, list(texts)))
+    per_field_validation = {f: rec for f, rec, _g in validated}
+    for _f, _rec, g in validated:
+        groups.update(g)
     validation = None if all(v is None for v in per_field_validation.values()) else {
         "per_field": per_field_validation,
         "calls": sum((v or {}).get("calls", 0) for v in per_field_validation.values())}
     allowed, allowed_t = set(scopes), set(tenants)
     egress, out, seen = [], {}, set()
-    for f in texts:
+    # Cross-field dedupe runs in `dedupe_first` order, then the rest in query order, so
+    # the fields whose evidence a writer actually reads claim a shared hit first. In
+    # query order loop3_research went first and took 1.7 of loop4_insight's 5 slots on
+    # average (audit RAG-7). The output keeps the caller's field order.
+    order = [f for f in dedupe_first if f in texts] + [f for f in texts if f not in dedupe_first]
+    for f in order:
         picked = []
         for b in MIX_BUCKETS:
             blk = _fill(groups[f"{f}|{b}"], MIX_BUDGET[b], MAX_HIT_TOKENS.get(b),
@@ -874,6 +896,7 @@ def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_fie
                 continue
             seen.add(h.cite); field_hits.append(h)
         out[f] = field_hits
+    out = {f: out[f] for f in texts}                                   # the caller's order
     trace = {"queries": texts, "keywords": keywords, "filters": {k: str(v) for k, v in filters.items()},
              "scopes": list(scopes), "tenants": list(tenants), "embed": mode, "notes": notes,
              "widened": {f: n for f, n in field_notes.items() if n}, "egress": egress,
@@ -904,6 +927,24 @@ def edge_order(items: list) -> list:
     return front + back[::-1]
 
 
+BRIEF_DEFAULT_VALIDATOR = "jev"
+
+
+@functools.lru_cache(maxsize=1)
+def brief_chain():
+    """The validation chain for the BRIEF path (parse_brief.loops_3_7): RAG_VALIDATOR when
+    it is set (including "none" to switch validation off), else jev. Sai, 2026-09-26: jev
+    on for every brief. Raises BackendNotConfigured when the chosen backend cannot be
+    built (no TYPESAFE_API_KEY): the caller says so loudly and runs the brief unvalidated,
+    flagged in loops3_7.validation_degraded. rag_io callers keep default_chain(), whose
+    unset-means-off rule (judgement invariant M4) is unchanged."""
+    import judge
+    env = dict(os.environ)
+    if env.get("RAG_VALIDATOR") is None:
+        env["RAG_VALIDATOR"] = BRIEF_DEFAULT_VALIDATOR
+    return judge.chain_from_env(env)
+
+
 @functools.lru_cache(maxsize=1)
 def default_chain():
     """The process-wide validation chain from RAG_VALIDATOR, built once so its breaker
@@ -912,6 +953,27 @@ def default_chain():
     be built — a configuration error is a hard error (judgement invariant M4)."""
     import judge
     return judge.chain_from_env()
+
+
+def warm_validator() -> dict:
+    """Pay the validator chain's cold start before a brief's validations need it: every
+    backend in RAG_VALIDATOR that offers warm() (jev: one ~400-token request) is called
+    once. Returns {backend: True|False}; {} when validation is off or the chain cannot be
+    built. Never raises: parse_brief.run() submits this alongside the Loop 1 capture and
+    ignores the result (audit JL-1)."""
+    try:
+        chain = brief_chain()
+    except Exception:      # noqa: BLE001 — a misconfigured chain is reported by _loops_via_mix
+        return {}
+    out = {}
+    for b in getattr(chain, "_backends", []):
+        warm = getattr(b, "warm", None)
+        if callable(warm):
+            try:
+                out[b.name] = bool(warm())
+            except Exception:  # noqa: BLE001
+                out[b.name] = False
+    return out
 
 
 def _passage_text(h: Hit) -> str:
@@ -978,7 +1040,7 @@ def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, conte
             if rank < len(q) and q[rank].cite not in seen:
                 seen.add(q[rank].cite); pool.append(q[rank])
     result = chain.judge(Query(text=query, context=(context or "")[:CONTEXT_MAX_CHARS]),
-                         [Passage(h.cite, _passage_text(h)) for h in pool])
+                         [Passage(h.cite, _passage_text(h), h.bucket or "") for h in pool])
     by_cite = dict(zip((h.cite for h in pool), result.aligned()))
     per_bucket: dict[str, dict] = {}
     for bucket, hits in hits_by.items():
@@ -1023,6 +1085,13 @@ def _apply_validation(hits_by: dict[str, list[Hit]], chain, *, query: str, conte
         hits_by[bucket] = keep_first + chosen
     out = result.as_dict()
     out["contract"] = result.as_contract()
+    if mode != "gate":
+        # Order mode drops nothing, so the contract must not report threshold-based
+        # rejections that never happened (audit JL-7: a trace said rejected 45 while every
+        # bucket said rejected 0). Passed = judged, ordered hits; rejected = 0.
+        ordered = sum(c.get("ordered", 0) for c in per_bucket.values())
+        out["contract"] = {**out["contract"], "passed": ordered, "rejected": 0}
+        out["passed"], out["rejected"] = ordered, 0
     out["per_bucket"] = per_bucket
     out["calls"] = 1 if pool else 0
     out["mode"] = mode

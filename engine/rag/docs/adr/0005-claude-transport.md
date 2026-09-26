@@ -71,6 +71,16 @@ in each `e2e_eval` trace and summary row (`api`, `cli`, or `api→cli` after an 
 - The pipeline can be tested end to end with no API credit. Cost figures from a CLI run are
   computed from the recorded tokens at API list prices (as for an API run); they describe
   what the run would cost on the API, not what the Claude Code account was charged.
+- **CLI and API costs are not comparable** (audit 2026-09-24, BW13/N7/CC9). Measured on
+  identical prompts, the CLI adds a constant ~507 input tokens per Opus call (~+35–40%
+  input per brief; the source of that block is unverified — not this repo's CLAUDE.md,
+  which is ~1.3k tokens), and serial calls run 2–3× slower. Since 2026-09-25 cache reads
+  and writes are recorded apart from the uncached input and priced at 0.1× / 1.25×
+  (`e2e_eval._usd`); before that they were folded into input at the full rate, so the
+  cli_smoke figures ($0.47 / $0.54) overstated the runs. Compare cost and latency only
+  between runs on the same transport; `meta.claude_transport` says which.
+- An `auto` switch to the CLI expires after `BRIEF_CLI_FALLBACK_TTL` seconds (default
+  600), after which the API is tried again (ADR 0006).
 - A CLI run is slower per call (~1.5 s process start), so wall-clock figures from CLI runs
   are not production latency. Compare latency only between runs on the same transport.
 - The default stays `api`: a production server never silently moves traffic onto a

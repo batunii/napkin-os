@@ -91,9 +91,9 @@ def test_rag_path_mix_is_the_default_and_keeps_the_generator_shape(monkeypatch):
     fill_derivable_fields reads (citation, framework, category=doc_kind, snippet, text)."""
     monkeypatch.delenv("RAG_PATH", raising=False)
     calls = {}
-    def fake_multi(pairs, queries, index_dir=None):
-        """Record the queries; return one IPA hit for loop4 only."""
-        calls["queries"] = queries
+    def fake_multi(pairs, queries, index_dir=None, context="", chain=None, **kw):
+        """Record the queries and the validator context; return one IPA hit for loop4 only."""
+        calls["queries"], calls["context"], calls["chain"] = queries, context, chain
         hit = brief_context.Hit(cite="ipa_0003", doc_id="ipa_0003", source="ipa", bucket="exemplars",
                                 title="Case", section="Insight", header="H", text="insight text", score=0.9,
                                 metadata={"doc_kind": "ipa_effectiveness_case", "scope": "global"})

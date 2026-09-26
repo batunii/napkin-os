@@ -78,15 +78,27 @@ def approx_tokens(chars: int) -> int:
     return chars // 4  # rough chars→tokens for attributing context sections
 
 
+def cli_env() -> dict:
+    """The environment for `claude -p`: the parent's, minus ANTHROPIC_API_KEY. With the
+    key present the CLI bills the key (which may have no credit) instead of the logged-in
+    account this backend exists to use (audit F14). engine/parse_brief.py does the same."""
+    env = {**os.environ}
+    env.pop("ANTHROPIC_API_KEY", None)
+    return env
+
+
 def call_claude(prompt: str, attempts: int = 2):
     """Run Claude Code headless; return the parsed JSON envelope. Retries once on
-    a transient non-zero exit (overload / rate limit hiccups)."""
+    a transient non-zero exit (overload / rate limit hiccups). Same isolation flags as
+    the engine's CLI transport: no tools, one turn, no session transcript (a client
+    brief must not be written to ~/.claude), no user/project settings, no MCP servers."""
     cmd = [
         "claude", "-p", prompt,
         "--model", MODEL,
         "--output-format", "json",
         "--tools", "",        # disable ALL tools — force a single text completion
         "--max-turns", "1",   # (belt & suspenders) no agentic loop
+        "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
     ]
     last = "(no output)"
     for i in range(attempts):
@@ -96,6 +108,7 @@ def call_claude(prompt: str, attempts: int = 2):
             text=True,
             timeout=180,
             cwd=WORKDIR,
+            env=cli_env(),
             stdin=subprocess.DEVNULL,   # don't wait 3s for stdin; deterministic
         )
         if proc.returncode == 0:
@@ -117,6 +130,55 @@ def extract_json(text: str):
     if start != -1 and end != -1:
         t = t[start:end + 1]
     return json.loads(t)
+
+
+_JSON_TYPES = {"string": str, "array": list, "object": dict, "number": (int, float),
+               "integer": int, "boolean": bool}
+META_KEYS = ("rationale", "context", "theme")
+
+
+class BadReply(ValueError):
+    """The model's reply cannot be placed into the brief (a regeneration without the
+    requested field, or a draft with nothing usable)."""
+
+
+def filter_reply(fields, clan: dict, field: str | None = None) -> dict:
+    """The part of a model reply the app may receive. Before 2026-09-25 the raw JSON went
+    straight to the app, so any key the model invented was patched into the brief and a
+    locked field was protected only by a prompt line (audit F14).
+    Draft: keys are kept only when they are top-level schema properties of the right JSON
+    type (or the meta keys rationale/context/theme); locked fields are dropped by code.
+    Regeneration (`field` given): the reply must carry that field (string or array/object
+    for a nested one), else BadReply; only it and `rationale` are returned."""
+    if not isinstance(fields, dict):
+        raise BadReply("reply is not a JSON object")
+    data = clan.get("data") or {}
+    locked = {str(k) for k in (data.get("locked_fields") or [])}
+    if field:
+        if field not in fields or fields[field] in (None, "", [], {}):
+            raise BadReply(f"regeneration reply carries no '{field}'")
+        if field in locked:
+            raise BadReply(f"'{field}' is locked")
+        out = {field: fields[field]}
+        if fields.get("rationale"):
+            out["rationale"] = str(fields["rationale"])
+        return out
+    props = ((clan.get("schema") or {}).get("properties") or {})
+    out = {}
+    for k, v in fields.items():
+        if k in locked or k.split(".", 1)[0] in locked:
+            continue
+        if k in META_KEYS:
+            out[k] = v
+            continue
+        if k not in props:
+            continue
+        want = _JSON_TYPES.get((props[k] or {}).get("type"))
+        if want is None or isinstance(v, want):
+            out[k] = v
+    if not any(k not in META_KEYS for k in out):
+        raise BadReply("draft reply carries no schema field")
+    return out
 
 
 def build_prompt(payload: dict, clan: dict) -> str:
@@ -250,7 +312,8 @@ class Handler(BaseHTTPRequestHandler):
         )
         try:
             env = call_claude(prompt)
-            fields = extract_json(env.get("result", "") or "")
+            fields = filter_reply(extract_json(env.get("result", "") or ""), clan,
+                                  field=payload.get("field") if task == "regenerate_field" else None)
             u = usage_of(env)
             for k in ("input", "output", "cache_read", "cache_creation"):
                 TOTALS[k] += u[k]

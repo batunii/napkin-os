@@ -69,6 +69,43 @@ jobs:
       - name: Type-check & build
         run: npm run build
 
+  engine:
+    name: Engine — offline pytest (network blocked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # The light dependencies only: the suite fakes every model call, and the heavy
+      # optional links (torch / sentence-transformers / the vendor SDK) are imported
+      # lazily by the modules that need them.
+      - name: Install dependencies
+        run: pip install numpy requests httpx pypdf pdfplumber python-docx PyYAML python-dotenv pytest
+
+      # BRIEF_TESTS_OFFLINE=1 makes every outbound socket connection raise (rag/conftest.py),
+      # so a test that quietly reaches a hosted endpoint fails here instead of passing on
+      # the network. The local vector index is git-ignored; the one test that needs it skips.
+      - name: RAG + brief pipeline tests
+        working-directory: engine/rag
+        env:
+          BRIEF_TESTS_OFFLINE: "1"
+        run: python -m pytest -q -p no:cacheprovider
+
+      - name: Agent-server tests
+        working-directory: engine/agent-server
+        env:
+          BRIEF_TESTS_OFFLINE: "1"
+        run: python -m pytest -q -p no:cacheprovider
+
+      - name: Mock-agent tests
+        working-directory: mock-agent
+        run: python -m pytest -q -p no:cacheprovider
+
   conformance:
     name: CLI conformance harness
     runs-on: ubuntu-latest

@@ -135,10 +135,34 @@ def test_schema_goes_to_json_schema_and_structured_output_is_returned(cli):
 
 
 def test_usage_is_recorded_under_the_anthropic_label(cli):
-    """Tokens land in the ledger under anthropic:<model>, cache reads counted as input."""
+    """Tokens land in the ledger under anthropic:<model>; cache reads and writes are recorded
+    apart from the uncached input, because they are priced apart (audit BW13)."""
     pb._call_link("anthropic", "claude-opus-4-6", "x")
     assert pb._LLM_STATS["by_provider"] == {"anthropic:claude-opus-4-6": 1}
-    assert pb._LLM_STATS["prompt_tokens"] == 150 and pb._LLM_STATS["completion_tokens"] == 12
+    assert pb._LLM_STATS["prompt_tokens"] == 120 and pb._LLM_STATS["completion_tokens"] == 12
+    assert pb._LLM_STATS["cache_read_tokens"] == 30 and pb._LLM_STATS["cache_creation_tokens"] == 0
+
+
+def test_cli_reply_cut_off_at_the_cap_is_not_returned(cli):
+    """stop_reason max_tokens raises _Truncated (never half-read); a refusal raises _Refused."""
+    _, replies = cli
+    replies.append(_Proc(_envelope('{"partial": ', stop_reason="max_tokens")))
+    with pytest.raises(pb._Truncated):
+        pb._call_link("anthropic", "claude-opus-4-6", "x", max_tokens=500)
+    replies.append(_Proc(_envelope("", stop_reason="refusal")))
+    with pytest.raises(pb._Refused):
+        pb._call_link("anthropic", "claude-opus-4-6", "x")
+
+
+def test_auto_switch_expires_after_its_ttl(monkeypatch):
+    """A switch older than BRIEF_CLI_FALLBACK_TTL is over: the next call re-tries the API
+    (before 2026-09-25 one auth hiccup moved every later brief to the CLI until restart)."""
+    import time
+    monkeypatch.setenv("BRIEF_CLAUDE_TRANSPORT", "auto")
+    monkeypatch.setattr(pb, "_CLI_FALLBACK", {"on": True, "since": time.monotonic() - pb.CLI_FALLBACK_TTL_S - 1})
+    assert pb._cli_fallback_active() is False and pb.transport_used() == "api"
+    monkeypatch.setattr(pb, "_CLI_FALLBACK", {"on": True, "since": time.monotonic()})
+    assert pb._cli_fallback_active() is True and pb.transport_used() == "api→cli"
 
 
 def test_error_envelope_raises_so_the_chain_fails_over(cli):

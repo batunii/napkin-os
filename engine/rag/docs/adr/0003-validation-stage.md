@@ -123,3 +123,66 @@ reviewer rejections exempt; admission rules first; per-bucket floor; passing hit
 rerank); `edge_order()` after the budget behind `RAG_ORDER=edge` (default `score`); one chain per
 process; floor hits marked "weak match" in the prompt; `rag_io` 1.1.0 carries per-hit `relevance`
 (with `kept`) and the run's `validation` record.
+
+## Addendum 2026-09-25 — batch 3 of the audit fix plan: retrieval that counts
+
+Findings (audit 2026-09-24, second-checked 2026-09-25): RAG-1, JL-1, JL-5, JL-6, JL-7, RAG-7,
+RAG-9, critic-G14. Tests: `test_retrieval_that_counts.py`.
+
+- **The validator's result now reaches the evidence (RAG-1).** `build_multi` validated a
+  *copy* of each field's buckets and dropped it, so the validator's order, the gate's drops
+  and the admission refusals (`exclude_doc_ids`, recency) never changed what the fill served.
+  Every jev-vs-nemotron comparison before this date was therefore A/A on evidence, and the
+  38–52% evidence overlap in `compare_jev/compare.json` measured query drift between runs,
+  not validator disagreement (critic-G14). The validated buckets now replace the fused ones.
+  Consequence: `RAG_VALIDATOR` changes evidence selection for the first time since the mix
+  path shipped, so it needs the A/B before it is on by default.
+- **The validator sees the brief (JL-5).** `_loops_via_mix` passes the gist plus background
+  and competitor context (≤ 3,000 chars) as `context`; jev's state carries it after the
+  query. Replayed on 960 passages, p ≥ 0.5 went from 36 to 70; top-5 overlap with the
+  production order 3.95–4.15 of 5 (a modest re-order).
+- **One question per bucket (JL-6).** `judge_jev.BUCKET_QUESTIONS`: a comparable precedent
+  (exemplars), a planning method that applies (craft), a rule this brief must respect
+  (rules). `Passage.bucket` carries the bucket to the backend. On the 94 client prelabels
+  the AUC moved from 0.765 to 0.870 (craft 0.783 → 0.884, rules 0.345 → 0.810). Same
+  request, same cost. The prelabels are unconfirmed (BW10: ~700–800 labels for ± 0.1 kappa).
+- **jev gets a deadline it can meet (JL-1).** `RAG_JEV_DEADLINE_S` (8 s, jev's own; an
+  explicit `RAG_VALIDATOR_DEADLINE_S` still caps it) replaces the chain default of 3 s that
+  cut jev off on a cold process (6 of 10 fields fell back in the CLI smoke runs; ok calls
+  took 1.2–2.5 s, warm p90 0.45 s). `parse_brief.run()` warms the chain
+  (`brief_context.warm_validator`, one ~400-token request) alongside the capture.
+- **Order mode reports no rejections (JL-7).** The contract's `rejected` is 0 and `passed`
+  counts the ordered hits, matching `per_bucket`; a trace no longer says "rejected 45" for
+  a mode that drops nothing. Gate mode is unchanged and still not safe with one global 0.5.
+- **Dedupe favours the fields a writer reads (RAG-7).** `MIX_DEDUPE_FIRST` = loop4_insight,
+  loop5_proposition, loop6_substantiation claim a shared hit before loop3 and loop7 (which
+  only review.md reads); loop4 used to lose 1.7 of its 5 slots on average.
+- **The brief path is unfiltered, and says so (RAG-9/JL-8).** The capture's field names match
+  none of `plan()`'s filter or keyword keys, so no category filter, brand keywords, widening
+  or `RAG_ORDER=edge` apply to briefs; the retrieval trace now carries a note. A real category
+  filter from the golden extraction (JL-8) is an A/B first.
+- **The measurement (critic-G14).** `replay_validators.py` replays recorded queries through
+  `build_multi` on the local store with validator none / jev / nemotron and reports served
+  cites, overlap with the no-validator arm and with the recorded run, fallbacks and timing,
+  with no Anthropic calls. It tells you what the validator changes, not whether the brief
+  gets better; that is the writer A/B (T3).
+
+Still open here: which validator to keep and its threshold (BW14: score jev and nemotron on
+confirmed brief-domain labels with AUC and kappa CIs), gate mode's per-bucket thresholds
+(exemplars 0.3, craft 0.7, rules 0.5 on the prelabels), and the `RAG_VALIDATOR` line in
+Sai's local `.env` (T4).
+
+### Decision 2026-09-26 (Sai): jev on for every brief
+
+`brief_context.brief_chain()` gives the brief path `RAG_VALIDATOR=jev` when the variable is
+unset (`none` switches it off; an explicit list is honoured); `parse_brief._loops_via_mix`
+uses it and `run()` warms it. `rag_io` keeps `default_chain()` and its unset-means-off rule.
+If jev cannot be built the brief runs unvalidated, says so on stderr and lists every loop
+in `loops3_7.validation_degraded`; it never falls back to another validator silently.
+Reasoning recorded with the decision: jev reads the brief and judges "useful for this
+brief", it is the only backend that answered every field with no fallbacks in the
+2026-09-25 replay, and it costs about 1.5 s and a fraction of a cent per brief. What it
+does NOT do: check facts (invented figures are batch 2 and the grounding gate) or save
+time against today's default (which ran no validator). Whether jev-ordered evidence makes
+a better brief is still the writer A/B (T3). Nemotron is not used for briefs: on the
+client prelabels it scores craft and rules far below jev.

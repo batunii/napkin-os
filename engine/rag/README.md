@@ -214,7 +214,7 @@ reading. Read the misses, not just the number.
 
 Checks each retrieved chunk against the query plus brief context and keeps what is directly useful. A switch over interchangeable backends, each the failsafe for the one before: **jev** (TypeSafe; ready, no access yet) → **nemotron** (hosted NVIDIA reranker) → **local** (cross-encoder on this machine). Admission rules in code run first. Status: wired into `brief_context.build` and `rag_io` v1.1.0 (steps 3–4; `loops_3_7` is step 5). **Off by default and not yet safe to enable for briefs**: a live brief showed nemotron, a QA reranker, rejects award-case precedent whatever the query phrasing — see ADR 0003, *Live finding*. Decisions: [ADR 0003](docs/adr/0003-validation-stage.md).
 
-Turn it on with `RAG_VALIDATOR=nemotron,local` in `engine/.env` (jev first once `TYPESAFE_API_KEY` exists). Check what is alive with `python3 judge.py check`. Unset means validation off.
+**On for every brief since 2026-09-26 (Sai):** the brief path (`parse_brief.loops_3_7` → `brief_context.brief_chain()`) uses `jev` when `RAG_VALIDATOR` is unset; `RAG_VALIDATOR=none` switches it off, any other value is honoured. If jev cannot be built (no `TYPESAFE_API_KEY`) the brief runs unvalidated, says so on stderr and lists every loop in `loops3_7.validation_degraded`. `rag_io` callers keep `default_chain()`, where unset still means off. Check what is alive with `python3 judge.py check`. Until 2026-09-25 `build_multi` discarded the validator's result, so setting this changed nothing on the brief path (audit RAG-1); it now re-orders (and, in gate mode, drops) what the fill reads. Whether that helps a brief is still unmeasured: run `python3 replay_validators.py <trace dirs>` for the retrieval-only comparison (none / jev / nemotron on the same recorded queries, no Anthropic calls), then the writer A/B. See ADR 0003, *Addendum 2026-09-25*.
 
 Every backend implements `judge_base.py`: `Query`, `Passage`, `Verdict` (value / score / why / backend / raw), `BackendNotConfigured` (construction: a hard error) and `BackendUnavailable` (run time: fall through), plus the shared `load_calibration` and `classify_http`.
 
@@ -398,6 +398,7 @@ python3 judge.py check --backends jev,local --deadline 5
 | `RAG_JEV_STATE_CHARS` / `RAG_JEV_PASSAGE_CHARS` | `4000` / `6000` | Clip sizes |
 | `RAG_JEV_BATCH_QUESTIONS` | `50` | Most Nouls per request |
 | `RAG_JEV_CONCURRENCY` | `4` | Most requests in flight at once |
+| `RAG_JEV_DEADLINE_S` | `8.0` | jev's own per-call deadline (the chain's 3 s default cut it off on a cold process; audit JL-1). An explicit `RAG_VALIDATOR_DEADLINE_S` still caps it. `parse_brief.run()` warms jev with one tiny request alongside the capture |
 
 Install: `pip install 'typesafe-sdk==0.7.1'`. The SDK is imported lazily, so the module loads without it.
 

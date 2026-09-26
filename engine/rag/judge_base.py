@@ -72,9 +72,13 @@ class Query:
 @dataclass(frozen=True)
 class Passage:
     """One retrieved chunk to judge. `id` is its cite id, so a verdict can be joined back
-    to the hit it came from."""
+    to the hit it came from. `bucket` (exemplars / craft / rules, "" when unknown) lets a
+    backend ask the question that fits the block: a precedent, a method and a rule are
+    useful in different ways (audit JL-6; a bucket-specific question raised AUC from
+    0.765 to 0.870 on the client prelabels)."""
     id: str
     text: str
+    bucket: str = ""
 
 
 @dataclass(frozen=True)

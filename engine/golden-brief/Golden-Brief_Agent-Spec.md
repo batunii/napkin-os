@@ -75,18 +75,20 @@ This is the structure each field is described by in the schema. It's what makes 
   "required": true,
   "max_words": 20,
   "min_words": 3,
-  "prompt": "ONE sentence — the single most compelling, true and ownable thing we can say…",
+  "prompt": "ONE sentence — the one thing we want the audience to take away; follows from the problem and the insight; true and backed by the RTBs; a reason to care; specific to this brand, not a category generic; written for the creative team, not the public. Not a tagline, not 'creative', not a list. If you have two, choose.",
   "good_example": "The lager that earns its place in your round.",
   "bad_example": "Great taste, fewer carbs, brewed with passion for modern drinkers.",
   "bad_reason": "Three messages, not one; describes features; could be any beer (not ownable); reads like a tagline.",
   "rubric": [
     {"check": "single_sentence", "test": "Is it exactly one sentence?"},
-    {"check": "single_minded", "test": "Does it carry exactly one idea, not a list?"},
-    {"check": "ownable", "test": "Could a direct competitor say the same thing? If yes, fail."},
-    {"check": "not_a_tagline", "test": "Is it strategy that points to the idea, not finished ad copy?"},
-    {"check": "derives_from", "test": "Is it traceable to insight + problem + a benefit?"}
+    {"check": "single_minded", "test": "One strategic choice: does it commit to one thing to communicate, rather than a menu for the creatives? (an 'and' or a comma is not by itself a fail) — llm, HARD"},
+    {"check": "derives_from", "test": "Would a reader of only the problem and the insight see why this is the proposition? — llm, HARD"},
+    {"check": "not_a_tagline", "test": "A plain statement of the thought: no pun or double meaning, no hype in place of a thought, not the sign-off line? (short or headline-able is NOT a fail)"},
+    {"check": "ownable", "test": "Not a category generic: most rivals could not say it as well (a pre-empted claim counts)."},
+    {"check": "reason_to_care", "test": "Would this audience care? (an emotional reason counts)"},
+    {"check": "room_for_many_ads", "test": "Could a creative team write several quite different ads from it?"}
   ],
-  "depends_on": ["insight", "background", "reasons_to_believe"],
+  "depends_on": ["insight", "background", "reasons_to_believe", "competitor_context", "audience"],
   "provenance_required": true
 }
 ```
@@ -280,18 +282,20 @@ Free-text stays free-text for the craft fields (insight, smp, audience) — neve
 
     "smp": {
       "zone": 3, "hero": true, "type": "string", "required": true, "max_words": 20, "min_words": 3,
-      "prompt": "ONE sentence — the single most compelling, true and ownable thing. Not a tagline, not 'creative', not a list. If you have two, choose. (Problem + Benefit + Insight → SMP.)",
+      "prompt": "ONE sentence — the one thing we want the audience to take away. It must follow from the problem and the insight, be true and backed by the reasons to believe, give this audience a reason to care, and be specific to this brand, not a category generic. Not a tagline, not 'creative', not a list. If you have two, choose.",
       "good_example": "The lager that earns its place in your round.",
       "bad_example": "Great taste, fewer carbs, brewed with passion for modern drinkers.",
       "bad_reason": "Three messages; features not benefit; not ownable; reads like finished copy.",
       "rubric": [
         {"check": "single_sentence", "test": "Exactly one sentence?"},
-        {"check": "single_minded", "test": "Exactly one idea, not a list?"},
-        {"check": "ownable", "test": "Could a competitor say it? If yes, fail. (Needs competitor_context.)"},
-        {"check": "not_a_tagline", "test": "Strategy that points to the idea, not finished ad copy?"},
-        {"check": "derives_from", "test": "Traceable to insight + problem + benefit?"}
+        {"check": "single_minded", "test": "One strategic choice, not a menu? (llm, hard)"},
+        {"check": "derives_from", "test": "Seen why from the problem and the insight alone? (llm, hard)"},
+        {"check": "not_a_tagline", "test": "Plain statement: no pun, no hype for a thought, not the sign-off line? Short is fine."},
+        {"check": "ownable", "test": "Not a category generic; a pre-empted claim counts. (Needs competitor_context.)"},
+        {"check": "reason_to_care", "test": "Would this audience care?"},
+        {"check": "room_for_many_ads", "test": "Several different ads possible from it?"}
       ],
-      "depends_on": ["insight","background","reasons_to_believe","competitor_context"], "provenance_required": true
+      "depends_on": ["insight","background","reasons_to_believe","competitor_context","audience"], "provenance_required": true
     },
 
     "reasons_to_believe": {

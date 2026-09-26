@@ -149,7 +149,10 @@ def _single_sentence(f, v):
 def _single_minded(f, v):
     """Auto check for one idea: REVIEW (never FAIL) when the text contains a comma,
     ' and ', ' & ', '·', ';' or '/', thousands separators such as 10,000 excepted;
-    otherwise PASS. Returns (status, note)."""
+    otherwise PASS. Returns (status, note).
+    No longer wired to the SMP: since 2026-09-26 the schema's `single_minded` is an llm
+    test (R1 §5.1: the regex is unsourced, passes "A range of thick flavours" and flags the
+    sourced Levi's and Corona lines). Kept in AUTO for any other schema that names it."""
     s = re.sub(r",(?=\d{3}\b)", "", str(v or ""))
     listy = re.search(r"(,| and | & |·|;|/)", s)
     return (REVIEW, "may carry >1 idea") if listy else (PASS, "one idea")
@@ -241,8 +244,11 @@ def _run_field_checks(field, brief):
             status, note = AUTO[c["id"]](field, v)
             checks.append({**base, "status": status, "note": note})
         elif c["id"] == "ownable":
+            # No competitor context: the judge cannot test the line against rivals, so the
+            # check waits for a human rather than failing the brief for what the client did
+            # not give (R1 2026-09-24 §5.1; was FAIL, which charged the SMP for a client gap).
             if not _is_filled(_val(brief, "competitor_context")):
-                checks.append({**base, "status": FAIL, "note": "needs competitor_context"})
+                checks.append({**base, "status": REVIEW, "note": "needs competitor_context"})
             else:
                 checks.append({**base, "status": REVIEW, "note": "agent to judge"})
         else:
@@ -298,7 +304,7 @@ def _run_dependencies(schema, brief):
             note = "agent to confirm ladder" if all_filled else "missing response/objectives"
         elif d["id"] == "ownable_needs_competitors":
             ok = _is_filled(_val(brief, "competitor_context"))
-            status, note = (PASS, "competitor context present") if ok else (FAIL, "fill competitor_context")
+            status, note = (PASS, "competitor context present") if ok else (REVIEW, "no competitor_context: ownable left for review")
         results.append({"id": d["id"], "rule": d["rule"], "method": d["method"],
                         "status": status, "note": note})
     return results
@@ -682,22 +688,39 @@ def run_critic(schema, brief, validation):
 JUDGE_MODEL = os.environ.get("CRITIC_MODEL", "claude-sonnet-5")
 
 
+CRITIC_MAX_TOKENS = 6000   # one verdict + reason per check for ~14 checks; a ceiling, not a cost.
+                           # Was 4000: a run reached 3,828 (audit F8).
+
+
 def run_critic_one_call(schema, brief, validation, judge=None):
     """Judge EVERY pending llm check of the brief in ONE call, with a model independent of
     the one that wrote and selected the fields (Sonnet 5 by default; CRITIC_MODEL). Without
     this, each llm check is REVIEW and earns half credit, which caps health at 74. Writes
     verdicts back in place, recomputes definition-of-done and health.
+    The call runs ONLY on the pinned judge model (only_model=True): if that model cannot
+    answer, nothing is judged and validation['judge_model'] is None, rather than the
+    generator model quietly scoring its own work (audit J4). validation['judge_model']
+    names the link that answered. A reply must be a whole object (whole=True): a
+    truncated one judges nothing rather than the checks that fit.
     `judge(prompt) -> dict` is injectable for tests. Returns (validation, n_judged)."""
     batches = critic_prompts_batched(schema, brief, validation)
+    validation["judge_model"] = None
     if not batches:
         return validation, 0
+    info = {"link": "injected"}
     if judge is None:
         if str(Path(__file__).parent) not in sys.path:
             sys.path.insert(0, str(Path(__file__).parent))
         import parse_brief
-        judge = lambda prompt: parse_brief._json_call(
-            prompt, system="You are a rigorous, fair brief-quality critic. JSON only.",
-            model=JUDGE_MODEL, max_tokens=4000, retries=1)
+        info = {}
+
+        def _pinned_judge(prompt):
+            """One call on the pinned judge model; records the answering link in `info`."""
+            return parse_brief._json_call(
+                prompt, system="You are a rigorous, fair brief-quality critic. JSON only.",
+                model=JUDGE_MODEL, max_tokens=CRITIC_MAX_TOKENS, retries=1,
+                only_model=True, whole=True, info=info)
+        judge = _pinned_judge
     parts = [f"=== FIELD {b['field']} ===\n" + b["prompt"].split("Return ONLY raw JSON")[0].strip()
              for b in batches]
     result = judge(
@@ -707,6 +730,7 @@ def run_critic_one_call(schema, brief, validation, judge=None):
         'Return ONLY raw JSON: {"<field_id>": {"<test_id>": {"verdict": "pass"|"fail", '
         '"reason": "one line", "fix": "one line, only when fail"}}}')
     result = result if isinstance(result, dict) else {}
+    validation["judge_model"] = info.get("link") if result else None
     if isinstance(result.get("fields"), dict):                  # {"fields": {...}} wrapper
         result = result["fields"]
     index = {(fr["id"], c["id"]): c for fr in validation["fields"] for c in fr["checks"]}
@@ -840,7 +864,8 @@ def main(argv):
         print(report(bo_path.parent.name, v))
     if judge_flag:
         v, ran = run_critic_one_call(schema, brief, v)
-        print(f"  independent critic ({JUDGE_MODEL}) judged {ran} checks in one call")
+        who = v.get("judge_model") or f"{JUDGE_MODEL} did not answer"
+        print(f"  independent critic ({who}) judged {ran} checks in one call")
         print(report(bo_path.parent.name, v))
     q = quality_split(schema, brief, v)
     print(f"  quality: {q['quality']}/100 · client gaps: {', '.join(q['client_gaps']) or 'none'}"

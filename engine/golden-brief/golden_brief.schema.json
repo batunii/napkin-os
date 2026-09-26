@@ -279,9 +279,10 @@
         "insight",
         "background",
         "reasons_to_believe",
-        "competitor_context"
+        "competitor_context",
+        "audience"
       ],
-      "prompt": "ONE sentence — the single most compelling, true and ownable thing. Not a tagline, not 'creative', not a list. If you have two, choose. (Problem + Benefit + Insight → SMP.)",
+      "prompt": "ONE sentence — the one thing we want the audience to take away. It must follow from the problem and the insight, be true and backed by the reasons to believe, give this audience a reason to care, and be specific to this brand, not a category generic. Written for the creative team: it points to where the idea should be and is not the idea's final wording. Not a tagline, not 'creative', not a list. If you have two, choose.",
       "good_example": "The lager that earns its place in your round.",
       "bad_example": "Great taste, fewer carbs, brewed with passion for modern drinkers.",
       "bad_reason": "Three messages; features not benefit; not ownable; reads like finished copy.",
@@ -298,25 +299,40 @@
         },
         {
           "id": "single_minded",
-          "test": "One idea, not a list.",
-          "method": "auto"
-        },
-        {
-          "id": "ownable",
-          "test": "A competitor could not say the same thing (needs competitor_context).",
-          "method": "llm"
-        },
-        {
-          "id": "not_a_tagline",
-          "test": "Strategy that points to the idea, not finished ad copy.",
-          "method": "llm"
+          "method": "llm",
+          "tolerance": "hard",
+          "test": "One strategic choice: does it commit to one thing to communicate, rather than offering two or more claims for the creatives to choose between? (An 'and' or a comma is not by itself a fail.)"
         },
         {
           "id": "derives_from",
-          "test": "Traceable to insight + problem + benefit.",
-          "method": "llm"
+          "method": "llm",
+          "tolerance": "hard",
+          "test": "Would a reader who has read only the problem and the insight see why this is the proposition?"
+        },
+        {
+          "id": "not_a_tagline",
+          "method": "llm",
+          "test": "Is it a plain statement of the thought: no pun or double meaning, no hype standing in for a thought, and not the brand's sign-off line? (Being short, or able to run as a headline, is NOT a fail.)"
+        },
+        {
+          "id": "ownable",
+          "method": "llm",
+          "test": "Not a category generic: most rivals could not say it just as well. (A pre-empted claim that no rival currently makes counts as specific. Needs competitor_context.)"
+        },
+        {
+          "id": "reason_to_care",
+          "method": "llm",
+          "test": "Would this audience care? Is it motivating to them, not merely true or unique? (An emotional reason counts.)"
+        },
+        {
+          "id": "room_for_many_ads",
+          "method": "llm",
+          "test": "Could a creative team write several quite different ads from it?"
         }
-      ]
+      ],
+      "_prompt_sources": "R1 2026-09-24 §1.1: Steel 1998 p.168-169; APG 1997 pp.56-57; BBG p.17; Excellence 1997 p.158; Reeves 1961 p.47; benefit not required (Ogilvy DO, BBH 1992 slide 32, Binet & Field 2007)",
+      "_word_limit_note": "3-20 is our convention as a sanity limit; no source sets a number (R1 C13)",
+      "_rubric_sources": "R1 §3: C1 Steel p.169/APG p.56; C2 Excellence p.158, Steel p.169, BBG p.17; C4 BBG p.17, BBH 1992 slide 9, Steel p.149 (headline-able is not a fail); C6 APG p.57, Steel p.169; C7 Reeves p.48, Weichselbaum p.305, Binet & Field 2007; C8 Reeves p.47, Trott 2022, RSE 2007/Sharp 2010 (keep soft); C10 Excellence p.158. 'tolerance: hard' = a fail is final regardless of the gate's one-fail tolerance"
     },
     {
       "id": "reasons_to_believe",
@@ -464,7 +480,7 @@
       },
       {
         "id": "smp_single",
-        "rule": "SMP is one ownable sentence within word limit.",
+        "rule": "SMP is one sentence within the word limit.",
         "method": "auto"
       },
       {
@@ -512,7 +528,7 @@
         "insight",
         "background"
       ],
-      "rule": "SMP must trace to insight + problem + a benefit.",
+      "rule": "The SMP follows visibly from the problem and the insight (the derives_from check).",
       "method": "llm"
     },
     {
@@ -539,7 +555,7 @@
         "smp",
         "competitor_context"
       ],
-      "rule": "Judging 'ownable' requires competitor_context.",
+      "rule": "Judging 'ownable' needs competitor_context; without it the check is left for review, not failed.",
       "method": "auto"
     }
   ],

@@ -75,43 +75,117 @@ _HTTP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 # ---------------------------------------------------------------------------
 _LLM_STATS = {}
 _STATS_LOCK = __import__("threading").Lock()   # loops 3–7 retrieval/rerank run in threads
+# A run's ledger travels with the thread (and, via _scoped, with the threads it starts), so
+# two briefs in one process — or a name-derivation call next to a running brief on the
+# agent-server — never write into each other's numbers (audit 2026-09-24, critic-G11).
+_STATS_TL = threading.local()
+
+_EMPTY_STATS = {"calls": 0, "http_attempts": 0, "input_chars": 0, "output_chars": 0,
+                "prompt_tokens": 0, "completion_tokens": 0, "cache_read_tokens": 0,
+                "cache_creation_tokens": 0, "retries": 0, "rate_limited": 0, "truncations": 0,
+                "refusals": 0, "by_provider": {}, "answered_by": {}}
+
+
+def _ledger() -> dict:
+    """The ledger this thread writes to: the run-scoped one set by _stats_scope (and carried
+    into worker threads by _scoped), else the module-global _LLM_STATS."""
+    led = getattr(_STATS_TL, "stats", None)
+    if led is not None:
+        return led
+    if not _LLM_STATS:
+        _stats_reset()
+    return _LLM_STATS
+
+
+class _stats_scope:
+    """`with _stats_scope() as ledger:` gives the calling thread a fresh, private ledger for
+    the block; nested calls in this thread (and threads started through _scoped) record into
+    it. run() uses it so meta.llm_stats is exactly that brief's calls."""
+
+    def __enter__(self):
+        """Install a fresh ledger for this thread; return it."""
+        self._prev = getattr(_STATS_TL, "stats", None)
+        self.ledger = {**_EMPTY_STATS, "by_provider": {}, "answered_by": {}}
+        _STATS_TL.stats = self.ledger
+        return self.ledger
+
+    def __exit__(self, *exc):
+        """Restore whatever ledger the thread had before."""
+        _STATS_TL.stats = self._prev
+        return False
+
+
+def _scoped(fn):
+    """Wrap `fn` so that, run on another thread (a pool submit/map), it records into the
+    ledger of the thread that called _scoped. Every pool inside a run uses it."""
+    led = getattr(_STATS_TL, "stats", None)
+
+    def wrapped(*a, **k):
+        """Run fn with the parent thread's ledger installed."""
+        _STATS_TL.stats = led
+        return fn(*a, **k)
+    return wrapped
 
 
 def _stats_reset():
     """Zero the LLM call ledger (_LLM_STATS) under the stats lock, by_provider
-    included. run() calls it at the start of every brief, so each snapshot covers one run."""
+    included. Direct calls from tests and scripts land here; run() records into its own
+    scoped ledger (see _stats_scope)."""
     with _STATS_LOCK:
         _LLM_STATS.clear()
-        _LLM_STATS.update({"calls": 0, "http_attempts": 0, "input_chars": 0,
-                           "output_chars": 0, "prompt_tokens": 0, "completion_tokens": 0,
-                           "retries": 0, "rate_limited": 0, "by_provider": {}})
+        _LLM_STATS.update({**_EMPTY_STATS, "by_provider": {}, "answered_by": {}})
 
 
 def _stats_call(provider_label: str, in_chars: int):
     """Count one outbound request to a link in the LLM call ledger: bumps `calls`,
     adds `in_chars` (system + user prompt length) to `input_chars` and tallies the request
-    under by_provider[provider_label]. Initialises the ledger first when run() has not reset
-    it (a direct call from a test or script). Instrumentation only."""
-    if not _LLM_STATS:
-        _stats_reset()
+    under by_provider[provider_label]. Instrumentation only."""
+    led = _ledger()
     with _STATS_LOCK:
-        _LLM_STATS["calls"] += 1
-        _LLM_STATS["input_chars"] += in_chars
-        bp = _LLM_STATS["by_provider"]
+        led["calls"] += 1
+        led["input_chars"] += in_chars
+        bp = led["by_provider"]
         bp[provider_label] = bp.get(provider_label, 0) + 1
 
 
 def _stats_usage(usage: dict | None, out_chars: int):
     """Add one reply to the LLM call ledger: `out_chars` to `output_chars`, and the
-    provider's usage prompt_tokens / completion_tokens when a usage dict is given (missing
-    or None counts as 0). Initialises the ledger when it is empty. Instrumentation only."""
-    if not _LLM_STATS:
-        _stats_reset()
+    provider's usage when a usage dict is given: prompt_tokens (uncached input),
+    completion_tokens, and the separately priced cache_read_tokens / cache_creation_tokens
+    (missing or None counts as 0). Instrumentation only."""
+    led = _ledger()
     with _STATS_LOCK:
-        _LLM_STATS["output_chars"] += out_chars
+        led["output_chars"] += out_chars
         if usage:
-            _LLM_STATS["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
-            _LLM_STATS["completion_tokens"] += int(usage.get("completion_tokens") or 0)
+            for k in ("prompt_tokens", "completion_tokens", "cache_read_tokens", "cache_creation_tokens"):
+                led[k] = led.get(k, 0) + int(usage.get(k) or 0)
+
+
+def _stats_answered(provider_label: str):
+    """Record that `provider_label` is the link whose reply was USED (parsed and accepted),
+    as opposed to merely attempted (by_provider). meta.extraction_mode and the synthesis
+    label are read from this, so a brief is labelled with the model that wrote it."""
+    led = _ledger()
+    with _STATS_LOCK:
+        ab = led.setdefault("answered_by", {})
+        ab[provider_label] = ab.get(provider_label, 0) + 1
+
+
+def _stats_bump(key: str):
+    """Add one to a counter in the ledger (truncations, refusals, ...)."""
+    led = _ledger()
+    with _STATS_LOCK:
+        led[key] = led.get(key, 0) + 1
+
+
+def _stats_snapshot() -> dict:
+    """A deep copy of the current ledger. The old shallow copy shared by_provider with the
+    live ledger, so the critic call made after run() changed a finished brief's numbers."""
+    import copy
+    with _STATS_LOCK:
+        return copy.deepcopy(_ledger())
+
+
 HERE = Path(__file__).resolve().parent
 
 # ---------------------------------------------------------------------------
@@ -520,8 +594,9 @@ def _gen_field_system(field, n: int = 1) -> str:
         own = ("\nOWNABLE TENSION: claim territory the named competitor does NOT own. If every rival "
                "in the category would nod at your line, it is a category truth and a FAIL — use the "
                "competitor_context to find the white space. Reconcile the WHOLE stated audience (if "
-               "it is split, name the tension that unites the segments). Never restate the brand's "
-               "own existing vision / mission / tagline; that is not a campaign proposition.\n")
+               "it is split, name the tension that unites the segments; a truly split audience may "
+               "need two briefs). Do not simply restate the brand's standing line unless the brief "
+               "asks for continuity; the proposition is this campaign's choice.\n")
     t = field.get("type")
     if t == "tfd":
         out_shape = ('{"think": "...", "feel": "...", '
@@ -623,21 +698,19 @@ def _build_golden_system():
 
 def extract_golden_brief(raw_text: str) -> "dict | None":
     """Per-field Golden Brief extraction using schema prompts + good/bad examples.
-    Returns a dict with 'fields' key, or None on failure."""
-    import time
+    Returns a dict with 'fields' key, or None on failure.
+
+    One chain walk with a shape check (`accept`): a reply that parses but carries no
+    `fields` is rejected like unparseable output, so the next link gets its turn. Before
+    2026-09-25 this looped three times on link 1 with no accept, and a wrong-shaped reply
+    never reached link 2 (audit F7)."""
     system = _build_golden_system()
     if not system:
         return None
     user = f"CLIENT BRIEF:\n\"\"\"\n{_clip_brief(raw_text)}\n\"\"\""
-    # 3 retries with short backoff — model sometimes returns inconsistent output
-    # when called in rapid succession during a full pipeline run
-    for attempt in range(3):
-        if attempt:
-            time.sleep(2)
-        obj = _json_call(user, system=system, retries=0, max_tokens=MAXTOK_EXTRACT)
-        if isinstance(obj, dict) and isinstance(obj.get("fields"), dict):
-            return obj
-    return None
+    return _json_call(user, system=system, retries=1, max_tokens=MAXTOK_EXTRACT,
+                      accept=lambda o: isinstance(o, dict) and isinstance(o.get("fields"), dict)
+                      and bool(o["fields"]))
 
 
 def _fv(field) -> str:
@@ -701,73 +774,128 @@ def _rubric_hard(field, value, brand_lines: str = "") -> list:
             hard.append(f"{cid}: {note}")
     if field.get("type") == "tfd" and any(v in blob for v in FORBIDDEN_DO_VERBS):
         hard.append("'do' is not an observable behaviour (engage/explore/interact)")
-    # The SMP must be a campaign choice, not a restatement of the masterbrand vision.
-    if field.get("id") == "smp" and brand_lines and isinstance(value, str) \
-            and _text_overlap(value, brand_lines) >= 0.5:
-        hard.append("SMP echoes the masterbrand vision/claim — needs a campaign-specific proposition")
     return hard
 
 
-def _rubric_gate(field, value, brand_lines: str = "", ctx: str = "") -> "tuple[bool, list]":
-    """Run a field's own schema rubric against a generated value. Auto tests run
-    inline; the llm tests run in one judge call. Returns (passed, failures).
-    A hard failure (over limit / forbidden verb / masterbrand echo) fails outright;
-    up to one soft (llm) failure is tolerated so a subjective judge can't nuke every field.
-    `ctx` (the field's upstream deps, e.g. the insight + competitor_context) is given to
-    the judge so derivation/ownability tests are checked against real context, not blind."""
-    rubric = field.get("rubric") or []
-    hard, soft = _rubric_hard(field, value, brand_lines), []
-    llm_tests = [r for r in rubric if r.get("method") == "llm"]
-    if llm_tests:
-        tests = "\n".join(f'- {r["id"]}: {r["test"]}' for r in llm_tests)
-        judge = _json_call(
-            (f"UPSTREAM CONTEXT (use this to judge derivation/ownability — do NOT re-test it):\n{ctx}\n\n"
-             if ctx else "")
-            + f"FIELD VALUE:\n{json.dumps(value)}\n\nTESTS:\n{tests}",
-            system=("You are a fair but rigorous brief-quality judge. Judge the VALUE on each test, using "
-                    "the upstream context where given (e.g. verify a proposition derives from the stated "
-                    "insight and is ownable against the stated competitor — do not fail derivation merely "
-                    "because the context wasn't repeated in the line). For each test decide pass/fail. "
-                    'Return ONLY raw JSON: {"<test_id>": {"pass": true|false, "why": "short"}}'),
-            retries=1, max_tokens=MAXTOK_JUDGE)
-        if isinstance(judge, dict):
-            for r in llm_tests:
-                res = judge.get(r["id"]) or {}
-                if isinstance(res, dict) and res.get("pass") is False:
-                    soft.append(f'{r["id"]}: {res.get("why", "failed")}')
-    passed = (not hard) and len(soft) < 2
-    return passed, hard + soft
+def _rubric_flags(field, value, brand_lines: str = "") -> list:
+    """Notes shown to a human, never scored (R1 2026-09-24 §3 'FLAG'): an SMP that echoes
+    the brand's standing vision / claim / tagline. Until 2026-09-26 this was a hard fail;
+    no source makes it one, and BBH's own Levi's and Forte Posthouse briefs restate the
+    standing line on purpose."""
+    flags = []
+    if field.get("id") == "smp" and brand_lines and isinstance(value, str) \
+            and _text_overlap(value, brand_lines) >= 0.5:
+        flags.append("echoes the brand's standing vision/claim/tagline — confirm this campaign wants continuity")
+    return flags
 
 
-def _judge_hero_candidates(field, candidates, brand_lines: str = ""):
-    """Rank candidate values for a hero field (insight / smp) by PURITY and ownability
-    with one LLM judge call, and return them reordered best-first. Best-effort: on any
-    failure the candidates are returned unchanged (the rubric gate is still authoritative)."""
-    if len(candidates) < 2:
-        return candidates
-    llm_tests = [r for r in (field.get("rubric") or []) if r.get("method") == "llm"]
-    crit = "; ".join(f'{r["id"]}: {r["test"]}' for r in llm_tests) \
-        or "single-minded (one idea, not a list); ownable vs the competitor; specific to this brand"
-    listing = "\n".join(f"[{i}] {json.dumps(c.get('value'))}" for i, c in enumerate(candidates))
-    judge = _json_call(
-        f"FIELD: {field['label']}\nGOOD shape (different brand, do not copy): {field.get('good_example','')}\n"
-        f"BAD: {field.get('bad_example','')} ({field.get('bad_reason','')})\nJUDGE EACH ON: {crit}\n\n"
-        f"CANDIDATES:\n{listing}",
-        system=("You are a strategy director ranking candidate '" + field["label"] + "' lines for a "
-                "creative brief. Reward PURITY and single-mindedness (one idea, never a list or an "
-                "'and'), ownable territory (a direct rival could not say the same line), and a real "
-                "human tension specific to THIS brand. Penalise category truths everyone would nod "
-                "at, restated brand taglines, and anything trying to say two things. Return ONLY raw "
-                'JSON: {"ranking": [candidate indexes, best first], "why": "one line on the winner"}'),
-        retries=1, max_tokens=MAXTOK_JUDGE)
-    if isinstance(judge, dict) and isinstance(judge.get("ranking"), list):
-        order = [i for i in judge["ranking"] if isinstance(i, int) and 0 <= i < len(candidates)]
-        order += [i for i in range(len(candidates)) if i not in order]   # append any the judge dropped
-        ranked = [candidates[i] for i in order]
-        if ranked and isinstance(judge.get("why"), str):
-            ranked[0] = {**ranked[0], "_judge_why": judge["why"]}
-        return ranked
-    return candidates
+def _pass_rule(hard: list, soft: list, n_llm: int) -> bool:
+    """The ONE pass rule for every generated field. A code (hard) failure is final. A field
+    with three or more llm tests (insight, SMP) tolerates one failed llm test, so a single
+    subjective verdict cannot sink it; a field with fewer tolerates none. Before 2026-09-25
+    every field tolerated one soft failure, and the reasons to believe (one llm test:
+    supports_smp) and desired response (one: ladders) could therefore never fail their judge
+    (audit F1/G1). Sai's decision 2026-09-25: keep the tolerance for insight and SMP."""
+    allowed = 1 if n_llm >= 3 else 0
+    return not hard and len(soft) <= allowed
+
+
+UNJUDGED = "unjudged"   # prefix of the failure a candidate carries when the judge gave no verdict
+
+
+def _verdict(res, tid: str) -> "bool | None":
+    """One strict verdict from a judge reply: True or False, or None when the judge did not
+    answer this test in a form we can read. Accepts {"pass": bool}, {"verdict": "pass"|"fail"},
+    a bare bool, and the strings true/false/pass/fail in any case. Everything else — a
+    missing key, an empty object, a reason with no verdict — is None, and None never counts
+    as a pass (audit F5: 7 of 8 malformed reply shapes used to pass every candidate)."""
+    v = res.get(tid) if isinstance(res, dict) else None
+    if isinstance(v, dict):
+        v = v.get("pass") if "pass" in v else v.get("verdict")
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in ("true", "pass", "passed", "yes"):
+            return True
+        if s in ("false", "fail", "failed", "no"):
+            return False
+    return None
+
+
+def _why(res, tid: str) -> str:
+    """The judge's reason for test `tid`, or '' when it gave none."""
+    v = res.get(tid) if isinstance(res, dict) else None
+    return str(v.get("why") or v.get("reason") or "") if isinstance(v, dict) else ""
+
+
+def _conf(x) -> "float | None":
+    """A model-reported confidence as a float in [0, 1], or None when it is missing or not a
+    number in range (a bool, 'high', 1.7, ...). None counts as BELOW the floor: before
+    2026-09-25 a missing or 0.0 confidence coerced to the floor and passed, while 'high'
+    crashed the whole run (audit F6)."""
+    if isinstance(x, bool) or x is None:
+        return None
+    try:
+        f = float(x)
+    except (TypeError, ValueError):
+        return None
+    return f if 0.0 <= f <= 1.0 else None
+
+
+def _name_candidates(why: str, candidates: list) -> str:
+    """Replace 'candidate 2' / '[2]' / 'draft 2' in a judge's note with the first six words
+    of that draft, so review text reads as prose instead of an index into a list the reader
+    never sees (audit H11). Both 0- and 1-based references are read as 0-based."""
+    def name(i: int) -> str:
+        """The first six words of candidate i, quoted; the reference unchanged if out of range."""
+        if 0 <= i < len(candidates):
+            words = _golden_text(candidates[i].get("value")).split()
+            return '"' + " ".join(words[:6]) + ('…' if len(words) > 6 else '') + '"'
+        return None
+    def sub(m):
+        """Swap one reference for the draft's opening words."""
+        n = name(int(m.group("a") or m.group("b")))
+        return n if n is not None else m.group(0)
+    return re.sub(r"\b(?:candidate|draft|option)\s*#?\s*(?P<a>\d+)\b|\[(?P<b>\d+)\]",
+                  sub, why or "", flags=re.I)
+
+
+# A parenthesised aside about a sentence number goes whole; a bare 'sentence 12' or
+# 'sentences 2-3' loses only the reference itself; '[5]' goes.
+_MARKER_RE = re.compile(r"\(\s*sentences?\s+\d+[^)\n]{0,80}\)|\bsentences?\s+\d+(?:\s*[-–,]\s*\d+)*|\[\d+\]", re.I)
+
+
+def _scrub_markers(text):
+    """Strip the pipeline's internal references — '(sentence 35 says TBC)', 'sentences 2-3',
+    '[5]' — from text that reaches a client or a reviewer (audit H11). Lists and dicts are
+    scrubbed per item; other values pass through unchanged."""
+    if isinstance(text, str):
+        out = _MARKER_RE.sub("", text)
+        out = re.sub(r"\s+([?.,;:!])", r"\1", out)     # 'impact ?' -> 'impact?'
+        return re.sub(r"\s{2,}", " ", out).strip()
+    if isinstance(text, list):
+        return [_scrub_markers(x) for x in text]
+    if isinstance(text, dict):
+        return {k: _scrub_markers(v) for k, v in text.items()}
+    return text
+
+
+def _norm_quote(s: str) -> str:
+    """Lower-case, punctuation-free, single-spaced text for verbatim-quote matching."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (s or "").lower())).strip()
+
+
+def _quote_in_brief(quote, brief_text: str) -> bool:
+    """True when every fragment of `quote` (split on '...' / '…') appears verbatim in the
+    brief, punctuation and case ignored. A missing or empty quote is False. This is the code
+    check behind 'client-stated': the extractor's label alone proved unreliable (audit F4b:
+    4 of 13 briefs shipped extractor prose as the client's words)."""
+    if not isinstance(quote, str) or not quote.strip() or not brief_text:
+        return False
+    hay = _norm_quote(brief_text)
+    frags = [f for f in (_norm_quote(p) for p in re.split(r"\.{3}|…", quote)) if f]
+    return bool(frags) and all(f in hay for f in frags)
 
 
 MAXTOK_BATCH_JUDGE = 3000   # one verdict per candidate x test (reasons on failures only) + ranking.
@@ -777,13 +905,17 @@ MAXTOK_BATCH_JUDGE = 3000   # one verdict per candidate x test (reasons on failu
 def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", territory=None) -> list:
     """Rank the candidates AND run every llm rubric test (and, for the SMP, the two territory
     tests) on every candidate in ONE judge call. Returns [(candidate, passed, failures)]
-    best-first. Same pass rule as _rubric_gate + _smp_territory_gate: a code (hard) failure
-    is final, up to one soft failure is tolerated, and a line off the brand's territory fails.
+    best-first. The pass rule is _pass_rule; a line off the brand's territory fails.
 
-    Replaces, per hero field, one ranking call + one gate call per candidate tried + one
-    territory call per candidate that passed (measured 2026-09-23: 11 gate calls, 73 s, on
-    one brief). If the judge call fails, the order is kept and only the code tests apply —
-    exactly what the per-candidate path did when its judge failed."""
+    This is the only gate: every generated field, hero or not, one draft or six, goes
+    through it (audit C1 deleted the per-candidate _rubric_gate, the ranking-only judge and
+    the separate territory gate — three fail-open paths).
+
+    Strict verdicts (audit F5/J2): every candidate must carry a readable verdict for every
+    test, or it is UNJUDGED: not ok, with a failure starting with 'unjudged'. Keys numbered
+    from 1 are realigned (and logged); any other key set that does not cover the candidates
+    leaves them unjudged. A judge that is down leaves every candidate unjudged, order kept,
+    so the field becomes missing with an open question instead of an unchecked line."""
     llm_tests = [r for r in (field.get("rubric") or []) if r.get("method") == "llm"]
     many = len(candidates) > 1
     judge = None
@@ -793,9 +925,32 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
             tests += (f"\n- own_territory: does the line live on what the BRAND should own "
                       f"({territory['own']}) rather than on {territory['rival']}'s ground "
                       f"({territory['avoid']}) — counting synonyms and rephrasings?"
-                      f"\n- not_rival_line: could {territory['rival']}'s own campaign NOT run this line "
-                      f"verbatim without changing its meaning? (pass = only this brand can say it)")
+                      f"\n- brand_only: is this a line ONLY this brand can credibly say? "
+                      f"(fail if {territory['rival']}'s own campaign could run it verbatim "
+                      f"without changing its meaning)")
         listing = "\n".join(f"[{i}] {json.dumps(c.get('value'))}" for i, c in enumerate(candidates))
+        # The ranking guidance depends on the field's shape. A hero LINE (insight, SMP) is
+        # judged on purity and single-mindedness; a list field (reasons to believe) or a
+        # think/feel/do set IS several items by design, and must not be failed for being one
+        # (live check 2026-09-25: the hero wording failed a four-item RTB "for being a list").
+        shape = field.get("type")
+        if shape == "list":
+            framing = ("The value is a LIST of items by design — judge the set as a whole on each test "
+                       "and never fail it for having several items. Rank by how well the set supports the "
+                       "proposition with specific, credible, non-invented reasons; penalise vague or "
+                       "generic items.")
+        elif shape == "tfd":
+            framing = ("The value is a think / feel / do set by design. Judge it on each test as a set; "
+                       "rank by how clearly the three ladder up to the objectives and how observable the "
+                       "'do' is.")
+        else:
+            # R1 2026-09-24 §5.2: no "never an 'and'" (unsourced; Levi's and Corona contradict
+            # it), and copy is named by its devices rather than as "restated taglines".
+            framing = ("Then rank the candidates: reward one strategic choice stated plainly, a real "
+                       "human tension specific to THIS brand, and a reason for this audience to care; "
+                       "penalise category truths any rival could claim, lines that try to say two things, "
+                       "and lines written as copy (a pun or double meaning, hype standing in for a thought, "
+                       "the brand's sign-off line). Short or headline-able is not a fault.")
         judge = _json_call(
             (f"UPSTREAM CONTEXT (use this to judge derivation/ownability — do NOT re-test it):\n{ctx}\n\n"
              if ctx else "")
@@ -803,42 +958,60 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
             f"BAD: {field.get('bad_example','')} ({field.get('bad_reason','')})\n\n"
             f"TESTS (judge EVERY candidate on each):\n{tests}\n\nCANDIDATES:\n{listing}",
             accept=lambda o: isinstance(o, dict) and isinstance(o.get("results"), dict),
-            system=("You are a strategy director judging candidate '" + field["label"] + "' lines for a "
+            system=("You are a strategy director judging candidate '" + field["label"] + "' values for a "
                     "creative brief — fair but rigorous. Judge each candidate on each test on its own "
                     "merits, using the upstream context where given (do not fail derivation merely because "
-                    "the context wasn't repeated in the line). Then rank the candidates: reward PURITY and "
-                    "single-mindedness (one idea, never a list or an 'and'), ownable territory, and a real "
-                    "human tension specific to THIS brand; penalise category truths, restated taglines and "
-                    "lines that try to say two things. Return ONLY raw JSON: "
+                    "the context wasn't repeated in the value). " + framing
+                    + " Candidate indexes start at 0. Return ONLY raw JSON: "
                     '{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short, '
                     'ONLY when pass is false"}}}, "ranking": [candidate indexes, best first], '
                     '"why": "one line on the winner"}'),
-            retries=1, max_tokens=MAXTOK_BATCH_JUDGE)
+            retries=1, max_tokens=MAXTOK_BATCH_JUDGE, whole=True)
     judge = judge if isinstance(judge, dict) else {}
-    order = [int(i) for i in (judge.get("ranking") or [])
-             if (isinstance(i, int) and not isinstance(i, bool)) or (isinstance(i, str) and i.isdigit())]
-    order = [i for i in order if 0 <= i < len(candidates)]
-    order = list(dict.fromkeys(order)) + [i for i in range(len(candidates)) if i not in order]
+    n = len(candidates)
     results = judge.get("results") if isinstance(judge.get("results"), dict) else {}
+    results = {str(k): v for k, v in results.items()}
+    shift = 0
+    if n and set(results) == {str(i) for i in range(1, n + 1)}:
+        shift = 1                                    # the model numbered from 1: realign
+        print(f"[i] judge for '{field.get('id')}' numbered candidates from 1; realigned.",
+              file=sys.stderr)
+    order = [int(i) - shift for i in (judge.get("ranking") or [])
+             if (isinstance(i, int) and not isinstance(i, bool)) or (isinstance(i, str) and i.isdigit())]
+    order = [i for i in order if 0 <= i < n]
+    order = list(dict.fromkeys(order)) + [i for i in range(n) if i not in order]
+    judged_tests = [r["id"] for r in llm_tests] + (["own_territory", "brand_only"] if territory else [])
     out = []
     for rank, i in enumerate(order):
         c = candidates[i]
         if rank == 0 and many and isinstance(judge.get("why"), str):
-            c = {**c, "_judge_why": judge["why"]}
-        res = results.get(str(i)) or results.get(i) or {}
+            c = {**c, "_judge_why": _name_candidates(judge["why"], candidates)}
+        flags = _rubric_flags(field, c["value"], brand_lines)
+        if flags:
+            c = {**c, "_flags": flags}
+        res = results.get(str(i + shift))
         res = res if isinstance(res, dict) else {}
-        verdict = lambda tid: res.get(tid) if isinstance(res.get(tid), dict) else {"pass": res.get(tid)}
         hard = _rubric_hard(field, c["value"], brand_lines)
-        soft = [f'{r["id"]}: {verdict(r["id"]).get("why", "failed")}' for r in llm_tests
-                if verdict(r["id"]).get("pass") is False]
-        ok = not hard and len(soft) < 2
-        fails = hard + soft
-        if ok and territory:
-            own, only_us = verdict("own_territory").get("pass"), verdict("not_rival_line").get("pass")
-            if own is False or only_us is False:
-                why = verdict("own_territory").get("why") or verdict("not_rival_line").get("why") or ""
-                ok, fails = False, [f"walks onto the competitor's ground: {why}"]
-        out.append((c, ok, fails))
+        verdicts = {tid: _verdict(res, tid) for tid in judged_tests}
+        missing = [tid for tid, v in verdicts.items() if v is None]
+        if missing:
+            reason = "judge unavailable" if not judge else f"no verdict for {', '.join(missing)}"
+            out.append((c, False, hard + [f"{UNJUDGED}: {reason}"]))
+            continue
+        # An llm test the schema marks tolerance:hard (the SMP's single_minded and
+        # derives_from, R1 §5.5) fails the draft outright; the rest count against the
+        # field's tolerance. The territory tests are soft too since 2026-09-26 (D6:
+        # differentiation is contested; no source makes "a rival could run it" fatal).
+        soft = []
+        for r in llm_tests:
+            if verdicts[r["id"]] is False:
+                note = f'{r["id"]}: {_why(res, r["id"]) or "failed"}'
+                (hard if r.get("tolerance") == "hard" else soft).append(note)
+        if territory and (verdicts["own_territory"] is False or verdicts["brand_only"] is False):
+            why = _why(res, "own_territory") or _why(res, "brand_only")
+            soft.append(f"walks onto the competitor's ground: {why}")
+        ok = _pass_rule(hard, soft, len(llm_tests))
+        out.append((c, ok, hard + soft))
     return out
 
 
@@ -856,27 +1029,31 @@ def _refine_field(field, value, note: str = ""):
     return raw if isinstance(raw, dict) and raw.get("value") else None
 
 
-# Distinct strategic facets seeded one-per-draft so the SMP tournament gets a real
-# spread of ideas instead of N identical draws (decision / perception / ambition / craft).
+# Distinct proposition TYPES seeded one-per-draft so the SMP tournament gets a real spread
+# instead of N identical draws. The types are the ones the sources name (R1 2026-09-24
+# §5.2): Ogilvy's DO brief ("a killer fact, a promise, a straight message, or just a plain
+# and simple big idea") and Weichselbaum p.305 (a product point, a practical benefit, an
+# emotional benefit). The previous seeds (what the audience settles for; how they are
+# judged by others) were unsourced and pushed every draft toward social-judgement lines.
 SMP_ANGLE_SEEDS = (
-    "lead with the contrast between what this audience settles for and what they could deliberately choose",
-    "lead with how this audience is judged or perceived by others — the product as a verdict on their standards",
-    "lead with the competitive edge or advantage the product gives them over rivals",
-    "lead with the brand's own craft / design / engineering equity as the reason to choose it",
+    "build it on a killer fact: one true, specific thing about this brand or product that changes the audience's view",
+    "build it on a promise: the practical benefit this audience gets that rivals do not deliver as well",
+    "build it on an emotional benefit: how this audience feels, or is freed from feeling, because of this brand",
+    "build it on a plain, simple big idea: the single thought that reframes the category for this audience",
 )
 
 
-def _smp_territory(brief_text: str, competitor_ctx: str) -> dict:
+def _smp_territory(brief_text: str, competitor_ctx: str) -> "dict | None":
     """Map the SMP's ownable white space in one call. Returns {own, avoid, rival}:
     `own`  — the territory THIS brand should claim (its white space, per the brief);
     `avoid`— the emotional/territorial ground the named competitor ALREADY owns;
     `rival`— the competitor's name (for the 'could they run this line?' kill-test).
-    Best-effort: falls back to a generic ownable framing if the call fails."""
-    fallback = {"own": "the deliberate, considered choice a direct rival cannot credibly claim",
-                "avoid": (competitor_ctx or "the category's generic, everyone-says-it territory"),
-                "rival": "the named competitor"}
-    if not resolve_provider() or not (brief_text or competitor_ctx):
-        return fallback
+    Returns None when there is nothing to map or the call fails on every link: the SMP then
+    skips the territory tests and the brief asks which competitor the proposition must beat.
+    Before 2026-09-25 a failure substituted a placeholder rival ('the named competitor'),
+    so the territory tests judged a line against nobody (audit J12)."""
+    if not (brief_text or competitor_ctx):
+        return None
     obj = _json_call(
         f"BRIEF:\n\"\"\"\n{_clip_brief(brief_text or '')}\n\"\"\"\n\nCOMPETITOR CONTEXT: {competitor_ctx}",
         system=("You map strategic white space for a single-minded proposition. From the brief and the "
@@ -886,36 +1063,12 @@ def _smp_territory(brief_text: str, competitor_ctx: str) -> dict:
                 "ownable edge as the brief itself describes it). Be concrete and short. Return ONLY raw "
                 'JSON: {"rival": "competitor name", "avoid": "the concept they own + synonyms", '
                 '"own": "the white space this brand should claim"}'),
-        retries=1, max_tokens=MAXTOK_GEN)
-    if isinstance(obj, dict) and obj.get("own") and obj.get("avoid"):
-        return {"own": str(obj["own"]), "avoid": str(obj["avoid"]),
-                "rival": str(obj.get("rival") or fallback["rival"])}
-    return fallback
-
-
-def _smp_territory_gate(value, territory: dict) -> "tuple[bool, str]":
-    """Semantic kill-test for the SMP (a lexical word-ban misses synonyms — 'never lets
-    you down' is the rival's ground without the banned words). One judge call runs the two
-    CD-mandated tests: a POSITIVE gate (does it live on the brand's white space?) and a
-    COMPETITOR test (could the rival run this line verbatim?). Returns (passed, reason).
-    Best-effort: a judge-call failure does NOT block (the rubric gate still applies)."""
-    if not isinstance(value, str) or not value.strip():
-        return False, "empty"
-    obj = _json_call(
-        f"PROPOSITION: {value}\nBRAND SHOULD OWN: {territory['own']}\n"
-        f"{territory['rival']} ALREADY OWNS: {territory['avoid']}",
-        system=("You are a strategy director enforcing ownable territory for a proposition. Run two tests.\n"
-                "own_territory: does the line clearly live on what the BRAND should own, rather than on the "
-                "competitor's ground — counting synonyms and rephrasings, not just exact words?\n"
-                "competitor_could_run: would the line FAIL because the named competitor's own campaign "
-                "could run it verbatim without changing its meaning?\n"
-                'Return ONLY raw JSON: {"own_territory": true|false, "competitor_could_run": true|false, '
-                '"why": "one line"}'),
-        retries=1, max_tokens=MAXTOK_JUDGE)
-    if not isinstance(obj, dict):
-        return True, ""   # judge unavailable — don't block on infra failure
-    on = (obj.get("own_territory") is not False) and (obj.get("competitor_could_run") is not True)
-    return on, str(obj.get("why") or ("walks onto the competitor's ground" if not on else ""))
+        retries=1, max_tokens=MAXTOK_GEN,
+        accept=lambda o: isinstance(o, dict) and bool(o.get("own")) and bool(o.get("avoid"))
+        and bool(o.get("rival")))
+    if isinstance(obj, dict) and obj.get("own") and obj.get("avoid") and obj.get("rival"):
+        return {"own": str(obj["own"]), "avoid": str(obj["avoid"]), "rival": str(obj["rival"])}
+    return None
 
 
 FULLTEXT_IPA_CHARS = 1200     # BRIEF_FULLTEXT arm: per IPA precedent (5 max)
@@ -952,10 +1105,15 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
     reasons_to_believe → desired_response), schema-driven via each field's
     depends_on and rubric. A field is generated ONLY if its extracted source is
     missing/inferred — a client_stated value is never overwritten (the no-invent
-    invariant). Each generated value is rubric-gated; a failure downgrades the field
-    to 'missing' and surfaces an open question. Mutates golden_fields in place so a
-    later field can read a freshly generated upstream one (smp reads insight).
-    Returns (fills, open_questions)."""
+    invariant), but 'client_stated' must first be PROVED: the value needs a verbatim
+    source_quote from the brief that it matches, else it is the extractor's own writing
+    and is generated and gated like any other (audit F4b). A genuine client line that
+    breaks a code rule is kept as written and raises an open question.
+    Each generated value is rubric-gated by _judge_and_gate (the one gate); a failure
+    downgrades the field to 'missing' and surfaces an open question. A crash in one field
+    becomes that field's 'missing' plus an open question, never a failed run (audit F6).
+    Mutates golden_fields in place so a later field can read a freshly generated upstream
+    one (smp reads insight). Returns (fills, open_questions)."""
     if not resolve_provider():
         return {}, []
     floor = float(schema.get("confidence_floor") or 0.6)
@@ -975,40 +1133,56 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         f = golden_fields.get(fid)
         return _fv(f) if f else ""
 
-    # Guard: the extractor sometimes mislabels a background/market fact as a strategy
-    # field (client_stated). If a strategy value substantially echoes the client facts,
-    # downgrade it to missing so generation owns it — nothing is lost, the text still
-    # lives in its real fact field.
+    # Guard: a client_stated strategy field is kept only when the client really said it.
+    #   1. Its source_quote must be verbatim in the brief and the value must match the
+    #      quote (>= 60% of its words), else it is the extractor's paraphrase: generation
+    #      owns it (audit F4b: 4 of 13 briefs shipped ungated extractor text this way).
+    #   2. A value that substantially echoes the client's fact fields is a background or
+    #      market statement, not a strategy statement: downgraded, nothing lost (the text
+    #      still lives in its real fact field).
+    #   3. A masterbrand vision/tagline is not a campaign proposition: downgraded.
+    #   4. A genuine client line that breaks a code rule is kept as written (never rewrite
+    #      the client) and an open question is raised.
     fact_blob = " ".join(val(f) for f in
                          ("background", "audience", "objectives", "competitor_context"))
     brand_blob = _brand_boilerplate(brief_text)
+    guard_qs = []
     for fid in GEN_ZONE3_ORDER:
         cur = golden_fields.get(fid) or {}
-        if isinstance(cur, dict) and cur.get("source") == "client_stated":
-            v = _fv(cur)
-            if _text_overlap(v, fact_blob) >= 0.6:
-                golden_fields[fid] = {
-                    "value": None, "source": "missing",
-                    "reason": "extracted value echoed a client fact, not a distinct strategy statement",
-                }
-            elif fid in ("smp", "insight") and brand_blob and _text_overlap(v, brand_blob) >= 0.5:
-                # The masterbrand vision/tagline is not a campaign proposition — force generation.
-                golden_fields[fid] = {
-                    "value": None, "source": "missing",
-                    "reason": "echoed the masterbrand vision/claim, not a campaign-specific proposition",
-                }
+        if not (isinstance(cur, dict) and cur.get("source") == "client_stated"):
+            continue
+        v = _golden_text(cur.get("value"))
+        quote = str(cur.get("source_quote") or "")
+        field = _field_by_id(schema, fid) or {"id": fid, "label": fid}
+        if not _quote_in_brief(quote, brief_text):
+            reason = "labelled client_stated without a verbatim source quote from the brief"
+        elif _text_overlap(v, quote) < 0.6:
+            reason = (f"extractor paraphrase, not client wording (matches {_text_overlap(v, quote):.0%} "
+                      f"of its own quote)")
+        elif _text_overlap(v, fact_blob) >= 0.6:
+            reason = "extracted value echoed a client fact, not a distinct strategy statement"
+        elif fid in ("smp", "insight") and brand_blob and _text_overlap(v, brand_blob) >= 0.5:
+            reason = "echoed the masterbrand vision/claim, not a campaign-specific proposition"
+        else:
+            hard = _rubric_hard(field, cur.get("value"), brand_blob)
+            if hard:
+                guard_qs.append({"question": f"The brief's own {field['label'].lower()} breaks our rules "
+                                             f"({'; '.join(hard)}) — agree a version that keeps them.",
+                                 "why_it_matters": "client wording is kept as written, never rewritten",
+                                 "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
+            continue
+        print(f"[i] {fid}: client_stated label rejected — {reason}; generating it instead.",
+              file=sys.stderr)
+        golden_fields[fid] = {"value": None, "source": "missing", "reason": reason,
+                              "rejected_attempt": cur.get("value")}
 
     from concurrent.futures import ThreadPoolExecutor
-    batch = os.environ.get("BRIEF_BATCH_GATES", "1").lower() not in ("0", "false", "no")
     parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
 
     def gate_one(field, value, ctx, territory=None) -> bool:
         """Does one value clear its field's rubric (and, given a territory, the SMP's
-        territory tests)? One judge call when batching, else the rubric gate + territory gate."""
-        if batch:
-            return _judge_and_gate(field, [{"value": value}], brand_blob, ctx, territory)[0][1]
-        ok, _f = _rubric_gate(field, value, brand_lines=brand_blob, ctx=ctx)
-        return ok and (territory is None or _smp_territory_gate(value, territory)[0])
+        territory tests)? One judge call through the one gate."""
+        return _judge_and_gate(field, [{"value": value}], brand_blob, ctx, territory)[0][1]
 
     def _one(fid):
         """Generate, judge, gate and sharpen ONE field. Returns (entry or None, open questions).
@@ -1053,6 +1227,13 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         if fid == "smp":
             n_cand = max(n_cand, int(os.environ.get("BRIEF_SMP_CANDIDATES", "6")))
             territory = f_terr.result() if f_terr else _smp_territory(brief_text, val("competitor_context"))
+            if territory is None:
+                # No mapped competitor: the territory tests are skipped, and the brief says so
+                # instead of testing the line against a placeholder rival (audit J12).
+                qs.append({"question": "Which competitor must the proposition beat?",
+                           "why_it_matters": "the SMP's ownable-territory tests could not run: no "
+                                             "competitor could be mapped from the brief",
+                           "priority": "medium", "blocks_field": "smp"})
         # SMP territory block — built once, reused by the batched call and the fallback.
         terr_block = ""
         if fid == "smp" and territory:
@@ -1062,15 +1243,16 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                 f"proposition {territory['rival']} could also run is a FAIL — find the white space.\n"
                 f"This is a single-minded PROPOSITION — the ONE thing to make the audience believe — "
                 f"and it MUST visibly derive from the insight above (the reader should see the line "
-                f"through to the insight). Write the strategic proposition itself, NOT finished ad "
-                f"copy, a headline or a tagline.")
+                f"through to the insight). Write the strategic proposition itself, NOT written as "
+                f"copy: no puns, slogans or sign-off lines. Short is fine.")
 
         candidates = []
         if n_cand > 1:
             # BATCHED tournament: ONE call returns all N drafts, so the heavy context
             # (brief ctx + precedent + rulebook) is sent once instead of N times (~80%
             # input cut on the heaviest phase) — and the model can differentiate its own
-            # drafts, which gives a wider spread than N independent samples.
+            # drafts, which gives a wider spread than N independent samples. whole=True:
+            # a reply cut off mid-list is retried, never read as one draft (audit F8).
             u = user + terr_block
             if fid == "smp" and territory:
                 seeds = "\n".join(
@@ -1078,7 +1260,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     f"{SMP_ANGLE_SEEDS[i % len(SMP_ANGLE_SEEDS)]}" for i in range(n_cand))
                 u += f"\nANGLES — one per draft:\n{seeds}"
             batched = _json_call(u, system=_gen_field_system(field, n=n_cand),
-                                 max_tokens=MAXTOK_GEN * 2,
+                                 max_tokens=MAXTOK_GEN * 2, whole=True,
                                  accept=lambda o: bool(_coerce_candidates(o)))
             candidates = _coerce_candidates(batched)[:n_cand]
         if not candidates:
@@ -1099,39 +1281,27 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                             "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
             return None, qs
 
-        chosen, chosen_fail = None, None
-        if fid in ("insight", "smp") and batch:
-            # One call ranks every draft and runs every gate on it (BRIEF_BATCH_GATES=0: the
-            # per-candidate path below). The best-ranked draft that passes wins; if none
-            # passes, the best-ranked one carries its failures, as before.
-            judged = _judge_and_gate(field, candidates, brand_blob, ctx, territory)
-            candidates = [c for c, _ok, _f in judged]
-            for c, ok, fails in judged:
-                if ok:
-                    chosen, chosen_fail = c, []
-                    break
-                if chosen is None:
-                    chosen, chosen_fail = c, fails
-        else:
-            if fid in ("insight", "smp"):
-                candidates = _judge_hero_candidates(field, candidates, brand_blob)   # reorder best-first
-            for c in candidates:
-                ok, fails = _rubric_gate(field, c["value"], brand_lines=brand_blob, ctx=ctx)
-                if ok and fid == "smp" and territory:
-                    on_terr, why = _smp_territory_gate(c["value"], territory)
-                    if not on_terr:
-                        ok, fails = False, [f"walks onto the competitor's ground: {why}"]
-                if ok:
-                    chosen, chosen_fail = c, []
-                    break
-                if chosen is None:
-                    chosen, chosen_fail = c, fails
+        # One call ranks every draft and runs every test on it. The best-ranked draft that
+        # passes wins; if none passes, the best-ranked one carries its failures.
+        chosen, chosen_fail, chosen_notes = None, None, []
+        judged = _judge_and_gate(field, candidates, brand_blob, ctx, territory)
+        candidates = [c for c, _ok, _f in judged]
+        for c, ok, fails in judged:
+            if ok:
+                chosen, chosen_fail, chosen_notes = c, [], list(fails)   # tolerated soft failures
+                break
+            if chosen is None:
+                chosen, chosen_fail = c, fails
+        unjudged = any(f.startswith(UNJUDGED) for f in chosen_fail or [])
+        n_llm = sum(1 for r in field.get("rubric") or [] if r.get("method") == "llm")
         # Code-rule repair: the best draft broke ONLY the schema's code rules (two sentences,
         # over the word limit, too many items, no stated 'why') — one rewrite that fixes
-        # exactly those, re-checked, before the field is given up as missing.
-        if chosen_fail:
+        # exactly those, re-checked, before the field is given up as missing. Not attempted
+        # when the judge gave no verdict: the re-check could not pass either.
+        if chosen_fail and not unjudged:
             hard = _rubric_hard(field, chosen["value"], brand_blob)
-            if hard and len(chosen_fail) - len(hard) < 2:     # fixing the code rules would pass
+            soft = [f for f in chosen_fail if f not in hard]
+            if hard and _pass_rule([], soft, n_llm):     # fixing the code rules would pass
                 resc = _refine_field(field, chosen["value"],
                                      note="Fix exactly this and keep everything else: " + "; ".join(hard))
                 if resc and gate_one(field, resc["value"], ctx, territory if fid == "smp" else None):
@@ -1139,28 +1309,34 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     chosen_fail = []
         # SMP territory rescue: if no candidate could both pass the rubric AND hold the white
         # space, push the best draft off the competitor's ground once before giving up.
-        if fid == "smp" and territory and chosen_fail:
+        if fid == "smp" and territory and chosen_fail and not unjudged:
             note = (f"This proposition walks onto {territory['rival']}'s ground ({territory['avoid']}). "
                     f"Rewrite it to claim the brand's own white space: {territory['own']}. Keep the same "
                     f"underlying insight, ONE idea only, within the word limit — a line "
                     f"{territory['rival']} could not credibly run. Make it a strategic PROPOSITION that "
-                    f"derives from the insight, not a finished tagline or headline.")
+                    f"derives from the insight, not written as copy (no puns, slogans or sign-off lines).")
             resc = _refine_field(field, chosen["value"], note=note)
             if resc:
                 if gate_one(field, resc["value"], ctx, territory):
                     chosen = {**resc, "_judge_why": chosen.get("_judge_why", "")}
                     chosen_fail = []
-        conf = float(chosen.get("confidence") or floor)
+        conf = _conf(chosen.get("confidence"))
 
-        if chosen_fail or conf < floor:
+        if chosen_fail or conf is None or conf < floor:
+            why = ("; ".join(chosen_fail) if chosen_fail
+                   else "no confidence reported" if conf is None
+                   else f"confidence {conf:.2f} < floor {floor}")
             golden_fields[fid] = {
-                "value": None, "source": "missing",
-                "reason": "; ".join(chosen_fail) or f"confidence {conf:.2f} < floor {floor}",
+                "value": None, "source": "missing", "reason": why,
                 "rejected_attempt": chosen.get("value"),
             }
-            qs.append({"question": f"Agree the {field['label'].lower()}.",
-                            "why_it_matters": "; ".join(chosen_fail) or "below confidence floor",
-                            "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
+            if unjudged:
+                golden_fields[fid]["unjudged"] = True
+            qs.append({"question": f"Agree the {field['label'].lower()}"
+                                   + (" — the quality judge was unavailable, so the draft was not checked."
+                                      if unjudged else "."),
+                       "why_it_matters": why,
+                       "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
             return None, qs
 
         # Sharpen the winning hero line once; keep the refinement only if it still clears the gate.
@@ -1169,10 +1345,11 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             if refined:
                 # gate_one includes the territory tests for the SMP: never let the sharpen
                 # pass drift it back onto the competitor's ground.
-                if float(refined.get("confidence") or conf) >= floor \
+                rconf = _conf(refined.get("confidence"))
+                if rconf is not None and rconf >= floor \
                         and gate_one(field, refined["value"], ctx, territory if fid == "smp" else None):
                     refined["_judge_why"] = chosen.get("_judge_why", "")
-                    chosen, conf = refined, float(refined.get("confidence") or conf)
+                    chosen, conf = refined, rconf
 
         entry = {"value": chosen["value"], "source": "inferred",
                  "method": f"gen:{fid}", "confidence": round(conf, 2)}
@@ -1180,6 +1357,14 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             entry["rationale"] = chosen["rationale"]
         if chosen.get("_judge_why"):
             entry["judge_note"] = chosen["_judge_why"]
+        # What the gate tolerated and what it flags, kept so a judge's reasons can be
+        # audited later (R1 §5.2: without stored reasons "reads like a tagline" cannot be
+        # checked against itself).
+        if chosen_notes:
+            entry["gate_notes"] = chosen_notes
+        flags = _rubric_flags(field, chosen["value"], brand_blob)   # recomputed: the sharpen pass may have replaced the draft
+        if flags:
+            entry["flags"] = flags
         if use_ipa and f_ev:
             entry["evidence_ids"] = f_ev[:5]
         alts = [c["value"] for c in candidates if c.get("value") != chosen["value"]]
@@ -1187,6 +1372,25 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             entry["alternatives"] = alts[:3]
         golden_fields[fid] = entry  # downstream deps see the generated value
         return entry, qs
+
+    def _one_safe(fid):
+        """_one with a net: an exception in one field (a bad reply shape, a bug) makes THAT
+        field missing with an open question, and the other fields carry on. Before
+        2026-09-25 it propagated out of run() and the app silently re-ran the brief with no
+        strategy at all (audit F6/CC13)."""
+        try:
+            return _one(fid)
+        except Exception as e:
+            import traceback
+            print(f"[!] generation of '{fid}' failed ({e.__class__.__name__}: {e}); the field is "
+                  f"left open.", file=sys.stderr)
+            traceback.print_exc()
+            label = (_field_by_id(schema, fid) or {}).get("label", fid)
+            golden_fields[fid] = {"value": None, "source": "missing",
+                                  "reason": f"generation error: {e.__class__.__name__}: {e}"}
+            return None, [{"question": f"Agree the {label.lower()} — it could not be generated.",
+                           "why_it_matters": f"generation error: {e.__class__.__name__}",
+                           "priority": "high", "blocks_field": fid}]
 
     # Waves from depends_on: a field waits only for the generated fields it reads. Measured
     # order insight -> smp -> {reasons_to_believe, desired_response}: the last two both read
@@ -1200,13 +1404,13 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
     smp_cur = golden_fields.get("smp") or {}
     smp_generated = not (isinstance(smp_cur, dict) and smp_cur.get("source") == "client_stated")
     with ThreadPoolExecutor(max_workers=4) if parallel else _Inline() as ex:
-        f_terr = (ex.submit(_smp_territory, brief_text, val("competitor_context"))
+        f_terr = (ex.submit(_scoped(_smp_territory), brief_text, val("competitor_context"))
                   if smp_generated and _field_by_id(schema, "smp") else None)
         for w in sorted(set(waves.values())):
             wave = [f for f in GEN_ZONE3_ORDER if waves[f] == w]
-            for fid, fut in [(f, ex.submit(_one, f)) for f in wave]:
+            for fid, fut in [(f, ex.submit(_scoped(_one_safe), f)) for f in wave]:
                 results[fid] = fut.result()
-    fills, open_qs = {}, []
+    fills, open_qs = {}, list(guard_qs)
     for fid in GEN_ZONE3_ORDER:                     # canonical order, whatever finished first
         entry, qs = results.get(fid) or (None, [])
         if entry:
@@ -1289,6 +1493,30 @@ class _RateLimited(RuntimeError):
     link is put on a short cooldown — see _LINK_COOLDOWN."""
 
 
+class _Truncated(RuntimeError):
+    """The reply hit the output cap (stop_reason max_tokens / finish_reason length). Raised
+    instead of returning the partial text, so _json_call retries once with more room and
+    never parses half a reply — a tournament cut off mid-list used to become one draft
+    (audit F8)."""
+
+
+class _NoEvidence(RuntimeError):
+    """Retrieval ran but returned no evidence at all: loops_3_7 falls back to the digests
+    with that reason recorded instead of reporting an enabled, empty RAG run (audit RAG-2)."""
+
+
+class NoClaudeAvailable(RuntimeError):
+    """The chain is Claude-only and no route to Claude exists (no API key for transport
+    api, no `claude` CLI for transport cli). Raised by run() before any call, so a brief is
+    never quietly written by another model (Sai, 2026-09-25)."""
+
+
+class _Refused(RuntimeError):
+    """The model declined to answer (stop_reason refusal). Logged loudly and counted; the
+    chain moves on to its next link, which by default is another Claude model or nothing
+    (audit BW3: a refusal used to be handed silently to a non-Claude link)."""
+
+
 # Right-sized output budgets per call class. max_tokens counts against free-tier
 # TPM budgets (Groq bills the CAP, not actual output), so a global 4000 was ~60%
 # waste — judges return ~100-token verdicts. BRIEF_MAX_TOKENS overrides everything.
@@ -1347,27 +1575,31 @@ def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
     # Retry transient timeouts/network blips — these (not API errors) are what was
     # silently dropping briefs to heuristic mode on NIM.
     for attempt in range(3):
+        led = _ledger()
         with _STATS_LOCK:
-            _LLM_STATS["http_attempts"] += 1
+            led["http_attempts"] += 1
             if attempt:
-                _LLM_STATS["retries"] += 1
+                led["retries"] += 1
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = json.loads(r.read())
-                msg = data["choices"][0]["message"]
+                choice = data["choices"][0]
+                msg = choice["message"]
                 content = msg.get("content") or ""
                 # Reasoning models (e.g. nemotron-*-reasoning) emit <think>…</think>
                 # before the answer. Strip it so _loads_lenient finds clean JSON.
                 content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
                 _stats_usage(data.get("usage"), len(content))
+                if choice.get("finish_reason") == "length":
+                    _stats_bump("truncations")
+                    raise _Truncated(f"{provider_label}: reply hit the output cap")
                 return content
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:400]
             # 429 = rate-limited: fail FAST so the chain fails over to a free sibling link
             # immediately, instead of burning ~15s backing off a provider that's saturated.
             if e.code == 429:
-                with _STATS_LOCK:
-                    _LLM_STATS["rate_limited"] += 1
+                _stats_bump("rate_limited")
                 raise _RateLimited(f"HTTP 429 from {provider_label}") from None
             # A 400 right after adding response_format = this model rejects structured
             # output — drop the flag and retry the same link (don't burn a chain hop).
@@ -1500,12 +1732,25 @@ def _chat_anthropic(user, system=None, max_tokens=None, schema=None, model=None)
     # Take the first TEXT block rather than content[0]: a model configured with thinking
     # returns a thinking block first, and indexing blindly would read the wrong one.
     text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
-    if not text:
-        print(f"[i] anthropic:{model or model_for('anthropic')} returned no text "
-              f"(stop_reason={getattr(msg, 'stop_reason', '?')}); next link…", file=sys.stderr)
     u = getattr(msg, "usage", None)
-    _stats_usage({"prompt_tokens": getattr(u, "input_tokens", 0),
-                  "completion_tokens": getattr(u, "output_tokens", 0)} if u else None, len(text))
+    _stats_usage({"prompt_tokens": getattr(u, "input_tokens", 0) or 0,
+                  "completion_tokens": getattr(u, "output_tokens", 0) or 0,
+                  "cache_read_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
+                  "cache_creation_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0}
+                 if u else None, len(text))
+    label = f"anthropic:{model or model_for('anthropic')}"
+    # stop_reason decides whether the text may be read at all. Before 2026-09-25 it was
+    # only logged when the text was empty, so a reply cut off at max_tokens went to the
+    # lenient parser and a refusal (empty text) fell through to the next link unremarked.
+    stop = getattr(msg, "stop_reason", None)
+    if stop == "max_tokens":
+        _stats_bump("truncations")
+        raise _Truncated(f"{label}: reply hit the output cap ({int(max_tokens or MAXTOK_EXTRACT)} tokens)")
+    if stop == "refusal":
+        _stats_bump("refusals")
+        raise _Refused(f"{label}: the model declined ({getattr(msg, 'stop_details', None) or 'no details'})")
+    if not text:
+        print(f"[i] {label} returned no text (stop_reason={stop or '?'}); next link…", file=sys.stderr)
     return text
 
 
@@ -1539,6 +1784,12 @@ _CHAIN_LOGGED = False
 # settle onto a free link instead of re-failing the saturated lead on every single call.
 _LINK_COOLDOWN = {}          # "provider:model" -> monotonic deadline
 _COOLDOWN_SECS = float(os.environ.get("BRIEF_LINK_COOLDOWN", "45"))
+
+
+def _allow_nonclaude() -> bool:
+    """True when BRIEF_ALLOW_NONCLAUDE is set (1/true/yes): non-Claude links may stay in a
+    chain led by Claude. Off by default since 2026-09-25."""
+    return os.environ.get("BRIEF_ALLOW_NONCLAUDE", "").strip().lower() in ("1", "true", "yes")
 
 
 def _cooldown(provider, model):
@@ -1590,8 +1841,17 @@ def _model_chain(model=None) -> list:
         prov = _provider_for_model(model) or (chain[0][0] if chain else resolve_provider())
         lead = (prov, model)
         chain = [lead] + [l for l in chain if l != lead]
+    # Claude-only by default. With the lead link on Claude, a non-Claude fallback link
+    # meant that an API key with no credit produced a brief written by a NIM model (whose
+    # terms exclude production use) and labelled as Claude (audit N2/C6). BRIEF_ALLOW_NONCLAUDE=1
+    # keeps the old behaviour for someone who wants the backstop. Sai, 2026-09-25: Claude
+    # only; testing runs on the Claude Code login.
+    if chain and chain[0][0] == "anthropic" and not _allow_nonclaude():
+        chain = [l for l in chain if l[0] == "anthropic"]
     if not _CHAIN_LOGGED and chain:
-        print("[i] model chain: " + " → ".join(f"{p}:{m}" for p, m in chain), file=sys.stderr)
+        print("[i] model chain: " + " → ".join(f"{p}:{m}" for p, m in chain)
+              + ("" if _allow_nonclaude() or chain[0][0] != "anthropic"
+                 else "  (Claude only; BRIEF_ALLOW_NONCLAUDE=1 to allow other links)"), file=sys.stderr)
         _CHAIN_LOGGED = True
     # Drop links that are mid-cooldown (recently 429'd); if every link is cooling, keep the
     # full chain rather than deadlock — something is better than heuristic.
@@ -1614,20 +1874,37 @@ _CLI_DEFAULT_EFFORT = {"claude-opus-5-5": "medium"}
 
 
 # Set once `auto` has switched this process to the CLI (credit/auth failure on the API).
-_CLI_FALLBACK = {"on": False}
+# The switch expires after CLI_FALLBACK_TTL_S so a server re-checks the API instead of
+# staying on the slower CLI until restart after one auth hiccup (audit critic-G11).
+_CLI_FALLBACK = {"on": False, "since": 0.0}
 _CLI_FALLBACK_LOCK = threading.Lock()
+CLI_FALLBACK_TTL_S = float(os.environ.get("BRIEF_CLI_FALLBACK_TTL", "600"))
 
 
 def _switch_to_cli(reason: str) -> None:
-    """Move every later `anthropic:` call in this process to the CLI (transport `auto`),
-    announcing it once on stderr. Idempotent and thread-safe: parallel calls that fail at
-    the same moment switch once and print once."""
+    """Move every later `anthropic:` call in this process to the CLI (transport `auto`)
+    for CLI_FALLBACK_TTL_S seconds, announcing it once on stderr. Idempotent and
+    thread-safe: parallel calls that fail at the same moment switch once and print once."""
+    import time
     with _CLI_FALLBACK_LOCK:
-        if _CLI_FALLBACK["on"]:
+        if _cli_fallback_active():
             return
         _CLI_FALLBACK["on"] = True
+        _CLI_FALLBACK["since"] = time.monotonic()
     print(f"[!] BRIEF_CLAUDE_TRANSPORT=auto: the API key cannot be used ({reason}); "
-          f"this run continues on the Claude Code CLI.", file=sys.stderr)
+          f"this process continues on the Claude Code CLI for {int(CLI_FALLBACK_TTL_S)} s, "
+          f"then re-tries the API.", file=sys.stderr)
+
+
+def _cli_fallback_active() -> bool:
+    """True while an `auto` switch to the CLI is in force (set and younger than the TTL)."""
+    import time
+    if not _CLI_FALLBACK.get("on"):
+        return False
+    if time.monotonic() - float(_CLI_FALLBACK.get("since") or 0.0) > CLI_FALLBACK_TTL_S:
+        _CLI_FALLBACK["on"] = False
+        return False
+    return True
 
 
 def _claude_transport() -> str:
@@ -1656,7 +1933,7 @@ def transport_used() -> str:
     runs are never compared as if they were the same thing."""
     t = _claude_transport()
     if t == "auto":
-        return "api→cli" if _CLI_FALLBACK["on"] else "api"
+        return "api→cli" if _cli_fallback_active() else "api"
     return t
 
 
@@ -1704,13 +1981,24 @@ def _chat_claude_cli(user, system=None, max_tokens=None, schema=None, model=None
         raise RuntimeError(f"claude CLI failed (exit {proc.returncode}): {detail}")
     so = env_out.get("structured_output")
     text = json.dumps(so, ensure_ascii=False) if (schema and so is not None) else str(env_out.get("result") or "")
-    if not text:
-        print(f"[i] claude-cli:{model} returned no text "
-              f"(stop_reason={env_out.get('stop_reason', '?')}); next link…", file=sys.stderr)
     u = env_out.get("usage") or {}
-    _stats_usage({"prompt_tokens": int(u.get("input_tokens") or 0) + int(u.get("cache_read_input_tokens") or 0)
-                  + int(u.get("cache_creation_input_tokens") or 0),
-                  "completion_tokens": int(u.get("output_tokens") or 0)}, len(text))
+    # Cache reads and writes are recorded apart from the uncached input: they are priced
+    # differently (reads at 0.1x), and folding them into prompt_tokens overstated CLI runs
+    # by ~35-40% (audit BW13/CC9).
+    _stats_usage({"prompt_tokens": int(u.get("input_tokens") or 0),
+                  "completion_tokens": int(u.get("output_tokens") or 0),
+                  "cache_read_tokens": int(u.get("cache_read_input_tokens") or 0),
+                  "cache_creation_tokens": int(u.get("cache_creation_input_tokens") or 0)}, len(text))
+    stop = env_out.get("stop_reason")
+    if stop == "max_tokens" or re.search(r"exceeded .*output token", text[:200], re.I):
+        _stats_bump("truncations")
+        raise _Truncated(f"claude-cli:{model}: reply hit the output cap")
+    if stop == "refusal":
+        _stats_bump("refusals")
+        raise _Refused(f"claude-cli:{model}: the model declined")
+    if not text:
+        print(f"[i] claude-cli:{model} returned no text (stop_reason={stop or '?'}); next link…",
+              file=sys.stderr)
     return text
 
 
@@ -1722,7 +2010,7 @@ def _call_link(provider: str, model: str, user, system=None, max_tokens=None,
     if provider == "anthropic":
         kw = dict(system=system, max_tokens=max_tokens, schema=schema if json_mode else None, model=model)
         t = _claude_transport()
-        if t == "cli" or (t == "auto" and _CLI_FALLBACK["on"]):
+        if t == "cli" or (t == "auto" and _cli_fallback_active()):
             return _chat_claude_cli(user, **kw)
         if t == "auto" and not os.environ.get("ANTHROPIC_API_KEY"):
             import shutil
@@ -1751,10 +2039,7 @@ def _call_link(provider: str, model: str, user, system=None, max_tokens=None,
 def _stats_logical():
     """One LOGICAL call (one _chat/_json_call) may cost several link attempts when the
     chain fails over — 'calls' counts attempts, this counts intent."""
-    if not _LLM_STATS:
-        _stats_reset()
-    with _STATS_LOCK:
-        _LLM_STATS["logical_calls"] = _LLM_STATS.get("logical_calls", 0) + 1
+    _stats_bump("logical_calls")
 
 
 def _chat(user, system=None, model=None, max_tokens=None):
@@ -1765,6 +2050,7 @@ def _chat(user, system=None, model=None, max_tokens=None):
         try:
             raw = _call_link(provider, m, user, system=system, max_tokens=max_tokens)
             if raw:
+                _note_answer(provider, m)
                 return raw
         except _RateLimited:                     # saturated — cool it down so later calls skip it
             _cooldown(provider, m)
@@ -1776,23 +2062,63 @@ def _chat(user, system=None, model=None, max_tokens=None):
     return None
 
 
+_NONCLAUDE_WARNED = threading.local()
+
+
+def _note_answer(provider: str, m: str):
+    """Record the link whose reply is being used, and say so loudly the first time a
+    non-Claude link answers under a Claude lead (once per thread-ledger, i.e. per run)."""
+    label = f"{provider}:{m}"
+    _stats_answered(label)
+    if provider != "anthropic" and resolve_provider() == "anthropic":
+        led = _ledger()
+        if not led.get("nonclaude_warned"):
+            led["nonclaude_warned"] = True
+            print(f"[!] a non-Claude link answered ({label}) — this brief is not a Claude brief; "
+                  f"meta.fallback_links records it.", file=sys.stderr)
+
+
 def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens=None,
-               schema=None, parse=None):
+               schema=None, parse=None, whole=False, only_model=False, info=None):
     """Chat call that must return JSON, with provider juggling: each chain link gets up to
     `retries`+1 tries; unparseable output (or one rejected by `accept`) advances to the next
     link. Returns the first usable object, or None if the whole chain is exhausted.
     `parse` replaces the JSON reader for a non-JSON reply format (the TOON calls pass
-    _loads_toon) and turns the providers' JSON mode off; it returns None on failure."""
+    _loads_toon) and turns the providers' JSON mode off; it returns None on failure.
+    `whole=True` reads only a complete top-level object (no inner-span salvage): for
+    tournaments, judges and the critic, where a partial reply must never pass as a whole one.
+    `only_model=True` walks the pinned `model` alone (over api or cli), never a fallback
+    link: the critic and the eval judges must answer on their own model or not at all.
+    `info`, when a dict, receives {"link": "<provider:model>"} of the link that answered.
+    A reply cut off at the output cap is retried once with 1.5x the cap on the same link,
+    then the next link; a refusal is logged and counted, then the next link."""
     _stats_logical()
-    for provider, m in _model_chain(model):
-        for attempt in range(retries + 1):
+    if only_model and model:
+        chain = [(_provider_for_model(model) or "anthropic", model)]
+    else:
+        chain = _model_chain(model)
+    reader = parse or (functools.partial(_loads_lenient, whole=True) if whole else _loads_lenient)
+    for provider, m in chain:
+        cap, grew = max_tokens, False
+        attempt = 0
+        while attempt <= retries:
             try:
-                raw = _call_link(provider, m, user, system=system, max_tokens=max_tokens,
+                raw = _call_link(provider, m, user, system=system, max_tokens=cap,
                                  json_mode=parse is None, schema=schema)
             except _RateLimited:
                 _cooldown(provider, m)
                 print(f"[i] link {provider}:{m} rate-limited; cooling {int(_COOLDOWN_SECS)}s, next link…",
                       file=sys.stderr)
+                break
+            except _Truncated as e:
+                if not grew:
+                    cap, grew = int((cap or MAXTOK_EXTRACT) * 1.5), True
+                    print(f"[i] {e}; retrying once with {cap} tokens.", file=sys.stderr)
+                    continue                     # same link, more room, not counted as a retry
+                print(f"[!] {e} again at {cap} tokens; next link…", file=sys.stderr)
+                break
+            except _Refused as e:
+                print(f"[!] {e}; next link…", file=sys.stderr)
                 break
             except Exception as e:
                 print(f"[i] link {provider}:{m} failed ({e.__class__.__name__}); next link…",
@@ -1801,10 +2127,14 @@ def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens
             if not raw:
                 break
             raw = re.sub(r"^```(?:json|toon)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            obj = (parse or _loads_lenient)(raw)
+            obj = reader(raw)
             if obj is not None and (accept is None or accept(obj)):
+                _note_answer(provider, m)
+                if isinstance(info, dict):
+                    info["link"] = f"{provider}:{m}"
                 return obj
-            if attempt < retries:
+            attempt += 1
+            if attempt <= retries:
                 print(f"[i] {provider}:{m} unclean/unusable JSON; retrying once.", file=sys.stderr)
         # link exhausted → fall through to the next provider in the chain
     print("[i] no provider in the chain returned usable JSON.", file=sys.stderr)
@@ -1900,10 +2230,12 @@ sentences that evidence it:
   winning_themes              what a winning answer is built around
   proof_required              what we will have to prove
 Reply in TOON (not JSON), nothing before or after, e.g.:
-stated_evaluation_criteria[1|]{point|src}:
+stated_evaluation_criteria[2|]{point|src}:
   Must prove the app is simpler than the challenger banks|12
+  Shows the parents' bank can feel modern|3 9
 unstated_needs[0|]{point|src}:
-An empty table is its header line with no rows below it, as unstated_needs above."""
+Several sentence numbers go in ONE src cell separated by spaces (3 9), never as extra |
+cells. An empty table is its header line with no rows below it, as unstated_needs above."""
 
 
 def _numbered(segs: list[str], limit: int) -> str:
@@ -1938,11 +2270,28 @@ def _quote(refs: list[int], segs: list[str]) -> "str | None":
     return " ".join(segs[i - 1] for i in refs) or None
 
 
+_GLUED_REFS = re.compile(r"\s*\|\s*\d+(\s*\|\s*\d+)*\s*$")
+
+
+def _unglue(text, src):
+    """Guard for a TOON row whose extra sentence numbers were glued onto the text cell
+    ('Resolve the tension|11|31'): return (text without them, src with them appended).
+    toon_lite now puts such cells into src itself; this catches any that still slip past
+    (audit H6: 38 of 73 how-to-win rows on Opus 4.6 carried a glued '|n')."""
+    if not isinstance(text, str):
+        return text, src
+    m = _GLUED_REFS.search(text)
+    if not m:
+        return text, src
+    nums = re.findall(r"\d+", m.group(0))
+    return text[:m.start()].rstrip(), " ".join([str(src)] * (src is not None) + nums)
+
+
 def _capture_item(it: dict, segs: list[str]) -> dict:
     """One captured value in the pipeline's shape: value/status/source_quote/confidence,
     plus source_refs (the cited sentence numbers) and objective_type where given."""
-    refs = _refs(it.get("src"), len(segs))
-    v = it.get("value")
+    v, src = _unglue(it.get("value"), it.get("src"))
+    refs = _refs(src, len(segs))
     v = None if v is None else str(v)            # TOON reads `50000` as a number; fields are text
     out = {"value": v, "status": it.get("status") or ("gap" if v is None else "fact"),
            "source_quote": _quote(refs, segs), "confidence": it.get("confidence"), "source_refs": refs}
@@ -1989,17 +2338,20 @@ def how_to_win_toon(segs: list[str]) -> dict:
                      accept=lambda o: any(k in o for k in HOW_TO_WIN_KEYS))
     out = {}
     for k in HOW_TO_WIN_KEYS:
-        rows = (obj or {}).get(k) or []
-        out[k] = [{"point": r.get("point"), "evidence": _quote(_refs(r.get("src"), len(segs)), segs),
-                   "source_refs": _refs(r.get("src"), len(segs))}
-                  for r in rows if isinstance(r, dict) and r.get("point")]
+        rows = [_unglue(r.get("point"), r.get("src")) for r in ((obj or {}).get(k) or [])
+                if isinstance(r, dict) and r.get("point")]
+        out[k] = [{"point": point, "evidence": _quote(_refs(src, len(segs)), segs),
+                   "source_refs": _refs(src, len(segs))} for point, src in rows if point]
     return out
 
 
-def _loads_lenient(raw):
+def _loads_lenient(raw, whole=False):
     """Reasoning models sometimes wrap the JSON in prose. Try a clean parse,
     then every balanced {...} span (largest first), each with a trailing-comma
-    repair pass. Returns dict/list or None."""
+    repair pass. Returns dict/list or None.
+    `whole=True` stops after the clean parse: no inner span is salvaged, so a reply cut
+    off part-way (a truncated tournament, judge or critic) reads as unusable rather than
+    as the one complete object inside it (audit F8/G4)."""
     def _try(s):
         """Parse `s` as JSON, then once more with trailing commas before } or ]
         removed. Returns the parsed value, or None when both attempts fail."""
@@ -2013,6 +2365,8 @@ def _loads_lenient(raw):
     obj = _try(raw)
     if obj is not None:
         return obj
+    if whole:
+        return None
     spans = []
     start = raw.find("{")
     while start != -1:
@@ -2330,31 +2684,46 @@ def scorecard_heuristic(fields):
             "mode": "heuristic"}
 
 
-def score_betterbriefs(text, fields):
-    """LLM judge against the BetterBriefs rubric; heuristic fallback."""
+def score_betterbriefs(text, fields=None):
+    """LLM judge against the BetterBriefs rubric; heuristic fallback (from `fields`, which
+    may be None when the call is made before the capture lands: run() then rebuilds the
+    heuristic scorecard from the capture). Verdicts and dimension names are read in any
+    case, one row per dimension (the first wins), and evidence the judge quotes must be in
+    the brief, else the row is marked and downgraded to 'vague' (audit J11: 'Pass' used to
+    read as vague and 'Multiple' as single, hiding the split-this-brief warning)."""
     obj = _json_call(f"CLIENT BRIEF:\n\"\"\"\n{_clip_brief(text)}\n\"\"\"", system=SCORECARD_SYSTEM,
                      max_tokens=MAXTOK_EXTRACT)
     if not isinstance(obj, dict) or not isinstance(obj.get("dimensions"), list):
-        return scorecard_heuristic(fields)
-    dims = []
+        return scorecard_heuristic(fields or {})
+    hay = _norm_quote(text)
+    dims, scored = [], set()
     for d in obj["dimensions"]:
-        if isinstance(d, dict) and d.get("dimension") in SCORECARD_DIMENSIONS:
-            dims.append(_dim(d["dimension"],
-                             d.get("verdict") if d.get("verdict") in
-                             ("pass", "vague", "missing") else "vague",
-                             str(d.get("evidence") or ""), str(d.get("fix") or "")))
-    scored = {x["dimension"] for x in dims}
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("dimension") or "").strip().lower()
+        if name not in SCORECARD_DIMENSIONS or name in scored:
+            continue
+        scored.add(name)
+        verdict = str(d.get("verdict") or "").strip().lower()
+        verdict = verdict if verdict in ("pass", "vague", "missing") else "vague"
+        evidence = str(d.get("evidence") or "")
+        if evidence.strip() and _norm_quote(evidence) not in hay:
+            evidence += " (evidence not found in brief)"
+            if verdict == "pass":
+                verdict = "vague"
+        dims.append(_dim(name, verdict, evidence, str(d.get("fix") or "")))
     for missing in SCORECARD_DIMENSIONS:          # judge skipped one — make it visible
         if missing not in scored:
             dims.append(_dim(missing, "vague", "not scored by judge"))
     sm = obj.get("single_mindedness") or {}
     if not isinstance(sm, dict):
         sm = {}
+    multiple = str(sm.get("verdict") or "").strip().lower() == "multiple"
     split = sm.get("split_into")
     return {"dimensions": dims,
             "single_mindedness": {
-                "verdict": "multiple" if sm.get("verdict") == "multiple" else "single",
-                "split_into": [str(s) for s in split] if isinstance(split, list) else []},
+                "verdict": "multiple" if multiple else "single",
+                "split_into": [str(s) for s in split] if (multiple and isinstance(split, list)) else []},
             "summary": str(obj.get("summary") or ""), "mode": "llm"}
 
 
@@ -2402,8 +2771,10 @@ def shape_loop2(fields, llm_open_qs):
     }
 
     # open questions = genuine gaps in the core fields (a field counts as present
-    # if it OR one of its fallbacks was captured), plus any the LLM surfaced.
-    open_qs = list(llm_open_qs or [])
+    # if it OR one of its fallbacks was captured), plus any the LLM surfaced — with the
+    # capture's internal sentence references scrubbed out (audit H11).
+    open_qs = [({**q, "question": _scrub_markers(q.get("question"))} if isinstance(q, dict)
+                else _scrub_markers(q)) for q in (llm_open_qs or [])]
     for key, (fallbacks, why, priority) in CORE_FIELDS.items():
         if _val(fields, key) or any(_val(fields, fb) for fb in fallbacks):
             continue
@@ -2649,10 +3020,12 @@ def _synthesize_loops37(gist, intent, loops) -> str:
     Falls back per loop to an evidence-only summary when a call returns no paragraph.
     Mutates loops."""
     synth_model = os.environ.get("BRIEF_SYNTH_MODEL") or None
+    answered = {}
 
     def one(item):
         """Write one loop's paragraph; returns (key, paragraph or None)."""
         key, d = item
+        info = {}
         ev = "\n".join(f"  - ({e['citation']}) {e['snippet']}" for e in d["evidence"]) \
              or "  (no evidence retrieved)"
         user = (
@@ -2665,15 +3038,17 @@ def _synthesize_loops37(gist, intent, loops) -> str:
             f"### {key} — {d['title']}\nRETRIEVED EVIDENCE:\n{ev}\n\n"
             'Return JSON only: {"paragraph": "..."}')
         obj = _json_call(user, system="You are a precise strategy planner. Output JSON only.",
-                         model=synth_model, max_tokens=MAXTOK_SYNTH_ONE,
+                         model=synth_model, max_tokens=MAXTOK_SYNTH_ONE, info=info,
                          schema={"type": "object", "properties": {"paragraph": {"type": "string"}},
                                  "required": ["paragraph"], "additionalProperties": False})
         para = obj.get("paragraph") if isinstance(obj, dict) else None
+        if info.get("link"):
+            answered[info["link"]] = answered.get(info["link"], 0) + 1
         return key, (para.strip() if isinstance(para, str) and para.strip() else None)
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=max(1, len(loops))) as ex:
-        paras = dict(ex.map(one, list(loops.items())))
+        paras = dict(ex.map(_scoped(one), list(loops.items())))
     wrote = False
     for key, d in loops.items():
         if paras.get(key):
@@ -2684,9 +3059,10 @@ def _synthesize_loops37(gist, intent, loops) -> str:
         else:
             d["synthesis"] = "No playbook evidence retrieved for this loop."
     if wrote:
-        prov = resolve_provider()
-        used = synth_model or model_for(prov)
-        return f"llm:{used}" if prov else "llm"
+        # The label names the link that ANSWERED, not the configured default: every Opus
+        # 5.5 run used to read 'llm:claude-opus-4-6' here (audit CC14/F12).
+        used = max(answered, key=answered.get) if answered else (synth_model or model_for(resolve_provider()))
+        return f"llm:{used.split(':', 1)[-1]}"
     return "evidence-only"
 
 
@@ -2767,126 +3143,156 @@ def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True) -> dict:
                 "reason": "no retrieval store (rag/index absent, no Qdrant) and no pack "
                           "digests (packs_dist/) — Loops 3–7 skipped."}
 
-    gist = _brief_gist(loop2, fields)
-    intent = _classify_intent(gist, fields)
-    scopes = _retrieval_scopes(fields)
-
-    # Case packs, discovered from the corpus dirs (or packs.lock at runtime) —
-    # never a hardcoded list, so adding/removing a pack needs no code change
-    # and a pack with no corpus simply cannot exist (the old `effie` bug).
-    # Case packs are only read by the loops path (_one_loop); discovered lazily and once
-    # per process (_case_packs), so the mix path never pays the directory scan.
-
-    def _one_loop(spec):
-        """Retrieval + rerank + precedent pull for ONE loop — fully independent given
-        the gist, so the five loops run concurrently (network-bound: Qdrant + NIM
-        embeddings + optional rerank). ~5× wall-clock cut on this stage."""
-        key, title, qfn = spec
-        q = re.sub(r"\s+", " ", qfn(gist)).strip()
-        seen, evidence = set(), []
-        # Over-retrieve for recall, then LLM-rerank down to k for precision.
-        # 1.5× is enough headroom — 3× ranked 15 passages to keep 5 (dead tokens).
-        pool = retriever.retrieve(q, k=max(int(k * 1.5), 8), index_dir=index_dir,
-                                  scopes=scopes)
-        # One section per source BEFORE the cut to k, not after: several sections of one
-        # playbook used to fill the top k and then collapse to one — loop5_proposition
-        # returned 1 evidence item where its siblings returned 5-8.
-        pool = _dedupe_by_source(pool)
-        for h in _rerank_hits(q, pool, k):
-            if h["source"] in seen:
-                continue
-            seen.add(h["source"])
-            evidence.append({
-                "citation": h["citation"],
-                "framework": h.get("framework") or h["source"],
-                "category": h.get("category"),
-                "score": h["score"],
-                # Which confidentiality scope this passage came from. Written per hit and
-                # carried into the CLAN file, because the index is mutable — chunks get
-                # retagged and superseded — so a scope not recorded at retrieval time
-                # cannot be recovered afterwards from anything.
-                "scope": str((h.get("metadata") or {}).get("scope") or "global"),
-                "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
-                "text": (h.get("text") or "")[:EVIDENCE_MAX_CHARS],
-            })
-        # Pull award-winning PRECEDENT cases from every case pack whose `loops`
-        # gate includes this loop (default: insight + substantiation). Which packs
-        # exist, their tag, and their per-pack k all come from the pack itself.
-        eligible = [p for p in _case_packs() if p.eligible(key)]
-        if eligible:
-            case_q = (f"award-winning precedent insight {gist['audience']} {gist['problem']}"
-                      if key == "loop4_insight"
-                      else f"award-winning effectiveness results proof {gist['objective']}"
-                      if key == "loop6_substantiation" else q)
-            for pack in eligible:
-                for h in retriever.retrieve(case_q, k=pack.k, index_dir=index_dir,
-                                            where={"source": pack.tag, "level": "parent"},
-                                            scopes=scopes):
-                    if h["source"] not in seen:
-                        seen.add(h["source"])
-                        evidence.append({
-                            "citation": h["citation"],
-                            "framework": h.get("framework") or h["source"],
-                            "category": h.get("category"),
-                            "score": h["score"],
-                            "scope": str((h.get("metadata") or {}).get("scope") or "global"),
-                            "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
-                            "text": (h.get("text") or "")[:EVIDENCE_MAX_CHARS],
-                        })
-        return key, {"title": title, "query": q, "evidence": evidence}
-
-    # RAG_PATH: `mix` (default, Sai's decision 2026-09-23) runs each loop's query through
-    # brief_context.build_multi() — the per-field queries that make this path good, with
-    # brief_context's scope, admission, budgets, thin-bucket widening and validation.
-    # `loops` is the previous path (per-loop retrieve + rerank + case packs), kept one
-    # environment variable away until Shrey's finished-brief test confirms the choice.
-    # Blind-judged on 6 real briefs: B 23, MIX 20, A 14 (B and MIX within judge noise).
-    rag_path = (os.environ.get("RAG_PATH") or "mix").strip().lower()
-    loops, retrieval_trace = None, None
-    if rag_path == "mix":
+    def _digests(reason: str) -> dict:
+        """Fall back to the pack digests with the reason recorded and announced. LOUD on
+        purpose: on 2026-09-24 a whole comparison run quietly used digests and nothing in
+        the output said so."""
+        print(f"[!] {reason}; Loops 3-7 fall back to the pack digests — no retrieval and no "
+              "validation for this brief.", file=sys.stderr)
         try:
+            digest_loops = _loops37_from_digests(loop2, fields, synthesize=synthesize)
+        except Exception as e:
+            digest_loops = None
+            reason += f"; digests failed too: {e.__class__.__name__}: {e}"
+        if digest_loops:
+            digest_loops["fallback"] = {"to": "digests", "reason": reason}
+            return digest_loops
+        return {"enabled": False, "reason": f"{reason} — Loops 3–7 skipped."}
+
+    def _grounded() -> dict:
+        """The retrieval stage proper; raises on any failure, caught below."""
+        gist = _brief_gist(loop2, fields)
+        intent = _classify_intent(gist, fields)
+        scopes = _retrieval_scopes(fields)
+
+        # Case packs, discovered from the corpus dirs (or packs.lock at runtime) —
+        # never a hardcoded list, so adding/removing a pack needs no code change
+        # and a pack with no corpus simply cannot exist (the old `effie` bug).
+        # Case packs are only read by the loops path (_one_loop); discovered lazily and once
+        # per process (_case_packs), so the mix path never pays the directory scan.
+
+        def _one_loop(spec):
+            """Retrieval + rerank + precedent pull for ONE loop — fully independent given
+            the gist, so the five loops run concurrently (network-bound: Qdrant + NIM
+            embeddings + optional rerank). ~5× wall-clock cut on this stage."""
+            key, title, qfn = spec
+            q = re.sub(r"\s+", " ", qfn(gist)).strip()
+            seen, evidence = set(), []
+            # Over-retrieve for recall, then LLM-rerank down to k for precision.
+            # 1.5× is enough headroom — 3× ranked 15 passages to keep 5 (dead tokens).
+            pool = retriever.retrieve(q, k=max(int(k * 1.5), 8), index_dir=index_dir,
+                                      scopes=scopes)
+            # One section per source BEFORE the cut to k, not after: several sections of one
+            # playbook used to fill the top k and then collapse to one — loop5_proposition
+            # returned 1 evidence item where its siblings returned 5-8.
+            pool = _dedupe_by_source(pool)
+            for h in _rerank_hits(q, pool, k):
+                if h["source"] in seen:
+                    continue
+                seen.add(h["source"])
+                evidence.append({
+                    "citation": h["citation"],
+                    "framework": h.get("framework") or h["source"],
+                    "category": h.get("category"),
+                    "score": h["score"],
+                    # Which confidentiality scope this passage came from. Written per hit and
+                    # carried into the CLAN file, because the index is mutable — chunks get
+                    # retagged and superseded — so a scope not recorded at retrieval time
+                    # cannot be recovered afterwards from anything.
+                    "scope": str((h.get("metadata") or {}).get("scope") or "global"),
+                    "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
+                    "text": (h.get("text") or "")[:EVIDENCE_MAX_CHARS],
+                })
+            # Pull award-winning PRECEDENT cases from every case pack whose `loops`
+            # gate includes this loop (default: insight + substantiation). Which packs
+            # exist, their tag, and their per-pack k all come from the pack itself.
+            eligible = [p for p in _case_packs() if p.eligible(key)]
+            if eligible:
+                case_q = (f"award-winning precedent insight {gist['audience']} {gist['problem']}"
+                          if key == "loop4_insight"
+                          else f"award-winning effectiveness results proof {gist['objective']}"
+                          if key == "loop6_substantiation" else q)
+                for pack in eligible:
+                    for h in retriever.retrieve(case_q, k=pack.k, index_dir=index_dir,
+                                                where={"source": pack.tag, "level": "parent"},
+                                                scopes=scopes):
+                        if h["source"] not in seen:
+                            seen.add(h["source"])
+                            evidence.append({
+                                "citation": h["citation"],
+                                "framework": h.get("framework") or h["source"],
+                                "category": h.get("category"),
+                                "score": h["score"],
+                                "scope": str((h.get("metadata") or {}).get("scope") or "global"),
+                                "snippet": re.sub(r"\s+", " ", ((h.get("header") + " — ") if h.get("header") else "") + h["text"])[:280],
+                                "text": (h.get("text") or "")[:EVIDENCE_MAX_CHARS],
+                            })
+            return key, {"title": title, "query": q, "evidence": evidence}
+
+        # RAG_PATH: `mix` (default, Sai's decision 2026-09-23) runs each loop's query through
+        # brief_context.build_multi() — the per-field queries that make this path good, with
+        # brief_context's scope, admission, budgets, thin-bucket widening and validation.
+        # `loops` is the previous path (per-loop retrieve + rerank + case packs), kept one
+        # environment variable away until Shrey's finished-brief test confirms the choice.
+        # Blind-judged on 6 real briefs: B 23, MIX 20, A 14 (B and MIX within judge noise).
+        rag_path = (os.environ.get("RAG_PATH") or "mix").strip().lower()
+        loops, retrieval_trace = None, None
+        if rag_path == "mix":
+            # A mix failure goes to the digests, NOT to the loops path: the loops path would hit
+            # the same failing store again, five requests at up to 240 s each (audit RAG-2/C3).
             loops, retrieval_trace = _loops_via_mix(gist, fields, index_dir)
-        except Exception as e:                        # never crash the run over RAG
-            print(f"[!] RAG_PATH=mix failed ({e.__class__.__name__}: {e}); using the loops path",
-                  file=sys.stderr)
-            rag_path = "loops (mix failed)"
-    if loops is None:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=len(LOOP37_SPECS)) as pool_ex:
-            results = dict(pool_ex.map(_one_loop, LOOP37_SPECS))
-        # Preserve the canonical loop order regardless of completion order.
-        loops = {key: results[key] for key, _t, _q in LOOP37_SPECS}
-    citations_all = [e["citation"] for d in loops.values() for e in d["evidence"]]
+        if loops is None:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=len(LOOP37_SPECS)) as pool_ex:
+                results = dict(pool_ex.map(_one_loop, LOOP37_SPECS))
+            # Preserve the canonical loop order regardless of completion order.
+            loops = {key: results[key] for key, _t, _q in LOOP37_SPECS}
+        citations_all = [e["citation"] for d in loops.values() for e in d["evidence"]]
+        if not citations_all:
+            raise _NoEvidence("retrieval returned no evidence")
 
-    # Run-level scope record, alongside the per-hit one on every evidence entry. Two
-    # different questions: `scopes` is what this run was AUTHORISED for, `scopes_served`
-    # is what it actually used. A served scope that is not in the authorised set is the
-    # signal that something upstream is wrong — and without both written down, neither
-    # question has an answer after the fact.
-    served: dict[str, int] = {}
-    for d in loops.values():
-        for e in d["evidence"]:
-            served[e["scope"]] = served.get(e["scope"], 0) + 1
+        # Run-level scope record, alongside the per-hit one on every evidence entry. Two
+        # different questions: `scopes` is what this run was AUTHORISED for, `scopes_served`
+        # is what it actually used. A served scope that is not in the authorised set is the
+        # signal that something upstream is wrong — and without both written down, neither
+        # question has an answer after the fact.
+        served: dict[str, int] = {}
+        for d in loops.values():
+            for e in d["evidence"]:
+                served[e["scope"]] = served.get(e["scope"], 0) + 1
 
-    # synthesize=False: run() writes the five paragraphs itself, alongside the hero fields,
-    # which read the evidence and never the synthesis ("deferred" until then).
-    synthesis_mode = _synthesize_loops37(gist, intent, loops) if synthesize else "deferred"
-    return {
-        "enabled": True,
-        "index": (retriever.index_label(index_dir) if hasattr(retriever, "index_label")
-                  else str(index_dir or getattr(retriever, "DEFAULT_INDEX", HERE / "rag" / "index"))),
-        "store": os.environ.get("RAG_STORE", "local").lower().strip() or "local",
-        "intent": intent,
-        "scopes": list(scopes),
-        "scopes_served": dict(sorted(served.items())),
-        "k": k,
-        "gist": gist,
-        "loops": loops,
-        "sources_used": sorted(set(citations_all)),
-        "synthesis_mode": synthesis_mode,
-        "rag_path": rag_path,
-        "retrieval_trace": retrieval_trace,
-    }
+        # synthesize=False: run() writes the five paragraphs itself, alongside the hero fields,
+        # which read the evidence and never the synthesis ("deferred" until then).
+        synthesis_mode = _synthesize_loops37(gist, intent, loops) if synthesize else "deferred"
+        return {
+            "enabled": True,
+            "index": (retriever.index_label(index_dir) if hasattr(retriever, "index_label")
+                      else str(index_dir or getattr(retriever, "DEFAULT_INDEX", HERE / "rag" / "index"))),
+            "store": os.environ.get("RAG_STORE", "local").lower().strip() or "local",
+            "intent": intent,
+            "scopes": list(scopes),
+            "scopes_served": dict(sorted(served.items())),
+            "k": k,
+            "gist": gist,
+            "loops": loops,
+            "sources_used": sorted(set(citations_all)),
+            "synthesis_mode": synthesis_mode,
+            "rag_path": rag_path,
+            "retrieval_trace": retrieval_trace,
+            # Loops whose evidence no validator judged (see _loops_via_mix); [] when every
+            # loop was validated or validation is off.
+            "validation_degraded": list((retrieval_trace or {}).get("validation_degraded") or []),
+        }
+
+    # RAG never crashes a run (audit N1/RAG-2): a store that dies after the availability
+    # check, a validator that raises, an empty result — all become the digest fallback with
+    # a recorded reason, never an exception into run() and never a brief with no strategy.
+    try:
+        return _grounded()
+    except _NoEvidence as e:
+        return _digests(str(e))
+    except Exception as e:
+        return _digests(f"retrieval failed mid-run: {e.__class__.__name__}: {e}")
 
 
 def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
@@ -2904,7 +3310,28 @@ def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
                                     ("audience", gist["audience"])) if v and k not in pairs})
     from mix_queries import queries_for
     queries = queries_for(gist)
-    mc = brief_context.build_multi(pairs, queries, index_dir=index_dir)
+    # The validator sees the brief, not only a 500-character templated query: the gist
+    # plus the captured background and competitor context, clipped (audit JL-5: with the
+    # brief as context jev's p>=0.5 count went from 36 to 70 of 960 replayed passages).
+    # Brief text already goes to the validator vendor under production-use terms (jev).
+    context = "\n".join(f"{k}: {v}" for k, v in (
+        ("problem", gist.get("problem")), ("objective", gist.get("objective")),
+        ("audience", gist.get("audience")), ("key_message", gist.get("key_message")),
+        ("background", _val(fields, "background_context")),
+        ("competitors", _val(fields, "competitors_market"))) if v)[:3000]
+    # jev on for every brief (Sai, 2026-09-26): brief_chain() defaults to jev when
+    # RAG_VALIDATOR is unset. A backend that cannot be built here is said loudly and the
+    # brief runs unvalidated, which loops3_7.validation_degraded then reports.
+    unconfigured = None
+    try:
+        chain = brief_context.brief_chain()
+    except Exception as e:      # noqa: BLE001 — BackendNotConfigured or a bad RAG_VALIDATOR
+        unconfigured = f"{e.__class__.__name__}: {e}"
+        print(f"[!] RAG validator not available ({unconfigured}); this brief runs UNVALIDATED.",
+              file=sys.stderr)
+        import judge
+        chain = judge.Chain([], requested="unconfigured")
+    mc = brief_context.build_multi(pairs, queries, index_dir=index_dir, context=context, chain=chain)
     loops = {}
     for key, title, _q in LOOP37_SPECS:
         ev = []
@@ -2920,7 +3347,40 @@ def _loops_via_mix(gist, fields, index_dir=None) -> tuple[dict, dict]:
                        "snippet": re.sub(r"\s+", " ", head + h.text)[:280],
                        "text": (h.text or "")[:EVIDENCE_MAX_CHARS]})
         loops[key] = {"title": title, "query": queries[key], "evidence": ev}
-    return loops, mc.trace
+    # Which validator judged each loop's evidence, written where the brief and the eval
+    # rows can see it. Before 2026-09-25 this sat only inside retrieval_trace.validation:
+    # a smoke run had 4 of 5 loops with no validator verdict and nothing said so (audit
+    # JL-2/RAG-11). loops3_7.validation_degraded lists the loops left unvalidated.
+    trace = mc.trace if isinstance(mc.trace, dict) else {}
+    val = trace.get("validation")
+    degraded = []
+    if unconfigured:
+        degraded = [key for key, _t, _q in LOOP37_SPECS]
+        for key in degraded:
+            loops[key]["validated_by"] = None
+            loops[key]["validation_fell_back"] = True
+        trace = {**trace, "validator_unconfigured": unconfigured}
+    elif isinstance(val, dict) and isinstance(val.get("per_field"), dict):
+        for key, _t, _q in LOOP37_SPECS:
+            pf = val["per_field"].get(key)
+            pf = pf if isinstance(pf, dict) else {}
+            used = pf.get("backend_used")
+            loops[key]["validated_by"] = used
+            loops[key]["validation_fell_back"] = bool(pf.get("fell_back")) or not used
+            if not used:
+                degraded.append(key)
+        if degraded:
+            print(f"[!] retrieval validation missing for {len(degraded)} of {len(LOOP37_SPECS)} loops "
+                  f"({', '.join(degraded)}): their evidence is unvalidated.", file=sys.stderr)
+    # The brief path retrieves UNFILTERED: the capture's field names match none of
+    # plan()'s filter/keyword keys, so no category filter, no brand keywords and no
+    # widening apply here (audit RAG-9/JL-8; a real category filter is an A/B first).
+    notes = list(trace.get("notes") or [])
+    if not trace.get("filters") and not trace.get("keywords"):
+        notes.append("brief path: no category filter or brand keywords (capture fields carry none)")
+    trace = {**trace, "validation_degraded": degraded, "notes": notes,
+             "validator_context_chars": len(context)}
+    return loops, trace
 
 
 def render_loops37(L, brief):
@@ -2985,10 +3445,10 @@ def render_client_brief(brief) -> str:
     TBD = "_To be agreed — see open questions._"
 
     def text_section(heading, value):
-        """Append a '## heading' section: the value as text, or the to-be-agreed
-        placeholder when it is empty, then a blank line."""
+        """Append a '## heading' section: the value as text (internal sentence markers
+        scrubbed), or the to-be-agreed placeholder when it is empty, then a blank line."""
         L.append(f"## {heading}")
-        L.append(str(value) if value else TBD)
+        L.append(_scrub_markers(str(value)) if value else TBD)
         L.append("")
 
     text_section("Background", gv("background"))
@@ -3014,7 +3474,7 @@ def render_client_brief(brief) -> str:
     rtb = gv("reasons_to_believe")
     L.append("## Reasons to believe")
     if isinstance(rtb, list) and rtb:
-        L += [f"- {r if isinstance(r, str) else (r.get('value') if isinstance(r, dict) else r)}"
+        L += [f"- {_scrub_markers(r if isinstance(r, str) else (r.get('value') if isinstance(r, dict) else r))}"
               for r in rtb]
     elif rtb:
         L.append(str(rtb))
@@ -3043,7 +3503,7 @@ def render_client_brief(brief) -> str:
         L.append("## Open questions to resolve before research")
         seen = set()
         for q in oqs:
-            txt = q if isinstance(q, str) else (q.get("question") or q.get("value") or "")
+            txt = _scrub_markers(q if isinstance(q, str) else (q.get("question") or q.get("value") or ""))
             key = re.sub(r"[^a-z0-9]+", " ", txt.lower()).strip()   # dedupe near-identical questions
             if not key or key in seen:
                 continue
@@ -3292,6 +3752,40 @@ def _retrieval_fields_from_golden(gb: dict) -> dict:
     return out
 
 
+def _warm_validator() -> None:
+    """Warm the RAG validator chain (brief_context.warm_validator) while the capture runs,
+    so the five per-field validations do not each pay jev's cold start (audit JL-1). A
+    no-op when validation is off; never raises into the run."""
+    try:
+        _load_retriever()
+        import brief_context
+        warmed = brief_context.warm_validator()
+        if warmed:
+            print(f"[i] validator warm-up: {warmed}", file=sys.stderr)
+    except Exception as e:      # noqa: BLE001
+        print(f"[i] validator warm-up skipped ({e.__class__.__name__}: {e})", file=sys.stderr)
+
+
+def _require_claude(provider: str) -> None:
+    """Raise NoClaudeAvailable when the lead provider is anthropic, non-Claude links are not
+    allowed (BRIEF_ALLOW_NONCLAUDE unset) and the chosen transport has no way to reach Claude:
+    `api` needs ANTHROPIC_API_KEY, `cli` needs the `claude` CLI, `auto` needs either. A
+    no-op for any other provider. Checked once at the start of run()."""
+    if provider != "anthropic" or _allow_nonclaude():
+        return
+    t = _claude_transport()
+    have_key, have_cli = bool(os.environ.get("ANTHROPIC_API_KEY")), bool(shutil.which("claude"))
+    if (t == "api" and have_key) or (t == "cli" and have_cli) or (t == "auto" and (have_key or have_cli)):
+        return
+    raise NoClaudeAvailable(
+        f"no Claude available on transport '{t}': "
+        + ("set ANTHROPIC_API_KEY" if t == "api" else
+           "install and log in to Claude Code (`claude`)" if t == "cli" else
+           "set ANTHROPIC_API_KEY or install Claude Code")
+        + ", or BRIEF_CLAUDE_TRANSPORT=cli|auto, or BRIEF_ALLOW_NONCLAUDE=1 to let a non-Claude "
+          "link write the brief (not for production).")
+
+
 class _Inline:
     """A stand-in for ThreadPoolExecutor that runs each submit() at once (BRIEF_PARALLEL=0):
     the same code path, the same futures, one step at a time."""
@@ -3342,8 +3836,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     Env switches:
       BRIEF_CAPTURE=json   skip the TOON capture calls and use extract_llm's JSON capture.
       BRIEF_PARALLEL=0     run the same steps one at a time (_Inline); the fill reads it too.
-      BRIEF_BATCH_GATES=0  read by fill_derivable_fields: gate each value with the rubric and
-                           territory gates instead of one batched judge call (default on).
+      BRIEF_ALLOW_NONCLAUDE=1  let non-Claude links stay in a Claude-led chain (off by
+                           default: without it, and with no route to Claude, run() raises
+                           NoClaudeAvailable before any call).
+
+    Stage graph, in order of what waits for what: the scorecard, capture, how-to-win and
+    golden extraction all start at once on the raw text; retrieval starts when the golden
+    extraction lands; the strategy fill starts when retrieval lands; the loop synthesis
+    runs alongside the fill; the capture, how-to-win and scorecard are collected last.
 
     Capture fallbacks: TOON capture (how_to_win from its own call) -> JSON extract_llm
     (how_to_win from its reply; a finished how_to_win_toon result is discarded) ->
@@ -3371,11 +3871,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     segs = segment(text)
 
     provider = resolve_provider()
+    _require_claude(provider)
     # Stages run as a dependency graph, not a queue (measured 2026-09-23: every stage
     # waited for the one before it, 316 s per brief). Three reads of the raw brief start
-    # together; the scorecard and retrieval need only the capture; the hero fields need
-    # retrieval + the golden fields; the loop synthesis feeds review notes only, so it runs
-    # alongside them. BRIEF_PARALLEL=0 runs the same steps one at a time.
+    # together with the scorecard (text only); retrieval starts when the golden extraction
+    # lands; the strategy fill waits ONLY for the golden extraction and retrieval, which is
+    # all it reads (audit CC1: it used to wait for the capture and how-to-win too, 15.6 s
+    # idle per brief on Opus 4.6); the loop synthesis feeds review notes only, so it runs
+    # alongside. BRIEF_PARALLEL=0 runs the same steps one at a time.
     from concurrent.futures import ThreadPoolExecutor
     parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
     toon = os.environ.get("BRIEF_CAPTURE", "toon").lower() != "json"
@@ -3385,18 +3888,39 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     # brief 64/76/76 vs 75/63/78 — within run-to-run swing), 16-26 s faster per brief.
     from_golden = (os.environ.get("BRIEF_RETRIEVE_FROM", "golden").lower() == "golden"
                    and loops37 and golden)
-    with ThreadPoolExecutor(max_workers=5) if parallel else _Inline() as ex:
-        f_cap = ex.submit(capture_toon, segs) if toon else None
-        f_htw = ex.submit(how_to_win_toon, segs) if toon else None
-        f_gold = ex.submit(extract_golden_brief, text) if golden else None
-        f_l37 = None
+    golden_schema = (json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
+                     if loops37 else None)
+    with _stats_scope() as ledger, (ThreadPoolExecutor(max_workers=8) if parallel else _Inline()) as ex:
+        f_score = ex.submit(_scoped(score_betterbriefs), text, None)     # text only: t=0
+        if loops37:
+            ex.submit(_warm_validator)               # pay the validator's cold start now
+        f_cap = ex.submit(_scoped(capture_toon), segs) if toon else None
+        f_htw = ex.submit(_scoped(how_to_win_toon), segs) if toon else None
+        f_gold = ex.submit(_scoped(extract_golden_brief), text) if golden else None
+        f_l37 = f_fill = None
         if from_golden:
             def _retrieve_from_golden():
-                """Wait for the golden extraction, then retrieve from it (None if it failed)."""
-                gb0 = f_gold.result()
-                rf = _retrieval_fields_from_golden(gb0) if gb0 else {}
-                return loops_3_7({}, rf, synthesize=False) if rf else None
-            f_l37 = ex.submit(_retrieve_from_golden)
+                """Wait for the golden extraction, then retrieve from it (None if it failed).
+                Never raises into the run: a failure here means retrieval from the capture."""
+                try:
+                    gb0 = f_gold.result()
+                    rf = _retrieval_fields_from_golden(gb0) if gb0 else {}
+                    return loops_3_7({}, rf, synthesize=False) if rf else None
+                except Exception as e:
+                    print(f"[!] retrieval from the golden extraction failed "
+                          f"({e.__class__.__name__}: {e}); retrying from the capture.", file=sys.stderr)
+                    return None
+            f_l37 = ex.submit(_scoped(_retrieve_from_golden))
+
+            def _fill_early():
+                """The strategy fill as soon as the golden extraction and retrieval land.
+                None when either is missing (run() then takes the sequential path)."""
+                gb0, l37_0 = f_gold.result(), f_l37.result()
+                if not (gb0 and l37_0 and l37_0.get("enabled")):
+                    return None
+                return fill_derivable_fields(gb0.setdefault("fields", {}), l37_0, golden_schema,
+                                             brief_text=text)
+            f_fill = ex.submit(_scoped(_fill_early))
 
         llm = f_cap.result() if f_cap else None
         capture_format = "toon" if llm else "json"
@@ -3416,11 +3940,10 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         loop2 = shape_loop2(fields, llm_oqs)
         loop2["review"] = review_loop2(loop2)
 
-        ledger = build_ledger(segs, used, fields, src_name, how_to_win, loop2["open_questions"])
-        loop1 = {"fields": fields, "how_to_win": how_to_win, "no_loss_ledger": ledger}
-        loop1["review"] = review_loop1(ledger, fields)
+        ledger_l1 = build_ledger(segs, used, fields, src_name, how_to_win, loop2["open_questions"])
+        loop1 = {"fields": fields, "how_to_win": how_to_win, "no_loss_ledger": ledger_l1}
+        loop1["review"] = review_loop1(ledger_l1, fields)
 
-        f_score = ex.submit(score_betterbriefs, text, fields)
         out = {
             "meta": {"client": client, "project": project, "source_files": [src_name],
                      "parsed_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -3430,13 +3953,24 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             "betterbriefs_scorecard": None,            # filled when its call returns
         }
         # Loops 3–7 (RAG) only when explicitly enabled — key is omitted otherwise, so
-        # output is byte-for-byte identical to a Loops 1–2 run.
+        # output is byte-for-byte identical to a Loops 1–2 run. Retrieval never raises
+        # into the run: a failure is a disabled stub with its reason.
         if loops37:
             l37_early = f_l37.result() if f_l37 else None
-            out["loops3_7"] = l37_early or loops_3_7(loop2, fields, synthesize=False)
+            if l37_early is None:
+                try:
+                    l37_early_or_cap = loops_3_7(loop2, fields, synthesize=False)
+                except Exception as e:
+                    print(f"[!] retrieval failed ({e.__class__.__name__}: {e}); Loops 3-7 skipped.",
+                          file=sys.stderr)
+                    l37_early_or_cap = {"enabled": False,
+                                        "reason": f"retrieval failed: {e.__class__.__name__}: {e}"}
+                out["loops3_7"] = l37_early_or_cap
+            else:
+                out["loops3_7"] = l37_early
             out["loops3_7"]["retrieved_from"] = "golden" if l37_early else "capture"
         l37 = out.get("loops3_7") or {}
-        f_synth = (ex.submit(_synthesize_loops37, l37["gist"], l37["intent"], l37["loops"])
+        f_synth = (ex.submit(_scoped(_synthesize_loops37), l37["gist"], l37["intent"], l37["loops"])
                    if l37.get("synthesis_mode") == "deferred" else None)
         gb = f_gold.result() if f_gold else None
         if gb:
@@ -3445,21 +3979,39 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         # Loop 4+5: fill insight + desired_response from IPA precedents + playbooks.
         # Only runs when loops37 ran successfully AND golden extraction produced fields.
         if loops37 and l37.get("enabled") and out.get("loop2_golden"):
-            gf = out["loop2_golden"].setdefault("fields", {})
-            golden_schema = json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
-            # Generates insight/smp/rtb/desired_response from the brief + retrieved IPA
-            # precedent, schema-driven and rubric-gated. Mutates gf in place; never
-            # overwrites a client_stated field. Failures become open questions.
-            _fills, gen_open_qs = fill_derivable_fields(gf, l37, golden_schema, brief_text=text)
+            filled = f_fill.result() if f_fill else None
+            if filled is None:
+                gf = out["loop2_golden"].setdefault("fields", {})
+                # Generates insight/smp/rtb/desired_response from the brief + retrieved IPA
+                # precedent, schema-driven and rubric-gated. Mutates gf in place; never
+                # overwrites a client_stated field. Failures become open questions.
+                filled = fill_derivable_fields(gf, l37, golden_schema, brief_text=text)
+            _fills, gen_open_qs = filled
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs
                 out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)
         if f_synth:
             l37["synthesis_mode"] = f_synth.result()
-        out["betterbriefs_scorecard"] = f_score.result()
-    # Snapshot the LLM call ledger so optimisation work is measured per run.
-    out["meta"]["llm_stats"] = {**_LLM_STATS,
-                                "wall_seconds": round((dt.datetime.now() - _t_run0).total_seconds(), 1)}
+        sc = f_score.result()
+        if isinstance(sc, dict) and sc.get("mode") == "heuristic":
+            sc = scorecard_heuristic(fields)           # the t=0 call had no capture to read
+        out["betterbriefs_scorecard"] = sc
+        # Snapshot the LLM call ledger (a deep copy: the critic call that follows run()
+        # must not change a finished brief's numbers) so optimisation work is measured per run.
+        stats = _stats_snapshot()
+    stats["wall_seconds"] = round((dt.datetime.now() - _t_run0).total_seconds(), 1)
+    out["meta"]["llm_stats"] = stats
+    # The brief's label is the link that ANSWERED most of its calls, not the configured
+    # default (audit F12: every Opus 5.5 run was labelled claude-opus-4-6), and the chain
+    # it walked is kept beside it. A non-Claude link that answered is named in
+    # meta.fallback_links so the brief is never mistaken for a Claude brief.
+    answered = stats.get("answered_by") or {}
+    if answered and mode != "heuristic":
+        out["meta"]["extraction_mode"] = max(answered, key=answered.get)
+    out["meta"]["model_chain"] = [f"{p}:{m}" for p, m in _model_chain()] if provider else []
+    fallback_links = sorted(l for l in answered if not l.startswith("anthropic:"))
+    if provider == "anthropic" and fallback_links:
+        out["meta"]["fallback_links"] = fallback_links
     # Which transport the Claude links ran on (api, cli, or api→cli after an `auto` switch),
     # so a brief made on the Claude Code login is never mistaken for an API run.
     out["meta"]["claude_transport"] = transport_used()
@@ -3554,8 +4106,11 @@ def main():
             raw_text += (f"\n\n===== ATTACHMENT: {ap_path.name} "
                          f"(supporting context — e.g. brand guidelines) =====\n{atext}")
 
-    brief = run(path, args.client, args.project, loops37=loops37, golden=golden,
-                raw_text=raw_text, source_name=source_name)
+    try:
+        brief = run(path, args.client, args.project, loops37=loops37, golden=golden,
+                    raw_text=raw_text, source_name=source_name)
+    except NoClaudeAvailable as e:
+        sys.exit(f"[!] {e}")
 
     stem = source_name or (path.stem if path else "brief")
     name = re.sub(r"[^a-z0-9]+", "-", (args.project or stem).lower()).strip("-")

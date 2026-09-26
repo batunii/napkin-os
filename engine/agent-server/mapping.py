@@ -188,7 +188,13 @@ def build_rationale(brief: dict) -> str:
         bits.append(f"no-loss ledger coverage {coverage}%")
     if filled:
         bits.append(f"golden-brief fill {filled}/{len(gf)} fields")
-    return "; ".join(bits) + "."
+    if meta.get("fallback_links"):
+        bits.append(f"NOT a Claude brief: answered by {', '.join(meta['fallback_links'])}")
+    text = "; ".join(bits) + "."
+    # A degraded run says so first: the planner must see why the draft is thin.
+    if meta.get("degraded"):
+        text = f"Degraded run ({meta['degraded']}): {text}"
+    return text
 
 
 def build_context(brief: dict, research_summary: str | None = None) -> str:
@@ -215,6 +221,12 @@ def build_context(brief: dict, research_summary: str | None = None) -> str:
         cited = "\n".join(f"- {s}" for s in sources[:8])
         more = f"\n- …and {len(sources) - 8} more" if len(sources) > 8 else ""
         lines.append(f"**Strategy grounded in precedent:**\n{cited}{more}")
+    fb = l37.get("fallback") or {}
+    if fb.get("reason"):
+        lines.append(f"**⚠ Retrieval fell back to {fb.get('to', 'digests')}:** {fb['reason']}")
+    if l37.get("validation_degraded"):
+        lines.append(f"**⚠ Unvalidated evidence** in {len(l37['validation_degraded'])} of 5 loops "
+                     f"({', '.join(l37['validation_degraded'])}).")
 
     if research_summary:
         lines.append(f"**Research:**\n{research_summary}")

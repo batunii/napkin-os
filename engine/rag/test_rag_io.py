@@ -347,8 +347,16 @@ def test_mix_end_to_end_on_the_real_index(monkeypatch):
     index = HERE / "_index_v4"
     if not (index / "manifest.json").exists() and not any(index.glob("*")):
         pytest.skip("local index _index_v4 not present")
+    # build_multi calls rag.embed (not embed_query): it must raise EmbedUnavailable here so
+    # the search is keyword-only. Stubbing embed_query alone left one hosted embedding call
+    # in this "offline" test (audit critic-G12, 2nd check).
     import rag
+
+    def no_embed(*a, **k):
+        """No endpoint answered."""
+        raise rag.EmbedUnavailable("offline test")
     monkeypatch.setenv("RAG_STORE", "local")
+    monkeypatch.setattr(rag, "embed", no_embed)
     monkeypatch.setattr(rag, "embed_query", lambda *a, **k: None)
     monkeypatch.setattr(bc, "default_chain", lambda: __import__("judge").Chain([]))
     resp = rag_io.handle(REQ, index_dir=index)

@@ -115,6 +115,11 @@ DEFAULTS = {
     "passage_chars": 6000,
     "batch_questions": 50,
     "concurrency": 4,
+    # jev's own deadline (RAG_JEV_DEADLINE_S). The chain's default of 3 s cut jev off on a
+    # cold process: ok calls took 1.2-2.5 s, the first request 1.3-2.7 s, and 6 of 10
+    # fields fell back to nemotron in the CLI smoke runs (audit JL-1). 8 s covers a cold
+    # start; warm p90 is 0.45 s. An explicit RAG_VALIDATOR_DEADLINE_S still caps it.
+    "deadline_s": 8.0,
 }
 
 QUESTION = "Is PASSAGE directly useful evidence for this brief?"
@@ -124,6 +129,31 @@ CRITERIA = {
              "objective."),
     "false": ("PASSAGE is off-topic, only loosely related, generic advice that would apply to "
               "any brief, or would not change what the brief says."),
+}
+# One question per retrieval bucket. The single question above fits exemplars but reads
+# craft and rules badly (audit JL-6: craft p50 0.19, at most 1 of 320 craft passages
+# scored >= 0.5). Measured on the 94 client prelabels: AUC 0.765 with the one question,
+# 0.870 with these (exemplars 0.939, craft 0.884, rules 0.810). Same request, same cost.
+BUCKET_QUESTIONS = {
+    "exemplars": ("Is PASSAGE a comparable precedent this brief could learn from?", {
+        "true": ("PASSAGE describes a real campaign or case whose situation, audience, problem "
+                 "or category is comparable to this brief's, with a strategy, execution or "
+                 "result the brief could learn from or cite."),
+        "false": ("PASSAGE is a case from an unrelated situation, a generic summary with no "
+                  "transferable lesson, or would not change what the brief says."),
+    }),
+    "craft": ("Is PASSAGE a planning method that applies to this brief?", {
+        "true": ("PASSAGE explains a method, framework, technique or way of thinking that a "
+                 "planner could apply directly to this brief's problem, audience or objective."),
+        "false": ("PASSAGE is a method for a different task, advice so generic it fits any "
+                  "brief, or a template with nothing to apply here."),
+    }),
+    "rules": ("Is PASSAGE a rule this brief must respect?", {
+        "true": ("PASSAGE states a rule, constraint, pitfall or decision test that applies to "
+                 "this brief and would change what it says or how it is judged."),
+        "false": ("PASSAGE is a rule for a different situation, or so general that it would "
+                  "not change this brief."),
+    }),
 }
 
 
@@ -156,17 +186,20 @@ def build_state(query: Query, max_chars: int) -> dict:
     return state
 
 
-def build_question(passage_text: str) -> dict:
+def build_question(passage_text: str, bucket: str = "") -> dict:
     """One Noul question for one passage, in the SDK's raw dictionary form.
 
     The dictionary form (`NoulModel`, SDK question_types.py:26-36, accepted by
     normalize_questions, questions.py:16-22) is used instead of the `Noul` class so this
     module needs nothing from the SDK to build a request, and the tests can assert the
     exact wire shape. `instructions` may be a JSON object (question_types.py:33), which
-    keeps the passage delimited from the question rather than pasted into a sentence."""
+    keeps the passage delimited from the question rather than pasted into a sentence.
+    `bucket` picks the bucket's own question (BUCKET_QUESTIONS); unknown or empty falls
+    back to the generic QUESTION."""
+    question, criteria = BUCKET_QUESTIONS.get(bucket or "", (QUESTION, CRITERIA))
     return {"type": "noul",
-            "instructions": {"question": QUESTION, "passage": passage_text},
-            "criteria": dict(CRITERIA)}
+            "instructions": {"question": question, "passage": passage_text},
+            "criteria": dict(criteria)}
 
 
 def question_name(i: int) -> str:
@@ -178,7 +211,7 @@ def question_name(i: int) -> str:
 
 
 def plan_batches(state: dict, texts: list[str], *, passage_chars: int,
-                 batch_questions: int) -> list[list[tuple[int, dict]]]:
+                 batch_questions: int, buckets: list[str] | None = None) -> list[list[tuple[int, dict]]]:
     """Clip each passage and pack the questions, in input order, into request-sized batches.
 
     Every batch satisfies, by the conservative estimate:
@@ -187,10 +220,13 @@ def plan_batches(state: dict, texts: list[str], *, passage_chars: int,
         len(batch)                <= batch_questions
     A passage is clipped to passage_chars first, then clipped further only in the
     pathological case where it still would not fit beside the state. Greedy packing in
-    input order keeps batches contiguous, which makes a failure easy to read in a trace."""
+    input order keeps batches contiguous, which makes a failure easy to read in a trace.
+    `buckets`, when given, is one bucket name per text and picks each question's wording."""
+    buckets = list(buckets) if buckets else [""] * len(texts)
     state_tokens = estimate_tokens(state)
-    empty_q = estimate_tokens({question_name(0): build_question("")})
-    room = PAIR_BUDGET - state_tokens - empty_q
+    longest_empty = max(estimate_tokens({question_name(0): build_question("", b)})
+                        for b in set(buckets) | {""})
+    room = PAIR_BUDGET - state_tokens - longest_empty
     if room <= 0:
         raise BackendUnavailable(f"{NAME}: state alone ({state_tokens} tokens) leaves no room "
                                  "for a passage", kind="error")
@@ -199,12 +235,12 @@ def plan_batches(state: dict, texts: list[str], *, passage_chars: int,
     used = REQUEST_OVERHEAD_TOKENS + state_tokens
     for i, text in enumerate(texts):
         clipped = text[:passage_chars]
-        q = build_question(clipped)
+        q = build_question(clipped, buckets[i])
         q_tokens = estimate_tokens({question_name(i): q})
         while state_tokens + q_tokens > PAIR_BUDGET and clipped:
             # Halving ends within a few passes; `room` > 0 guarantees the empty text fits.
             clipped = clipped[:len(clipped) // 2]
-            q = build_question(clipped)
+            q = build_question(clipped, buckets[i])
             q_tokens = estimate_tokens({question_name(i): q})
         if current and (used + q_tokens > REQUEST_BUDGET or len(current) >= batch_questions):
             batches.append(current)
@@ -484,9 +520,12 @@ class JevBackend:
         self.batch_questions = _setting(batch_questions, env, "RAG_JEV_BATCH_QUESTIONS",
                                         DEFAULTS["batch_questions"], int, problems)
         self.concurrency = _setting(concurrency, env, "RAG_JEV_CONCURRENCY", DEFAULTS["concurrency"], int, problems)
+        self.deadline_s = _setting(None, env, "RAG_JEV_DEADLINE_S", DEFAULTS["deadline_s"], float, problems)
 
         if not (0.0 <= self.threshold <= 1.0):          # also rejects NaN
             problems.append(f"RAG_JEV_THRESHOLD={self.threshold} must be a probability in [0, 1]")
+        if not (self.deadline_s > 0):
+            problems.append(f"RAG_JEV_DEADLINE_S={self.deadline_s} must be > 0")
         for label, v in (("RAG_JEV_STATE_CHARS", self.state_chars), ("RAG_JEV_PASSAGE_CHARS", self.passage_chars),
                          ("RAG_JEV_BATCH_QUESTIONS", self.batch_questions), ("RAG_JEV_CONCURRENCY", self.concurrency)):
             if v < 1:
@@ -550,6 +589,19 @@ class JevBackend:
         if callable(close):
             close()
 
+    def warm(self) -> bool:
+        """One tiny request (~400 tokens) so the TLS handshake and the vendor's cold start
+        are paid before the brief's five concurrent validations, not during them (audit
+        JL-1: the first request in a fresh process took 1.3-2.7 s). Best effort: returns
+        True when jev answered, False on any failure, never raises."""
+        try:
+            self.score(Query(text="warm-up: a brief for a bank app"),
+                       [Passage("warm", "A bank relaunched its app for under-30s.", "exemplars")],
+                       deadline_s=self.deadline_s)
+            return True
+        except Exception:      # noqa: BLE001 — a failed warm-up costs nothing but the attempt
+            return False
+
     # ---- the Backend protocol ---------------------------------------------------------
     def describe(self) -> dict:
         """What this backend is running, for the trace: model, capacity, threshold and
@@ -578,7 +630,8 @@ class JevBackend:
                                      "not starting another", kind="timeout")
         state = build_state(query, self.state_chars)
         batches = plan_batches(state, [p.text for p in passages],
-                               passage_chars=self.passage_chars, batch_questions=self.batch_questions)
+                               passage_chars=self.passage_chars, batch_questions=self.batch_questions,
+                               buckets=[getattr(p, "bucket", "") or "" for p in passages])
         remaining = deadline_s - (time.monotonic() - started)
         if remaining <= 0:
             raise BackendUnavailable(f"{NAME}: deadline {deadline_s}s spent before any request",

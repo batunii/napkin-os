@@ -145,8 +145,11 @@ def test_run_falls_back_to_json_capture(monkeypatch):
 
 # ---------- hero fields ----------
 
+# Three llm tests: a hero field keeps its one-soft-failure tolerance (Sai, 2026-09-25); a
+# field with fewer tests tolerates none (test_cannot_fail_silently.py).
 HERO = {"id": "insight", "label": "Insight", "max_words": 30,
-        "rubric": [{"id": "a", "method": "llm", "test": "A?"}, {"id": "b", "method": "llm", "test": "B?"}]}
+        "rubric": [{"id": "a", "method": "llm", "test": "A?"}, {"id": "b", "method": "llm", "test": "B?"},
+                   {"id": "c", "method": "llm", "test": "C?"}]}
 
 
 def _verdicts(monkeypatch, judge):
@@ -155,11 +158,11 @@ def _verdicts(monkeypatch, judge):
 
 
 def test_judge_and_gate_ranks_and_applies_the_pass_rule(monkeypatch):
-    """Ranking is honoured; one soft failure passes, two fail; a code failure is final."""
+    """Ranking is honoured; one soft failure passes (3 llm tests), two fail; a code failure is final."""
     _verdicts(monkeypatch, {"ranking": [2, 0, 1], "why": "sharpest", "results": {
-        "0": {"a": {"pass": False, "why": "x"}, "b": {"pass": True}},
-        "1": {"a": {"pass": True}, "b": {"pass": True}},
-        "2": {"a": {"pass": False, "why": "x"}, "b": {"pass": False, "why": "y"}}}})
+        "0": {"a": {"pass": False, "why": "x"}, "b": {"pass": True}, "c": {"pass": True}},
+        "1": {"a": {"pass": True}, "b": {"pass": True}, "c": {"pass": True}},
+        "2": {"a": {"pass": False, "why": "x"}, "b": {"pass": False, "why": "y"}, "c": {"pass": True}}}})
     cands = [{"value": "zero"}, {"value": " ".join(["long"] * 40)}, {"value": "two"}]
     out = pb._judge_and_gate(HERO, cands)
     assert [c["value"] for c, _ok, _f in out] == ["two", "zero", " ".join(["long"] * 40)]
@@ -167,20 +170,40 @@ def test_judge_and_gate_ranks_and_applies_the_pass_rule(monkeypatch):
     assert out[0][0]["_judge_why"] == "sharpest"
 
 
-def test_judge_and_gate_territory_fail(monkeypatch):
-    """A line that passes the rubric but not the territory tests fails, with the reason."""
-    _verdicts(monkeypatch, {"results": {"0": {"a": {"pass": True}, "b": {"pass": True},
-                                              "not_rival_line": {"pass": False, "why": "rival says it"}}}})
+def test_judge_and_gate_territory_is_a_soft_failure(monkeypatch):
+    """A line on the rival's ground counts as ONE soft failure with the reason (since
+    2026-09-26, R1 D6): alone it is tolerated on a 3-test hero field, with a second soft
+    failure it fails."""
+    _verdicts(monkeypatch, {"results": {"0": {"a": {"pass": True}, "b": {"pass": True}, "c": {"pass": True},
+                                              "own_territory": {"pass": True},
+                                              "brand_only": {"pass": False, "why": "rival says it"}}}})
     (_c, ok, fails), = pb._judge_and_gate(HERO, [{"value": "v"}],
                                           territory={"own": "o", "avoid": "a", "rival": "R"})
-    assert not ok and "rival says it" in fails[0]
+    assert ok and fails == ["walks onto the competitor's ground: rival says it"]
+    _verdicts(monkeypatch, {"results": {"0": {"a": {"pass": False, "why": "x"}, "b": {"pass": True}, "c": {"pass": True},
+                                              "own_territory": {"pass": True},
+                                              "brand_only": {"pass": False, "why": "rival says it"}}}})
+    (_c, ok, fails), = pb._judge_and_gate(HERO, [{"value": "v"}],
+                                          territory={"own": "o", "avoid": "a", "rival": "R"})
+    assert not ok and len(fails) == 2
 
 
-def test_judge_and_gate_judge_down_keeps_order_code_tests_only(monkeypatch):
-    """No verdict: order unchanged, only the code tests decide — as the old path did."""
+def test_judge_and_gate_judge_down_keeps_order_but_nothing_passes(monkeypatch):
+    """No verdict: order unchanged and every candidate is UNJUDGED (not ok). Flipped on
+    2026-09-25: the old path let every candidate through on the code tests alone (audit F5)."""
     _verdicts(monkeypatch, None)
     out = pb._judge_and_gate(HERO, [{"value": "a"}, {"value": "b"}])
-    assert [(c["value"], ok) for c, ok, _f in out] == [("a", True), ("b", True)]
+    assert [(c["value"], ok) for c, ok, _f in out] == [("a", False), ("b", False)]
+    assert all(f[0].startswith(pb.UNJUDGED) for _c, _ok, f in out)
+
+
+def _pass_all(user: str) -> dict:
+    """A judge reply that passes every candidate on every test named in the prompt."""
+    import re
+    n = len(re.findall(r"^\[\d+\] ", user, flags=re.M))
+    tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+    return {"ranking": list(range(n)), "why": "w",
+            "results": {str(i): {t: {"pass": True} for t in tests} for i in range(n)}}
 
 
 def _fake_models(monkeypatch, calls, gate=None):
@@ -196,13 +219,7 @@ def _fake_models(monkeypatch, calls, gate=None):
         elif "REFINE MODE" in system:
             kind, out = "refine", {"value": "refined line, because it holds", "confidence": 0.9}
         elif "judging candidate" in system:
-            kind, out = "judge_batch", {"ranking": [0], "why": "w", "results": {}}
-        elif "ranking candidate" in system:
-            kind, out = "judge_rank", {"ranking": [0], "why": "w"}
-        elif "brief-quality judge" in system:
-            kind, out = "gate", {}
-        elif "enforcing ownable territory" in system:
-            kind, out = "terr_gate", {"own_territory": True, "competitor_could_run": False}
+            kind, out = "judge_batch", _pass_all(user)
         elif '"think"' in system:
             kind, out = "gen", {"value": {"think": "a", "feel": "b", "do": "open the app"}, "confidence": 0.9}
         else:
@@ -225,26 +242,17 @@ def _fill(monkeypatch):
 
 def test_hero_fields_batched_calls_and_parallel_waves(monkeypatch):
     """Default: 13 calls (was 17 with every gate passing first time), and reasons_to_believe
-    and desired_response are generated at the same time."""
+    and desired_response are generated at the same time. Every field, hero or not, goes
+    through the one batched judge (no separate rubric gate since 2026-09-25)."""
     calls = []
     _fake_models(monkeypatch, calls, gate=threading.Barrier(2, timeout=5))
-    for v in ("BRIEF_BATCH_GATES", "BRIEF_PARALLEL", "BRIEF_HERO_CANDIDATES", "BRIEF_SMP_CANDIDATES"):
+    for v in ("BRIEF_PARALLEL", "BRIEF_HERO_CANDIDATES", "BRIEF_SMP_CANDIDATES"):
         monkeypatch.delenv(v, raising=False)
     fills, _qs = _fill(monkeypatch)
     assert set(fills) == set(pb.GEN_ZONE3_ORDER)
     assert fills["insight"]["value"] == "refined line, because it holds"
     assert len(calls) == 13, calls
-
-
-def test_hero_fields_per_candidate_path_still_works(monkeypatch):
-    """BRIEF_BATCH_GATES=0, BRIEF_PARALLEL=0: the old per-candidate gates, one at a time."""
-    calls = []
-    _fake_models(monkeypatch, calls)
-    monkeypatch.setenv("BRIEF_BATCH_GATES", "0")
-    monkeypatch.setenv("BRIEF_PARALLEL", "0")
-    fills, _qs = _fill(monkeypatch)
-    assert set(fills) == set(pb.GEN_ZONE3_ORDER)
-    assert "judge_batch" not in calls and calls.count("terr_gate") == 2 and len(calls) == 17, calls
+    assert set(calls) == {"territory", "gen_batch", "judge_batch", "refine", "gen"}
 
 
 def test_gate_runs_the_critics_code_checks():

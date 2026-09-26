@@ -11,7 +11,9 @@
 With no flag it picks the backend for you:
   * a chat key in the env (GROQ_API_KEY / CEREBRAS_API_KEY / NVIDIA_API_KEY /
     GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY) -> the full engine
-    pipeline (Loops 1-7, golden fill), grounded on the shipped pack digests.
+    pipeline (Loops 1-7, golden fill), grounded on the shipped pack digests; on
+    transport `auto` when Claude Code is installed, so a key with no credit hands
+    over to the login instead of failing (the chain is Claude-only by default).
   * no key but the `claude` CLI is installed and logged in -> the mock-agent,
     briefs via your Claude login, grounded on the same digests.
   * neither -> tells you the ways to fix that, and exits.
@@ -58,9 +60,13 @@ def _run_engine(transport: "str | None", why: str) -> int:
 
 
 def _run_mock() -> int:
-    """Start the lightweight mock agent (Claude Code login, one call per request) on :8787."""
+    """Start the lightweight mock agent (Claude Code login, one call per request) on :8787.
+    The API key is not passed on: the mock exists to use the login, and with the key in
+    its environment `claude -p` would bill the key instead."""
     print("[serve] Claude Code via mock-agent (digest-grounded) on :8787")
-    return subprocess.call([sys.executable, str(MOCK_SERVER)])
+    env = {**os.environ}
+    env.pop("ANTHROPIC_API_KEY", None)
+    return subprocess.call([sys.executable, str(MOCK_SERVER)], env=env)
 
 
 def main(argv=None) -> int:
@@ -90,7 +96,12 @@ def main(argv=None) -> int:
 
     key = next((k for k in CHAT_KEYS if os.environ.get(k)), None)
     if key:
-        return _run_engine(None, f"{key} found")
+        # The engine's chain is Claude-only by default (engine/parse_brief.py, 2026-09-25),
+        # so a key with no credit fails loudly rather than producing a NIM-written brief.
+        # With Claude Code installed and no transport chosen, `auto` lets the login take
+        # over when the key cannot be used.
+        auto = "auto" if shutil.which("claude") and not os.environ.get("BRIEF_CLAUDE_TRANSPORT") else None
+        return _run_engine(auto, f"{key} found")
     if shutil.which("claude"):
         return _run_mock()
     sys.exit("[serve] no backend available. Either:\n"
