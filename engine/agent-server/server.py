@@ -70,7 +70,43 @@ GOLDEN_IDS = {
     "single_minded_proposition": "smp",
     "reasons_to_believe": "reasons_to_believe",
     "background": "background",
+    "audience": "audience",
+    "budget_and_scope": "budget_scope",
+    "competitor_context": "competitor_context",
 }
+
+
+# App fields whose value states facts about the client or product: a regeneration of one
+# of these is grounded in the brief text and checked for figures the brief never gave.
+FACTUAL_FIELDS = {"reasons_to_believe", "audience", "budget_and_scope", "mandatories", "background",
+                  "competitor_context", "objectives.commercial", "objectives.behavioural", "objectives.attitudinal"}
+
+
+def _golden_spec(app_field: str) -> dict | None:
+    """The golden-brief schema field an app field maps to, or None."""
+    gid = GOLDEN_IDS.get(app_field)
+    if not gid:
+        return None
+    try:
+        schema = json.loads((ENGINE_ROOT / "golden-brief" / "golden_brief.schema.json").read_text())
+        return next(f for f in schema["fields"] if f["id"] == gid)
+    except (OSError, KeyError, StopIteration, json.JSONDecodeError):
+        return None
+
+
+def _regen_rule_failures(app_field: str, value, brief_input: str | None) -> list[str]:
+    """The code rules a regenerated value breaks (audit H14/F10): the golden field's own
+    rules (one sentence, word limit, item cap, a stated why) when the app field maps to
+    one, and, for a factual field, any figure absent from the client brief. [] when clean."""
+    fails: list[str] = []
+    spec = _golden_spec(app_field)
+    if spec:
+        fails += parse_brief._rubric_hard(spec, value)
+    if brief_input is not None:
+        bad = parse_brief._numbers_not_in(value, brief_input)
+        if bad:
+            fails.append(f"figures not in the brief: {', '.join(bad)}")
+    return fails
 
 
 def _golden_rubric(app_field: str) -> str:
@@ -234,24 +270,51 @@ def do_regen(payload: dict, clan: dict) -> tuple[int, dict]:
     data_view = {k: v for k, v in clan_data.items()
                  if k not in ("field_styles", "theme", "reference_assets", "brief_input",
                               "locked", "locked_fields", "brief_style")}
+    # The regeneration is grounded in the client's brief (audit H14/F10): the brief text
+    # goes in as data, factual fields may use only what it states, and the result is
+    # checked by the same code rules as a drafted field before it reaches the app.
+    brief_input = str(clan_data.get("brief_input") or "").strip()
+    factual = field in FACTUAL_FIELDS
+    if factual:
+        system += ("\n\nThis field states facts: use ONLY facts in the client brief below. Never add a "
+                   "figure, test, award, scheme, date or history the brief does not give; if the brief "
+                   "gives no proof, write 'TO CONFIRM: <what is needed>'.")
     user = ("CURRENT BRIEF DATA:\n" + json.dumps(data_view, indent=1)[:8000]
+            + ("\n\n" + parse_brief._brief_block(brief_input) if brief_input else "")
             + f"\n\nREGENERATE FIELD: {field}"
             + (f"\nGUIDANCE FROM THE PLANNER: {guidance}" if guidance else ""))
 
     def accept(obj):
+        """A dict carrying the field with a non-empty value of the right type."""
         if not isinstance(obj, dict) or field not in obj:
             return False
         v = obj[field]
-        return isinstance(v, list) if ftype == "array" else isinstance(v, str) and v.strip()
+        if ftype == "array":
+            return isinstance(v, list) and any(str(x).strip() for x in v)
+        return isinstance(v, str) and bool(v.strip())
 
     t0 = time.time()
+    fails: list[str] = []
+    obj = None
     with parse_brief._stats_scope():                # a regen next to a running draft: separate ledgers
-        obj = parse_brief._json_call(user, system=system, retries=1, max_tokens=800, accept=accept)
+        for attempt in range(2):
+            note = (f"\n\nYOUR PREVIOUS ANSWER BROKE THESE RULES — fix exactly these and keep the rest: "
+                    + "; ".join(fails)) if fails else ""
+            obj = parse_brief._json_call(user + note, system=system, retries=1, max_tokens=800, accept=accept)
+            if not obj:
+                break
+            fails = _regen_rule_failures(field, obj[field], brief_input if factual else None)
+            if not fails:
+                break
+            print(f"[i] regen {field}: attempt {attempt + 1} broke {fails}", file=sys.stderr)
     wall = time.time() - t0
     if not obj:
         print(f"[!] regen {field}: provider chain exhausted (no keys or all links failed)",
               file=sys.stderr)
         return 502, {"error": "no provider produced a usable value"}
+    if fails:
+        print(f"[!] regen {field}: rejected after a retry: {fails}", file=sys.stderr)
+        return 422, {"error": f"regenerated {field} breaks the brief's rules: " + "; ".join(fails)}
 
     if ftype == "array":
         obj[field] = [str(x) for x in obj[field]]

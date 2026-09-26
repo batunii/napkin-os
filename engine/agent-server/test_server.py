@@ -62,3 +62,36 @@ def test_rationale_and_context_name_fallbacks_and_degradation():
     assert r.startswith("Degraded run (x)") and "NOT a Claude brief: answered by nim:openai/gpt-oss-20b" in r
     ctx = build_context(brief)
     assert "fell back to digests" in ctx and "mix stalled" in ctx and "Unvalidated evidence" in ctx
+
+
+def test_regen_is_grounded_and_rule_checked(monkeypatch):
+    """The regeneration prompt carries the client brief as data; an RTB with a figure the
+    brief never gave is retried once with the failure named, then rejected with 422; an
+    empty list is not accepted; a clean value passes first time."""
+    seen = []
+    replies = iter([{"reasons_to_believe": ["73% of buyers repurchased"], "rationale": "r"},
+                    {"reasons_to_believe": ["Still 73% repurchased"], "rationale": "r"}])
+    def fake(user, system=None, accept=None, **k):
+        seen.append(user)
+        obj = next(replies)
+        return obj if accept(obj) else None
+    monkeypatch.setattr(parse_brief, "_json_call", fake)
+    clan = {"data": {"brief_input": "Acme sells 2 million packs a year. Every asset carries the disclaimer.",
+                     "single_minded_proposition": "Only Acme."}}
+    code, out = server.do_regen({"task": "regenerate_field", "field": "reasons_to_believe"}, clan)
+    assert code == 422 and "figures not in the brief: 73" in out["error"]
+    assert "<client_brief>" in seen[0] and "2 million packs" in seen[0]
+    assert "BROKE THESE RULES" in seen[1] and len(seen) == 2
+    monkeypatch.setattr(parse_brief, "_json_call", lambda user, system=None, accept=None, **k:
+                        {"reasons_to_believe": ["2 million packs a year"], "rationale": "r"})
+    code, out = server.do_regen({"task": "regenerate_field", "field": "reasons_to_believe"}, clan)
+    assert code == 200 and out["reasons_to_believe"] == ["2 million packs a year"]
+    assert "single_sentence: 2 sentences" in server._regen_rule_failures("single_minded_proposition", "One. Two.", None)
+    empty_ok = False
+    def empty(user, system=None, accept=None, **k):
+        nonlocal empty_ok
+        empty_ok = accept({"reasons_to_believe": []})
+        return None
+    monkeypatch.setattr(parse_brief, "_json_call", empty)
+    code, _ = server.do_regen({"task": "regenerate_field", "field": "reasons_to_believe"}, clan)
+    assert code == 502 and empty_ok is False

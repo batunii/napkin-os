@@ -319,8 +319,16 @@ def docx_text(path: Path) -> str:
     return "\n".join(parts)
 
 
+# Set by ingest() when the text came through the vision model (an image, or a PDF with a
+# thin text layer), read by run() so the brief says it was transcribed (audit critic-G8:
+# a transcript from an 8B vision model was treated as the client's verbatim words).
+_INGEST_NOTES: dict = {}
+
+
 def ingest(path: Path) -> tuple[str, str]:
-    """Return (raw_text, mime) from .txt/.md, .docx, .pdf, or .eml."""
+    """Return (raw_text, mime) from .txt/.md, .docx, .pdf, or .eml. Sets _INGEST_NOTES
+    ['transcribed'] when the text is a vision-model transcript."""
+    _INGEST_NOTES.clear()
     suffix = path.suffix.lower()
     if suffix in {".txt", ".md", ".text"}:
         return path.read_text(encoding="utf-8", errors="replace"), "text/plain"
@@ -352,10 +360,14 @@ def ingest(path: Path) -> tuple[str, str]:
         if len(text.strip()) < max(200, 40 * max(1, len(out))):
             print(f"[i] {path.name}: thin text layer — transcribing pages with the vision model.",
                   file=sys.stderr)
-            text = _pdf_vision_transcribe(path) or text
+            transcribed = _pdf_vision_transcribe(path)
+            if transcribed:
+                _INGEST_NOTES["transcribed"] = f"scanned PDF, {len(out)} pages, vision model"
+            text = transcribed or text
         return text, "application/pdf"
     if suffix in _IMAGE_MIME:
         mime = _IMAGE_MIME[suffix]
+        _INGEST_NOTES["transcribed"] = f"image ({suffix}), vision model"
         return _vision_transcribe(path.read_bytes(), mime, path.name), mime
     sys.exit(f"Unsupported file type: {suffix}. Use .txt, .md, .docx, .pdf, .eml, "
              "or an image (.png/.jpg/.jpeg/.webp) — or paste with --text / '-' for stdin.")
@@ -758,9 +770,46 @@ def extract_golden_brief(raw_text: str) -> "dict | None":
     if not system:
         return None
     user = _brief_block(raw_text, CLIP_EXTRACT)
-    return _json_call(user, system=system, retries=1, max_tokens=MAXTOK_EXTRACT,
-                      accept=lambda o: isinstance(o, dict) and isinstance(o.get("fields"), dict)
-                      and bool(o["fields"]))
+    obj = _json_call(user, system=system, retries=1, max_tokens=MAXTOK_EXTRACT,
+                     accept=lambda o: isinstance(o, dict) and isinstance(o.get("fields"), dict)
+                     and bool(o["fields"]))
+    return _repair_quotes(obj, raw_text) if obj else obj
+
+
+def _repair_quotes(gb: dict, raw_text: str) -> dict:
+    """Make every client_stated source_quote verbatim, or stop calling the field
+    client-stated (audit H12: 3 of 43 recorded quotes were paraphrases and nothing checked
+    them). A quote already in the brief (punctuation ignored, ellipsis-split) is kept. A
+    paraphrase is replaced by the brief sentence(s) it overlaps most, when at least 60% of
+    its words are there (`quote_repaired` records the original). Anything else becomes
+    `inferred` with a reason. The strategy fields get the same treatment and then the
+    stricter value-vs-quote check in fill_derivable_fields."""
+    fields = gb.get("fields") if isinstance(gb, dict) else None
+    if not isinstance(fields, dict) or not raw_text:
+        return gb
+    segs = segment(raw_text)
+    for fid, e in fields.items():
+        if not (isinstance(e, dict) and e.get("source") == "client_stated"):
+            continue
+        quote = e.get("source_quote")
+        if not isinstance(quote, str) or not quote.strip():
+            e["source"] = "inferred"
+            e["reason"] = "labelled client_stated with no source quote"
+            continue
+        if _quote_in_brief(quote, raw_text):
+            continue
+        best, best_ov = None, 0.0
+        for s in segs:
+            ov = _text_overlap(quote, s)
+            if ov > best_ov:
+                best, best_ov = s, ov
+        if best is not None and best_ov >= 0.6:
+            e["quote_repaired"] = quote
+            e["source_quote"] = best
+        else:
+            e["source"] = "inferred"
+            e["reason"] = "source quote is not in the brief (paraphrase); treated as our reading"
+    return gb
 
 
 def _fv(field) -> str:
@@ -4069,7 +4118,10 @@ def _mark_provenance(out: dict) -> None:
         else:
             kind = "missing"
         conf = _conf(e.get("confidence"))
-        prov[fid] = {"kind": kind, "mark": PROVENANCE_MARKS[kind], "confidence": conf}
+        mark = PROVENANCE_MARKS[kind]
+        if fid == "insight" and kind == "generated":
+            mark += " — a hypothesis to validate, not a fact"    # audit H13
+        prov[fid] = {"kind": kind, "mark": mark, "confidence": conf}
         if kind == "inferred" and _golden_text(e.get("value")) and (conf is None or conf < floor) and fid not in asked:
             label = fid.replace("_", " ")
             qs.append({"question": f"Confirm the {label}: it is our assumption"
@@ -4193,9 +4245,11 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     if raw_text is not None:                       # pasted email / stdin / --text
         text = raw_text
         src_name = source_name or "pasted-input"
+        transcribed = None
     else:
         text, _mime = ingest(path)
         src_name = path.name
+        transcribed = _INGEST_NOTES.get("transcribed")
     segs = segment(text)
 
     provider = resolve_provider()
@@ -4326,6 +4380,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         if l37.get("loops"):
             l37["uncited"] = sum(int(d.get("uncited") or 0) for d in l37["loops"].values())
             l37["names_removed"] = {k: d["names_removed"] for k, d in l37["loops"].items() if d.get("names_removed")}
+        if transcribed:
+            # A vision-model transcript is not the client's verbatim text (audit critic-G8).
+            out["meta"]["transcribed"] = transcribed
+            out["loop2_brief"].setdefault("open_questions", []).append({
+                "question": f"This brief was transcribed from an image ({transcribed}); check every figure, "
+                            f"name and date against the original before treating it as the client's words.",
+                "why_it_matters": "the transcript is a model's reading, not the document",
+                "priority": "high", "blocks_field": ""})
         clip = _clip_report(text, CLIP_EXTRACT)
         if clip:
             # The models read the first CLIP_EXTRACT characters; say what they did not read.
