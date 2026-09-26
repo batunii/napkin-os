@@ -544,6 +544,12 @@ class JevBackend:
             raise BackendNotConfigured(f"{NAME}: " + "; ".join(problems))
         self._client = client
         self.last_call: dict = {}
+        # One score() at a time per backend. build_multi validates five fields concurrently,
+        # each score() runs up to `concurrency` workers, and 20 requests on one client at
+        # once produced SSL "bad record MAC" connection errors on 3 of 5 fields (checkpoint
+        # run 2026-09-26). Sequential calls cost ~0.7 s each warm; the batches inside a
+        # call stay concurrent.
+        self._score_lock = threading.Lock()
 
     def _build_client(self, sdk, env: Mapping[str, str], problems: list[str]):
         """Construct the real TypeSafeClient, recording (not raising) what is missing.
@@ -624,6 +630,12 @@ class JevBackend:
         started = time.monotonic()
         if not passages:
             return []
+        with self._score_lock:                    # calls from several threads run one at a time
+            return self._score_locked(query, passages, deadline_s, started)
+
+    def _score_locked(self, query: Query, passages: list[Passage], deadline_s: float, started: float) -> list[Verdict]:
+        """score() proper, entered under _score_lock; the deadline still counts from `started`,
+        so time spent waiting for the lock is part of the call's budget."""
         stranded = stranded_workers()
         if stranded >= MAX_STRANDED:
             raise BackendUnavailable(f"{NAME}: {stranded} abandoned requests are still hung; "

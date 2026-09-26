@@ -628,6 +628,9 @@ def critic_prompts_batched(schema, brief, validation):
             lines = [f"  {d}: {json.dumps(_val(brief, d), ensure_ascii=False)}" for d in deps]
             context = "\nCONTEXT (fields this one must stay consistent with):\n" + "\n".join(lines) + "\n"
         tests = "\n".join(f'- {c["id"]}: {c["test"]}' for c in checks)
+        contrast = ("PROPOSITION vs COPY (the not_a_tagline test; convergence is allowed):\n"
+                    + "\n".join(f"  - {c}" for c in field["contrast_examples"]) + "\n"
+                    if field.get("contrast_examples") else "")
         out.append({
             "field": fr["id"], "checks": [c["id"] for c in checks],
             "prompt": (
@@ -635,6 +638,7 @@ def critic_prompts_batched(schema, brief, validation):
                 f"WHAT THE FIELD IS: {field['prompt']}\n"
                 f"GOOD EXAMPLE (a different brand — shape only): {field['good_example']}\n"
                 f"BAD EXAMPLE: {field['bad_example']}  ({field['bad_reason']})\n"
+                f"{contrast}"
                 f"{context}"
                 f"FIELD VALUE:\n{json.dumps(v, ensure_ascii=False, indent=2)}\n\n"
                 f"Judge the VALUE on EACH test independently:\n{tests}\n\n"

@@ -249,7 +249,7 @@ Free-text stays free-text for the craft fields (insight, smp, audience) — neve
     "audience": {
       "zone": 2, "type": "string", "required": true, "max_words": 80,
       "prompt": "One real human, not a demographic cell. What they want, fear and do; how they decide. Avoid clichés like 'millennials.'",
-      "good_example": "Conor, 29, Dublin. Drinks craft cans because they signal taste, not tradition. Wouldn't be seen holding a pint of the 'big' lager — that's his uncle's drink.",
+      "good_example": "Busy (working) mothers. A 'Life is Sweet' / 'food is love' family where mum tends to over-feed everyone. She keeps the fridge well stocked as family meal-times can be erratic. (BBH, Cadbury's Chocolate Trifle brief, 24 Jan 1995)",
       "bad_example": "ABC1 males 18–34, urban, social, brand-aware.",
       "bad_reason": "A data cell, not a human; tells us nothing about motivation.",
       "depends_on": ["budget_scope"], "provenance_required": true

@@ -609,9 +609,9 @@ def _gen_field_system(field, n: int = 1) -> str:
         f"You are a senior strategy planner writing the '{field['label']}' field of a brief "
         f"for THIS specific brand. Write it now — do not extract it, derive it.\n\n"
         f"WHAT THIS FIELD IS: {field.get('prompt','')}\n{lim}\n"
-        f"STYLE REFERENCE (a DIFFERENT brand — copy the depth/shape ONLY, never its words, "
-        f"brand, topic; and NEVER mention it in your rationale):\n"
-        f"  {field.get('good_example','')}\n\n"
+        f"STYLE REFERENCES (DIFFERENT brands, different shapes — copy the depth ONLY, never the "
+        f"words, brand, topic or construction of any one of them; and NEVER mention them in your rationale):\n"
+        f"{_good_examples_block(field)}\n\n"
         f"BAD — never produce anything like this:\n"
         f"  {field.get('bad_example','')}  ({field.get('bad_reason','')})\n"
         f"{own}\n"
@@ -630,6 +630,14 @@ def _gen_field_system(field, n: int = 1) -> str:
            f'{{"value": {out_shape}, "confidence": 0.0-1.0, "rationale": "one line — never '
            f'mention the style reference"}}]}}')
     )
+
+
+def _good_examples_block(field) -> str:
+    """The field's good examples as indented lines: `good_examples` when the schema lists
+    several (the SMP shows three sourced propositions of different shapes, so a writer
+    cannot copy one construction — R1 §4.3, §5.4), else the single `good_example`."""
+    exs = field.get("good_examples") or ([field["good_example"]] if field.get("good_example") else [])
+    return "\n".join(f"  - {e}" for e in exs) or "  (none)"
 
 
 def _coerce_candidates(o) -> list:
@@ -954,9 +962,12 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
         judge = _json_call(
             (f"UPSTREAM CONTEXT (use this to judge derivation/ownability — do NOT re-test it):\n{ctx}\n\n"
              if ctx else "")
-            + f"FIELD: {field['label']}\nGOOD shape (different brand, do not copy): {field.get('good_example','')}\n"
-            f"BAD: {field.get('bad_example','')} ({field.get('bad_reason','')})\n\n"
-            f"TESTS (judge EVERY candidate on each):\n{tests}\n\nCANDIDATES:\n{listing}",
+            + f"FIELD: {field['label']}\nGOOD shapes (different brands, do not copy):\n{_good_examples_block(field)}\n"
+            f"BAD: {field.get('bad_example','')} ({field.get('bad_reason','')})\n"
+            + ("PROPOSITION vs COPY, for the not-a-tagline test:\n"
+               + "\n".join(f"  - {c}" for c in field["contrast_examples"]) + "\n"
+               if field.get("contrast_examples") else "")
+            + f"\nTESTS (judge EVERY candidate on each):\n{tests}\n\nCANDIDATES:\n{listing}",
             accept=lambda o: isinstance(o, dict) and isinstance(o.get("results"), dict),
             system=("You are a strategy director judging candidate '" + field["label"] + "' values for a "
                     "creative brief — fair but rigorous. Judge each candidate on each test on its own "
@@ -3628,10 +3639,19 @@ def render_golden_provenance(L, brief):
            if isinstance(f, dict) and f.get("source") == "inferred" and f.get("method", "").startswith("gen:")]
     miss = [(fid, f) for fid, f in gf.items()
             if isinstance(f, dict) and f.get("source") == "missing" and f.get("reason")]
-    if not gen and not miss:
+    prov = (brief.get("loop2_golden") or {}).get("provenance") or {}
+    if not gen and not miss and not prov:
         return
     L.append("\n## Generated strategy — RAG provenance  \n"
              "_Review only; never rendered in the client brief._\n")
+    if prov:
+        # Which lines are the client's, which are our reading, which we wrote (Sai,
+        # 2026-09-26: shown here and carried in the brief object, not on the client page).
+        L.append("**Provenance of every field**\n")
+        for fid, p in prov.items():
+            conf = f" (confidence {p['confidence']:.2f})" if isinstance(p.get("confidence"), (int, float)) else ""
+            L.append(f"- {fid.replace('_', ' ')}: {p['mark']}{conf}")
+        L.append("")
     for fid, f in gen:
         label = fid.replace("_", " ")
         conf = f.get("confidence")
@@ -3750,6 +3770,52 @@ def _retrieval_fields_from_golden(gb: dict) -> dict:
     if "background_context" in out:
         out["business_problem"] = out["background_context"]
     return out
+
+
+PROVENANCE_MARKS = {"client_stated": "client-stated", "generated": "proposed (written by the tool)",
+                    "inferred": "our assumption, to confirm", "missing": "missing"}
+
+
+def _mark_provenance(out: dict) -> None:
+    """Label every golden field with where its value came from, for the reviewer and the
+    lineage — NOT for the client page (Sai, 2026-09-26: the marks go to review.md and the
+    brief object so they can ride into the CLAN context / lineage when the RAG module joins
+    the rest of the system; the client brief stays clean). Writes
+    loop2_golden.provenance = {field: {kind, mark, confidence}} where kind is client_stated,
+    generated (source inferred, method gen:*), inferred (the extractor's reading) or
+    missing; and, for an inferred value below the schema's confidence floor, appends an
+    open question so a guess is confirmed before it is treated as a fact (audit H2/F4c).
+    Idempotent: a question already present for the field is not added twice."""
+    gf = (out.get("loop2_golden") or {}).get("fields") or {}
+    try:
+        floor = float(json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
+                      .get("confidence_floor") or 0.6)
+    except Exception:  # noqa: BLE001 — a missing schema must not fail the run
+        floor = 0.6
+    prov, qs = {}, out["loop2_brief"].setdefault("open_questions", [])
+    asked = {q.get("blocks_field") for q in qs if isinstance(q, dict)}
+    for fid, e in gf.items():
+        if not isinstance(e, dict):
+            continue
+        src = e.get("source")
+        if src == "client_stated":
+            kind = "client_stated"
+        elif src == "inferred" and str(e.get("method") or "").startswith("gen:"):
+            kind = "generated"
+        elif src == "inferred":
+            kind = "inferred"
+        else:
+            kind = "missing"
+        conf = _conf(e.get("confidence"))
+        prov[fid] = {"kind": kind, "mark": PROVENANCE_MARKS[kind], "confidence": conf}
+        if kind == "inferred" and _golden_text(e.get("value")) and (conf is None or conf < floor) and fid not in asked:
+            label = fid.replace("_", " ")
+            qs.append({"question": f"Confirm the {label}: it is our assumption"
+                                   + (f" at confidence {conf:.2f}" if conf is not None else " with no confidence reported")
+                                   + ", not something the brief states.",
+                       "why_it_matters": "an inferred value below the confidence floor must not be treated as a client fact",
+                       "priority": "medium", "blocks_field": fid})
+    out["loop2_golden"]["provenance"] = prov
 
 
 def _warm_validator() -> None:
@@ -3990,6 +4056,8 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs
                 out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)
+        if out.get("loop2_golden"):
+            _mark_provenance(out)
         if f_synth:
             l37["synthesis_mode"] = f_synth.result()
         sc = f_score.result()

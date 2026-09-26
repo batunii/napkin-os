@@ -267,6 +267,34 @@ def test_unconfigured_validator_runs_the_brief_unvalidated_and_says_so(monkeypat
     assert "UNVALIDATED" in capsys.readouterr().err
 
 
+def test_jev_score_calls_from_several_threads_run_one_at_a_time():
+    """Five concurrent score() calls (build_multi's five fields) never overlap on the
+    client: the checkpoint run of 2026-09-26 saw SSL 'bad record MAC' errors on 3 of 5
+    fields with 20 requests in flight on one client."""
+    import threading
+    import types
+    in_flight, peak, lock = [0], [0], threading.Lock()
+
+    class Client:
+        """Counts overlapping calls; answers every Noul with 0.6."""
+        def system_one(self, state, questions, *, model, timeout):
+            with lock:
+                in_flight[0] += 1; peak[0] = max(peak[0], in_flight[0])
+            time.sleep(0.02)
+            with lock:
+                in_flight[0] -= 1
+            return types.SimpleNamespace(nouls={n: types.SimpleNamespace(noul=0.6) for n in questions},
+                                         model=model, usage=types.SimpleNamespace(input_tokens=1))
+    b = jj.JevBackend(Client(), env={}, concurrency=1)
+    out = {}
+    def one(i):
+        out[i] = b.score(jb.Query(f"q{i}"), [jb.Passage(f"p{i}", "t", "craft")], deadline_s=5)
+    ts = [threading.Thread(target=one, args=(i,)) for i in range(5)]
+    [t.start() for t in ts]; [t.join(5) for t in ts]
+    assert len(out) == 5 and all(v[0].score == 0.6 for v in out.values())
+    assert peak[0] == 1
+
+
 def test_jev_warm_makes_one_tiny_request_and_swallows_failures():
     """JevBackend.warm() sends one request; a failing client gives False, not an exception."""
     calls = []
