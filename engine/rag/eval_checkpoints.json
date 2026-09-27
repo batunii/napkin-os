@@ -101,6 +101,17 @@
    "role": "variant",
    "what": "Same code as 30e890f with insight and SMP drafts + sharpening on Opus 5.5 (their judges fall to Sonnet 5)",
    "comparable": true
+  },
+  {
+   "id": "2d9370c",
+   "order": 9,
+   "dir": "checkpoint_2d9370c",
+   "arm": "after",
+   "commit": "2d9370c",
+   "date": "2026-09-27",
+   "role": "change",
+   "what": "Refactor (ADR 0012): parse_brief split into brief_llm / brief_ingest / brief_render, one .env loader, dead code out; behaviour meant to be unchanged",
+   "comparable": true
   }
  ]
 }
