@@ -133,6 +133,9 @@ def test_schema_goes_to_json_schema_and_structured_output_is_returned(cli):
     out = pb._call_link("anthropic", "claude-sonnet-5", "x", json_mode=True, schema=schema)
     assert json.loads(_flag(calls[0]["cmd"], "--json-schema")) == schema
     assert json.loads(out) == {"a": 3}
+    # the structured-output tool needs turns of its own (2026-09-28: one turn lost judge rounds)
+    import brief_llm
+    assert _flag(calls[0]["cmd"], "--max-turns") == brief_llm.CLI_SCHEMA_TURNS == "3"
 
 
 def test_usage_is_recorded_under_the_anthropic_label(cli):

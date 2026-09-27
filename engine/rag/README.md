@@ -514,6 +514,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `RAG_VALIDATION_MODE` | `order` | `order` re-sorts by validator score and drops nothing; `gate` also drops what fails the threshold (measured unsafe for briefs: keeps 1/24 useful client exemplars) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
 | `RAG_VALIDATOR` | unset: `jev` on the brief path (Sai, 2026-09-26), off for `rag_io` callers | Validation chain in priority order, e.g. `jev,nemotron`; `none` switches it off on the brief path |
+| `PAIRWISE_MODEL` / `PAIRWISE_SAMPLES` / `PAIRWISE_WORKERS` | `claude-sonnet-5` / `3` / `2` | the head-to-head judge (`pairwise.py`, opt-in via `checkpoint_run.py --pairwise` or `e2e_eval.py --pairwise`): model, rounds (each asked in both orders), calls in parallel (the Claude Code login rate-limits more) |
 | `RAG_STORE_MEMO` | `1` | `0` opens a fresh local store on every `get_store()` call instead of one per process (ADR 0010) |
 | `RAG_VALIDATOR_DEADLINE_S` | `3.0` | Per-call deadline for backends that declare none |
 | `RAG_LOCAL_RERANKER`, `RAG_LOCAL_DEVICE` | `BAAI/bge-reranker-v2-m3`, mps/cpu | Local cross-encoder |

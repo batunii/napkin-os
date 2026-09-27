@@ -67,6 +67,42 @@ def run_one(tree: Path, stem: str, env_extra: dict, out_dir: Path) -> dict:
     return row
 
 
+def pairwise_arms(out: Path, briefs: list, a_arm: str, b_arm: str) -> dict:
+    """Head-to-head per brief: arm `a_arm`'s finished client brief against `b_arm`'s, judged
+    blind in both orders over PAIRWISE_SAMPLES rounds (pairwise.judge_pair). Reads each arm's
+    saved client_brief.md, so it works on reused arms too. {stem: result or {"error"}}."""
+    sys.path.insert(0, str(ENGINE))
+    import pairwise
+    import parse_brief as pb
+    res = {}
+    for stem in briefs:
+        fa = out / a_arm / f"trace_mix_{stem}" / "client_brief.md"
+        fb = out / b_arm / f"trace_mix_{stem}" / "client_brief.md"
+        if not (fa.exists() and fb.exists()):
+            res[stem] = {"error": f"missing client_brief.md for {a_arm if not fa.exists() else b_arm}"}
+            continue
+        src = next((f for f in (ENGINE.parent / "client_briefs").iterdir() if f.stem == stem), None)
+        text = pb.ingest(src)[0] if src else ""
+        r = pairwise.judge_pair(text, fa.read_text(), fb.read_text(), key=stem, pb=pb)
+        res[stem] = r if r else {"error": "the judge gave no usable round"}
+        print(f"[pairwise] {stem}: {res[stem].get('verdict', res[stem].get('error'))}", file=sys.stderr, flush=True)
+    return res
+
+
+def render_pairwise(pw: dict, a_arm: str, b_arm: str) -> str:
+    """Markdown for the head-to-head: verdict, round wins, order consistency, mean scores."""
+    L = [f"## Head to head: {a_arm} (A) against {b_arm} (B)", "",
+         "Blind, both orders per round, a round the orders disagree on is a tie.", "",
+         "| brief | verdict | A wins | B wins | ties | orders agreed | A score | B score |", "|---|---|---|---|---|---|---|---|"]
+    for stem, r in pw.items():
+        if "error" in r:
+            L.append(f"| {stem} | not judged: {r['error']} | | | | | | |")
+            continue
+        L.append(f"| {stem} | {r['verdict']} | {r['wins']['A']} | {r['wins']['B']} | {r['wins']['tie']} | "
+                 f"{int(r['consistency'] * 100)}% | {r['scores']['A']} | {r['scores']['B']} |")
+    return "\n".join(L) + "\n"
+
+
 def render(label: str, arms: dict, rows: dict) -> str:
     """Markdown: one table per brief across arms, then the per-check differences."""
     L = [f"# Checkpoint run {label}", "",
@@ -102,6 +138,9 @@ def main() -> None:
     ap.add_argument("--briefs", default="mamaliga-engleza,employer-awareness-campaign-brief,friskies-engleza")
     ap.add_argument("--arms", default="before,after")
     ap.add_argument("--label", default=None)
+    ap.add_argument("--pairwise", default=None, metavar="A,B",
+                    help="after the runs, judge arm A's brief against arm B's per brief, blind, both "
+                         "orders (pairwise.py), e.g. --pairwise after,before")
     ap.add_argument("--reuse", default=None,
                     help="an earlier checkpoint dir whose arms (those not named in --arms) are copied "
                          "instead of re-run, e.g. the 'before' arm, which does not change between checkpoints")
@@ -137,7 +176,13 @@ def main() -> None:
             rows[arm][stem] = run_one(tree, stem, env_extra, out / arm)
             print(f"[{arm}] {stem}: {rows[arm][stem]}", file=sys.stderr, flush=True)
             (out / "rows.json").write_text(json.dumps(rows, indent=1))
-    (out / "report.md").write_text(render(label, arms, rows))
+    report = render(label, arms, rows)
+    if a.pairwise:
+        pa, pb_arm = [x.strip() for x in a.pairwise.split(",")][:2]
+        pw = pairwise_arms(out, briefs, pa, pb_arm)
+        (out / "pairwise.json").write_text(json.dumps(pw, indent=1))
+        report += "\n" + render_pairwise(pw, pa, pb_arm)
+    (out / "report.md").write_text(report)
     print((out / "report.md").read_text())
     print(f"-> {out}", file=sys.stderr)
 

@@ -566,6 +566,12 @@ def _model_chain(model=None) -> list:
 # the API's default effort for those that do (Opus 5.5 medium, others high); the caller's
 # max_tokens (plus the same thinking headroom) as the output cap.
 CLI_TIMEOUT_S = float(os.environ.get("BRIEF_CLI_TIMEOUT", "240"))
+# A --json-schema call answers through Claude Code's structured-output tool, which takes a
+# turn of its own, and takes another when its first reply does not match the schema. At
+# --max-turns 1 such a call ended "claude CLI failed (exit 1)" with stop_reason tool_use
+# (2026-09-28: 2 of 3 judge rounds lost, a synthesis pushed to its fallback). With no
+# other tools offered (--tools ""), extra turns can only be structured-output attempts.
+CLI_SCHEMA_TURNS = "3"
 _CLI_DEFAULT_EFFORT = {"claude-opus-5-5": "medium"}
 
 
@@ -711,7 +717,7 @@ def _chat_claude_cli(user, system=None, max_tokens=None, schema=None, model=None
         raise RuntimeError("claude CLI not on PATH (BRIEF_CLAUDE_TRANSPORT=cli)")
     _stats_call(f"anthropic:{model}", len(system or DEFAULT_SYSTEM) + len(user))
     cmd = ["claude", "-p", "--model", model, "--system-prompt", system or DEFAULT_SYSTEM,
-           "--tools", "", "--max-turns", "1", "--output-format", "json",
+           "--tools", "", "--max-turns", CLI_SCHEMA_TURNS if schema else "1", "--output-format", "json",
            "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config"]
     env = {**os.environ,
            "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(int(max_tokens or MAXTOK_EXTRACT) + _thinking_headroom(model))}
