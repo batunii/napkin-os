@@ -26,6 +26,8 @@ SAMPLE = {"ipa/cases": 15, "cannes": 15, "dandad": 15, "playbooks": 10, "briefin
 
 
 def sample_dir(rel: str, n: int) -> int:
+    """Copy an evenly-strided sample of up to n markdown files from reference/rag/<rel> into
+    the test corpus (flattening ipa/cases to ipa), and return how many files were copied."""
     src = SRC / rel
     files = sorted(src.glob("*.md"))
     if not files:
@@ -82,6 +84,8 @@ EFFIE = [
 
 
 def write_effie() -> int:
+    """Write the fixed set of synthetic, clearly-labeled Effie test cases (from EFFIE) as
+    markdown files under the test corpus, and return how many were written."""
     out = DST / "effie"
     out.mkdir(parents=True, exist_ok=True)
     for i, (tier, region, sector, title, challenge, insight, strategy, results) in enumerate(EFFIE, 1):
@@ -126,6 +130,8 @@ _SYNTHETIC TEST FIXTURE — fictional case for pipeline testing only. Not a real
 
 
 def main():
+    """Rebuild the test corpus from scratch: wipe DST, stratified-sample each real source per
+    SAMPLE, write the synthetic Effie fixtures, and print a per-source count plus the build command."""
     if DST.exists():
         shutil.rmtree(DST)
     totals = {}

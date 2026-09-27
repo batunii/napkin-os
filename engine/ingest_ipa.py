@@ -53,6 +53,7 @@ def _flatten_intel(value) -> str:
 
 
 def _is_empty_intelligence(intel: dict) -> bool:
+    """True if every field of the intelligence dict is missing or flattens to "not recorded"."""
     if not intel or not isinstance(intel, dict):
         return True
     return all(not _flatten_intel(v) or _flatten_intel(v) == "not recorded"
@@ -60,6 +61,7 @@ def _is_empty_intelligence(intel: dict) -> bool:
 
 
 def build_markdown(index: int, case: dict) -> str:
+    """Render one IPA case into a frontmatter-tagged markdown document with retrieval queries."""
     meta = case.get("meta") or {}
     cannes = case.get("cannes_crossref") or {}
     intel = case.get("intelligence") or {}
@@ -136,6 +138,8 @@ tags: {tags_yaml}
 
 
 def main():
+    """Load intelligence_layer.json, write one markdown case file per non-empty case to OUT_DIR,
+    and print how many were written vs skipped. Exits with an error if the source JSON is missing."""
     if not IPA_JSON.exists():
         sys.exit(f"intelligence_layer.json not found at: {IPA_JSON}")
 

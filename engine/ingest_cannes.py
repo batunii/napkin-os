@@ -107,6 +107,8 @@ def _is_empty(case: dict) -> bool:
 
 
 def build_markdown(index: int, case: dict) -> str:
+    """Render one Cannes case into a frontmatter-tagged markdown document with retrieval queries,
+    preferring scraped free-form sections over the fixed narrative field mapping."""
     framework_id = f"cannes_{index:04d}"
     title = _pick(case, "title", "campaign", "name")
     year = _pick(case, "year", "released_year")
@@ -165,6 +167,8 @@ tags: {tags_yaml}
 
 
 def main():
+    """Load the Cannes export (path arg or DEFAULT_INPUT), write one markdown file per non-empty
+    case to OUT_DIR, and print a wrote/skipped summary. Exits with an error if the input is missing."""
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_INPUT
     if not src.exists():
         sys.exit(

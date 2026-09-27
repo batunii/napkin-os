@@ -32,6 +32,9 @@ DEFAULT_CASE_LOOPS = ("loop4_insight", "loop6_substantiation")
 
 @dataclass
 class Pack:
+    """A knowledge pack: one corpus directory (or its packs.lock entry) with its index tag,
+    kind, precedent depth, and which loops it's eligible for."""
+
     id: str                      # dirname
     tag: str                     # metadata.source value in the index
     kind: str = "case"           # case | playbook | template
@@ -42,6 +45,7 @@ class Pack:
     active: bool = True
 
     def eligible(self, loop_key: str) -> bool:
+        """True if this pack is active and (has no loop restriction or lists loop_key)."""
         return self.active and (not self.loops or loop_key in self.loops)
 
 
@@ -93,6 +97,8 @@ def lock_path() -> Path:
 
 
 def _pack_from_dir(d: Path) -> Pack:
+    """Build a Pack from a corpus directory, reading its optional pack.yaml overrides and
+    treating an underscore-prefixed dirname as deactivated."""
     cfg = {}
     py = d / "pack.yaml"
     if py.is_file():

@@ -40,6 +40,9 @@ _SNIPPET_CHARS = 420
 
 
 def _gist(text: str) -> dict | None:
+    """Summarise a client brief into a terse JSON gist (client/market/problem/objective/
+    audience/competitors/category) via a model call, for use as query/filter material.
+    Returns None if the call fails or produces no usable object."""
     # `category` is not decoration: it is the filter that decides whether an automotive
     # brief retrieves automotive precedent or the whole corpus. Constrained to the locked
     # contract list, and left empty rather than guessed — brief_context widens on its own
@@ -125,6 +128,10 @@ def _corpus_track(gist: dict) -> list[dict]:
 
 
 def _web_track(gist: dict) -> list[dict]:
+    """Return live web findings for the brief's client/market/problem/competitors, by shelling
+    out to headless `claude -p` with WebSearch, when RESEARCH_WEB=claude; otherwise returns [].
+    Parses the model's JSON array of {claim, url, date} findings, dropping any without a claim
+    and url, and returns [] on a non-zero exit, timeout, or unparsable output."""
     mode = os.environ.get("RESEARCH_WEB", "off").strip().lower()
     if mode != "claude":
         return []
@@ -155,6 +162,10 @@ def _web_track(gist: dict) -> list[dict]:
 
 
 def gather(text: str, clan_data: dict | None = None) -> tuple[str | None, str | None]:
+    """Build the research dossier for a client brief: gist the brief, pull corpus precedent and
+    (if enabled) live web findings, and render both a full dossier (grouped by bucket, for the
+    engine's context panel) and a short markdown summary. Returns (None, None) when no gist can
+    be produced or neither track yields anything — i.e. no research is possible."""
     gist = _gist(text)
     if not gist:  # keyless mode — no research possible
         return None, None

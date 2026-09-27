@@ -52,8 +52,10 @@ def test_cli_runs_isolated_without_the_api_key(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-not-reach-the-cli")
     seen = {}
     def fake_run(cmd, **kw):
+        """Test stub: stands in for `subprocess.run`, capturing the cmd/env it was called with."""
         seen["cmd"], seen["env"] = cmd, kw.get("env")
         class P:
+            """Test stub: a fake completed-process result with a canned zero-usage JSON reply."""
             returncode, stdout, stderr = 0, json.dumps({"result": "{}", "usage": {}}), ""
         return P()
     monkeypatch.setattr(subprocess, "run", fake_run)

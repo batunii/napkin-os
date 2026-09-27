@@ -16,10 +16,12 @@ class _Retriever:
     """A retriever whose store is down."""
     @staticmethod
     def index_available(index_dir=None):
+        """Test stub: stands in for `index_available` in a retriever whose store is down."""
         return False
 
     @staticmethod
     def index_label(index_dir=None):
+        """Test stub: stands in for `index_label` in a retriever whose store is down."""
         return "qdrant:unavailable (ConnectError)"
 
 

@@ -46,6 +46,7 @@ _DIGEST_DIR = Path(os.environ.get(
 
 
 def _load_digests() -> str:
+    """Read every packs_dist/*/digest.md into one concatenated, headed markdown blob."""
     parts = []
     if _DIGEST_DIR.is_dir():
         for d in sorted(_DIGEST_DIR.glob("*/digest.md")):
@@ -75,6 +76,7 @@ def usage_of(env: dict) -> dict:
 
 
 def approx_tokens(chars: int) -> int:
+    """Rough chars-to-tokens conversion for attributing context sections in the debug log."""
     return chars // 4  # rough chars→tokens for attributing context sections
 
 
@@ -263,17 +265,25 @@ def build_prompt(payload: dict, clan: dict) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
+    """HTTP handler for the mock agent server: GET /stats for token/cost totals, POST for a
+    draft/regenerate call to Claude Code."""
+
     def log_message(self, *a):  # quieter default logging
+        """Replace the default access-log line with a plain print of its args."""
         print(a)
         pass
 
     def do_GET(self):
+        """Serve GET /stats with the cumulative token/cost tally; anything else is a 404."""
         # GET /stats → cumulative token + cost tally for the session.
         if self.path.rstrip("/") == "/stats":
             return self._send(200, TOTALS)
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        """Read the JSON payload/clan body, build the prompt, call Claude Code, filter the
+        reply to safe fields, update the running usage totals, and send back the fields (or a
+        502 with the error) as JSON."""
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length).decode("utf-8", "replace")
         try:
@@ -336,6 +346,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(502, {"error": str(e)})
 
     def _send(self, code, obj):
+        """Write obj as a JSON response body with the given status code."""
         data = json.dumps(obj).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")

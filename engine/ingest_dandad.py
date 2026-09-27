@@ -28,14 +28,17 @@ OUT_DIR = HERE / "reference" / "rag" / "dandad"
 
 
 def _slug(text: str) -> str:
+    """Lowercase, replace non-alphanumeric with hyphens, collapse runs."""
     return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9]+", "-", str(text).lower())).strip("-")
 
 
 def _clean(v) -> str:
+    """Collapse any whitespace run to a single space and strip, coercing None to ""."""
     return re.sub(r"\s+", " ", str(v or "")).strip()
 
 
 def _g(case: dict, *keys, default="not recorded") -> str:
+    """Return the first cleaned, non-empty value found under any of keys, else default."""
     for k in keys:
         v = _clean(case.get(k))
         if v:
@@ -44,6 +47,7 @@ def _g(case: dict, *keys, default="not recorded") -> str:
 
 
 def build_markdown(index: int, case: dict) -> str:
+    """Render one D&AD case into a frontmatter-tagged markdown document with retrieval queries."""
     title = _g(case, "title", "name")
     year = _g(case, "year")
     client = _g(case, "client", "brand")
@@ -86,6 +90,9 @@ tags: [{", ".join(tags)}]
 
 
 def main():
+    """Load the scraped D&AD JSON (path arg or DEFAULT_INPUT), write one markdown file per case
+    with usable description text to OUT_DIR, and print a wrote/skipped summary. Exits with an
+    error if the input file or its record list is missing/empty."""
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_INPUT
     if not src.exists():
         sys.exit(f"D&AD export not found at: {src}\nDrop the scraped JSON there, then re-run.")
