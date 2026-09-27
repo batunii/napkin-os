@@ -92,7 +92,7 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `GEMINI_API_KEY` / `OPENAI_API_KEY` | optional further chat links, auto-detected |
 | `BRIEF_RETRIEVE_FROM` | `golden` (default): retrieval starts from the golden extraction, 16–26 s earlier, with the capture as fallback; `capture`: retrieval waits for the Loop 1 capture. A/B on 3 briefs: health 216 = 216, faster on every brief |
 | `BRIEF_THINKING_HEADROOM` / `BRIEF_LINK_TIMEOUT` | extra output tokens for Claude models that think by default (2500) / per-request timeout for OpenAI-compatible links (90 s) |
-| `CRITIC_MODEL` | model for `golden_critic.py --judge` (default `claude-sonnet-5`) |
+| `CRITIC_MODEL` / `CRITIC_SAMPLES` | the independent critic: model (default `claude-sonnet-5`) and samples per brief (default `1`); with more than one, each check keeps the majority verdict and an even split is REVIEW (`golden_critic.run_critic_sampled`). On mamaliga, three Fable 5.1 samples spread 2 health points against Sonnet's 5. `checkpoint_run.py --critic claude-fable-5-1x3` sets both for a run |
 | `BRIEF_CLI_TIMEOUT` / `BRIEF_CLI_EFFORT` | Claude Code login transport: seconds per `claude -p` call (240) / force one `--effort` for every thinking-model call (default: the job's effort, else the model's API default) |
 | `BRIEF_CORPUS` / `BRIEF_PACKS_LOCK` | pack sync: corpus root (default `engine/reference/rag` or `../reference/rag`) / path of `packs.lock` (default `engine/packs.lock`) |
 | `BRIEF_RESEARCH` / `RESEARCH_WEB` | agent server: `0` turns the research dossier off (default on) / `claude` adds the web track through `claude -p` with WebSearch (default `off`) |

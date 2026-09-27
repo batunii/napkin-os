@@ -224,9 +224,10 @@ def trace_one(stem: str, path: str = "mix") -> dict:
         gb = gc.from_brief_object(brief)
         v = gc.validate(schema, gb)
         unjudged = v["health"]
-        v, judged_n = gc.run_critic_one_call(schema, gb, v)
+        v, judged_n = gc.run_critic_sampled(schema, gb, v)     # CRITIC_MODEL x CRITIC_SAMPLES (default Sonnet x1)
         qsplit = gc.quality_split(schema, gb, v)
         score = {"health": v["health"] if judged_n else None, "health_unjudged": unjudged,
+                 "critic_samples": v.get("critic_samples"),
                  "judged_checks": judged_n, "judge_model": v.get("judge_model"),
                  "quality": qsplit["quality"], "client_gaps": qsplit["client_gaps"],
                  "failed_checks": [f"{fr['id']}.{c['id']}" for fr in v["fields"] for c in fr["checks"]

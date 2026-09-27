@@ -67,6 +67,36 @@ def run_one(tree: Path, stem: str, env_extra: dict, out_dir: Path) -> dict:
     return row
 
 
+DEFAULT_CRITIC = "claude-fable-5-1x3"      # Sai, 2026-09-28: every checkpoint from now on
+
+
+def score_row(out_dir: Path, stem: str, row: dict, critic: str) -> dict:
+    """Score one arm's saved brief with THIS tree's critic (golden_critic.run_critic_sampled: the
+    model, N samples, majority per check), whatever tree wrote it, so every arm of a
+    checkpoint is graded by the same critic (an old worktree's own critic is Sonnet x1).
+    The trace's own score is kept as health_trace / quality_trace. No-op without a brief."""
+    bo = out_dir / f"trace_mix_{stem}" / "brief_object.json"
+    if not bo.exists() or row.get("critic") == critic:
+        return row
+    sys.path.insert(0, str(ENGINE))
+    import golden_critic as gc
+    model, _, n = critic.partition("x")
+    schema = json.loads(gc.SCHEMA_PATH.read_text())
+    gb = gc.from_brief_object(json.loads(bo.read_text()))
+    v = gc.validate(schema, gb)
+    v, judged = gc.run_critic_sampled(schema, gb, v, model=model, samples=int(n or 1))
+    q = gc.quality_split(schema, gb, v)
+    row = {**row, "health_trace": row.get("health"), "quality_trace": row.get("quality"),
+           "critic": critic, "critic_samples": v.get("critic_samples"), "judged": judged,
+           "judge_model": v.get("judge_model"),
+           "health": v["health"] if judged else None, "quality": q["quality"] if judged else None,
+           "failed_checks": [f"{fr['id']}.{c['id']}" for fr in v["fields"] for c in fr["checks"] if c["status"] == "fail"],
+           "signoff_fails": [d["id"] for d in v["definition_of_done"] if d["status"] == "fail"]}
+    print(f"[critic] {stem}: health {row['health']} (trace {row['health_trace']}), spread "
+          f"{(row.get('critic_samples') or {}).get('spread')}", file=sys.stderr, flush=True)
+    return row
+
+
 def pairwise_arms(out: Path, briefs: list, a_arm: str, b_arm: str) -> dict:
     """Head-to-head per brief: arm `a_arm`'s finished client brief against `b_arm`'s, judged
     blind in both orders over PAIRWISE_SAMPLES rounds (pairwise.judge_pair). Reads each arm's
@@ -105,7 +135,8 @@ def render_pairwise(pw: dict, a_arm: str, b_arm: str) -> str:
 
 def render(label: str, arms: dict, rows: dict) -> str:
     """Markdown: one table per brief across arms, then the per-check differences."""
-    L = [f"# Checkpoint run {label}", "",
+    critics = sorted({r.get("critic", "trace (each tree's own)") for rs in rows.values() for r in rs.values()})
+    L = [f"# Checkpoint run {label}", "", f"Scored by: {', '.join(critics)}.", "",
          "Same three briefs, Claude Code CLI, local store, Sonnet 5 judging once per brief. Three briefs and one "
          "judge sample each: treat health differences under ~13 points as noise; read the per-check lists.", ""]
     for stem in rows[next(iter(arms))]:
@@ -138,6 +169,10 @@ def main() -> None:
     ap.add_argument("--briefs", default="mamaliga-engleza,employer-awareness-campaign-brief,friskies-engleza")
     ap.add_argument("--arms", default="before,after")
     ap.add_argument("--label", default=None)
+    ap.add_argument("--critic", default=DEFAULT_CRITIC, metavar="MODEL[xN]",
+                    help=f"critic that scores every arm's saved brief, in this tree (default {DEFAULT_CRITIC}: "
+                         "Fable 5.1, 3 samples, majority per check); reused arms are re-scored when "
+                         "their critic differs; 'trace' keeps each tree's own score")
     ap.add_argument("--pairwise", default=None, metavar="A,B",
                     help="after the runs, judge arm A's brief against arm B's per brief, blind, both "
                          "orders (pairwise.py), e.g. --pairwise after,before")
@@ -167,6 +202,10 @@ def main() -> None:
             if (Path(a.reuse) / arm).exists() and not (out / arm).exists():
                 shutil.copytree(Path(a.reuse) / arm, out / arm)
             print(f"[{arm}] reused from {a.reuse}", file=sys.stderr, flush=True)
+            if a.critic != "trace":
+                # scored again with this run's critic, in THIS checkpoint's copy only: the
+                # reused checkpoint's own records are never changed (Sai: leave the past as is)
+                rows[arm] = {stem: score_row(out / arm, stem, r, a.critic) for stem, r in rows[arm].items()}
     for arm, (tree, env_extra) in arms.items():
         if rows.get(arm):
             continue                                       # reused
@@ -174,6 +213,8 @@ def main() -> None:
         for stem in briefs:
             print(f"[{arm}] {stem} …", file=sys.stderr, flush=True)
             rows[arm][stem] = run_one(tree, stem, env_extra, out / arm)
+            if a.critic != "trace":
+                rows[arm][stem] = score_row(out / arm, stem, rows[arm][stem], a.critic)
             print(f"[{arm}] {stem}: {rows[arm][stem]}", file=sys.stderr, flush=True)
             (out / "rows.json").write_text(json.dumps(rows, indent=1))
     report = render(label, arms, rows)

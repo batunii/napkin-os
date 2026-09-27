@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -45,7 +46,7 @@ def score_one(stem: str) -> dict:
     schema = json.loads(gc.SCHEMA_PATH.read_text())
     gb = gc.from_brief_object(brief)
     v = gc.validate(schema, gb)
-    v, judged = gc.run_critic_one_call(schema, gb, v)
+    v, judged = gc.run_critic_sampled(schema, gb, v)
     if not judged:
         raise RuntimeError(f"{stem}: the critic judged 0 checks - not scored")
     q = gc.quality_split(schema, gb, v)
@@ -64,8 +65,12 @@ def score_one(stem: str) -> dict:
 def main() -> None:
     """Score each brief as sent and write the rows."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--critic", default="claude-fable-5-1x3", metavar="MODEL[xN]",
+                    help="critic model and samples (default Fable 5.1 x3, as every evaluation from 2026-09-28)")
     ap.add_argument("--briefs", default="mamaliga-engleza,employer-awareness-campaign-brief,friskies-engleza")
     a = ap.parse_args()
+    m, _, n = a.critic.partition("x")
+    os.environ["CRITIC_MODEL"], os.environ["CRITIC_SAMPLES"] = m, n or "1"   # read by run_critic_sampled
     out = HERE.parent / "outputs" / "e2e" / f"as_sent_{dt.date.today().isoformat()}"
     out.mkdir(parents=True, exist_ok=True)
     rows = {}

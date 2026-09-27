@@ -701,7 +701,7 @@ CRITIC_MAX_TOKENS = 6000   # one verdict + reason per check for ~14 checks; a ce
                            # Was 4000: a run reached 3,828 (audit F8).
 
 
-def run_critic_one_call(schema, brief, validation, judge=None):
+def run_critic_one_call(schema, brief, validation, judge=None, model=None):
     """Judge EVERY pending llm check of the brief in ONE call, with a model independent of
     the one that wrote and selected the fields (Sonnet 5 by default; CRITIC_MODEL). Without
     this, each llm check is REVIEW and earns half credit, which caps health at 74. Writes
@@ -711,7 +711,8 @@ def run_critic_one_call(schema, brief, validation, judge=None):
     generator model quietly scoring its own work (audit J4). validation['judge_model']
     names the link that answered. A reply must be a whole object (whole=True): a
     truncated one judges nothing rather than the checks that fit.
-    `judge(prompt) -> dict` is injectable for tests. Returns (validation, n_judged)."""
+    `judge(prompt) -> dict` is injectable for tests; `model` overrides CRITIC_MODEL.
+    Returns (validation, n_judged)."""
     batches = critic_prompts_batched(schema, brief, validation)
     validation["judge_model"] = None
     if not batches:
@@ -727,7 +728,7 @@ def run_critic_one_call(schema, brief, validation, judge=None):
             """One call on the pinned judge model; records the answering link in `info`."""
             return parse_brief._json_call(
                 prompt, system="You are a rigorous, fair brief-quality critic. JSON only.",
-                model=JUDGE_MODEL, max_tokens=CRITIC_MAX_TOKENS, retries=1,
+                model=model or JUDGE_MODEL, max_tokens=CRITIC_MAX_TOKENS, retries=1,
                 only_model=True, whole=True, info=info)
         judge = _pinned_judge
     parts = [f"=== FIELD {b['field']} ===\n" + b["prompt"].split("Return ONLY raw JSON")[0].strip()
@@ -761,6 +762,63 @@ def run_critic_one_call(schema, brief, validation, judge=None):
     validation["health"] = _health(
         validation["fields"], validation["definition_of_done"], validation["open_questions"])
     return validation, ran
+
+
+CRITIC_SAMPLES = int(os.environ.get("CRITIC_SAMPLES", "1"))
+
+
+def run_critic_sampled(schema, brief, validation, judge=None, model=None, samples=None):
+    """The critic, sampled (phase A item 2, 2026-09-28): run_critic_one_call `samples`
+    times (CRITIC_SAMPLES, default 1 = exactly the one-call critic) and keep, per llm check,
+    the majority verdict. A check the samples split evenly on becomes REVIEW (half credit):
+    the critic could not decide. Health and definition-of-done are recomputed from the
+    majority. validation["critic_samples"] records each sample's health, the spread, the
+    share of judged checks every sample agreed on, and the model(s) that answered.
+    One critic sample moved health 5-7 points per brief with no code change; the majority
+    of three is steadier. Returns (validation, n_judged) like run_critic_one_call."""
+    import copy
+    n = max(1, int(samples or CRITIC_SAMPLES))
+    if n == 1:
+        return run_critic_one_call(schema, brief, validation, judge=judge, model=model)
+    runs = []
+    for _ in range(n):
+        v, ran = run_critic_one_call(schema, brief, copy.deepcopy(validation), judge=judge, model=model)
+        if ran:
+            runs.append(v)
+    if not runs:
+        validation["judge_model"] = None
+        return validation, 0
+    status = {}
+    for v in runs:
+        for fr in v["fields"]:
+            for c in fr["checks"]:
+                if c.get("method") == "llm" or c.get("status") in (PASS, FAIL):
+                    status.setdefault((fr["id"], c["id"]), []).append((c.get("status"), c.get("note"), c.get("fix")))
+    base = {(fr["id"], c["id"]): c for fr in validation["fields"] for c in fr["checks"]}
+    unanimous = judged = 0
+    for key, votes in status.items():
+        c = base.get(key)
+        if c is None or c.get("status") in (PASS, FAIL):      # code checks: already decided
+            continue
+        vs = [x[0] for x in votes if x[0] in (PASS, FAIL)]
+        if not vs:
+            continue
+        judged += 1
+        p, f = vs.count(PASS), vs.count(FAIL)
+        unanimous += (p == 0 or f == 0)
+        c["status"] = PASS if p > f else FAIL if f > p else REVIEW
+        pick = next((x for x in votes if x[0] == c["status"]), votes[0])
+        c["note"] = f"{p} of {len(vs)} samples pass" + (f": {pick[1]}" if pick[1] else "")
+        if c["status"] == FAIL and pick[2]:
+            c["fix"] = pick[2]
+    validation["definition_of_done"] = _run_dod(schema, brief, validation["fields"], validation["open_questions"])
+    validation["health"] = _health(validation["fields"], validation["definition_of_done"], validation["open_questions"])
+    each = [v["health"] for v in runs]
+    validation["judge_model"] = sorted({v.get("judge_model") for v in runs if v.get("judge_model")}) or None
+    validation["critic_samples"] = {"n": n, "judged_samples": len(runs), "health_each": each,
+                                    "spread": max(each) - min(each),
+                                    "unanimous_share": round(unanimous / judged, 2) if judged else None}
+    return validation, judged
 
 
 # Fields the pipeline WRITES (zone 3); everything else comes from the client's brief.
@@ -876,7 +934,7 @@ def main(argv):
         print(f"  critic ran {ran} checks")
         print(report(bo_path.parent.name, v))
     if judge_flag:
-        v, ran = run_critic_one_call(schema, brief, v)
+        v, ran = run_critic_sampled(schema, brief, v)     # CRITIC_MODEL x CRITIC_SAMPLES
         who = v.get("judge_model") or f"{JUDGE_MODEL} did not answer"
         print(f"  independent critic ({who}) judged {ran} checks in one call")
         print(report(bo_path.parent.name, v))
