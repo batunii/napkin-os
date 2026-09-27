@@ -76,8 +76,9 @@ REGISTRY: dict[str, str] = {
     "jev": "judge_jev:JevBackend",
     "nemotron": "judge_nemotron:NemotronBackend",
     "local": "judge_local:LocalCrossEncoderBackend",
-    "llm": "judge_llm:LLMJudgeBackend",
 }
+# "llm" (judge_llm.LLMJudgeBackend, a chat model as the validator) was removed on
+# 2026-09-27: never used in any run and in no planned chain (audit C11). Git history has it.
 
 DEFAULT_DEADLINE_S = 3.0
 DEFAULT_DOWN_FOR_S = 60.0

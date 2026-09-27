@@ -546,8 +546,7 @@ def test_registry_names_the_agreed_classes():
     """The registry matches the names the backend modules were built against."""
     assert judge.REGISTRY == {"jev": "judge_jev:JevBackend",
                               "nemotron": "judge_nemotron:NemotronBackend",
-                              "local": "judge_local:LocalCrossEncoderBackend",
-                              "llm": "judge_llm:LLMJudgeBackend"}
+                              "local": "judge_local:LocalCrossEncoderBackend"}
 
 
 # ---- concurrency -------------------------------------------------------------------

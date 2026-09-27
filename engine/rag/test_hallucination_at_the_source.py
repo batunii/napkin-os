@@ -82,7 +82,6 @@ def test_clip_report_and_run_say_what_was_not_read(monkeypatch):
 def test_judge_prompt_delimits_client_text():
     """The upstream context and the candidates are tagged as data (J13)."""
     seen = {}
-    import types
     pb_json = pb._json_call
     try:
         pb._json_call = lambda user, **k: seen.update(user=user) or {"ranking": [0], "results": {"0": {"a": {"pass": True}}}}

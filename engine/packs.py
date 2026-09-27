@@ -138,14 +138,6 @@ def discover_packs(root: Path | None = None) -> list[Pack]:
     return []
 
 
-def packs_for_loop(loop_key: str, kind: str | None = None,
-                   root: Path | None = None) -> list[Pack]:
-    packs = [p for p in discover_packs(root) if p.eligible(loop_key)]
-    if kind:
-        packs = [p for p in packs if p.kind == kind]
-    return packs
-
-
 def write_lock(packs: list[Pack], *, embed_model: str, dim: int,
                counts: dict[str, int] | None = None, path: Path | None = None) -> Path:
     """Written ONLY by `napkin-packs sync`. Hand-editing this file is a bug."""

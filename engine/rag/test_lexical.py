@@ -112,7 +112,7 @@ def test_term_ids_are_stable_and_fit_u32():
 def test_sparse_document_and_query_reproduce_bm25_ranking():
     """The split must rank the same as the in-process BM25, or local and remote
     retrieval would quietly disagree."""
-    from lexical import sparse_document, sparse_query, term_id
+    from lexical import sparse_document, term_id
     docs = DOCS
     idx = BM25(docs)
     avg = idx.avg_len
@@ -120,7 +120,6 @@ def test_sparse_document_and_query_reproduce_bm25_ranking():
     def sparse_score(text, query):
         """Score text against query the way the store would, from sparse vectors alone."""
         d = sparse_document(text, avg)
-        q = sparse_query(query)
         dv = dict(zip(d["indices"], d["values"]))
         return sum(dv.get(i, 0.0) * v * idx.idf.get(tok, 0.0)
                    for tok, (i, v) in ((t, (term_id(t), 1.0)) for t in set(tokenize(query))))

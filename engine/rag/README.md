@@ -310,32 +310,9 @@ python3 judge.py check --backends jev,local --deadline 5
 
 **Tests.** `test_judge_code.py`, 47 tests. Covers each reason, the boundary years, the absent-year rule against real junk values from the index, check order, the chunking drift guard, and the cap checked against `_index_v3` (skipped if the index is absent).
 
-### LLM judge backend — `judge_llm.py`
+### LLM judge backend (removed 2026-09-27)
 
-**What it is.** `LLMJudgeBackend`, a `judge_base.Backend` that asks a chat model, in one call, which passages are directly useful evidence. It is the slow, uncalibrated last resort: available, but not in the recommended chain. It reuses the engine's model chain (`parse_brief._json_call`) and has no client of its own, so a retired model or a missing key has only one place to hide.
-
-**Interface.**
-
-| Call / name | Returns | Notes |
-|---|---|---|
-| `LLMJudgeBackend(*, model=None, clip_chars=600, query_chars=2000)` | backend | `name="llm"`, `capacity=8`, `calibrated=False`. `model` pins the chain's first link |
-| `.score(query, passages, *, deadline_s)` | `list[Verdict]` | One per passage, input order. `value` from `relevant`, `why` from the model, `score` and `raw` always None |
-| `.prompt(query, passages)` | `str` | What the model is shown: passages numbered from 0, each with its cite id, whitespace collapsed and clipped to 600 chars |
-| `.chain` | `list[str]` | The `provider:model` links the call will walk, for the trace |
-| `RESPONSE_SCHEMA` | dict | `{"verdicts":[{"index":int,"relevant":bool,"why":str}]}`, strict-mode compatible, passed as `schema=` |
-
-**Configuration.** Uses the engine's model-chain settings (`BRIEF_PROVIDER`, `BRIEF_MODEL`, `BRIEF_MODEL_CHAIN` and the provider keys). `parse_brief` is imported lazily in the constructor. **Trap:** that import loads `engine/.env`, which sets `RAG_STORE=qdrant` if it is not already set. Set `RAG_STORE` explicitly in local work.
-
-**Failure behaviour.**
-
-| When | Raises |
-|---|---|
-| `parse_brief` does not import, has no `_json_call`, or no chain link has its API key | `BackendNotConfigured` at construction |
-| No answer within `deadline_s` (or `deadline_s <= 0`) | `BackendUnavailable(kind="timeout")`. The worker is a daemon thread and keeps running in the background; its result is discarded |
-| A verdict index is missing, repeated, out of range, or not an int; or `relevant` is not a bool | `BackendUnavailable(kind="bad_response")`. Never repaired |
-| The chain was exhausted with no JSON, or the call raised | `BackendUnavailable(kind="error")` |
-
-**Tests.** `test_judge_llm.py`, 35 tests. A fake `parse_brief` goes into `sys.modules`, so there is no network and no real model.
+`judge_llm.py` asked a chat model which passages were useful evidence. It was never used in a run and is in no planned chain, so it was removed with its 35 tests (audit C11); git history has it. jev, the Nemotron reranker and the local cross-encoder remain.
 
 ### Nemotron reranker backend — `judge_nemotron.py`
 
@@ -569,6 +546,7 @@ rejected, consequences.
 | [0009](docs/adr/0009-hallucination-at-the-source.md) | Hallucination at the source: stop invention entering the brief (audit batch 2) |
 | [0010](docs/adr/0010-retrieval-wait-closed.md) | The local store answers in under a second: filter masks, one store per process, warm-up |
 | [0011](docs/adr/0011-model-routes-and-jev-checks.md) | Model routes by job, a judge never on its writer's model, and jev as a checker (figures, scorecard, category, synthesis) |
+| [0012](docs/adr/0012-engine-code-structure.md) | Engine code structure: parse_brief split into brief_llm / brief_ingest / brief_render, one .env loader, dead code out |
 
 ## Plans
 

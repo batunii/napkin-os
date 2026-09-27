@@ -42,21 +42,14 @@ import urllib.error
 from pathlib import Path
 
 def _load_dotenv() -> None:
-    """Load briefing/.env (next to this rag/ dir) into os.environ without overriding
-    variables already set. No dependency; so `python3 rag.py …` works without sourcing."""
-    env = Path(__file__).resolve().parent.parent / ".env"
-    if not env.exists():
-        return
-    for line in env.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        if line.startswith("export "):
-            line = line[7:]
-        k, v = line.split("=", 1)
-        k, v = k.strip(), v.strip().strip('"').strip("'")
-        if k and k not in os.environ:
-            os.environ[k] = v
+    """Load engine/.env (next to this rag/ dir) into os.environ without overriding
+    variables already set, through engine_env, the engine's one loader (audit C15), so
+    `python3 rag.py ...` works without sourcing."""
+    engine = str(Path(__file__).resolve().parent.parent)
+    if engine not in sys.path:
+        sys.path.insert(0, engine)
+    import engine_env
+    engine_env.load()
 
 
 _load_dotenv()

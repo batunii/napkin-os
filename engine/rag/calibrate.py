@@ -65,7 +65,6 @@ what is calibrated, not a re-implementation of them.
 from __future__ import annotations
 
 import argparse
-import bisect
 import collections
 import datetime
 import hashlib

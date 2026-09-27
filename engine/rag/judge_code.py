@@ -27,7 +27,7 @@ the same way BackendUnavailable.kind is closed in judge_base.
 Why the length is measured with whitespace collapsed. Some playbook tables are padded
 with tens of thousands of spaces: raw, five sections from two files are over 17,000
 chars, but their content is 723 to 16,668 chars. Every backend sees the collapsed form
-or its equivalent (judge_llm._clip collapses before clipping; a tokeniser makes no
+or its equivalent (a clip that collapses before clipping; a tokeniser makes no
 tokens of whitespace), so padding costs no backend anything, and counting it refused
 two ordinary-sized aaker worked examples (35,152 raw -> 757; 17,262 raw -> 723) that
 could otherwise never be admitted. Text that fits the cap raw is never collapsed:

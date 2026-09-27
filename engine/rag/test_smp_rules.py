@@ -91,7 +91,6 @@ def test_masterbrand_echo_is_a_flag_not_a_fail(monkeypatch):
 def test_gate_notes_and_flags_are_stored_on_the_entry(monkeypatch):
     """The fill keeps the tolerated reason and the flag on the SMP entry, so a judge's
     verdicts can be audited later."""
-    calls = []
     def fake(user, system=None, **k):
         """Test stub: stands in for `fake` in test_gate_notes_and_flags_are_stored_on_the_entry."""
         import re

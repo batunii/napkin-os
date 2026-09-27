@@ -29,11 +29,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent / ".env")
-except ImportError:
-    pass
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import engine_env  # noqa: E402  (the one engine/.env loader; before 2026-09-27 this needed python-dotenv)
+engine_env.load()
 
 SCHEMA_PATH = Path(__file__).parent / "golden-brief" / "golden_brief.schema.json"
 
@@ -840,6 +838,10 @@ def main(argv):
     critic and --judge the one-call independent judge (both make LLM calls), each followed
     by a fresh report; then print the quality split; --prompts prints the first per-check
     critic prompt. With no arguments print the module docstring."""
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__ or "", "\nUsage:\n  python3 golden_critic.py <brief_object.json> [--judge] [--critic] [--prompts]\n"
+              "  python3 golden_critic.py --all [dir]")
+        return
     schema = json.loads(SCHEMA_PATH.read_text())
     show_prompts = "--prompts" in argv
     run_critic_flag = "--critic" in argv

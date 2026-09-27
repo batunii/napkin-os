@@ -3,7 +3,7 @@
 - **Status:** accepted; wired into `brief_context.build` and `rag_io` v1.1.0 (steps 3–4), **off by default — do not enable for briefs yet** (see *Live finding*)
 - **Date:** 2026-09-23
 - **Owner:** Sai
-- **Files:** `judge_base.py`, `judge.py`, `judge_code.py`, `judge_llm.py`, `judge_nemotron.py`,
+- **Files:** `judge_base.py`, `judge.py`, `judge_code.py`, `judge_llm.py` (removed 2026-09-27, audit C11), `judge_nemotron.py`,
   `judge_jev.py`, `judge_local.py`, `calibrate.py`, `calibration/{nemotron,local}.json`, and their tests
 
 ## Context

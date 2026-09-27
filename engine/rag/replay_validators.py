@@ -38,15 +38,11 @@ sys.path.insert(0, str(ENGINE))
 
 
 def _load_env() -> None:
-    """engine/.env keys the store and validators need, without overriding the shell."""
-    env = ENGINE / ".env"
-    if not env.exists():
-        return
-    for line in env.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    """engine/.env keys the store and validators need, without overriding the shell:
+    engine_env, the engine's one loader (audit C15)."""
+    sys.path.insert(0, str(ENGINE))
+    import engine_env
+    engine_env.load()
 
 
 def _gist_context(bo: dict) -> str:

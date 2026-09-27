@@ -46,6 +46,25 @@ incl. `meta.llm_stats` — per-run LLM call/token ledger).
 `--format md,docx,pdf` emits rich formats via pandoc (PDF needs xelatex, or render the
 markdown with headless Chrome: `--headless=new --print-to-pdf`).
 
+## Code map
+
+The pipeline is `parse_brief.py`; since 2026-09-27 (ADR 0012) the parts that are not
+pipeline stages live in their own modules, and `parse_brief` re-exports them so existing
+callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
+
+| File | What it owns |
+|---|---|
+| `parse_brief.py` | the pipeline: capture (Loop 1), golden extraction, the gates (`_judge_and_gate`), the zone-3 fill, Loops 3-7 retrieval and synthesis, provenance, `run()` and the CLI |
+| `brief_llm.py` | talking to models: providers, the Claude-only chain, model routes by job, the API and Claude Code transports, `_json_call`, the per-run call ledger, `NoClaudeAvailable` |
+| `brief_ingest.py` | reading a brief: `.txt` / `.md` / `.docx` (document order) / `.pdf` / `.eml` / images (vision model), and sentence segmentation |
+| `brief_render.py` | the brief for people: client brief, review file, Loops 3-7 evidence, provenance, `.docx` / `.pdf` output, marker scrubbing |
+| `golden_critic.py` | the independent critic: schema checks plus one Sonnet-judged call, health and quality scores |
+| `toon_lite.py` | the TOON reader/writer the capture uses |
+| `engine_env.py` | the one `engine/.env` loader |
+| `packs.py`, `napkin_packs.py` | knowledge packs: discovery, `packs.lock`, sync into the index |
+| `agent-server/` | the app's HTTP backend: draft and field regeneration over the pipeline |
+| `rag/` | the RAG module: stores, retrieval (`brief_context.py`), validators (`judge*.py`, jev), jev checks (`jev_checks.py`), evaluation tools (`checkpoint_run.py`, `e2e_eval.py`, `eval_history.py`, `score_as_sent.py`, `labelset.py`); see `rag/README.md` |
+
 ## Keys & config (.env)
 
 | Var | Needed for |
@@ -69,15 +88,29 @@ markdown with headless Chrome: `--headless=new --print-to-pdf`).
 | `BRIEF_MAX_TOKENS` | override every call's output ceiling |
 | `BRIEF_CLIP_CHARS` / `BRIEF_CLIP_EXTRACT_CHARS` | brief clip for judge calls (6500) / for the capture (12000) |
 | `BRIEF_BASE_URL` / `BRIEF_LINK_COOLDOWN` | custom OpenAI-compatible endpoint / seconds a rate-limited link rests |
-| `BRIEF_VISION_*` | image-brief transcription model settings |
+| `BRIEF_VISION_MODEL` / `BRIEF_VISION_BASE` / `BRIEF_VISION_API_KEY` | image and scanned-PDF transcription: model (`nvidia/llama-3.1-nemotron-nano-vl-8b-v1`), OpenAI-compatible endpoint (NVIDIA NIM; a local Ollama works keyless), key (falls back to `NVIDIA_API_KEY`) |
 | `GEMINI_API_KEY` / `OPENAI_API_KEY` | optional further chat links, auto-detected |
 | `BRIEF_RETRIEVE_FROM` | `golden` (default): retrieval starts from the golden extraction, 16–26 s earlier, with the capture as fallback; `capture`: retrieval waits for the Loop 1 capture. A/B on 3 briefs: health 216 = 216, faster on every brief |
 | `BRIEF_THINKING_HEADROOM` / `BRIEF_LINK_TIMEOUT` | extra output tokens for Claude models that think by default (2500) / per-request timeout for OpenAI-compatible links (90 s) |
 | `CRITIC_MODEL` | model for `golden_critic.py --judge` (default `claude-sonnet-5`) |
+| `BRIEF_CLI_TIMEOUT` / `BRIEF_CLI_EFFORT` | Claude Code login transport: seconds per `claude -p` call (240) / force one `--effort` for every thinking-model call (default: the job's effort, else the model's API default) |
+| `BRIEF_CORPUS` / `BRIEF_PACKS_LOCK` | pack sync: corpus root (default `engine/reference/rag` or `../reference/rag`) / path of `packs.lock` (default `engine/packs.lock`) |
+| `BRIEF_RESEARCH` / `RESEARCH_WEB` | agent server: `0` turns the research dossier off (default on) / `claude` adds the web track through `claude -p` with WebSearch (default `off`) |
+| `NAPKIN_AGENT_PORT` | agent server port (8787, the same slot as the mock agent: run one) |
+| `LABELSET_BRIEF_MODEL` / `LABELSET_JUDGE_MODEL` | label tool (`rag/labelset.py`): brief-pair extraction model (`claude-haiku-4-5-20251001`) / pre-label judge (`claude-sonnet-5`) |
+| `RAG_EMBED_LOCAL_MODEL` / `RAG_EMBED_LOCAL_DEVICE` | the local copy of the query embedder used when the hosted one fails (`nvidia/Nemotron-3-Embed-1B-BF16`) / `mps` or `cpu` (default: mps when available) |
+| `RAG_SPARSE_AVG_LEN` | Qdrant sparse vectors: the corpus's average document length for BM25 weighting (191.2) |
+| `TEMPLATE_STORE_URL` | connection string for `store_template.py`, the starting point for a new store backend |
 
-The tool is **model-agnostic**: every LLM step walks a best→reliable provider chain
-(Cerebras → Groq → NVIDIA NIM by default) and degrades to heuristic mode with no keys
-at all. `.env` is loaded automatically (dependency-free fallback included).
+Every model call is **Claude by default**: each call names its job and the job picks
+the model (`BRIEF_ROUTES`, ADR 0011), with another Claude model as the fallback. With no
+route to Claude, or when not one Claude call in a run answers, `parse_brief.run()` stops
+with `NoClaudeAvailable` instead of writing a brief with another model or with the
+heuristics (ADR 0006). `BRIEF_ALLOW_NONCLAUDE=1` restores the non-Claude chain (Cerebras,
+Groq, NVIDIA NIM) for experiments. `engine/.env` is loaded by `engine_env.py`, the one
+loader, which never overrides a variable already set. A test keeps this table complete:
+every variable the code reads must appear here, in `rag/README.md` or in `.env.example`
+(`rag/test_env_documented.py`).
 
 ### Pipeline stages (`parse_brief.run`)
 

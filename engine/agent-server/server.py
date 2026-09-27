@@ -315,7 +315,7 @@ def do_regen(payload: dict, clan: dict) -> tuple[int, dict]:
     obj = None
     with parse_brief._stats_scope():                # a regen next to a running draft: separate ledgers
         for attempt in range(2):
-            note = (f"\n\nYOUR PREVIOUS ANSWER BROKE THESE RULES — fix exactly these and keep the rest: "
+            note = ("\n\nYOUR PREVIOUS ANSWER BROKE THESE RULES — fix exactly these and keep the rest: "
                     + "; ".join(fails)) if fails else ""
             obj = parse_brief._json_call(user + note, system=system, retries=1, max_tokens=800, accept=accept)
             if not obj:
