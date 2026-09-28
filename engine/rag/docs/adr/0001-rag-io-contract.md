@@ -75,3 +75,28 @@ interface: `brief_context.build()` took an untyped dict of pairs plus `brand` an
   actually generates briefs bypasses it.
 - Measured on the local index: a full request returns 13 hits / 8,909 tokens in ~6s, of
   which most is local index load (store instances are not cached — a known dev-only cost).
+
+## Addendum 2026-09-28 — a broken library is an error
+
+A failure test of `handle()` (project_plan.clan `rag_io_failure_test_2026_09_28`) found that
+a missing or empty passage library returned `ok` with 0 hits in every field, no note and no
+error, in 0.5 s: the middleware could not tell it from a brief with nothing relevant.
+`handle()` now calls `require_store()` before any search: the store must open and its own
+`available()` must say it holds passages, else `StoreUnavailable` names the library and
+says nothing was searched. An unconfigured backend (`StoreConfigError`) is reported the same
+way, and an unreachable Qdrant now fails in ~3 s with this error instead of a raw
+`RuntimeError` after ~17 s of retries. Retrieval is unchanged when the library is fine
+(same evidence, same order). Tests: `test_rag_io.py` (missing / empty on both paths,
+unconfigured, injected retrieval skips the check).
+
+The brief tool (`parse_brief.loops_3_7`) does not go through `handle()` and keeps its own
+behaviour: `index_available()` is checked, and a missing library falls back to the pack
+digests loudly, with the reason in the result (`fallback`). Stopping the brief instead is a
+separate decision; Sai kept the fallback (2026-09-28).
+
+Suggested handling for the middleware (Sai approved 2026-09-28; project_plan.clan
+`store_unavailable_plan_2026_09_28`): retry once after ~30 s; if it still fails, write the
+brief from the pack digests, clearly marked as written without the library, as the brief
+tool does; one alert per outage; later, a synced backup library with the AWS move. Never
+treat the error as an empty result or retry in a tight loop.
+

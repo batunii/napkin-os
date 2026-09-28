@@ -57,7 +57,7 @@ python3 rag_io.py request.json                                  # validate a req
 
 ```python
 import sys; sys.path.insert(0, "engine/rag")
-from rag_io import handle, RequestInvalid
+from rag_io import handle, RequestInvalid, StoreUnavailable
 
 resp = handle({
     "run_id": "r-1",
@@ -93,7 +93,7 @@ signs off the request shape. Changes: 1.1.0 made validation, research, attachmen
 
 | Call | Returns | Notes |
 |---|---|---|
-| `handle(request, *, index_dir=None)` | response dict | Raises `RequestInvalid` (with `.problems`, every violation) on a bad request |
+| `handle(request, *, index_dir=None)` | response dict | Raises `RequestInvalid` (with `.problems`, every violation) on a bad request, and `StoreUnavailable` (with `.label`) when the passage library is missing, empty, unconfigured or unreachable: nothing is searched, so a broken library never looks like "nothing relevant" |
 | `validate(instance, definition="request")` | `list[str]` | `[]` when valid; `definition="response"` checks a response |
 | `to_build_args(request)` | `(kwargs, notes)` | The mapping onto `build()`, exposed for tests and debugging |
 | `response_from(ctx, run_id, notes)` | response dict | Shapes any `BriefContext` |

@@ -363,3 +363,44 @@ def test_mix_end_to_end_on_the_real_index(monkeypatch):
     assert rag_io.validate(resp, "response") == []
     hits = [h for f in resp["fields"] for h in f["hits"]]
     assert hits and all(h["cite"] and h["scope"] for h in hits)
+
+
+# ---- a missing or empty library is an error, not an empty answer (2026-09-28) -------
+@pytest.mark.parametrize("path", ["mix", "buckets"])
+@pytest.mark.parametrize("make", ["missing", "empty"])
+def test_a_missing_or_empty_library_raises_before_searching(tmp_path, monkeypatch, path, make):
+    """Before 2026-09-28 a wrong RAG_INDEX returned ok with 0 hits and no note, which the
+    middleware could not tell from 'nothing relevant'. Now it is StoreUnavailable, naming
+    the library, and nothing is searched."""
+    monkeypatch.setenv("RAG_STORE", "local")
+    index = tmp_path / "idx"
+    if make == "empty":
+        index.mkdir()
+        (index / "chunks.jsonl").write_text("")
+    searched = []
+    monkeypatch.setattr(bc, "build_multi", lambda *a, **k: searched.append(1))
+    monkeypatch.setattr(bc, "build", lambda *a, **k: searched.append(1))
+    with pytest.raises(rag_io.StoreUnavailable) as e:
+        rag_io.handle({**REQ, "retrieval": {"path": path}}, index_dir=index)
+    assert str(index) in str(e.value) and "Nothing was searched" in str(e.value)
+    assert e.value.label == str(index) and not searched
+
+
+def test_an_unconfigured_store_is_store_unavailable(monkeypatch):
+    """A backend whose settings are missing (StoreConfigError) is reported the same way."""
+    import rag
+    from store_base import StoreConfigError
+
+    def broken(*a, **k):
+        """The constructor refuses: no URL configured."""
+        raise StoreConfigError("QDRANT_URL not set")
+    monkeypatch.setattr(rag, "open_store", broken)
+    with pytest.raises(rag_io.StoreUnavailable, match="not configured"):
+        rag_io.handle(REQ)
+
+
+def test_injected_retrieval_skips_the_library_check(monkeypatch):
+    """Tests that pass their own build/build_multi never touch a store."""
+    import rag
+    monkeypatch.setattr(rag, "open_store", lambda *a, **k: (_ for _ in ()).throw(AssertionError("opened")))
+    rag_io.handle({**REQ, "retrieval": {"path": "buckets"}}, build=lambda pairs, **k: _ctx())

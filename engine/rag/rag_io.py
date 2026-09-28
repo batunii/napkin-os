@@ -8,7 +8,7 @@ middleware can validate the same bytes in whatever language it is written in. Th
 module defines no field of its own: it loads that file, checks requests against it, and
 maps a valid request onto brief_context.build().
 
-    from rag_io import handle, validate, RequestInvalid
+    from rag_io import handle, validate, RequestInvalid, StoreUnavailable
 
     resp = handle(request)              # dict shaped like $defs/response
     problems = validate(request)        # [] when clean, else ["authority.brand: ...", ...]
@@ -19,7 +19,10 @@ Inputs   a request dict ($defs/request). `authority` is the confidentiality boun
 Outputs  a response dict ($defs/response): blocks of citable hits in prompt reading
          order, the rendered prompt text, token count, notes and the full trace.
 Failure  an invalid request raises RequestInvalid carrying EVERY problem found, not just
-         the first — a caller fixing a payload wants the whole list. Retrieval failures
+         the first — a caller fixing a payload wants the whole list. A passage library
+         that is missing, empty or unreachable raises StoreUnavailable before anything is
+         searched (2026-09-28: it used to return a normal-looking response with 0 hits and
+         no note, indistinguishable from "nothing relevant"). Other retrieval failures
          propagate from brief_context unchanged; this layer adds no retries.
 
 Design notes
@@ -50,6 +53,33 @@ IO_SCHEMA_PATH = HERE.parent / "schema" / "rag_io.v1.json"
 # Prompt reading order, matching BriefContext.prompt_text(): the standard first, then
 # what must not be done, then how to think, then precedent.
 BLOCK_ORDER = ("instructions", "rules", "craft", "exemplars")
+
+
+class StoreUnavailable(RuntimeError):
+    """The passage library is missing, empty or unreachable, so nothing was searched.
+    `.label` names the library tried (index path or collection)."""
+
+    def __init__(self, label: str, detail: str):
+        """Keep the library's label; the message says what to check."""
+        self.label = label
+        super().__init__(f"The passage library {label} is {detail}. Nothing was searched. "
+                         "Check RAG_STORE / RAG_INDEX or the store connection.")
+
+
+def require_store(index_dir=None) -> None:
+    """Raise StoreUnavailable unless the configured store opens and holds passages. Uses the
+    store's own available() (local: chunks.jsonl exists with a row; Qdrant: the collection
+    exists with points, 0 when unreachable); the store is the process's shared instance, so
+    the rows it loads here are the ones the search then uses."""
+    import rag
+    from store_base import StoreConfigError
+    try:
+        store = rag.open_store(index_dir)
+    except StoreConfigError as e:
+        raise StoreUnavailable(rag.store_name(), f"not configured ({e})") from e
+    if not store.available():
+        label = (store.describe() or {}).get("label") or store.name
+        raise StoreUnavailable(label, "empty, missing or unreachable (0 passages)")
 
 
 class RequestInvalid(ValueError):
@@ -354,7 +384,10 @@ def handle(request: dict, *, index_dir=None, build=None, build_multi=None) -> di
         raise RequestInvalid(problems)
     kwargs, notes = to_build_args(request)
     pairs = kwargs.pop("pairs")
-    if ((request.get("retrieval") or {}).get("path") or "mix") == "mix":
+    mix = ((request.get("retrieval") or {}).get("path") or "mix") == "mix"
+    if (build_multi if mix else build) is None:          # a real store, not a test's stand-in
+        require_store(index_dir)
+    if mix:
         if build_multi is None:
             from brief_context import build_multi
         from mix_queries import queries_for
