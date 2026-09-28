@@ -86,6 +86,7 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `BRIEF_PROVIDER` | pin one provider as the lead link (the rest stay as fallback) |
 | `BRIEF_SMP_CANDIDATES` / `BRIEF_GOLDEN` | SMP draft count (default 6) / run the golden-brief pass |
 | `BRIEF_MAX_TOKENS` | override every call's output ceiling |
+| (temperature) | not sent | Claude calls never send it: Opus 5.5 and Sonnet 5 reject it with a 400 (ADR 0011, 2026-09-29). Only the non-Claude fallback path sends 0.2. |
 | `BRIEF_CLIP_CHARS` / `BRIEF_CLIP_EXTRACT_CHARS` | brief clip for judge calls (6500) / for the capture (12000) |
 | `BRIEF_BASE_URL` / `BRIEF_LINK_COOLDOWN` | custom OpenAI-compatible endpoint / seconds a rate-limited link rests |
 | `BRIEF_VISION_MODEL` / `BRIEF_VISION_BASE` / `BRIEF_VISION_API_KEY` | image and scanned-PDF transcription: model (`nvidia/llama-3.1-nemotron-nano-vl-8b-v1`), OpenAI-compatible endpoint (NVIDIA NIM; a local Ollama works keyless), key (falls back to `NVIDIA_API_KEY`) |

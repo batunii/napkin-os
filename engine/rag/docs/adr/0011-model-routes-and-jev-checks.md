@@ -104,3 +104,15 @@ with the same lock and deadline as `score()`.
 - **Haiku for syntheses.** Sai chose Sonnet: planners may read the review file.
 - **jev replacing the scorecard or the judges.** jev cannot write the scorecard's
   evidence or the judges' ranking notes, and its accuracy on these rubrics is unmeasured.
+
+## Addendum 2026-09-29 — temperature is deliberately not sent (audit F12: won't do)
+
+No Claude call sets `temperature`. Opus 5.5 and Sonnet 5 reject the parameter with a 400, so
+sending it would fail the call rather than steady it, and the routes put those models on
+most jobs. The only path that sends it is the non-Claude, OpenAI-compatible fallback
+(`brief_llm._chat_openai_compatible`, `temperature: 0.2`), which runs only with
+`BRIEF_ALLOW_NONCLAUDE=1` and never in production. Run-to-run steadiness comes from elsewhere
+instead: fixed per-job routes, low effort on judges and mechanical jobs, the grader's majority
+of 3 samples, and the noise line every checkpoint report carries (ADR 0013). Closed as won't do;
+revisit only if a model on the routes accepts the parameter again.
+
