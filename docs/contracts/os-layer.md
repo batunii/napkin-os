@@ -369,6 +369,9 @@ freely, never redefine.
     `verify_finding` to write the finding to the layer (a `human:<id>` source,
     a synthesis fact under the decision id the host chose), then pins it and
     records the verification. No middleware, no verification.
+  - `/acknowledge {decision, rationale?}` — "Looks right": a good verdict
+    that cites the decision, which clears what its agent flagged or was unsure
+    of (§4) without touching what it wrote. Refused on a finding (verify it).
   - `/approve {rationale?}` — refused while anything on the §7 list is open;
     otherwise one `approve` decision naming the exact version accepted. What
     locking does to other writes (`/patch-data`, a job) is W5-Z1's.

@@ -237,3 +237,60 @@ def test_a_layout_that_loses_its_evidence_is_built_from_the_report(store):
     assert rpt["layout_by"] == "built"
     assert rpt["headline"]["text"] in rpt["layout"].replace("&#x27;", "'")
     assert "<clan-field" in rpt["layout"] and "<clan-sources></clan-sources>" in rpt["layout"]
+
+
+def _audience_model(pin_ids):
+    from fakes import FakeModel, reasoning
+    def synth(p):
+        ids = [x["id"] for x in p["pins"]][:2]
+        g = reasoning([("The pins say so", ids[:1])], only="one reading")
+        return {"findings": [{"lens": "media_spend", "statement": "Spend reads differently by market.",
+                              "cites": ids, "markets": [], "grounds": g}],
+                "audience": {"definition": "Busy households who plan meals ahead", "fact_ids": ids[:1],
+                             "behaviours": [], "attitudes": [], "grounds": g}}
+    return FakeModel({"synthesise": synth})
+
+
+def test_a_redo_replaces_the_proposed_audience_and_never_the_rejected_finding(store):
+    caps = caps_for(store)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    pins = rch["facts_append"]
+    ids = [p["id"] for p in pins][:2]
+    rejected = {"id": "fi_01OLDREJ", "statement": "Promotion-hunting defines the shopper", "cites": sorted(ids),
+                "method": "synthesis", "status": "rejected", "lens": "media_spend",
+                "rejection": {"reason": "one survey", "by": "human:u", "at": "2026-09-28T10:00:00Z", "decision": "d_01REJECT01"}}
+    old = {"value": {"definition": "Promotion-hunters", "synthesis_finding_ids": ["fi_01OLDREJ"]}, "origin": "proposed",
+           "gate": "brief", "fact_ids": ids[:1], "decision": "d_01OLDAUD1"}
+    clan = dict(rclan(["IE"]), facts=pins, findings=[rejected])
+    clan["data"]["campaign"]["audience"] = old
+    model = _audience_model(ids)
+    caps2 = caps_for(store, model=model)
+    result, change, _ = synthesise.run_synthesis(DOC, "4", clan, {}, "t@1.0", caps2, redo_audience=True)
+    # the model was told what a person ruled out
+    sent = [c for c in model.calls if c[0] == "synthesise"][-1][1]
+    assert sent["rejected"] == [{"statement": "Promotion-hunting defines the shopper", "reason": "one survey"}]
+    # only the audience is redone: no new findings to check, no finding decisions
+    assert change["findings_append"] == []
+    assert [d["action"] for d in change["decisions"]] == ["propose_audience"]
+    aud = change["data_patch"]["campaign"]["audience"]
+    assert aud["origin"] == "proposed" and aud["value"]["definition"] == "Busy households who plan meals ahead"
+    assert aud["value"]["synthesis_finding_ids"] is None, "the rejected finding is dropped from the merge patch"
+    assert change["read"]["campaign.audience"] == old
+    assert result["audience"] is True
+    # an audience a person confirmed is never replaced
+    clan["data"]["campaign"]["audience"] = dict(old, origin="confirmed")
+    _, change2, _ = synthesise.run_synthesis(DOC, "4", clan, {}, "t@1.0", caps2, redo_audience=True)
+    assert "campaign" not in change2["data_patch"]
+
+
+def test_synthesis_never_proposes_a_rejected_finding_again(store):
+    caps = caps_for(store)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    clan = dict(rclan(["IE"]), facts=rch["facts_append"])
+    _, first, _ = synthesise.run_synthesis(DOC, "3", clan, {}, "t@1.0", caps)
+    fi = dict(first["findings_append"][0], status="rejected",
+              rejection={"reason": "no", "by": "human:u", "at": "2026-09-28T10:00:00Z", "decision": "d_01REJECT01"})
+    _, again, _ = synthesise.run_synthesis(DOC, "4", dict(clan, findings=[fi]), {}, "t@1.0", caps)
+    assert fi["id"] not in {f["id"] for f in again["findings_append"]}

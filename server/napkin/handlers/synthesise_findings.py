@@ -13,9 +13,12 @@ def prepare(req, caps, settings):
         raise bad(f"input.lenses must be a non-empty list of lens ids from {LENSES}")
     if not usable_pins(req.clan):
         raise bad("no pinned facts in clan.facts to synthesise from (a finding must cite pins)")
+    redo = req.inp.get("redo")
+    if redo not in (None, "audience"):
+        raise bad("input.redo, when given, is \"audience\": propose the audience again without rejected findings")
 
     def work():
-        out = run_synthesis(req.doc, req.base, req.clan, req.inp, req.handler, caps)
+        out = run_synthesis(req.doc, req.base, req.clan, req.inp, req.handler, caps, redo_audience=redo == "audience")
         caps.jobs.progress(1)
         return out
     return 1, work

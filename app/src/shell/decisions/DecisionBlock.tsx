@@ -7,9 +7,10 @@
 
 import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
 import { AgentFigure } from '../../studio/AgentFigure'
-import { openInApp } from '../appExport'
+import { canRun, openInApp, runInApp } from '../appExport'
 import {
-  chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, refOfAddress, sourcesOf, sureWord, whoOf,
+  chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, skippedOf, sourcesOf,
+  sureWord, whoOf,
 } from './words'
 
 /** The agent's figure, or a person's initial. */
@@ -56,6 +57,9 @@ export function NeedsCard({ item, block }: { item: AttentionItem; block?: Decisi
       {item.code === 'flagged_field' && <p className="dp-why">{item.text}</p>}
       <div className="dp-acts">
         {item.address && <button className="dp-btn dp-btn-primary" onClick={() => openInApp(ref, path)}>Open it</button>}
+        {item.code === 'flagged_field' && /campaign\.audience/.test(path ?? '') && canRun('synthesise_findings') && (
+          <button className="dp-btn" onClick={() => runInApp('synthesise_findings', { redo: 'audience' })}>Ask Synthesis to redo it</button>
+        )}
         <span className="dp-hint">{item.code === 'open_contest' ? 'you’ll pick one against its sources' : item.code === 'unverified_finding' ? 'you’ll check it against its sources' : 'settle it there'}</span>
       </div>
     </div>
@@ -172,6 +176,7 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
             <div><h4>Considered and set aside</h4><ul>{r.rejected.map((x, i) => <li key={i}>{plain(x.option)}{x.why && <span className="dp-muted"> — {plain(x.why)}</span>}</li>)}</ul></div>
           ) : null}
           {sure && <p><b>{sure}</b>{r?.certainty?.why ? ` · ${plain(r.certainty.why)}` : ''}</p>}
+          <Again block={block} />
           {t && <div className="dp-acts"><button className="dp-link" onClick={() => openInApp(refOfAddress(t.address), t.path)}>Show in document</button></div>}
           <details className="dp-tech">
             <summary>Technical details</summary>
@@ -203,5 +208,27 @@ function Chips({ ids, view }: { ids: string[]; view: DecisionsView }) {
         : <span key={x.id} className="dp-chip dp-chip-static">{x.text}</span>)}
       {named.length > 3 && <span className="dp-chip dp-chip-static">+{named.length - 3} more</span>}
     </span>
+  )
+}
+
+/** The step again, when the app can run it: never a button that does nothing. */
+function Again({ block }: { block: DecisionBlock }) {
+  const redo = redoOf(block)
+  const skipped = canRun('research_lens') ? skippedOf(block) : []
+  if (!(redo && canRun(redo.task)) && !skipped.length) return null
+  return (
+    <div className="dp-acts">
+      {redo && canRun(redo.task) && <button className="dp-btn" onClick={() => runInApp(redo.task, redo.input)}>{redo.label}</button>}
+      {skipped.length > 0 && (
+        <details className="dp-skip">
+          <summary className="dp-btn">Research a skipped lens…</summary>
+          <div className="dp-acts">
+            {skipped.map(x => (
+              <button key={x.lens} className="dp-btn" onClick={() => runInApp('research_lens', { lenses: [x.lens] })}>{x.name}</button>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
   )
 }

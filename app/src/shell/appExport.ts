@@ -20,7 +20,10 @@ let frame: Window | null = null
 
 /** Called by the render surface as the app frame loads. */
 export function setExportFrame(win: Window | null) {
+  if (win !== frame) runnable = new Set()
   frame = win
+  // Ask again: an app that announced before the shell was listening repeats.
+  win?.postMessage({ type: 'clan:can-run?' }, '*')
 }
 
 /**
@@ -58,4 +61,35 @@ export function askAppToExport(kind: 'html' | 'pdf'): Promise<boolean> {
  */
 export function openInApp(ref: string, path?: string) {
   frame?.postMessage({ type: 'clan:open', ref, path }, '*')
+}
+
+// ── steps the app can run again ──────────────────────────────────────────────
+// An app says which of its tasks the OS may ask for ("clan:can-run"); the
+// decision panel offers "Ask to redo" only for those, and the app runs them
+// its own way (its job cards, its polling) when asked ("clan:run").
+
+let runnable = new Set<string>()
+const listeners = new Set<() => void>()
+
+window.addEventListener('message', e => {
+  const m = e.data as { type?: string; tasks?: unknown }
+  if (!frame || e.source !== frame || m?.type !== 'clan:can-run' || !Array.isArray(m.tasks)) return
+  runnable = new Set(m.tasks.filter((t): t is string => typeof t === 'string'))
+  for (const f of listeners) f()
+})
+
+/** Whether the open app runs `task` when asked. */
+export function canRun(task: string): boolean {
+  return runnable.has(task)
+}
+
+/** Call `f` when the app says what it can run; returns the unsubscribe. */
+export function onRunnable(f: () => void): () => void {
+  listeners.add(f)
+  return () => { listeners.delete(f) }
+}
+
+/** Ask the app to run one of its tasks again. */
+export function runInApp(task: string, input: Record<string, unknown>) {
+  frame?.postMessage({ type: 'clan:run', task, input }, '*')
 }

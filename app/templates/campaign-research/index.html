@@ -2654,6 +2654,21 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   $('exportBtn').addEventListener('click', function(){ doExport('pdf'); });
 
   window.addEventListener('clan:dataupdated', render);
+  // The OS's decision panel may ask for a step again. These are the tasks it
+  // may ask for; each runs as it does from this view, with its job card.
+  var RUNNABLE=['research_lens','synthesise_findings','compose_report'];
+  function announce(){ try{ window.parent.postMessage({type:'clan:can-run', tasks:RUNNABLE}, '*'); }catch(e){} }
+  announce();
+  window.addEventListener('message', function(e){
+    var m=e.data; if(e.source!==window.parent||!m) return;
+    if(m.type==='clan:can-run?'){ announce(); return; }
+    if(m.type!=='clan:run'||RUNNABLE.indexOf(m.task)===-1) return;
+    var input=isObj(m.input)?m.input:{};
+    if(m.task==='compose_report'){ doRefreshReport(); toast('Writing the report again.'); return; }
+    runTask(m.task, input);
+    toast(m.task==='research_lens'?'Researching again: '+arr(input.lenses).map(function(l){ return (LENS[l]||{}).l||l; }).join(', ')+'.'
+      :input.redo==='audience'?'Asking Synthesis to propose the audience again.':'Asking Synthesis again.');
+  });
   window.addEventListener('clan:focus', function(e){
     var p=String((e.detail&&e.detail.path)||''), m=/^campaign\.([a-z_]+)/.exec(p);
     var id=m?'field-'+m[1]:/^selection/.test(p)?'selection':/^report/.test(p)?'report':/^(facts|findings)/.test(p)?p.split(/[\[.]/)[0]:null;

@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../../host'
 import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
 import { LogoSpinner } from '../../brand/LogoSpinner'
-import { openInApp } from '../appExport'
+import { onRunnable, openInApp } from '../appExport'
 import { HistoryLine, NeedsCard, QuietItem } from './DecisionBlock'
 import { refOfAddress, runsOf, sectionsOf } from './words'
 import './DecisionPanel.css'
@@ -66,6 +66,10 @@ export default function DecisionPanel({ docPath }: Props) {
     ]
     return () => { for (const off of offs) off.then(f => f()) }
   }, [load])
+
+  // The app says which steps it can run again; redraw when it does.
+  const [, setRunnable] = useState(0)
+  useEffect(() => onRunnable(() => setRunnable(n => n + 1)), [])
 
   const needs = useMemo(() => needsOf(view), [view])
   const quiet = useMemo(() => quietOf(view), [view])

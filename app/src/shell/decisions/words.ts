@@ -260,3 +260,41 @@ function sectionLabel(label: string): string {
   if (/^Selection/.test(label)) return 'What research covered'
   return label.split(' · ')[0]
 }
+
+export interface Redo {
+  label: string
+  task: string
+  input: Record<string, unknown>
+}
+
+const LENS_NAME: Record<string, string> = {
+  market_structure: 'Market structure', brands_positioning: 'Brands and positioning', consumer_culture: 'Consumer culture',
+  category_codes: 'Category codes', rhythm_moments: 'Timing', media_spend: 'Media and spend',
+  regulation_clearance: 'Regulation', effectiveness_evidence: 'Effectiveness',
+}
+
+/**
+ * The step again, as the app's own task: a lens's research for its market,
+ * synthesis, the audience without the rejected findings, the report. `null`
+ * for a step no task reruns (reading the request, choosing lenses).
+ */
+export function redoOf(block: DecisionBlock): Redo | null {
+  const d = block.decision
+  if (block.who.kind !== 'agent') return null
+  if (d.action === 'research_run') {
+    const m = (d.targets ?? []).map(t => /lenses_run\[([a-z_]+)\/([A-Z]{2})\]/.exec(t)).find(Boolean)
+    return m ? { label: 'Research again', task: 'research_lens', input: { lenses: [m[1]], markets: [m[2]] } } : null
+  }
+  if (d.action === 'propose_audience') return { label: 'Redo the audience', task: 'synthesise_findings', input: { redo: 'audience' } }
+  if (d.action === 'synthesise_finding' || d.kind === 'finding') return { label: 'Ask Synthesis again', task: 'synthesise_findings', input: {} }
+  if (d.action === 'report' || d.action === 'compose_report') return { label: 'Write the report again', task: 'compose_report', input: {} }
+  return null
+}
+
+/** The lenses a Judge's selection skipped, each researchable on its own. */
+export function skippedOf(block: DecisionBlock): { lens: string; name: string }[] {
+  if (block.decision.action !== 'select') return []
+  return [...new Set((block.decision.targets ?? [])
+    .map(t => /lenses_skipped\[([a-z_]+)\]/.exec(t)?.[1]).filter((x): x is string => !!x))]
+    .map(lens => ({ lens, name: LENS_NAME[lens] ?? lens }))
+}

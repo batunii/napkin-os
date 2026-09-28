@@ -74,7 +74,24 @@ The layout vocabulary: `cl-report` (the page), `cl-head` (`compact`),
 re-renders every element from the record; `.reload()` re-reads the decision
 view first; `.open(ref)` opens the drawer; `.format(pin)`, `.label(pin)`.
 
-## 6. Not yet
+## 6. The shell and the app
+
+The OS's decision panel (`app/src/shell/decisions/`) talks to the app frame
+with three messages, all `postMessage` between the shell and its own frame:
+
+- `clan:open {ref, path}` — show one thing. A pin, finding, contest, gap or
+  source opens in the evidence drawer; anything else is dispatched to the app
+  as `clan:focus {path}`, for it to scroll to.
+- `clan:can-run {tasks}` (app → shell, also on `clan:can-run?`) — the tasks
+  the app runs when asked. The panel offers "Research again", "Research a
+  skipped lens", "Redo the audience" or "Write the report again" only for
+  these, so no button does nothing.
+- `clan:run {task, input}` — run one, as the app's own action would.
+
+Judging a value is the drawer's; who did what and why is the panel's. The
+panel's "Needs you" only points at where to settle an item.
+
+## 7. Not yet
 
 Campaign fields (`campaign.*` envelopes citing material spans) as refs;
 re-reading a pin's source on request; images from the document's assets;

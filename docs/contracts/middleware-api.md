@@ -76,7 +76,7 @@ name the stand-in, its port, or branch on which implementation answered.
 |---|---|---|
 | `extract_ask` | `{ "prompt": "...", "attachments": [{ "name", "sha256", "text"? }] }` | `text` is the host-extracted text. An attachment without it is recorded as unread and grounds nothing. Nothing to read at all is `400 invalid_input` |
 | `research_lens` | `{ "lenses"?: [lens ids], "markets"?: [ISO 3166-1 alpha-2] }` | Defaults: all eight lenses × `campaign.markets`. One run per lens × market (N4), merged by entity + key + market. `UK` is not a code (the UK is `GB`). Research with no markets or no categories is `400 invalid_input` (gate `research`) |
-| `synthesise_findings` | `{ "lenses"?: [lens ids] }` | Reads `clan.facts` (pins only) |
+| `synthesise_findings` | `{ "lenses"?: [lens ids], "redo"?: "audience" }` | Reads `clan.facts` (pins only). Never proposes a finding the document already holds, a rejected one included, and sends the rejected ones (statement, reason) to the model. `redo: "audience"` proposes `campaign.audience` again without rejected findings, replacing only an audience the agent proposed, and writes nothing else |
 | `start_campaign` | `{ "prompt": "...", "attachments": [{ "material_id", "name", "sha256", "text"? }] }` | The chat intake (§8). Long. Each `material_id` must be a key of `clan.data.materials` with that `sha256` (the view indexes the file first). Nothing to read at all is `400 invalid_input`, as for `extract_ask` |
 | `answer_question` | `{ "job_id": "...", "question_id": "...", "option_id"?: "...", "text"?: "..." }` | Exactly one of `option_id` / `text` (§8.3) |
 | `compose_report` | `{}` | Short. Re-composes `data.report` from the document as it stands (§8.5) |

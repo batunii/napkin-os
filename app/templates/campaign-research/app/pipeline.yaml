@@ -52,6 +52,7 @@ tasks:
     reads: shared/facts.yaml (pins only — never the raw layer)
     writes: shared/findings.yaml entries, status proposed, method synthesis; may propose campaign.audience and campaign.in_market citing them
     confidence: derived from the cited pins, never produced by the model
+    input: "{ lenses?, redo?: audience }"   # redo: audience — propose it again without rejected findings; replaces only an audience the agent proposed
 
   # ---- the chat intake (docs/contracts/middleware-api.md §8, Contract 3 §16-17) ----
   start_campaign:
