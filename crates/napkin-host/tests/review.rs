@@ -305,12 +305,16 @@ fn verifying_pins_what_the_layer_wrote_under_the_same_decision() {
     // A pin the middleware wrote under some other decision is not this one.
     let stray = synthesis_pin("d_01JBOTHER01");
     assert_eq!(
-        run(&f, |c, d| review::verify_finding(c, d, "fi_01JA0F2B", "", &did, &stray)),
+        run(&f, |c, d| review::verify_finding(c, d, "fi_01JA0F2B", "", &did, &stray, None)),
         Err(502)
     );
 
     let p = synthesis_pin(&did);
-    run(&f, |c, d| review::verify_finding(c, d, "fi_01JA0F2B", "Checked both tables", &did, &p)).unwrap();
+    run(&f, |c, d| review::verify_finding(c, d, "fi_01JA0F2B", "Checked both tables", &did, &p, Some("src_human01"))).unwrap();
+    let srcs = yaml(&f, "shared/sources.yaml")["sources"].clone();
+    let me = srcs.as_array().unwrap().iter().find(|x| x["id"] == "src_human01").expect("the reviewer is a source");
+    assert_eq!(me["tier"], "reviewer-verified");
+    assert_eq!(me["uri"], f.session.ctx().actor.as_str());
     let fi = finding(&f);
     assert_eq!(fi["status"], "verified");
     assert_eq!(fi["verification"]["fact_id"], "f_01JB5YN7HS");

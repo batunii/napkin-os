@@ -328,7 +328,7 @@ var ClanFields=(function(){
   function renderField(el){
     var ref=el.getAttribute('ref')||'', as=el.getAttribute('as')||'inline', k=kindOf(ref), st=stateOf(ref);
     var cls={big:'big',stat:'stat',cell:'cell',claim:'claim'}[as]||'in';
-    if(st==='missing'||!k){ el.innerHTML='<span class="clf-missing" title="Not in this document">'+esc(ref||'no ref')+'</span>'; return; }
+    if(st==='missing'||!(k==='pin'||k==='finding'||k==='contest')){ el.innerHTML='<span class="clf-missing" title="Not in this document">'+esc(ref||'no ref')+'</span>'; return; }
     var conf=confidential(ref), cap=el.getAttribute('caption'), tag=tagFor(st), h='', aria='';
     if(k==='finding'){
       var f=findings()[ref]; h=(conf?LOCK:'')+esc(f.statement)+' '+tag; aria=f.statement;
@@ -673,14 +673,15 @@ var ClanFields=(function(){
   function mount(el,html){ el.textContent=''; el.appendChild(layout(html)); refresh(); }
 
   // ── wiring ──────────────────────────────────────────────────────────
+  // One element that cannot render shows as missing; it never stops the rest.
+  function each(sel,fn){
+    Array.prototype.forEach.call(document.querySelectorAll(sel),function(el){
+      try{ fn(el); }catch(e){ el.innerHTML='<span class="clf-missing">'+esc(el.tagName.toLowerCase())+': '+esc(el.getAttribute('ref')||el.getAttribute('refs')||'')+' could not be shown</span>'; if(window.console) console.error(e); }
+    });
+  }
   function refresh(){
-    Array.prototype.forEach.call(document.querySelectorAll('clan-field'),renderField);
-    Array.prototype.forEach.call(document.querySelectorAll('clan-cite'),renderCite);
-    Array.prototype.forEach.call(document.querySelectorAll('clan-chart'),renderChart);
-    Array.prototype.forEach.call(document.querySelectorAll('clan-quote'),renderQuote);
-    Array.prototype.forEach.call(document.querySelectorAll('clan-gap'),renderGap);
-    Array.prototype.forEach.call(document.querySelectorAll('clan-sources'),renderSources);
-    Array.prototype.forEach.call(document.querySelectorAll('clan-tray'),renderTray);
+    each('clan-field',renderField); each('clan-cite',renderCite); each('clan-chart',renderChart);
+    each('clan-quote',renderQuote); each('clan-gap',renderGap); each('clan-sources',renderSources); each('clan-tray',renderTray);
   }
   document.addEventListener('click',function(e){
     if(DRAWER&&DRAWER.el.contains(e.target)) return;

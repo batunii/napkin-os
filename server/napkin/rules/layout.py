@@ -148,6 +148,7 @@ def check(html: str, pins: dict, findings: dict, contests: dict, gaps: dict, nam
 
     def known(r):
         return r in pins or r in live_findings or r in contests or r in gaps
+    known.gaps = set(gaps)
 
     counts = {"fields": 0, "charts": 0, "blocks": 0}
 
@@ -194,6 +195,10 @@ def check(html: str, pins: dict, findings: dict, contests: dict, gaps: dict, nam
     return _render(tree.root), dropped, counts
 
 
+def gaps_of(known) -> set:
+    return getattr(known, "gaps", set())
+
+
 def _check_clan(k, known, pins) -> str | None:
     t, a = k.tag, k.attrs
     k.kids = []  # a clan-* element's content is the OS's to render
@@ -216,6 +221,12 @@ def _check_clan(k, known, pins) -> str | None:
     ref = a.get("ref", "")
     if not known(ref):
         return f"<{t} ref={ref!r}> names nothing the document holds"
+    # Each element shows one kind of thing; a ref of another kind is not a
+    # field it can render (a gap is a <clan-gap>, a pin is not one).
+    if t == "clan-field" and ref in gaps_of(known):
+        return f"<clan-field ref={ref!r}> names a gap: use <clan-gap>"
+    if t == "clan-gap" and not ref.startswith("gap_"):
+        return f"<clan-gap ref={ref!r}> is not a gap"
     if t == "clan-field" and a.get("as", "inline") not in AS:
         return f"<clan-field> as {a.get('as')!r} is not one of {', '.join(sorted(AS))}"
     if t == "clan-quote" and ref not in pins:

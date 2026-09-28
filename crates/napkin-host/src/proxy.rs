@@ -177,8 +177,9 @@ pub async fn verify(
         .filter(|p| p.is_object())
         .cloned()
         .ok_or_else(|| HostError::new(502, "the middleware answered verify_finding without a pin"))?;
+    let source = data.pointer("/result/source").and_then(Value::as_str).map(String::from);
     let applied = session.perform(ctx, |c, d| {
-        review::verify_finding(c, d, &finding, &rationale, &decision_id, &pin)
+        review::verify_finding(c, d, &finding, &rationale, &decision_id, &pin, source.as_deref())
     })?;
     let mut reply = applied.reply;
     reply["clan"] = session.document_now().unwrap_or(Value::Null);

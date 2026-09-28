@@ -38,3 +38,11 @@ def test_nothing_outside_the_vocabulary_survives():
     assert out.startswith('<div class="cl-band" data-tone="soft"><p>ok')
     for gone in ("bad", "style", "onmouseover", "iframe", "inner", "svg", "script", "text inside"):
         assert gone not in out, gone
+
+
+def test_a_field_shows_a_pin_a_finding_or_a_contest_never_a_gap():
+    out, dropped, _ = run('<p>Missing: <clan-field ref="gap_rr"></clan-field> <clan-gap ref="gap_rr"></clan-gap></p>'
+                          '<clan-gap ref="f_01AAAAAA"></clan-gap>')
+    assert '<clan-field ref="gap_rr"' not in out and '<clan-gap ref="gap_rr"></clan-gap>' in out
+    assert '<clan-gap ref="f_01AAAAAA"' not in out
+    assert any("names a gap" in d for d in dropped)

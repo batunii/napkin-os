@@ -1454,11 +1454,6 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(typeof dlg.showModal==='function') dlg.showModal(); else dlg.setAttribute('open','');
     var c=form.querySelector('[data-close]'); if(c) c.addEventListener('click',function(e){ e.preventDefault(); closeDialog(); });
     if(onReady) onReady(form);
-    // App frames are sandboxed without allow-forms: a form never submits, so a
-    // submit button runs the form's handler on its click instead.
-    Array.prototype.forEach.call(form.querySelectorAll('button[type="submit"]'), function(btn){
-      btn.addEventListener('click', function(e){ e.preventDefault(); if(btn.disabled) return;
-        if(typeof form.onsubmit==='function') form.onsubmit({preventDefault:function(){}, target:form, submitter:btn}); else closeDialog(); }); });
     var first=form.querySelector('textarea,input:not([type=hidden]),select'); if(first) first.focus();
   }
   function closeDialog(){ if(dlg.open) dlg.close(); else dlg.removeAttribute('open'); if(lastFocus&&lastFocus.focus) lastFocus.focus(); }

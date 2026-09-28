@@ -564,6 +564,7 @@ pub fn verify_finding(
     rationale: &str,
     decision_id: &str,
     pin: &Value,
+    source: Option<&str>,
 ) -> HostResult<Outcome> {
     let who = person(ctx, "verify a finding")?;
     not_locked(doc)?;
@@ -594,6 +595,18 @@ pub fn verify_finding(
         return Err(HostError::conflict(format!("{fact_id} is already pinned")));
     }
     m.facts.push(to_yaml(pin)?);
+    // The person is the pin's source: the document carries that record too,
+    // so the pin's evidence reads "verified by <you>", not a missing source.
+    if let Some(src) = source.filter(|s| s.starts_with("src_")) {
+        if !m.sources.iter().any(|e| members::entry_id(e) == Some(src)) {
+            m.sources.push(to_yaml(&serde_json::json!({
+                "id": src, "uri": who, "title": "Verified in this document",
+                "publisher": who.trim_start_matches("human:"), "tier": "reviewer-verified",
+                "retrieved_at": now.get(..10).unwrap_or_default(),
+                "licence": pin.get("licence").cloned().unwrap_or_else(|| "open".into()),
+            }))?);
+        }
+    }
 
     f["status"] = "verified".into();
     f["verification"] = serde_json::json!({

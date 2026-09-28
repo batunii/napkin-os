@@ -340,7 +340,12 @@ class Researcher:
         cands = [c for u in units for c in u["cands"]]
         merged = merge_rules.merge(cands, pinned, open_keys)
         merge_did = uid("d_", doc, self.seed, "research-merge", self.lenses, self.markets, len(self.pairs))
-        merge_dec = decision(doc, merge_did, "pin", handler, "research_merge", "", [], [], timestamp=t_now)
+        # The layer stores the decision with each fact it writes, before the
+        # merge knows its totals: it goes with a rationale that is already
+        # true, and the document's copy gets the full one below.
+        merge_dec = decision(doc, merge_did, "pin", handler, "research_merge",
+                             f"Merged {len(units)} lens x market run(s) by entity + key + market; each fact is "
+                             f"written to the layer with this decision before it is pinned.", [], [], timestamp=t_now)
 
         # D1: write to the layers FIRST (with the decision), then pin from the row.
         facts_append = []
@@ -357,7 +362,9 @@ class Researcher:
         for ct in merged["contests"]:
             cid = lid("ct_", doc, ct["key"])
             cdid = uid("d_", doc, self.seed, "contest", ct["key"])
-            cdec = decision(doc, cdid, "contest", handler, "open_contest", "", [f"selection.contested[{cid}]"], [],
+            cdec = decision(doc, cdid, "contest", handler, "open_contest",
+                            f"Runs disagree on {ct['key']}: every value is kept and none is picked.",
+                            [f"selection.contested[{cid}]"], [],
                             timestamp=t_now)
             vals = []
             if ct["pinned"] is not None:
