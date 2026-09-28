@@ -133,3 +133,22 @@ on transport `auto`.
   (`BRIEF_TESTS_OFFLINE=1`, `.github/workflows/ci.yml`).
 - Not in this batch: temperature (Opus 5.5 / Sonnet 5 reject it), JSON outputs for the
   capture (batch 5), anything touching Qdrant (moving to AWS), the grounding gate (parked).
+
+## Addendum 2026-09-28 — a field whose every draft fails keeps its best draft, marked
+
+Sai's decision (settles audit J5/J6): when every generated draft of a field fails a judged
+check, the field keeps the best-ranked draft instead of being emptied. It carries
+`review = {status: failed_checks, failed: [check ids], why}`, an open question says so, the
+client brief shows "_Draft — to review: it failed …_" under the heading, review.md and the
+provenance mark say DRAFT TO REVIEW, and the app's rationale names it. Media-gaa showed the
+cost of the old rule: an honest RTB with one real fact and "TO CONFIRM" lines was dropped
+because the judge failed `supports_smp`, and the brief lost the content and 12 health points.
+
+Still left open, as before: a draft that fails an invented-figure check (the code number check
+or jev's figure check: `INVENTION_MARKERS`) is never kept, so no invented fact reaches the
+page; a draft the judge could not check (judge down) stays open; a below-floor confidence with
+no failed check stays an open question (audit H2). Code: `parse_brief.fill_derivable_fields`
+(`_invents`, `_check_ids`), `brief_render.render_client_brief`, `agent-server/mapping.build_rationale`.
+Tests: `test_cannot_fail_silently.py` (kept and marked; an inventing draft still left open;
+the client-page tag; the app rationale).
+

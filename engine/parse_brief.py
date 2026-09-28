@@ -796,6 +796,26 @@ def _value_items(value) -> list:
     return [str(value)] if str(value or "").strip() else []
 
 
+# Failure messages that mean a draft invents a fact (the code number check in
+# _judge_and_gate and _jev_figure_failures). A draft carrying one is never kept for review.
+INVENTION_MARKERS = ("figures not in the brief", "jev: a figure in")
+
+
+def _invents(fails) -> bool:
+    """True when any failure says the draft states a figure the brief does not."""
+    return any(str(f).startswith(INVENTION_MARKERS) for f in fails or [])
+
+
+def _check_ids(fails) -> list:
+    """Short names of failed checks ('supports_smp: why...' -> 'supports_smp'), in order."""
+    out = []
+    for f in fails or []:
+        k = str(f).split(":", 1)[0].strip()
+        if k and k not in out:
+            out.append(k)
+    return out
+
+
 def _jev_figure_failures(field, candidates, allowed_text) -> dict:
     """{candidate index: [hard failure, ...]} for RTB and desired-response drafts whose
     figures jev says are not in the brief at p(unsupported) >= jev_checks.FIGURE_FAIL_P
@@ -1312,6 +1332,29 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     chosen = {**resc, "_judge_why": chosen.get("_judge_why", "")}
                     chosen_fail = []
         conf = _conf(chosen.get("confidence"))
+
+        # Sai, 2026-09-28 (settles J5/J6): when every draft fails judged checks, keep the best
+        # draft that invents nothing, marked for review, instead of emptying the field. A
+        # draft that fails an invented-figure check is never kept; an unjudged draft (judge
+        # down) and a below-floor confidence with no failed check stay open as before.
+        if chosen_fail and not unjudged:
+            pool = [(chosen, chosen_fail)] + [(c, f) for c, _ok, f in judged if c is not chosen]
+            keep = next(((c, f) for c, f in pool if f and not _invents(f) and _golden_text(c.get("value"))), None)
+            if keep:
+                kept, fails = keep
+                label = field["label"].lower()
+                entry = {"value": kept["value"], "source": "inferred", "method": f"gen:{fid}",
+                         "confidence": round(conf, 2) if conf is not None else None,
+                         "review": {"status": "failed_checks", "failed": _check_ids(fails),
+                                    "why": "; ".join(fails)}}
+                if kept.get("_judge_why"):
+                    entry["judge_note"] = kept["_judge_why"]
+                golden_fields[fid] = entry
+                qs.append({"question": f"Review the {label}: every draft failed "
+                                       f"{', '.join(_check_ids(fails))}; the best one is kept as a draft.",
+                           "why_it_matters": "; ".join(fails),
+                           "priority": "high" if field.get("hero") else "medium", "blocks_field": fid})
+                return entry, qs
 
         if chosen_fail or conf is None or conf < floor:
             why = ("; ".join(chosen_fail) if chosen_fail
@@ -2886,6 +2929,8 @@ def _mark_provenance(out: dict) -> None:
         mark = PROVENANCE_MARKS[kind]
         if fid == "insight" and kind == "generated":
             mark += " — a hypothesis to validate, not a fact"    # audit H13
+        if isinstance(e.get("review"), dict):
+            mark += f" — DRAFT TO REVIEW: failed {', '.join(e['review'].get('failed') or [])}"
         prov[fid] = {"kind": kind, "mark": mark, "confidence": conf}
         if kind == "inferred" and _golden_text(e.get("value")) and (conf is None or conf < floor) and fid not in asked:
             label = fid.replace("_", " ")

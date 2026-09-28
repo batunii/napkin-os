@@ -819,3 +819,65 @@ def test_a_run_where_no_claude_call_answered_is_an_error(monkeypatch):
         assert "every Claude call" in str(e)
     else:
         raise AssertionError("a run with no Claude answer returned a brief")
+
+
+# ---------- 2026-09-28: a field whose every draft fails is kept as a marked draft ----------
+
+def test_failed_drafts_keep_the_best_one_marked_for_review(monkeypatch):
+    """The judge fails every RTB draft on supports_smp: the field keeps the best-ranked
+    draft, marked review.status=failed_checks with the failed check id, and an open question
+    says so (Sai, 2026-09-28; before, the field was emptied and its content lost)."""
+    _fake_models(monkeypatch)
+    pass_all = _pass_all
+
+    def fail_rtb(user):
+        """Pass everything except the RTB's supports_smp."""
+        out = pass_all(user)
+        for r in out["results"].values():
+            if "supports_smp" in r:
+                r["supports_smp"] = {"pass": False, "why": "the proof does not back the proposition"}
+        return out
+    monkeypatch.setattr(sys.modules[__name__], "_pass_all", fail_rtb)
+    monkeypatch.setattr(pb, "_numbers_not_in", lambda value, allowed: [])     # no invented figures here
+    gf, fills, qs = _fill(monkeypatch)
+    rtb = gf["reasons_to_believe"]
+    assert rtb["source"] == "inferred" and rtb["value"] and "reasons_to_believe" in fills
+    assert rtb["review"]["status"] == "failed_checks" and rtb["review"]["failed"] == ["supports_smp"]
+    assert any(q["blocks_field"] == "reasons_to_believe" and q["question"].startswith("Review the")
+               for q in qs)
+
+
+def test_failed_drafts_that_invent_a_figure_still_leave_the_field_open(monkeypatch):
+    """Every RTB draft states a figure the brief never gave: nothing is kept (no invented
+    fact reaches the page), the field stays open as before."""
+    _fake_models(monkeypatch)
+    monkeypatch.setattr(pb, "_numbers_not_in", lambda value, allowed: ["73"])
+    gf, fills, qs = _fill(monkeypatch)
+    assert gf["reasons_to_believe"]["source"] == "missing" and "review" not in gf["reasons_to_believe"]
+
+
+def test_a_draft_that_invents_a_figure_is_never_kept():
+    assert pb._invents(["figures not in the brief: 73 — remove or replace with a stated fact"])
+    assert pb._invents(['jev: a figure in "x" is not in the brief (p unsupported 0.97) — remove it'])
+    assert not pb._invents(["supports_smp: no", "ownable: generic"])
+    assert pb._check_ids(["supports_smp: a", "supports_smp: b", "ownable: c"]) == ["supports_smp", "ownable"]
+
+
+def test_client_page_tags_a_kept_draft():
+    import brief_render
+    brief = {"meta": {"project": "P"}, "loop2_brief": {"open_questions": []},
+             "loop2_golden": {"fields": {
+                 "smp": {"value": "Keep me", "source": "inferred", "method": "gen:smp",
+                         "review": {"status": "failed_checks", "failed": ["derives_from"], "why": "derives_from: no"}},
+                 "insight": {"value": "Fine", "source": "inferred", "method": "gen:insight"}}}}
+    md = brief_render.render_client_brief(brief)
+    assert "## Single-minded proposition\n_Draft — to review: it failed derives_from. See open questions._\nKeep me" in md
+    assert "## The insight\nFine" in md                                # an ordinary field gets no tag
+
+
+def test_app_rationale_names_the_kept_drafts():
+    sys.path.insert(0, str(HERE.parent / "agent-server"))
+    import mapping
+    brief = {"meta": {"extraction_mode": "anthropic:claude-opus-4-6"}, "loop1_capture": {},
+             "loop2_golden": {"fields": {"smp": {"value": "x", "review": {"status": "failed_checks"}}}}}
+    assert "DRAFTS TO REVIEW (failed their checks): smp" in mapping.build_rationale(brief)

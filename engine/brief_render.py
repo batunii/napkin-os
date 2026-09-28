@@ -185,6 +185,20 @@ def render_client_brief(brief) -> str:
     text_section("Budget & scope", gv("budget_scope"))
     text_section("Mandatories", gv("mandatories"))
 
+    # A field kept as a draft because every draft failed its checks (Sai, 2026-09-28) gets
+    # a visible tag under its heading, so a reader never takes it as final.
+    heads = {"Background": "background", "Objectives": "objectives", "Audience": "audience",
+             "Competitor context": "competitor_context", "The insight": "insight",
+             "Single-minded proposition": "smp", "Reasons to believe": "reasons_to_believe",
+             "Desired response": "desired_response", "Tone & world": "tone_world_assets",
+             "Budget & scope": "budget_scope", "Mandatories": "mandatories"}
+    for i in range(len(L) - 1, -1, -1):
+        fid = heads.get(L[i][3:]) if L[i].startswith("## ") else None
+        rv = (gf.get(fid) or {}).get("review") if fid and isinstance(gf.get(fid), dict) else None
+        if isinstance(rv, dict):
+            L.insert(i + 1, f"_Draft — to review: it failed {', '.join(rv.get('failed') or ['its checks'])}. "
+                            "See open questions._")
+
     oqs = l2.get("open_questions") or []
     if oqs:
         L.append("## Open questions to resolve before research")
@@ -338,6 +352,8 @@ def render_golden_provenance(L, brief):
             L.append(f"  \n  ↳ rationale: _{f['rationale']}_")
         if f.get("judge_note"):
             L.append(f"  \n  ↳ tournament: _{f['judge_note']}_")
+        if isinstance(f.get("review"), dict):
+            L.append(f"  \n  ↳ **DRAFT TO REVIEW**: every draft failed; kept the best. {f['review'].get('why', '')}")
         if f.get("alternatives"):
             L.append(f"  \n  ↳ runner-up: {json.dumps(f['alternatives'])[:200]}")
         L.append("")

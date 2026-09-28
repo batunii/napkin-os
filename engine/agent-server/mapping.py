@@ -196,6 +196,9 @@ def build_rationale(brief: dict) -> str:
         bits.append(f"golden-brief fill {filled}/{len(gf)} fields")
     if meta.get("fallback_links"):
         bits.append(f"NOT a Claude brief: answered by {', '.join(meta['fallback_links'])}")
+    drafts = [k for k, v in gf.items() if isinstance(v, dict) and isinstance(v.get("review"), dict)]
+    if drafts:   # kept because every draft failed its checks (2026-09-28); not final
+        bits.append(f"DRAFTS TO REVIEW (failed their checks): {', '.join(k.replace('_', ' ') for k in drafts)}")
     text = "; ".join(bits) + "."
     # A degraded run says so first: the planner must see why the draft is thin.
     if meta.get("degraded"):
