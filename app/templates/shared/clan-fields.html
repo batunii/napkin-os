@@ -69,6 +69,8 @@ clan-tray{display:block}
 /* wording a person may rewrite (edit mode), anywhere a page marks it */
 .clf-editing [data-clan-text]{outline:1.5px dashed color-mix(in srgb,var(--clf-chart) 60%,transparent);outline-offset:3px;border-radius:4px;cursor:text}
 .clf-editing [data-clan-text]:hover{outline-color:var(--clf-chart)}
+@keyframes clf-flash{0%,60%{outline-color:var(--clf-chart);background:color-mix(in srgb,var(--clf-chart) 14%,transparent)}100%{outline-color:transparent;background:transparent}}
+.clf-flash{outline:2px solid transparent;outline-offset:3px;border-radius:4px;animation:clf-flash 2.2s ease-out}
 [data-clan-text][contenteditable="true"]{outline:2px solid var(--clf-chart)!important;background:color-mix(in srgb,var(--clf-chart) 6%,transparent)}
 .clf-edited{position:relative}
 .clf-editing .clf-edited::before{content:"edited";position:absolute;top:-15px;right:0;font-family:var(--clf-mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--clf-green-ink)}
@@ -928,7 +930,18 @@ var ClanFields=(function(){
   // (`clan:focus`). Only the shell above this frame may ask.
   window.addEventListener('message',function(e){
     var m=e.data; if(e.source!==window.parent||!m||m.type!=='clan:open') return;
-    var ref=String(m.ref||''), el=ref&&document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)');
+    var ref=String(m.ref||'');
+    // A piece of the page's wording (`text[<key>]`): scroll to it and mark it.
+    var tk=/^text\[(.+)\]$/.exec(ref);
+    if(tk){
+      var tx=document.querySelector('[data-clan-text="'+cssEsc(tk[1])+'"]');
+      if(!tx){ toast('That wording is no longer on the page'); return; }
+      if(tx.scrollIntoView) tx.scrollIntoView({block:'center',behavior:'smooth'});
+      tx.classList.remove('clf-flash'); void tx.offsetWidth; tx.classList.add('clf-flash');
+      setTimeout(function(){ tx.classList.remove('clf-flash'); },2200);
+      return;
+    }
+    var el=ref&&document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)');
     if(el&&el.scrollIntoView) el.scrollIntoView({block:'center',behavior:'smooth'});
     if(kindOf(ref)) open(ref);
     else window.dispatchEvent(new CustomEvent('clan:focus',{detail:{path:m.path||ref}}));
