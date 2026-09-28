@@ -17,7 +17,10 @@ Inputs   a request dict ($defs/request). `authority` is the confidentiality boun
          is injected by the middleware; nothing else in the request can set scope,
          tenant or brand.
 Outputs  a response dict ($defs/response): blocks of citable hits in prompt reading
-         order, the rendered prompt text, token count, notes and the full trace.
+         order, the rendered prompt text, token count, notes and the full trace, plus
+         `degraded` (1.4.0, 2026-09-28): what did not work as intended for this answer,
+         lifted out of the trace so the caller can act on it (retry, flag, accept). Each
+         entry also becomes one plain line in `notes`. Empty when nothing degraded.
 Failure  an invalid request raises RequestInvalid carrying EVERY problem found, not just
          the first — a caller fixing a payload wants the whole list. A passage library
          that is missing, empty or unreachable raises StoreUnavailable before anything is
@@ -312,7 +315,64 @@ def _hit_out(h) -> dict:
     }
 
 
-def response_from(ctx, run_id: str, notes: list[str] | None = None) -> dict:
+DEGRADED_KINDS = ("checker_skipped", "keyword_only", "empty_field", "generic_query")
+
+
+def _why_skipped(v: dict) -> str:
+    """'jev timeout', 'jev not_entitled (401)', ... from a validation record's attempts."""
+    got = sorted({f"{a.get('backend')} {a.get('outcome')}" + (f" ({a['status']})" if a.get("status") else "")
+                  for a in (v.get("attempts") or [])})
+    return "; ".join(got) or "no backend answered"
+
+
+def _skipped(v) -> bool:
+    """True when validation was asked for and nobody answered. Validation switched off
+    (no backend requested) is a choice, not a degradation."""
+    return isinstance(v, dict) and bool(v.get("fell_back")) and not v.get("backend_used") and v.get("pool_size", 1) > 0
+
+
+def degraded_of(*, embed_mode: "str | None", validation: dict, counts: dict, gist: dict) -> list:
+    """The `degraded` list for one answer.
+
+    embed_mode  "keyword-only" when no embedding answered
+    validation  {field or bucket: validation record} (judge.ValidationResult.as_dict shape)
+    counts      {field or bucket: hits returned}
+    gist        the campaign's problem / objective / audience / key_message; None when the
+                caller has no request (response_from called directly), so it is not judged"""
+    out = []
+    skipped = [k for k, v in validation.items() if _skipped(v)]
+    if skipped:
+        whys = sorted({_why_skipped(validation[k]) for k in skipped})
+        out.append({"kind": "checker_skipped", "fields": skipped, "why": "; ".join(whys)})
+    if embed_mode == "keyword-only":
+        out.append({"kind": "keyword_only", "fields": [], "why": "no embedding endpoint answered: keyword (BM25) search only"})
+    empty = [k for k, n in counts.items() if not n]
+    if empty:
+        out.append({"kind": "empty_field", "fields": empty, "why": "no passage matched"})
+    if gist is not None and not any(str(v or "").strip() for v in gist.values()):
+        out.append({"kind": "generic_query", "fields": [],
+                    "why": "the campaign has no problem, objective, audience or key message: the search is not about this brief"})
+    return out
+
+
+def degraded_notes(degraded: list, total: int) -> list:
+    """One plain-language line per degraded entry."""
+    lines = []
+    for d in degraded:
+        n = len(d["fields"])
+        if d["kind"] == "checker_skipped":
+            lines.append(f"Relevance checker skipped on {n} of {total} ({', '.join(d['fields'])}): {d['why']}. "
+                         "Those passages are in search order, unchecked.")
+        elif d["kind"] == "keyword_only":
+            lines.append("Search model unavailable: keyword-only search, so passages that say the same thing in other words are missed.")
+        elif d["kind"] == "empty_field":
+            lines.append(f"No evidence for {n} of {total} ({', '.join(d['fields'])}).")
+        else:
+            lines.append("The request has no problem, objective, audience or key message: the evidence is generic, not about this brief.")
+    return lines
+
+
+def response_from(ctx, run_id: str, notes: list[str] | None = None, gist: dict | None = None) -> dict:
     """Shape a BriefContext as $defs/response."""
     blocks = []
     for name in BLOCK_ORDER:
@@ -322,14 +382,20 @@ def response_from(ctx, run_id: str, notes: list[str] | None = None) -> dict:
         blocks.append({"bucket": b.bucket, "hits": [_hit_out(h) for h in b.hits],
                        "tokens": b.tokens, "budget": b.budget, "dropped": b.dropped,
                        "over_target": b.over_target, "truncated": b.truncated})
+    v = ctx.validation or {}
+    keyword_only = any("keyword-only" in str(w) for w in ctx.widened)
+    degraded = degraded_of(embed_mode="keyword-only" if keyword_only else None,
+                           validation={b["bucket"]: v for b in blocks} if _skipped(v) else {},
+                           counts={b["bucket"]: len(b["hits"]) for b in blocks}, gist=gist)
     return {
         "contract_version": version(),
         "run_id": run_id,
         "blocks": blocks,
         "prompt_text": ctx.prompt_text(),
         "tokens": ctx.tokens,
-        "validation": (ctx.validation or {}).get("contract"),
-        "notes": list(notes or []) + list(ctx.widened),
+        "validation": v.get("contract"),
+        "notes": list(notes or []) + list(ctx.widened) + degraded_notes(degraded, len(blocks)),
+        "degraded": degraded,
         "trace": ctx.trace(),
     }
 
@@ -346,7 +412,8 @@ def gist_of(request: dict) -> dict:
     return {k: str(c.get(k) or "") for k in ("problem", "objective", "audience", "key_message")}
 
 
-def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None = None) -> dict:
+def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None = None,
+                        gist: dict | None = None) -> dict:
     """Shape build_multi()'s MultiContext as $defs/response: `fields` carries one evidence
     set per brief field (the brief generator's Loops 3-7), `blocks` is empty, and
     prompt_text renders the fields in order."""
@@ -357,6 +424,10 @@ def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None 
         if hits:
             parts.append(f"## {key}\n" + "\n\n".join(f"[{h.cite}] {h.text}" for h in hits))
     text = "\n\n".join(parts)
+    trace = mc.trace or {}
+    per_field = ((trace.get("validation") or {}).get("per_field") or {})
+    degraded = degraded_of(embed_mode=trace.get("embed"), validation=per_field,
+                           counts={f["field"]: len(f["hits"]) for f in fields}, gist=gist)
     return {
         "contract_version": version(),
         "run_id": run_id,
@@ -364,8 +435,9 @@ def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None 
         "fields": fields,
         "prompt_text": text,
         "tokens": estimate_tokens(text),
-        "validation": (mc.trace or {}).get("validation"),
-        "notes": list(notes or []),
+        "validation": trace.get("validation"),
+        "notes": list(notes or []) + degraded_notes(degraded, len(fields)),
+        "degraded": degraded,
         "trace": mc.trace,
     }
 
@@ -396,11 +468,11 @@ def handle(request: dict, *, index_dir=None, build=None, build_multi=None) -> di
             notes.append("limits.token_budget applies to retrieval.path=buckets only")
         mc = build_multi(pairs, queries, index_dir=index_dir,
                          **{k: v for k, v in kwargs.items() if k in _MULTI_KWARGS})
-        return response_from_multi(mc, queries, request["run_id"], notes)
+        return response_from_multi(mc, queries, request["run_id"], notes, gist=gist_of(request))
     if build is None:
         from brief_context import build
     ctx = build(pairs, index_dir=index_dir, **kwargs)
-    return response_from(ctx, request["run_id"], notes)
+    return response_from(ctx, request["run_id"], notes, gist=gist_of(request))
 
 
 if __name__ == "__main__":                       # validate a request file: rag_io.py req.json

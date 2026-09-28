@@ -297,7 +297,8 @@ def test_notes_carry_widening_so_it_is_not_hidden():
     """response_from() carries both the adapter's own notes and the context's widening
     notes into the response, so widening is never hidden."""
     resp = rag_io.response_from(_ctx(), "r", ["adapter note"])
-    assert resp["notes"] == ["adapter note", "exemplars: dropped category"]
+    assert resp["notes"] == ["adapter note", "exemplars: dropped category",
+                             "No evidence for 1 of 4 (craft)."]        # the fixture's empty bucket (1.4.0)
 
 
 # ---- retrieval.path = mix (the default since 1.3.0) --------------------------------------
@@ -404,3 +405,55 @@ def test_injected_retrieval_skips_the_library_check(monkeypatch):
     import rag
     monkeypatch.setattr(rag, "open_store", lambda *a, **k: (_ for _ in ()).throw(AssertionError("opened")))
     rag_io.handle({**REQ, "retrieval": {"path": "buckets"}}, build=lambda pairs, **k: _ctx())
+
+
+# ---- degraded: what did not work, at the top of the answer (1.4.0, 2026-09-28) --------
+def _v(**k):
+    """A validation record in judge.ValidationResult.as_dict shape."""
+    return {"backend_requested": "jev", "backend_used": "jev", "fell_back": False, "pool_size": 39,
+            "attempts": [{"backend": "jev", "outcome": "ok", "status": None}], **k}
+
+
+def test_degraded_lists_a_skipped_checker_per_field_with_the_reason():
+    timeout = _v(backend_used=None, fell_back=True, attempts=[{"backend": "jev", "outcome": "timeout", "status": None}])
+    d = rag_io.degraded_of(embed_mode="nim:x", validation={"a": _v(), "b": timeout, "c": timeout},
+                           counts={"a": 3, "b": 4, "c": 5}, gist={"problem": "p"})
+    assert d == [{"kind": "checker_skipped", "fields": ["b", "c"], "why": "jev timeout"}]
+    assert rag_io.degraded_notes(d, 3)[0].startswith("Relevance checker skipped on 2 of 3 (b, c): jev timeout.")
+
+
+def test_validation_switched_off_is_not_degraded():
+    off = {"backend_requested": "", "backend_used": None, "fell_back": False, "pool_size": 39, "attempts": []}
+    assert rag_io.degraded_of(embed_mode="nim:x", validation={"a": off}, counts={"a": 3}, gist={"problem": "p"}) == []
+
+
+def test_degraded_keyword_only_empty_field_and_generic_query():
+    d = rag_io.degraded_of(embed_mode="keyword-only", validation={}, counts={"a": 0, "b": 2},
+                           gist={"problem": "", "objective": None, "audience": " ", "key_message": ""})
+    assert [x["kind"] for x in d] == ["keyword_only", "empty_field", "generic_query"]
+    assert d[1]["fields"] == ["a"]
+
+
+def test_mix_response_carries_degraded_and_validates():
+    class MC:
+        fields = {"loop3_research": [], "loop4_insight": []}
+        trace = {"embed": "keyword-only", "validation": {"per_field": {
+            "loop3_research": _v(backend_used=None, fell_back=True, attempts=[{"backend": "jev", "outcome": "not_entitled", "status": 401}]),
+            "loop4_insight": _v()}}}
+    resp = rag_io.response_from_multi(MC(), {"loop3_research": "q", "loop4_insight": "q"}, "r",
+                                      gist={"problem": "p"})
+    kinds = {d["kind"]: d for d in resp["degraded"]}
+    assert kinds["checker_skipped"]["why"] == "jev not_entitled (401)" and "keyword_only" in kinds
+    assert len(resp["notes"]) == len(resp["degraded"]) == 3
+    # the new field validates; `validation` is set aside because the mix path puts its
+    # per-field record there, which the contract does not admit (a separate, older defect)
+    assert rag_io.validate({**resp, "validation": None}, "response") == []
+
+
+def test_only_real_problems_are_listed():
+    """A checked, embedded answer lists nothing but its empty field."""
+    class MC:
+        fields = {"loop3_research": []}
+        trace = {"embed": "nim:x", "validation": {"per_field": {"loop3_research": _v()}}}
+    resp = rag_io.response_from_multi(MC(), {"loop3_research": "q"}, "r", gist={"problem": "p"})
+    assert [d["kind"] for d in resp["degraded"]] == ["empty_field"]      # only the empty field

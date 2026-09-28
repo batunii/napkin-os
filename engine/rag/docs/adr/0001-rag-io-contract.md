@@ -100,3 +100,18 @@ brief from the pack digests, clearly marked as written without the library, as t
 tool does; one alert per outage; later, a synced backup library with the AWS move. Never
 treat the error as an empty result or retry in a tight loop.
 
+## Addendum 2026-09-28 (2) — `degraded`: what did not work, at the top of the answer
+
+The same failure test found that a checker that timed out on every field, or a search that
+fell back to keywords, returned `notes: []`: the only record was deep in `trace`, which the
+middleware has no reason to read. Contract 1.4.0 adds `degraded`, a list of
+`{kind, fields, why}` built from what the trace already records, with one plain line per
+entry in `notes`. Kinds: `checker_skipped`, `keyword_only`, `empty_field`, `generic_query`.
+Additive and optional, so no existing reader changes; the middleware owner (Shrey) is told
+in the handover. Evidence is unchanged; there are no extra calls.
+
+Found while testing it, not fixed here: on the mix path with the validator on, `validation`
+carries the per-field record (`per_field`, `calls`), which `$defs/validation` does not admit,
+so a live mix response does not validate against its own contract. The offline tests run with
+the validator off and never saw it.
+
