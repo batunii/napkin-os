@@ -207,6 +207,8 @@ and the requirements carried over from Qdrant are in
 
 ### Evaluation — `golden.py`, `golden_check.py`, `tune.py`, `simulate.py`
 
+**Label scoring (2026-09-28):** `labelset.py confirm <export> --rater cd|planner` keeps each rater's labels apart and marks a pair confirmed only when the raters agree; `labelset.py evaluate --backend jev` scores the validator against human-confirmed labels only, per bucket, as Cohen's kappa and balanced accuracy beside raw agreement, with the cut-off that works best and the raters' agreement with each other (`--truth model` uses the model's pre-labels, for testing the tool only).
+
 **Checkpoint log (2026-09-26):** `checkpoint_run.py` measures a commit on the three test
 briefs against the frozen baseline; `eval_checkpoints.json` registers each measured code
 state (dir, arm, what changed, comparable or not); `eval_history.py` assembles every
