@@ -130,6 +130,59 @@ pub async fn api_proxy(
     Ok((reply, Vec::new()))
 }
 
+/// `POST /verify` — a person verifies a finding (Contract 4 §4, Contract 3
+/// §6.2). The middleware writes it to the agency's knowledge first — a
+/// `human:<id>` source and a synthesis fact citing it — and answers with the
+/// pin; the host then records the verification and the pin as one change.
+/// Without a middleware nothing is written: an unverifiable "verified" would
+/// be a finding that never reached the layer.
+pub async fn verify(
+    ctx: &Ctx,
+    session: &Session,
+    cfg: &dyn HostConfig,
+    body: &str,
+) -> HostResult<(Value, Vec<HostEvent>)> {
+    use crate::ops::review;
+    let (finding, rationale) = review::parse_verify(body)?;
+    let payload = session.read(|d| review::verify_request(ctx, d, &finding))?;
+    let decision_id = payload["input"]["decision_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let outgoing = serde_json::json!({
+        "request_kind": middleware::REQUEST_KIND,
+        "payload": payload,
+        "clan": session.clan_context_for_agent(),
+    });
+    let reply = proxy_call(cfg, middleware::REQUEST_KIND, outgoing).await;
+    if reply.get("ok").and_then(Value::as_bool) != Some(true) {
+        let why = match reply.get("error") {
+            Some(Value::String(s)) => s.clone(),
+            Some(e) => e
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("the middleware refused")
+                .to_string(),
+            None => "the middleware refused".to_string(),
+        };
+        return Err(HostError::new(
+            502,
+            format!("Not verified: the finding could not be written to the agency's knowledge ({why})."),
+        ));
+    }
+    let data = reply.get("data").cloned().unwrap_or(Value::Null);
+    middleware::check_api(&data)?;
+    let pin = data
+        .pointer("/result/pin")
+        .filter(|p| p.is_object())
+        .cloned()
+        .ok_or_else(|| HostError::new(502, "the middleware answered verify_finding without a pin"))?;
+    let applied = session.perform(ctx, |c, d| {
+        review::verify_finding(c, d, &finding, &rationale, &decision_id, &pin)
+    })?;
+    Ok((applied.reply, applied.events))
+}
+
 /// Home-screen prompt → the unified proxy with `request_kind = "agent"`.
 pub async fn agent_prompt(cfg: &dyn HostConfig, text: &str) -> Value {
     proxy_call(cfg, "agent", serde_json::json!({ "input": text })).await

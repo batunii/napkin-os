@@ -197,6 +197,25 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "replaced_by": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fact_id",
+              "decision"
+            ],
+            "description": "Set when a person resolved a contest over this pin's identity for another value: the pin stays, so every decision citing it still resolves.",
+            "properties": {
+              "fact_id": {
+                "type": "string",
+                "pattern": "^f_[0-9A-Z]{6,}$"
+              },
+              "decision": {
+                "type": "string",
+                "pattern": "^d_[0-9A-Z]{6,}$"
+              }
+            }
           }
         }
       }

@@ -354,6 +354,24 @@ freely, never redefine.
   decision. The actor always comes from `Ctx`.
 - New in v1: `/verdict`, `/classify`, `/contest`, `/resolve`, `/finding`,
   `/verify`, `/approve`, `/history`, `/timeline`, `/open`, `/stale`.
+- Landed (2026-09-28), each a person's decision — a process is refused `403` —
+  recording one decision as the person in `Ctx` with what it changes, in one
+  generation; refused `409` once the document is locked:
+  - `/verdict {target, polarity: good|bad, rationale, reason_code?}` — on a
+    finding, `bad` rejects it (`status: rejected`, `rejection`), `good` is
+    refused: a finding is verified. A bad verdict needs its rationale.
+  - `/classify {target, model, export, corpus, rationale}` — the mark is
+    recorded; taking it to the fact's licence in the layer (§4) is not built.
+  - `/resolve {contest, chosen, rationale}` — the contest resolved; a chosen
+    value not yet pinned is pinned from the copy the research froze beside it,
+    and a pin of the same identity it replaces is kept, marked `replaced_by`.
+  - `/verify {finding, rationale?}` — the host asks the middleware's
+    `verify_finding` to write the finding to the layer (a `human:<id>` source,
+    a synthesis fact under the decision id the host chose), then pins it and
+    records the verification. No middleware, no verification.
+  - `/approve {rationale?}` — refused while anything on the §7 list is open;
+    otherwise one `approve` decision naming the exact version accepted. What
+    locking does to other writes (`/patch-data`, a job) is W5-Z1's.
 - `/decisions` (landed): every decision, newest first, with who made it, its
   targets as labels, its cites resolved, and what needs a person — derived by
   the host from the chain, the members and the data: `reasoning.attention`,

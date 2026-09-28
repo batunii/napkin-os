@@ -191,6 +191,13 @@ pub async fn dispatch_async(
     req: HostRequest,
 ) -> HostResponse {
     #[cfg(feature = "native")]
+    if req.path == "/verify" {
+        return match crate::proxy::verify(ctx, session, cfg, &req.body_str()).await {
+            Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
+            Err(e) => e.into(),
+        };
+    }
+    #[cfg(feature = "native")]
     if req.path == "/api-proxy" {
         return match api_proxy(ctx, session, cfg, &req.body_str()).await {
             Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
@@ -198,6 +205,18 @@ pub async fn dispatch_async(
         };
     }
     dispatch(ctx, session, cfg, req)
+}
+
+/// Run a review operation and answer with its reply, fanning out its events.
+fn review(
+    session: &Session,
+    ctx: &Ctx,
+    op: impl FnOnce(&Ctx, &crate::document::Document) -> crate::error::HostResult<crate::ops::Outcome>,
+) -> HostResponse {
+    match session.perform(ctx, op) {
+        Ok(done) => HostResponse::json(200, &done.reply).with_events(done.events),
+        Err(e) => e.into(),
+    }
 }
 
 /// [`handle`] under a context the shell resolved for this request.
@@ -269,6 +288,28 @@ pub fn dispatch(
             Ok(v) => HostResponse::json(200, &v),
             Err(e) => e.into(),
         },
+
+        // A person's review decisions (Contract 4 §8). Each records one
+        // decision as the person in `ctx`, with what it changes.
+        "/verdict" => review(session, ctx, |c, d| {
+            crate::ops::review::verdict(c, d, crate::ops::review::Verdict::parse(&req.body_str())?)
+        }),
+        "/classify" => review(session, ctx, |c, d| {
+            crate::ops::review::classify(c, d, crate::ops::review::Classify::parse(&req.body_str())?)
+        }),
+        "/resolve" => review(session, ctx, |c, d| {
+            crate::ops::review::resolve(c, d, crate::ops::review::Resolve::parse(&req.body_str())?)
+        }),
+        "/approve" => review(session, ctx, |c, d| {
+            crate::ops::review::approve(c, d, &crate::ops::review::parse_approve(&req.body_str())?)
+        }),
+        #[cfg(feature = "native")]
+        "/verify" => HostResponse::error(500, "/verify must be dispatched asynchronously"),
+        #[cfg(not(feature = "native"))]
+        "/verify" => HostResponse::error(
+            503,
+            "Verifying needs the middleware, to write the finding to the agency's knowledge; this build has none.",
+        ),
 
         // The decision view the shell's OS layer renders: every decision,
         // newest first, with what needs a person — derived here, not by the app.

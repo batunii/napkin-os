@@ -92,6 +92,17 @@ tasks:
     reads: the document as it now stands — campaign, selection, pins, findings (a rejected finding is never cited)
     writes: report (replaced whole), one intake message (role agent, stage report)
 
+  # ---- a person's review (Contract 3 §6.2, Contract 4 §4) ----
+  verify_finding:
+    handler: verify_finding@1
+    job: short                     # asked by the host's /verify, never by the view
+    input: "{ finding, by: human:<id>, decision_id }"
+    reads: the finding and the pins it cites
+    writes: >
+      the knowledge layer only — a human:<id> source at tier reviewer-verified, and the finding
+      as a fact, method synthesis, under the host's decision id. The host pins it and records
+      the verification; the reply's change is null.
+
 # R1 (Contract 4 §3): which middleware decisions must carry reasoning. The host
 # requires it on every pin, contest, finding and verdict, and every proposal,
 # whatever an app says; this adds the edits that write the agent-written parts

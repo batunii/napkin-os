@@ -169,3 +169,44 @@ def test_report_claims_are_checked_in_code(store):
     assert texts and not any("42" in t for t in texts)                 # the made-up figure was dropped
     assert all(s["cites"] for s in rpt["summary"])                     # the uncited line was dropped
     assert rpt["headline"]["cites"] and set(cites) <= {f["id"] for f in rch["facts_append"]}
+
+
+def _verify_req(clan, **inp):
+    base = {"finding": "", "by": "human:ana", "decision_id": "d_01JBVERIFY01"}
+    return SimpleNamespace(doc=DOC, base="3", clan=clan, handler="verify_finding@1.0", inp={**base, **inp})
+
+
+def test_verifying_a_finding_writes_it_to_the_layer_as_reviewed(store):
+    from napkin.handlers import verify_finding
+    from napkin.util import TaskError
+    caps = caps_for(store)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    clan = dict(rclan(["IE"]), facts=rch["facts_append"])
+    _, sch, _ = synthesise.run_synthesis(DOC, "3", clan, {}, "t@1.0", caps)
+    fi = sch["findings_append"][0]
+    clan = dict(clan, findings=sch["findings_append"])
+
+    result, change, _ = verify_finding.run(_verify_req(clan, finding=fi["id"]), caps)
+    assert change is None  # the host records it; this only writes the layer
+    pin = result["pin"]
+    assert pin["method"] == "synthesis" and pin["decision"] == "d_01JBVERIFY01" and pin["value"] == fi["statement"]
+    assert pin["sources"][0] == result["source"] and pin["sources"][1:] == fi["cites"]
+    row = caps.layers.resolve(pin["origin"])
+    assert row and row["id"] == pin["id"] and row["method"] == "synthesis"
+    human = caps.layers.sources([result["source"]])[0]
+    assert human["uri"] == "human:ana" and human["tier"] == "reviewer-verified"
+    # the strictest licence of what it cites
+    cited = [p for p in rch["facts_append"] if p["id"] in fi["cites"]]
+    assert pin["licence"] == max((p["licence"] for p in cited), key=["open", "licensed-internal",
+                                                                      "client-confidential"].index)
+
+    # Only a proposed finding, only a person, only a d_ id the host chose.
+    done = dict(clan, findings=[dict(fi, status="verified")])
+    for req, status in ((_verify_req(done, finding=fi["id"]), 409),
+                        (_verify_req(clan, finding="fi_NOPE0001"), 404),
+                        (_verify_req(clan, finding=fi["id"], by="process:x"), 400),
+                        (_verify_req(clan, finding=fi["id"], decision_id="d_x"), 400)):
+        with pytest.raises(TaskError) as e:
+            verify_finding.run(req, caps)
+        assert e.value.status == status

@@ -211,7 +211,8 @@ pub fn register(manifest: &mut Manifest, m: Member) {
 ///
 /// With `sources` (the document's schema has room for them, see
 /// [`projects_sources`]) each pin also carries its `quotes` — the verbatim
-/// passage each source gave for it — and the projection gains `sources`, each
+/// passage each source gave for it — and `replaced_by` when a person picked
+/// another value for its identity, and the projection gains `sources`, each
 /// cited source by id, with the member's hash in `built_from`.
 pub fn projection(
     facts: &[serde_yaml::Value],
@@ -248,8 +249,10 @@ pub fn projection(
             }
         }
         if sources.is_some() {
-            if let Some(q) = f.get("quotes").filter(|v| v.is_object()) {
-                pin.insert("quotes".into(), q.clone());
+            for k in ["quotes", "replaced_by"] {
+                if let Some(v) = f.get(k).filter(|v| v.is_object()) {
+                    pin.insert(k.into(), v.clone());
+                }
             }
         }
         let stale = f.get("stale").filter(|v| !v.is_null());

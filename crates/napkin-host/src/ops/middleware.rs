@@ -19,8 +19,7 @@
 //! without any HTTP.
 
 use clan_sdk::{
-    compress_chain, pack, AgentOutput, Certainty, ClanBuilder, ClanFile, CompressionConfig,
-    Decision, DecisionChain, PackOptions, ReasonPoint, Reasoning, Rejected,
+    Certainty, ClanFile, Decision, DecisionChain, ReasonPoint, Reasoning, Rejected,
 };
 use serde_json::Value;
 
@@ -30,6 +29,7 @@ use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
 
 use super::edit::attributed;
+use super::assemble::{assemble, Members};
 use super::members::{self, Member, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 use super::{json_merge, Outcome};
 
@@ -282,66 +282,12 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         return Err(HostError::conflict("already applied"));
     }
 
-    let facts_bytes = members::write_doc(facts_doc, FACTS, facts.clone())?;
-    let findings_bytes = members::write_doc(findings_doc, FINDINGS, findings.clone())?;
-    // The sources member is written once there is something in it; a
-    // document that never cited one does not grow an empty file.
-    let has_sources = !sources.is_empty() || clan.has_entry(SOURCES.path);
-    let sources_bytes = members::write_doc(sources_doc, SOURCES, sources.clone())?;
-    let projected_sources = members::projects_sources(clan)
-        .then_some((sources.as_slice(), sources_bytes.as_slice()));
-
-    // 5. The data: the applicable part of the patch merged over what is
-    //    there, then the projection rebuilt from the member bytes just
-    //    written. `pack` validates the whole result against the schema.
+    // 5. The decisions, in the order they are prepended: the job's own, then
+    //    a contest for each field someone changed since the job read it.
     let now = now();
-    if let Some(obj) = data.as_object_mut() {
-        obj.insert(
-            PROJECTION_KEY.into(),
-            members::projection(
-                &facts,
-                &facts_bytes,
-                &findings,
-                &findings_bytes,
-                projected_sources,
-                &now,
-            ),
-        );
-    }
-
-    let packed = pack(
-        clan,
-        AgentOutput {
-            mode: "data-update".into(),
-            structured: data,
-            design: None,
-            human: None,
-            decision: None,
-        },
-        PackOptions {
-            delta: Some(format!("middleware change from {handler}")),
-            ..Default::default()
-        },
-        None,
-    )?;
-
-    // 6. One archive: the packed generation, plus the two members registered
-    //    with their roles and the decisions prepended to its chain.
-    let packed = ClanFile::from_bytes(packed)?;
-    let mut manifest = packed.manifest().clone();
-    members::register(&mut manifest, FACTS);
-    members::register(&mut manifest, FINDINGS);
-    if has_sources {
-        members::register(&mut manifest, SOURCES);
-    }
-
-    let mut chain = if packed.has_entry(CHAIN) {
-        DecisionChain::from_yaml(&packed.read_entry(CHAIN)?)?
-    } else {
-        DecisionChain::default()
-    };
+    let mut prepend = Vec::new();
     for d in &recorded {
-        chain.prepend(decision(ctx, reply, d, &now)?);
+        prepend.push(decision(ctx, reply, d, &now)?);
     }
     let mut contest_ids = Vec::new();
     for c in &contests {
@@ -352,24 +298,24 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
             .collect();
         let d = contest_decision(ctx, open_id, &handler, base, doc, c, &held, &now)?;
         contest_ids.push(d.id.clone().unwrap_or_default());
-        chain.prepend(d);
+        prepend.push(d);
     }
-    compress_chain(&mut chain, &CompressionConfig::default(), None);
 
-    let mut builder = ClanBuilder::new(manifest);
-    for (path, bytes) in packed.read_all_entries()? {
-        if path == clan_sdk::MANIFEST_PATH {
-            continue;
-        }
-        builder.add_entry(path, bytes);
-    }
-    builder.add_entry(FACTS.path, facts_bytes);
-    builder.add_entry(FINDINGS.path, findings_bytes);
-    if has_sources {
-        builder.add_entry(SOURCES.path, sources_bytes);
-    }
-    builder.add_entry(CHAIN, chain.to_yaml()?);
-    let bytes = builder.build()?;
+    // 6. One archive: the applicable part of the patch merged over what is
+    //    there, the members, the projection rebuilt from them, the decisions.
+    let bytes = assemble(
+        clan,
+        data,
+        Members {
+            facts,
+            findings,
+            sources,
+        },
+        prepend,
+        &format!("middleware change from {handler}"),
+        &now,
+        true,
+    )?;
 
     let keys: Vec<String> = split
         .patch

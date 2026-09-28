@@ -368,7 +368,9 @@ class Researcher:
                 row = self._write(v, cdec, status="contested")
                 vals.append({"value": row["value"], "unit": row["unit"], "fact_id": row["id"],
                              "from": ", ".join(v["runs"]), "sources": list(v["sources"]),
-                             "quotes": {s: q for s, q in (v.get("quotes") or {}).items() if s in v["sources"]}})
+                             "quotes": {s: q for s, q in (v.get("quotes") or {}).items() if s in v["sources"]},
+                             # frozen now, so a person's pick pins it without asking the layer
+                             "pin": self._pin(row, v, cdid, t_now)})
             vals = [{k: x for k, x in v.items() if x is not None} for v in vals]
             if len({repr(v["value"]) for v in vals}) < 2:
                 continue
