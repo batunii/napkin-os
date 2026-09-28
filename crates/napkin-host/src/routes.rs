@@ -191,6 +191,13 @@ pub async fn dispatch_async(
     req: HostRequest,
 ) -> HostResponse {
     #[cfg(feature = "native")]
+    if req.path == "/correct" {
+        return match crate::proxy::correct(ctx, session, cfg, &req.body_str()).await {
+            Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
+            Err(e) => e.into(),
+        };
+    }
+    #[cfg(feature = "native")]
     if req.path == "/verify" {
         return match crate::proxy::verify(ctx, session, cfg, &req.body_str()).await {
             Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
@@ -304,6 +311,16 @@ pub fn dispatch(
         "/resolve" => review(session, ctx, |c, d| {
             crate::ops::review::resolve(c, d, crate::ops::review::Resolve::parse(&req.body_str())?)
         }),
+        "/edit" => review(session, ctx, |c, d| {
+            crate::ops::review::edit(c, d, crate::ops::review::parse_edit(&req.body_str())?)
+        }),
+        #[cfg(feature = "native")]
+        "/correct" => HostResponse::error(500, "/correct must be dispatched asynchronously"),
+        #[cfg(not(feature = "native"))]
+        "/correct" => HostResponse::error(
+            503,
+            "Correcting a fact needs the middleware, to write it to the agency's knowledge; this build has none.",
+        ),
         "/acknowledge" => review(session, ctx, |c, d| {
             crate::ops::review::acknowledge(c, d, &crate::ops::review::parse_acknowledge(&req.body_str())?)
         }),

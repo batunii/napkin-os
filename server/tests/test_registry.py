@@ -78,3 +78,15 @@ def test_handlers_reach_nothing_outside_the_capability_object(path):
             assert node.func.id not in ("open", "exec", "eval", "__import__"), (path, node.lineno)
         if isinstance(node, ast.Attribute) and node.attr == "environ":
             raise AssertionError((path, node.lineno))
+
+
+def test_review_tasks_resolve_for_a_document_whose_pipeline_predates_them():
+    from napkin import registry
+    clan = {"pipeline": {"tasks": {"extract_ask": {"handler": "extract_ask@1"}}}}
+    for task in ("verify_finding", "correct_fact"):
+        mod, handler = registry.resolve(task, clan)
+        assert mod.TASK == task
+    import pytest
+    from napkin.util import TaskError
+    with pytest.raises(TaskError):
+        registry.resolve("research_lens", clan)

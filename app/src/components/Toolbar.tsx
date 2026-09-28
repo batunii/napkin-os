@@ -24,6 +24,9 @@ interface Props {
   docPath: string
   onSpinoff: (appId: string) => void
   sidebarOpen: boolean
+  /** Edit mode, for every app: its fields become editable, each change a person's pinned decision. */
+  editMode?: boolean
+  onToggleEdit?: () => void
   loading: boolean
   validation?: string
 }
@@ -40,7 +43,7 @@ function SidebarGlyph() {
 
 /** The document bar: studio home, title and status, file actions, panels. */
 export default function Toolbar({
-  title, isTemplate, trusted, onHome, onOpenFile, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport,
+  title, isTemplate, trusted, onHome, onOpenFile, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport, editMode, onToggleEdit,
   docPath, onSpinoff, sidebarOpen, loading, validation,
 }: Props) {
   const valid = validation === 'OK'
@@ -74,6 +77,16 @@ export default function Toolbar({
         </span>
       )}
       <span className="ch-bar-sep" />
+      {onToggleEdit && (
+        <button
+          className={`ch-btn ${editMode ? 'ch-btn-editing' : ''}`}
+          onClick={onToggleEdit}
+          aria-pressed={!!editMode}
+          title={editMode ? 'Stop editing' : 'Edit this document: every change is recorded as your decision'}
+        >
+          {editMode ? 'Done editing' : 'Edit'}
+        </button>
+      )}
       <button className="ch-btn" onClick={onOpenFile}>Open</button>
       <button className="ch-btn" onClick={onSave} title="Save a copy of this .clan to share">Save as</button>
       {onKeepOffline && (

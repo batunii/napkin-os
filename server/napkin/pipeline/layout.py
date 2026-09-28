@@ -34,6 +34,8 @@ Rules:
   ("the larger channel") and letting the fields show the numbers.
 - Charts: <clan-chart kind="bar|line|stack" refs="f_a f_b f_c" title="..." labels="A,B,C"> over pins with
   numbers only; kind="stack" may add rest="label" for an unmeasured remainder.
+- The ask a person gave or confirmed (problem, objective, markets…) is <clan-field ref="campaign.problem">;
+  the person can edit it there. Use it for their words, never to restate a figure.
 - A pin with a quote may be a pull quote: <clan-quote ref="f_...">. A gap: <clan-gap ref="gap_...">.
 - End with <clan-sources></clan-sources>.
 - Elements: section div header footer article aside h1 h2 h3 p span strong em b i small br hr ol ul li
@@ -57,7 +59,7 @@ def _label(p) -> str:
 
 
 def compose(report: dict, pins: dict, findings: dict, contests: dict, gaps: dict, caps, names=(),
-            brand: str = "", markets=()) -> tuple[str, str, list[str]]:
+            brand: str = "", markets=(), ask: dict | None = None) -> tuple[str, str, list[str]]:
     """-> (layout html, who laid it out: `agent` or `built`, what the layout rule dropped)."""
     payload = {
         "brand": brand, "markets": list(markets),
@@ -77,11 +79,13 @@ def compose(report: dict, pins: dict, findings: dict, contests: dict, gaps: dict
         "contests": [{"id": i, "key": c.get("key"), "values": [v.get("value") for v in c.get("values") or []]}
                      for i, c in contests.items() if c.get("status") == "open"],
         "gaps": [{"id": i, "wanted": g.get("wanted") or g.get("key")} for i, g in gaps.items()],
+        "ask": [{"ref": f"campaign.{k}", "value": v} for k, v in (ask or {}).items()],
     }
+    paths = {f"campaign.{k}" for k in (ask or {})}
     dropped: list[str] = []
     try:
         raw = caps.model.structured("layout", SYSTEM, payload, schema(), max_tokens=8000)
-        html, dropped, counts = rule.check(raw.get("html", ""), pins, findings, contests, gaps, names)
+        html, dropped, counts = rule.check(raw.get("html", ""), pins, findings, contests, gaps, names, paths)
         # What failed is gone; a layout left with too little evidence to be the
         # report is replaced by one built from it.
         if counts["fields"] + counts["charts"] >= 3 and counts["blocks"] >= 1:
@@ -91,7 +95,7 @@ def compose(report: dict, pins: dict, findings: dict, contests: dict, gaps: dict
     except Exception as e:  # the report still has a layout
         log.warning("layout unavailable: %s", e)
         dropped.append(f"model: {e}")
-    html, more, _ = rule.check(built(report, pins, contests, gaps), pins, findings, contests, gaps, names)
+    html, more, _ = rule.check(built(report, pins, contests, gaps), pins, findings, contests, gaps, names, paths)
     return html, "built", dropped + more
 
 

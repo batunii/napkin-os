@@ -135,7 +135,8 @@ def _render(n) -> str:
     return f"<{n.tag}{attrs}>" if n.tag in VOID else f"<{n.tag}{attrs}>{inner}</{n.tag}>"
 
 
-def check(html: str, pins: dict, findings: dict, contests: dict, gaps: dict, names=()) -> tuple[str, list[str], dict]:
+def check(html: str, pins: dict, findings: dict, contests: dict, gaps: dict, names=(),
+          paths=()) -> tuple[str, list[str], dict]:
     """-> (the layout as it may be written, what was dropped and why, counts).
 
     `pins`, `findings`: by id, as the document holds them (a rejected finding is
@@ -146,8 +147,10 @@ def check(html: str, pins: dict, findings: dict, contests: dict, gaps: dict, nam
     dropped = [f"<{t}> is not in the vocabulary" for t in sorted(tree.dropped_tags)]
     live_findings = {k: v for k, v in findings.items() if v.get("status") != "rejected"}
 
+    paths = set(paths)
+
     def known(r):
-        return r in pins or r in live_findings or r in contests or r in gaps
+        return r in pins or r in live_findings or r in contests or r in gaps or r in paths
     known.gaps = set(gaps)
 
     counts = {"fields": 0, "charts": 0, "blocks": 0}

@@ -369,6 +369,16 @@ freely, never redefine.
     `verify_finding` to write the finding to the layer (a `human:<id>` source,
     a synthesis fact under the decision id the host chose), then pins it and
     records the verification. No middleware, no verification.
+  - `/edit {path, value, gate?, rationale?}` — a person's edit (the shell's
+    Edit mode). One pinned `edit` decision; a campaign field's envelope
+    becomes `origin: stated`, `by` the person. Members and the projection are
+    not edited here.
+  - `/correct {fact, value, source_uri?, rationale}` — a person corrects a
+    fact. The middleware's `correct_fact` writes the value to the layer with
+    the person (or their link) as source; the host pins it, keeps the old pin
+    marked `replaced_by`, and records a pinned `edit`. Like `/verify` and
+    `verify_finding`, it resolves for any document, whatever pipeline it was
+    made with.
   - `/acknowledge {decision, rationale?}` — "Looks right": a good verdict
     that cites the decision, which clears what its agent flagged or was unsure
     of (§4) without touching what it wrote. Refused on a finding (verify it).

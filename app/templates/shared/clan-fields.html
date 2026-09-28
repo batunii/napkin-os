@@ -52,6 +52,20 @@ clan-tray{display:block}
 .clf-cite:hover{border-color:var(--clf-ink3);color:var(--clf-ink)}
 .clf-cite:focus-visible{outline:2px solid var(--clf-create);outline-offset:2px}
 .clf-cite.s-check{border-color:var(--clf-create);color:var(--clf-create-ink)}
+/* a value a person owns: text, edited in edit mode */
+.clf.txt-f{display:inline;padding:0 2px;border-radius:4px}
+.clf.txt-f.blk{display:block;padding:2px 4px;margin:-2px -4px}
+.clf .org{font-family:var(--clf-mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--clf-ink3);margin-left:5px;white-space:nowrap}
+.clf .empty{color:var(--clf-ink3);font-style:italic}
+.clf-editing .clf.editable{outline:1.5px dashed var(--clf-chart);outline-offset:2px;cursor:text}
+.clf-editing .clf.editable::after{content:"✎";font-size:11px;color:var(--clf-chart);margin-left:4px}
+.clf-editing .clf.correctable{outline:1.5px dashed color-mix(in srgb,var(--clf-chart) 55%,transparent);outline-offset:2px}
+.clf-ed{display:grid;gap:6px;margin:4px 0;padding:8px;border:1px solid var(--clf-chart);border-radius:10px;background:var(--clf-paper)}
+.clf-ed textarea,.clf-ed input{font:inherit;font-size:14px;color:var(--clf-ink);background:var(--clf-paper);border:1px solid var(--clf-line);border-radius:8px;padding:6px 8px;width:100%}
+.clf-ed textarea{min-height:70px;resize:vertical}
+.clf-ed .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.clf-ed .hint{font-size:11.5px;color:var(--clf-ink3)}
+.clf-ed .clf-err{margin:0}
 .clf-missing{font-family:var(--clf-mono);font-size:11px;color:var(--clf-create-ink);border:1px dashed var(--clf-create);border-radius:6px;padding:0 5px}
 
 /* ── a chart, a quote, a gap, the sources ────────────────────────────── */
@@ -208,7 +222,7 @@ clan-tray{display:block}
    carries the document as it now stands, which replaces the page's copy. */
 var ClanFields=(function(){
   var SCHEME=(navigator.userAgent.indexOf('Windows')!==-1)?'http://clan.localhost':'clan://localhost';
-  var VIEW=null, STACK=[], DRAWER=null;
+  var VIEW=null, STACK=[], DRAWER=null, EDIT=false;
   var TICK='<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg>';
   var LOCK='<svg class="clf-lock" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5.5" rx="1"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>';
 
@@ -256,7 +270,13 @@ var ClanFields=(function(){
     return k.charAt(0).toUpperCase()+k.slice(1)+(p.market?' · '+p.market:'');
   }
   function srcOf(p){ var s=arr(p&&p.sources).filter(function(x){ return /^src_/.test(x); })[0]; return s?{id:s, rec:sources()[s]||null}:null; }
-  function srcShort(p){ var s=srcOf(p); if(!s||!s.rec) return s?'source not in the document':''; return (s.rec.publisher||s.rec.domain||'source')+(s.rec.published_at?' · '+yr(s.rec.published_at):''); }
+  // A person's own verification or correction: "you" when it is the viewer.
+  function isYou(actor){ return arr(VIEW&&VIEW.decisions).some(function(b){ return b.who&&b.who.you&&b.decision&&b.decision.actor===actor; }); }
+  function whoOfSrc(rec){ return /^human:/.test(rec.uri||'')?rec.uri:'human:'+(rec.publisher||'someone'); }
+  function personName(uri){ return isYou(uri)?'you':String(uri).replace(/^human:/,''); }
+  function srcShort(p){ var s=srcOf(p); if(!s||!s.rec) return s?'source not in the document':'';
+    if(s.rec.tier==='reviewer-verified') return (/correct/.test(s.rec.title||'')?'corrected by ':'verified by ')+personName(whoOfSrc(s.rec));
+    return (s.rec.publisher||s.rec.domain||'source')+(s.rec.published_at?' · '+yr(s.rec.published_at):''); }
 
   // ── what the record says about a ref ────────────────────────────────
   function kindOf(ref){
@@ -266,6 +286,7 @@ var ClanFields=(function(){
     if(/^gap_/.test(ref)) return 'gap';
     if(/^src_/.test(ref)) return 'source';
     if(/^cite:/.test(ref)) return 'cite';
+    if(/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/.test(ref)) return 'path';
     return null;
   }
   function openContestOf(fid){ return contests().filter(function(c){ return c.status==='open'&&arr(c.values).some(function(v){ return v.fact_id===fid; }); })[0]||null; }
@@ -301,6 +322,36 @@ var ClanFields=(function(){
     return ref;
   }
 
+  // ── data a person owns: a path into the data, an envelope or a plain value
+  function at(path){ return String(path).split('.').reduce(function(v,k){ return v==null?undefined:v[k]; }, data()); }
+  function envAt(path){ var v=at(path); return (v&&typeof v==='object'&&!Array.isArray(v)&&'value' in v&&'origin' in v)?v:null; }
+  function valueAt(path){ var e=envAt(path); return e?e.value:at(path); }
+  function textOf(v){
+    if(v==null||v==='') return '';
+    if(typeof v==='string'||typeof v==='number') return String(v);
+    if(typeof v==='boolean') return v?'yes':'no';
+    if(Array.isArray(v)) return v.map(function(x){ return typeof x==='object'&&x?(x.name||x.statement||x.label||x.ref||''):String(x); }).filter(Boolean).join(', ');
+    return v.name||v.definition||v.statement||v.label||'';
+  }
+  // What a person can type: a string, a number, a list of plain values, a named thing.
+  function editableValue(v){
+    if(v==null||typeof v==='string'||typeof v==='number') return true;
+    if(Array.isArray(v)) return v.every(function(x){ return typeof x==='string'; });
+    return typeof v==='object'&&typeof v.name==='string'&&Object.keys(v).every(function(k){ return k==='name'||k==='ref'; });
+  }
+  function fromText(old,t){
+    t=String(t).trim();
+    if(Array.isArray(old)) return t.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    if(typeof old==='number'){ var n=Number(t.replace(/,/g,'')); return isNaN(n)?t:n; }
+    if(old&&typeof old==='object'&&'name' in old){
+      var slug=t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+      var kind=String(old.ref||'brand/x').split('/')[0];
+      return t===old.name?old:{ref:kind+'/'+(slug||'unnamed'), name:t};
+    }
+    return t;
+  }
+  var ORIGIN={extracted:'from your material', proposed:'proposed', confirmed:'confirmed', stated:'you said'};
+
   // ── the host ────────────────────────────────────────────────────────
   function post(route, body){
     return fetch(SCHEME+route,{method:'POST',body:JSON.stringify(body||{})})
@@ -328,6 +379,14 @@ var ClanFields=(function(){
   function renderField(el){
     var ref=el.getAttribute('ref')||'', as=el.getAttribute('as')||'inline', k=kindOf(ref), st=stateOf(ref);
     var cls={big:'big',stat:'stat',cell:'cell',claim:'claim'}[as]||'in';
+    if(k==='path'){ renderPath(el, ref, as); return; }
+    if(k==='pin'){
+      // A pin a person corrected, or picked against, shows what replaced it.
+      var seen={}, cur=ref;
+      while(pins()[cur]&&pins()[cur].replaced_by&&pins()[pins()[cur].replaced_by.fact_id]&&!seen[cur]){ seen[cur]=1; cur=pins()[cur].replaced_by.fact_id; }
+      if(cur!==ref){ el.setAttribute('data-shows',cur); var hold=el.getAttribute('ref'); el.setAttribute('ref',cur); renderField(el); el.setAttribute('ref',hold);
+        var b=el.querySelector('.clf'); if(b){ b.insertAdjacentHTML('beforeend',' <span class="tag" style="background:var(--clf-green-soft);color:var(--clf-green-ink)">updated</span>'); } return; }
+    }
     if(st==='missing'||!(k==='pin'||k==='finding'||k==='contest')){ el.innerHTML='<span class="clf-missing" title="Not in this document">'+esc(ref||'no ref')+'</span>'; return; }
     var conf=confidential(ref), cap=el.getAttribute('caption'), tag=tagFor(st), h='', aria='';
     if(k==='finding'){
@@ -346,7 +405,38 @@ var ClanFields=(function(){
       if(p.confidence==='low'&&(as==='big'||as==='stat')) h+=' <span class="tag conf-l">low confidence</span>';
       aria=(cap||label(p))+': '+fmt(p);
     }
-    el.innerHTML='<button type="button" class="clf '+cls+' s-'+st+(conf?' conf':'')+'" data-ref="'+esc(ref)+'" aria-label="'+esc(aria+' — open the evidence')+'">'+h+'</button>';
+    el.innerHTML='<button type="button" class="clf '+cls+' s-'+st+(conf?' conf':'')+(k==='pin'?' correctable':'')+'" data-ref="'+esc(ref)+'" aria-label="'+esc(aria+' — open the evidence')+'">'+h+'</button>';
+  }
+  function renderPath(el, path, as){
+    if(el.querySelector('.clf-ed')) return; // being edited: leave it be
+    var env=envAt(path), v=valueAt(path), t=textOf(v), ok=editableValue(v);
+    var org=env?ORIGIN[env.origin]||env.origin:'';
+    var block=as==='block'||as==='big'||(typeof v==='string'&&v.length>80);
+    el.innerHTML='<button type="button" class="clf txt-f'+(block?' blk':'')+(ok?' editable':'')+'" data-ref="'+esc(path)+'" aria-label="'+esc((el.getAttribute('caption')||path)+': '+(t||'empty'))+'">'
+      +(t?esc(t):'<span class="empty">empty</span>')+(org?'<span class="org">'+esc(org)+'</span>':'')+'</button>';
+  }
+  function editPath(el, path){
+    var env=envAt(path), v=valueAt(path), long=typeof v==='string'&&(v.length>60||/prose|problem|objective|audience|background|insight|statement/.test(path));
+    var list=Array.isArray(v), t=textOf(v);
+    el.innerHTML='<div class="clf-ed" role="group" aria-label="Edit '+esc(el.getAttribute('caption')||path)+'">'
+      +(long?'<textarea>'+esc(t)+'</textarea>':'<input type="text" value="'+esc(t)+'">')
+      +(list?'<span class="hint">Separate items with commas.</span>':'')
+      +'<div class="clf-err" hidden></div><div class="row"><button type="button" class="clf-btn primary" data-clf-save>Save</button><button type="button" class="clf-btn" data-clf-cancel>Cancel</button><span class="hint">Saved as your decision; agents will not write over it.</span></div></div>';
+    var box=el.querySelector('textarea,input'); box.focus(); if(box.setSelectionRange) box.setSelectionRange(box.value.length,box.value.length);
+    function done(){ renderPath(el, path, el.getAttribute('as')); }
+    function save(){
+      var next=fromText(v, box.value), btns=el.querySelectorAll('button');
+      if(JSON.stringify(next)===JSON.stringify(v)){ done(); return; }
+      Array.prototype.forEach.call(btns,function(b){ b.disabled=true; });
+      post('/edit',{path:path, value:next, gate:(env&&env.gate)||el.getAttribute('gate')||'', rationale:'Edited by a person.'}).then(function(res){
+        if(res&&res.ok){ loadView(); toast('Saved'); if(el.isConnected) done(); return; }
+        Array.prototype.forEach.call(btns,function(b){ b.disabled=false; });
+        var e=el.querySelector('.clf-err'); e.textContent='Not saved: '+(errorOf(res)||'the host refused'); e.hidden=false;
+      },function(){ var e=el.querySelector('.clf-err'); e.textContent='Could not reach the host.'; e.hidden=false; Array.prototype.forEach.call(btns,function(b){ b.disabled=false; }); });
+    }
+    el.querySelector('[data-clf-save]').onclick=save;
+    el.querySelector('[data-clf-cancel]').onclick=done;
+    box.addEventListener('keydown',function(e){ if(e.key==='Escape'){ e.preventDefault(); done(); } else if(e.key==='Enter'&&(!long||e.metaKey||e.ctrlKey)){ e.preventDefault(); save(); } });
   }
   function valueShape(as,v,cap,src,tag,conf){
     if(as==='big'||as==='stat') return '<span class="v">'+v+'</span><span class="c">'+(conf?LOCK:'')+esc(cap)+'</span>'+(src?'<span class="clf-src">'+esc(src)+'</span>':'')+(tag?'<span>'+tag+'</span>':'');
@@ -483,7 +573,8 @@ var ClanFields=(function(){
 
   function srcCard(sid,where){
     var s=sources()[sid];
-    if(/^human:/.test(sid)) return '<div class="clf-card"><span class="t">A person\u2019s verification</span><dl><dt>By</dt><dd>'+esc(sid.slice(6))+'</dd></dl></div>';
+    if(/^human:/.test(sid)) return '<div class="clf-card"><span class="t">A person\u2019s verification</span><dl><dt>By</dt><dd>'+esc(personName(sid))+'</dd></dl></div>';
+    if(s&&s.tier==='reviewer-verified') return '<div class="clf-card"><span class="t">'+(/correct/.test(s.title||'')?'Corrected':'Verified')+' by '+esc(personName(whoOfSrc(s)))+'</span><dl>'+(s.retrieved_at?'<dt>When</dt><dd>'+esc(s.retrieved_at)+'</dd>':'')+'<dt>From</dt><dd>'+(/^https?:/.test(s.uri||'')?esc(s.domain||s.uri):'their own knowledge')+'</dd></dl>'+(/^https?:/.test(s.uri||'')?'<a href="'+esc(s.uri)+'" target="_blank" rel="noopener noreferrer">Open source \u2197</a>':'')+'</div>';
     if(!s) return '<div class="clf-card"><span class="t">'+esc(sid)+'</span><p class="clf-muted">This document does not carry the source\u2019s record: it was pinned before sources travelled with the document.</p></div>';
     var link=/^https?:\/\//.test(s.uri||'')?'<a href="'+esc(s.uri)+'" target="_blank" rel="noopener noreferrer">Open source \u2197</a>':'';
     return '<div class="clf-card"><span class="t">'+esc(s.title||s.uri)+'</span><dl>'+(s.publisher?'<dt>From</dt><dd>'+esc(s.publisher)+'</dd>':'')+(s.tier?'<dt>Kind</dt><dd>'+esc(s.tier)+'</dd>':'')
@@ -514,13 +605,16 @@ var ClanFields=(function(){
   function evidence(p){
     var h='', qs=obj(p.quotes), srcs=arr(p.sources).filter(function(s){ return /^src_|^human:/.test(s); });
     if(!srcs.length) return '<p class="clf-muted">No source is recorded for this value.</p>';
-    srcs.forEach(function(sid){ var q=qs[sid];
-      h+='<div class="clf-sec"><h3>'+(q?'What the source says':'Source')+'</h3>'+(q?quoteBlock(q,p):'')+srcCard(sid,'')+'</div>'; });
+    srcs.forEach(function(sid){ var q=qs[sid], rec=sources()[sid], person=rec&&rec.tier==='reviewer-verified';
+      h+='<div class="clf-sec"><h3>'+(q?(person?(isYou(whoOfSrc(rec))?'What you said':'What they said'):'What the source says'):'Source')+'</h3>'
+        +(q?(person?'<blockquote class="clf-q">'+esc(q)+'</blockquote>':quoteBlock(q,p)):'')+srcCard(sid,'')+'</div>'; });
     return h;
   }
   function pills(ref){
     var st=stateOf(ref), h='';
-    h+={sourced:'<span class="clf-pill">Sourced · quote checked</span>',check:'<span class="clf-pill check">Derived by the agent · needs your check</span>',verified:'<span class="clf-pill ok">'+TICK+' Verified</span>',rejected:'<span class="clf-pill check">Rejected</span>',contest:'<span class="clf-pill check">Two sources disagree · pick one</span>',resolved:'<span class="clf-pill ok">'+TICK+' Resolved</span>',replaced:'<span class="clf-pill check">Replaced by a person\u2019s pick</span>'}[st]||'';
+    var pp=pins()[ref], ps=pp&&srcOf(pp), byPerson=ps&&ps.rec&&ps.rec.tier==='reviewer-verified';
+    if(byPerson&&st==='sourced') st='by-person';
+    h+={'by-person':'<span class="clf-pill ok">'+TICK+' '+esc(srcShort(pp).replace(/^./,function(c){ return c.toUpperCase(); }))+'</span>',sourced:'<span class="clf-pill">Sourced · quote checked</span>',check:'<span class="clf-pill check">Derived by the agent · needs your check</span>',verified:'<span class="clf-pill ok">'+TICK+' Verified</span>',rejected:'<span class="clf-pill check">Rejected</span>',contest:'<span class="clf-pill check">Two sources disagree · pick one</span>',resolved:'<span class="clf-pill ok">'+TICK+' Resolved</span>',replaced:'<span class="clf-pill check">Replaced by a person\u2019s pick</span>'}[st]||'';
     if(confidential(ref)) h+='<span class="clf-pill conf">'+LOCK+'Confidential</span>';
     var p=pins()[ref]; if(p&&p.confidence&&p.confidence!=='high') h+='<span class="clf-pill warn">'+esc(p.confidence)+' confidence</span>';
     if(p&&p.stale) h+='<span class="clf-pill warn">stale: the layer has a newer value</span>';
@@ -533,7 +627,7 @@ var ClanFields=(function(){
       return '<li><span><b>'+esc(d.kind||'edit')+'</b> by '+esc(b.who&&b.who.name||d.agent)+' · '+esc(String(d.timestamp||'').slice(0,16).replace('T',' '))+(d.rationale?' \u2014 \u201c'+esc(d.rationale.length>160?d.rationale.slice(0,157)+'\u2026':d.rationale)+'\u201d':'')+'</span></li>'; }).join('')+'</ul></div>';
   }
   function wrote(ref){
-    var el=document.querySelector('clan-field[ref="'+cssEsc(ref)+'"],clan-quote[ref="'+cssEsc(ref)+'"],clan-gap[ref="'+cssEsc(ref)+'"]');
+    var el=document.querySelector('clan-field[ref="'+cssEsc(ref)+'"],clan-field[data-shows="'+cssEsc(ref)+'"],clan-quote[ref="'+cssEsc(ref)+'"],clan-gap[ref="'+cssEsc(ref)+'"]');
     if(!el){ var c=document.querySelectorAll('clan-chart'); for(var i=0;i<c.length;i++){ if((' '+c[i].getAttribute('refs')+' ').indexOf(' '+ref+' ')!==-1){ el=c[i]; break; } } }
     return '<div class="clf-sec"><h3>What the agent wrote</h3>'+(el?'<pre class="clf-q" style="font-family:var(--clf-mono);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">'+esc(el.outerHTML.replace(/>[\s\S]*<\//,'></'))+'</pre>':'<p class="clf-muted">This layout does not show it. It is still in the record, so the tray lists it.</p>')+'</div>';
   }
@@ -545,6 +639,14 @@ var ClanFields=(function(){
       +'<label class="clf-toggle"><input type="checkbox" name="corpus"><span>May go into the agency\u2019s knowledge<small>Off: other campaigns never see it.</small></span></label>'
       +'<label>Why <span class="req">required</span><textarea name="why" required placeholder="e.g. Pricing is under NDA until launch"></textarea></label>'
       +'<div class="clf-err" hidden></div><div class="clf-acts"><button type="submit" class="clf-btn primary">Mark confidential</button><button type="button" class="clf-btn" data-clf="redraw">Cancel</button></div></form>';
+  }
+  function correctForm(ref,p){
+    return '<form class="clf-form" data-clf-form="correct"><b style="font-size:14px">Correct this value</b>'
+      +'<label>The right value<input type="text" name="value" value="'+esc(fmt(p))+'" style="font:inherit;font-size:14px;border:1px solid var(--clf-line);border-radius:8px;padding:6px 8px;background:var(--clf-paper);color:var(--clf-ink)"></label>'
+      +'<label>Where it comes from <span class="clf-muted">(a link; leave empty if you know it yourself)</span><input type="url" name="src" placeholder="https://" style="font:inherit;font-size:14px;border:1px solid var(--clf-line);border-radius:8px;padding:6px 8px;background:var(--clf-paper);color:var(--clf-ink)"></label>'
+      +'<label>Why <span class="req">required</span><textarea name="why" placeholder="e.g. The 2026 panel says 31%"></textarea></label>'
+      +'<div class="clf-err" hidden></div><div class="clf-acts"><button type="submit" class="clf-btn primary">Save the correction</button><button type="button" class="clf-btn" data-clf="redraw">Cancel</button></div>'
+      +'<p class="clf-muted">Your value is written to the agency\u2019s knowledge with you as its source. The old value stays on record, marked replaced.</p></form>';
   }
   function draw(){
     var t=top(), ref=t.ref, k=kindOf(ref), b='', crumb='', L=locked();
@@ -558,7 +660,7 @@ var ClanFields=(function(){
         if(p.replaced_by) b+='<button type="button" class="clf-row" data-open="'+esc(p.replaced_by.fact_id)+'"><span>Replaced by<small>a person resolved the sources\u2019 disagreement</small></span><b>'+esc(fmt(pins()[p.replaced_by.fact_id]))+'</b></button>';
         var oc=openContestOf(ref); if(oc) b+='<button type="button" class="clf-row" data-open="'+esc(oc.id)+'"><span>Another source says otherwise<small>pick one before lock</small></span><b>'+arr(oc.values).map(fmt).map(esc).join(' or ')+'</b></button>';
         b+=evidence(p);
-        if(!L) b+='<div class="clf-acts" data-clf-anchor><button type="button" class="clf-btn" data-clf="good">Looks right</button><button type="button" class="clf-btn" data-clf="bad">It\u2019s wrong\u2026</button><button type="button" class="clf-btn" data-clf="conf">Confidential\u2026</button></div>';
+        if(!L&&!p.replaced_by) b+=(t.fix?correctForm(ref,p):'')+'<div class="clf-acts" data-clf-anchor><button type="button" class="clf-btn" data-clf="good">Looks right</button><button type="button" class="clf-btn" data-clf="fix">Correct it\u2026</button><button type="button" class="clf-btn" data-clf="bad">It\u2019s wrong\u2026</button><button type="button" class="clf-btn" data-clf="conf">Confidential\u2026</button></div>';
         b+=history('facts['+ref+']');
       }
     } else if(k==='finding'){
@@ -592,6 +694,13 @@ var ClanFields=(function(){
     } else if(k==='gap'){
       var g=gap(ref); crumb='Looked for, not found';
       if(g) b+='<div class="clf-dv"><span class="stmt">'+esc(g.wanted||g.key)+'</span><span class="c">'+esc(g.note||'')+'</span></div><div class="clf-sec"><h3>Where the researcher looked</h3><ul class="clf-hist">'+arr(g.sources_tried||g.tried).map(function(x){ return '<li><span>'+esc(x)+'</span></li>'; }).join('')+'</ul></div>';
+    } else if(k==='path'){
+      var env=envAt(ref), v=valueAt(ref); crumb=ref.replace(/_/g,' ').replace(/\./g,' › ');
+      b+='<div class="clf-dv"><span class="stmt">'+(textOf(v)?esc(textOf(v)):'<span class="clf-muted">empty</span>')+'</span>'+(env?'<div class="clf-pills"><span class="clf-pill">'+esc(ORIGIN[env.origin]||env.origin)+'</span></div>':'')+'</div>';
+      if(env&&env.source&&env.source.quote) b+='<div class="clf-sec"><h3>What your material says</h3><blockquote class="clf-q">“'+esc(env.source.quote)+'”<span class="loc">verbatim</span></blockquote></div>';
+      if(env&&arr(env.fact_ids).length) b+='<div class="clf-sec"><h3>Inferred from</h3><div class="clf-rows">'+arr(env.fact_ids).map(function(c){ var p=pins()[c]; return '<button type="button" class="clf-row" data-open="'+esc(c)+'"><span>'+esc(p?label(p):c)+'</span><b>'+esc(fmt(p))+'</b></button>'; }).join('')+'</div></div>';
+      if(!L&&editableValue(v)) b+='<p class="clf-muted">To change it, press <b>Edit</b> in the toolbar and click the value.</p>';
+      b+=history(ref);
     } else if(k==='cite'){
       crumb='What this rests on';
       b+='<div class="clf-rows">'+ref.slice(5).split(',').map(function(r){ var kk=kindOf(r), t='', v='';
@@ -628,6 +737,7 @@ var ClanFields=(function(){
     if(w==='close') close();
     else if(w==='back'){ STACK.pop(); draw(); }
     else if(w==='redraw') draw();
+    else if(w==='fix'){ top().fix=true; draw(); var inp=DRAWER.body.querySelector('form[data-clf-form="correct"] input[name="value"]'); if(inp) inp.focus(); }
     else if(w==='good') act('/verdict',{target:target,polarity:'good',rationale:''},null,'Recorded: it looks right');
     else if(w==='bad'||w==='conf'){
       var box=document.createElement('div');
@@ -644,6 +754,8 @@ var ClanFields=(function(){
       else act('/verify',{finding:ref,rationale:why},form,'Verified and written to the agency\u2019s knowledge');
     } else if(kind==='resolve'){ if(!fd.get('pick')){ showError(form,'Pick the value the report uses.'); return; } if(!why){ showError(form,'Say why this one.'); return; }
       act('/resolve',{contest:ref,chosen:fd.get('pick'),rationale:why},form,'Resolved'); }
+    else if(kind==='correct'){ if(!String(fd.get('value')||'').trim()){ showError(form,'Give the right value.'); return; } if(!why){ showError(form,'Say why it is wrong.'); return; }
+      top().fix=false; act('/correct',{fact:ref,value:String(fd.get('value')).trim(),source_uri:String(fd.get('src')||'').trim(),rationale:why},form,'Corrected: the old value stays on record'); }
     else if(!why){ showError(form,'Say why.'); return; }
     else if(kind==='classify') act('/classify',{target:form.getAttribute('data-target'),model:fd.get('model')==='on',export:fd.get('export')==='on',corpus:fd.get('corpus')==='on',rationale:why},form,'Marked confidential');
     else if(kind==='bad') act('/verdict',{target:form.getAttribute('data-target'),polarity:'bad',rationale:why},form,'Recorded: marked wrong');
@@ -689,11 +801,19 @@ var ClanFields=(function(){
     var t=e.target.closest('[data-ref]'); if(!t) return;
     if(!t.closest('clan-field,clan-cite,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray')) return;
     var ref=t.getAttribute('data-ref');
+    if(EDIT&&!locked()&&t.classList.contains('editable')&&kindOf(ref)==='path'){ editPath(t.closest('clan-field'), ref); return; }
+    if(EDIT&&!locked()&&kindOf(ref)==='pin'&&t.classList.contains('correctable')){ open(ref); top().fix=true; draw(); return; }
     if(t.classList.contains('clf-titem')){ var el=document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'center',behavior:'smooth'}); open(ref,false,kindOf(ref)?'':t.getAttribute('data-note')); return; }
     open(ref);
   });
   document.addEventListener('keydown',function(e){ var m=e.target.closest&&e.target.closest('.clf-chart .mark'); if(m&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); open(m.getAttribute('data-ref')); } });
   window.addEventListener('clan:dataupdated',function(){ loadView().then(refresh); });
+  // Edit mode is the OS's (the toolbar's Edit); the bridge announces it.
+  window.addEventListener('clan:editmode',function(e){
+    EDIT=!!(e.detail&&e.detail.active);
+    document.documentElement.classList.toggle('clf-editing',EDIT);
+    refresh();
+  });
   // The OS's decision panel asks to show one thing: a pin, finding, contest,
   // gap or source opens its evidence; a data path is the app's to show
   // (`clan:focus`). Only the shell above this frame may ask.

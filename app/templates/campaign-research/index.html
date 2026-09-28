@@ -552,6 +552,9 @@ details.records > summary .rt::after{content:" \25BE";color:var(--ink3);font-wei
 details.records[open] > summary .rt::after{content:" \25B4"}
 details.records > summary .rs{font-size:13px;color:var(--ink2)}
 details.records section.region:first-of-type{margin-top:24px}
+/* an empty field can be typed into only in edit mode */
+.os-edit-only{display:none;margin-top:8px}
+.clf-editing .os-edit-only{display:block}
 .focus-flash{animation:focusflash 1.6s var(--ease)}
 @keyframes focusflash{0%,40%{box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 70%,transparent);background:color-mix(in srgb,var(--amber) 14%,transparent)}100%{box-shadow:none}}
 .rep{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);padding:26px 28px 24px;display:grid;gap:22px}
@@ -1082,12 +1085,17 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     return h;
   }
   function stubBtn(label, why, act, a){ return '<button type="button" class="btn sm" aria-disabled="true" title="'+esc(why)+'" data-act="'+act+'" data-address="'+esc(a)+'">'+esc(label)+'</button>'; }
+  // The fields a person can type into are the OS's editable fields (Edit in
+  // the toolbar); the rest keep this view's own rendering.
+  var OS_EDITABLE={text:1, prose:1, enum:1, codes:1, ref:1};
+  function osField(f){ return '<clan-field ref="campaign.'+f.k+'" as="block" gate="'+esc(f.gate)+'" caption="'+esc(f.label)+'"></clan-field>'; }
   function renderField(f){
     var env=camp()[f.k], p='campaign.'+f.k, A=addr(p);
     if(!isObj(env)){
       return '<article class="field absent'+(f.type==='audience'||f.type==='prose'?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'">'
         +'<div class="fh"><span class="lab">'+esc(f.label)+'</span>'+gatePill(f.gate)+'<span class="sp"></span><span class="path">'+esc(p)+'</span></div>'
         +'<div class="empty-v"><b>Not filled.</b> '+(f.gate==='none'?'No state waits on it.':'The document cannot reach “'+esc(f.gate)+'” without it.')+(f.hint?' '+esc(f.hint):'')+'</div>'
+        +(OS_EDITABLE[f.type]&&f.k!=='id'?'<div class="os-edit-only">'+osField(f)+'</div>':'')
         +'</article>';
     }
     var flagged=rejectedCited(env);
@@ -1095,7 +1103,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var h='<article class="field o-'+esc(env.origin)+(flagged.length?' flagged':'')+(wide?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'">'
       +'<div class="fh"><span class="lab">'+esc(f.label)+'</span>'+originBadge(env.origin, env)+gatePill(f.gate)+'<span class="sp"></span><span class="path">'+esc(p)+'</span></div>';
     if(flagged.length) h+='<div class="flag" style="margin-bottom:10px"><div><b>Flagged.</b> Cites '+flagged.map(function(id){ return '<a href="#finding-'+esc(id)+'">'+esc(id)+'</a>'; }).join(', ')+', which a reviewer rejected. Revise the field to stop citing it before lock.</div></div>';
-    h+=renderValue(f, env);
+    h+=(OS_EDITABLE[f.type]&&f.k!=='id'?osField(f):renderValue(f, env));
     h+='<div class="prov">'+provenance(env, f)+fieldMarks(p)+'</div>';
     var canConfirm=(env.origin==='extracted'||env.origin==='proposed');
     h+='<div class="ctl no-print" role="group" aria-label="Review '+esc(f.label)+'">'
@@ -1393,6 +1401,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function render(){
     try{
       renderNotices(); renderHero(); renderReport(); renderChat(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop(); syncTitle(); mode();
+      if(window.ClanFields) ClanFields.refresh();
     }catch(e){
       console.error(e);
       $('notices').innerHTML='<div class="notice" role="alert"><b>The view could not render this document.</b> '+esc(e&&e.message)+'</div>';

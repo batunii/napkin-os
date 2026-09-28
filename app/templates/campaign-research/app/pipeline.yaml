@@ -104,6 +104,14 @@ tasks:
       as a fact, method synthesis, under the host's decision id. The host pins it and records
       the verification; the reply's change is null.
 
+  correct_fact:
+    handler: correct_fact@1
+    job: short                     # asked by the host's /correct, never by the view
+    input: "{ fact, value, source_uri?, note, by: human:<id>, decision_id }"
+    writes: >
+      the knowledge layer only — the person as a source (or the link they gave), and a new
+      row for the same fact with their value; the host pins it and keeps the old pin, replaced.
+
 # R1 (Contract 4 §3): which middleware decisions must carry reasoning. The host
 # requires it on every pin, contest, finding and verdict, and every proposal,
 # whatever an app says; this adds the edits that write the agent-written parts

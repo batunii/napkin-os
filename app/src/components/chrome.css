@@ -455,3 +455,10 @@
   /* The right end of the footer holds the decisions toggle (DecisionPanel.css). */
   .ch-footer { justify-content: flex-start; padding-left: 14px; }
 }
+
+/* Edit mode: the one place the shell says the document is open for editing. */
+.ch-btn-editing {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}

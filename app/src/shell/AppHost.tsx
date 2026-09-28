@@ -28,6 +28,8 @@ interface Props {
 export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff }: Props) {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false) // collapsed by default
+  // Edit mode is the OS's: the app's fields become editable while it is on.
+  const [editMode, setEditMode] = useState(running.editMode)
   const { open } = running
 
   return (
@@ -50,6 +52,8 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
         onSpinoff={onSpinoff}
         loading={false}
         validation={open.validation}
+        editMode={editMode}
+        onToggleEdit={open.render_model === 'authored' ? () => setEditMode(e => !e) : undefined}
       />
       {banner}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -60,7 +64,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
             hasHumanView={open.has_human_view}
             manifest={open.manifest}
             renderModel={open.render_model === 'authored' ? 'authored' : 'legacy'}
-            editMode={running.editMode}
+            editMode={editMode}
           />
         </main>
         <DecisionPanel docPath={open.path} />

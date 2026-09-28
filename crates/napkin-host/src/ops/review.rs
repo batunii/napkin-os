@@ -690,6 +690,184 @@ fn clip_line(s: &str) -> String {
     }
 }
 
+/// `POST /edit`: `{path, value, gate?, rationale?}`.
+pub fn parse_edit(raw: &str) -> HostResult<(String, Value, Option<String>, String)> {
+    let v = body(raw)?;
+    let value = v.get("value").cloned().ok_or_else(|| HostError::bad_request("`value` is required"))?;
+    Ok((required(&v, "path")?, value, Some(text(&v, "gate")).filter(|g| !g.is_empty()), text(&v, "rationale")))
+}
+
+/// A person edits a value in the document (edit mode). The edit is theirs:
+/// one pinned `edit` decision names the path, and a campaign field's envelope
+/// becomes `origin: stated`, `by` the person — so no job writes over it
+/// (Contract 3 §2.2). Its old provenance (a quote, the pins it was inferred
+/// from) no longer describes the value and is dropped; the decision chain
+/// keeps the history. A path the host owns (`projection`), a member (facts,
+/// findings — corrected with `/correct`, verified with `/verify`), or an
+/// unchanged value is refused.
+pub fn edit(ctx: &Ctx, doc: &Document, input: (String, Value, Option<String>, String)) -> HostResult<Outcome> {
+    let (path, value, gate, rationale) = input;
+    let who = person(ctx, "edit the document")?;
+    not_locked(doc)?;
+    let segs: Vec<&str> = path.split('.').collect();
+    if segs.is_empty() || segs.iter().any(|s| s.is_empty() || s.contains('[') || s.contains('#')) {
+        return Err(HostError::bad_request(format!("{path} is not a data path (dotted keys only)")));
+    }
+    if segs[0] == super::members::PROJECTION_KEY {
+        return Err(HostError::bad_request("the projection is the host's; edit the value it is built from"));
+    }
+    if matches!(segs[0], "facts" | "findings" | "sources") {
+        return Err(HostError::bad_request("a fact is corrected (/correct) and a finding verified (/verify), not edited"));
+    }
+    let clan = doc.clan();
+    let now = now();
+    let mut data = data_of(clan)?;
+    let current = segs.iter().try_fold(&data, |v, k| v.get(*k)).cloned();
+    let d_id = new_decision_id();
+
+    // A campaign field is an envelope: the value, and how it got there.
+    let envelope = segs.len() == 2 && segs[0] == "campaign";
+    let next = if envelope {
+        let old = current.clone().unwrap_or(Value::Null);
+        if old.get("value") == Some(&value) {
+            return Err(HostError::conflict(format!("{path} already holds that value")));
+        }
+        let gate = old
+            .get("gate")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or(gate)
+            .ok_or_else(|| HostError::bad_request(format!("{path} is empty: say which gate it belongs to (`gate`)")))?;
+        serde_json::json!({ "value": value, "origin": "stated", "gate": gate, "by": who, "decision": d_id })
+    } else {
+        if current.as_ref() == Some(&value) {
+            return Err(HostError::conflict(format!("{path} already holds that value")));
+        }
+        value
+    };
+    let mut at = &mut data;
+    for k in &segs[..segs.len() - 1] {
+        if !at.get(*k).is_some_and(Value::is_object) {
+            at[*k] = Value::Object(Default::default());
+        }
+        at = at.get_mut(*k).expect("just made");
+    }
+    at[segs[segs.len() - 1]] = next;
+
+    let mut d = decided(
+        ctx,
+        &who,
+        "edit",
+        "edit_field",
+        vec![address(clan.document_id(), &path)],
+        Vec::new(),
+        if rationale.is_empty() { "Edited by a person.".to_string() } else { rationale },
+        &now,
+    );
+    d.id = Some(d_id);
+    d.pinned = true;
+    d.fields_changed = vec![path.clone()];
+    commit(doc, data, Members::of(clan)?, d, "a person's edit", &now)
+}
+
+/// `POST /correct`: `{fact, value, source_uri?, rationale}` — asked of the
+/// middleware first, as `/verify` is.
+pub fn parse_correct(raw: &str) -> HostResult<(String, Value, String, String)> {
+    let v = body(raw)?;
+    let value = v.get("value").cloned().ok_or_else(|| HostError::bad_request("`value` is required"))?;
+    if value.as_str().is_some_and(|s| s.trim().is_empty()) {
+        return Err(HostError::bad_request("`value` is empty"));
+    }
+    Ok((required(&v, "fact")?, value, text(&v, "source_uri"), required(&v, "rationale")?))
+}
+
+/// What the middleware is asked before a fact is corrected: the fact, the
+/// value, where it comes from, who says so, and the decision id to record.
+pub fn correct_request(ctx: &Ctx, doc: &Document, input: &(String, Value, String, String)) -> HostResult<Value> {
+    let (fact, value, source_uri, rationale) = input;
+    let who = person(ctx, "correct a fact")?;
+    not_locked(doc)?;
+    let facts = members::read_list(doc.clan(), FACTS)?;
+    let f = facts
+        .iter()
+        .map(to_json)
+        .find(|f| f.get("id").and_then(Value::as_str) == Some(fact.as_str()))
+        .ok_or_else(|| HostError::not_found(format!("fact {fact} is not in this document")))?;
+    if f.get("replaced_by").is_some() {
+        return Err(HostError::conflict(format!("fact {fact} has already been replaced")));
+    }
+    Ok(serde_json::json!({
+        "task": "correct_fact",
+        "input": { "fact": fact, "value": value, "source_uri": source_uri, "note": rationale,
+                   "by": who, "decision_id": new_decision_id() },
+    }))
+}
+
+/// Correct a fact, given the row the middleware wrote to the layer for it
+/// (`pin`) and the person's source record: the pin is added, the old one is
+/// kept and marked `replaced_by`, and one pinned `edit` decision records it.
+pub fn correct_fact(
+    ctx: &Ctx,
+    doc: &Document,
+    fact: &str,
+    rationale: &str,
+    decision_id: &str,
+    pin: &Value,
+    source: Option<&Value>,
+) -> HostResult<Outcome> {
+    let who = person(ctx, "correct a fact")?;
+    not_locked(doc)?;
+    let clan = doc.clan();
+    let doc_id = clan.document_id().to_string();
+    let now = now();
+    let mut m = Members::of(clan)?;
+    let new_id = pin
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|s| s.starts_with("f_"))
+        .ok_or_else(|| HostError::new(502, "the middleware's corrected fact has no f_ id"))?
+        .to_string();
+    if pin.get("decision").and_then(Value::as_str) != Some(decision_id) {
+        return Err(HostError::new(502, "the middleware's fact names another decision than the correction"));
+    }
+    let i = m
+        .facts
+        .iter()
+        .position(|e| members::entry_id(e) == Some(fact))
+        .ok_or_else(|| HostError::not_found(format!("fact {fact} is not in this document")))?;
+    let mut old = to_json(&m.facts[i]);
+    if old.get("replaced_by").is_some() {
+        return Err(HostError::conflict(format!("fact {fact} has already been replaced")));
+    }
+    old["replaced_by"] = serde_json::json!({ "fact_id": new_id, "decision": decision_id });
+    m.facts[i] = to_yaml(&old)?;
+    if !m.facts.iter().any(|e| members::entry_id(e) == Some(new_id.as_str())) {
+        m.facts.push(to_yaml(pin)?);
+    }
+    if let Some(src) = source.filter(|s| s.get("id").and_then(Value::as_str).is_some_and(|i| i.starts_with("src_"))) {
+        let sid = src["id"].as_str().unwrap_or_default();
+        if !m.sources.iter().any(|e| members::entry_id(e) == Some(sid)) {
+            m.sources.push(to_yaml(src)?);
+        }
+    }
+    let mut d = decided(
+        ctx,
+        &who,
+        "edit",
+        "correct_fact",
+        vec![
+            address(&doc_id, &format!("facts[{fact}]")),
+            address(&doc_id, &format!("facts[{new_id}]")),
+        ],
+        vec![fact.to_string(), new_id.clone()],
+        rationale.to_string(),
+        &now,
+    );
+    d.id = Some(decision_id.to_string());
+    d.pinned = true;
+    commit(doc, data_of(clan)?, m, d, "a fact corrected", &now)
+}
+
 /// Lock: accept the document as it stands (D7). Refused while anything on the
 /// lock list is open; otherwise one `approve` decision records the exact
 /// version it accepted. After it, the review operations refuse.

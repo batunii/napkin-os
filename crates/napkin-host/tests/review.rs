@@ -427,3 +427,53 @@ fn looks_right_clears_an_agents_flag_and_nothing_else() {
     assert_eq!(run(&f, |c, d| review::acknowledge(c, d, &("d_01JA0D06SYN".into(), String::new()))), Err(400));
     assert_eq!(run(&f, |c, d| review::acknowledge(c, d, &("d_01NOPE0000".into(), String::new()))), Err(404));
 }
+
+#[test]
+fn a_person_edits_a_campaign_field_and_it_is_theirs() {
+    let f = fixture();
+    let edit = |path: &str, value: Value, gate: &str| {
+        review::parse_edit(&json!({ "path": path, "value": value, "gate": gate, "rationale": "Client said so" }).to_string()).unwrap()
+    };
+    run(&f, |c, d| review::edit(c, d, edit("campaign.problem", json!("Frozen is seen as second best"), "brief"))).unwrap();
+    let env = yaml(&f, "shared/data.yaml")["campaign"]["problem"].clone();
+    assert_eq!(env["value"], "Frozen is seen as second best");
+    assert_eq!(env["origin"], "stated");
+    assert_eq!(env["by"], f.session.ctx().actor.as_str());
+    let d = &chain(&f).decisions[0];
+    assert_eq!(d.kind.as_deref(), Some("edit"));
+    assert!(d.pinned, "a person's edit is pinned");
+    assert_eq!(env["decision"].as_str(), d.id.as_deref(), "the envelope names the decision that set it");
+    assert_eq!(d.fields_changed, vec!["campaign.problem".to_string()]);
+    // The same value again is not an edit; facts and the projection are not edited here.
+    assert_eq!(run(&f, |c, d| review::edit(c, d, edit("campaign.problem", json!("Frozen is seen as second best"), "brief"))), Err(409));
+    assert_eq!(run(&f, |c, d| review::edit(c, d, edit("projection.pins", json!({}), ""))), Err(400));
+    assert_eq!(run(&f, |c, d| review::edit(c, d, edit("facts.f_01JA0B3P4Q", json!(1), ""))), Err(400));
+    // An empty field needs to say which gate it belongs to.
+    let e = review::parse_edit(&json!({ "path": "campaign.objective", "value": "Win trial" }).to_string()).unwrap();
+    assert_eq!(run(&f, |c, d| review::edit(c, d, e)), Err(400));
+}
+
+#[test]
+fn a_corrected_fact_replaces_the_old_pin_which_stays_on_record() {
+    let f = fixture();
+    let input = review::parse_correct(&json!({ "fact": "f_01JA0B3P4Q", "value": "31%", "rationale": "The 2026 panel" }).to_string()).unwrap();
+    let ask = f.session.read(|d| review::correct_request(f.session.ctx(), d, &input)).unwrap();
+    assert_eq!(ask["task"], "correct_fact");
+    let did = ask["input"]["decision_id"].as_str().unwrap().to_string();
+    let mut p = pin("f_01JB0CORR01", 0.31, "category");
+    p["decision"] = json!(did);
+    p["sources"] = json!(["src_person01"]);
+    let src = json!({ "id": "src_person01", "uri": f.session.ctx().actor.as_str(), "tier": "reviewer-verified" });
+    run(&f, |c, d| review::correct_fact(c, d, "f_01JA0B3P4Q", "The 2026 panel", &did, &p, Some(&src))).unwrap();
+    let facts = yaml(&f, "shared/facts.yaml")["facts"].clone();
+    let by = |id: &str| facts.as_array().unwrap().iter().find(|x| x["id"] == id).cloned().unwrap();
+    assert_eq!(by("f_01JA0B3P4Q")["replaced_by"]["fact_id"], "f_01JB0CORR01");
+    assert_eq!(by("f_01JA0B3P4Q")["value"], 0.23, "the old value stays on record");
+    assert_eq!(by("f_01JB0CORR01")["value"], 0.31);
+    assert!(yaml(&f, "shared/sources.yaml")["sources"].as_array().unwrap().iter().any(|s| s["id"] == "src_person01"));
+    let d = &chain(&f).decisions[0];
+    assert_eq!(d.action, "correct_fact");
+    assert!(d.pinned);
+    // A replaced fact is not corrected again.
+    assert_eq!(f.session.read(|d| review::correct_request(f.session.ctx(), d, &input)).unwrap_err().status, 409);
+}

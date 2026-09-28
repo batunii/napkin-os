@@ -74,7 +74,25 @@ The layout vocabulary: `cl-report` (the page), `cl-head` (`compact`),
 re-renders every element from the record; `.reload()` re-reads the decision
 view first; `.open(ref)` opens the drawer; `.format(pin)`, `.label(pin)`.
 
-## 6. The shell and the app
+## 6. Edit mode
+
+The shell's **Edit** button (every authored app) turns edit mode on; the edit
+bridge announces it in the frame as `clan:editmode`. Then:
+
+- A `<clan-field ref="campaign.problem">` — any data path — is a value a
+  person owns. It shows its value and where it came from ("from your
+  material", "proposed", "you said"); in edit mode a click edits it in place
+  (text, a comma-separated list, a named thing), saved through `/edit`.
+  Values with more structure keep the app's own rendering.
+- A pin is **corrected**, never overwritten: "Correct it…" takes the right
+  value, where it comes from and why, through `/correct`. The field then
+  shows the new value, marked updated; the old one stays on record.
+- Findings are verified or rejected; contests are resolved. Neither is edited.
+
+Every edit is the person's pinned decision: a job proposes around it and
+never writes over it.
+
+## 7. The shell and the app
 
 The OS's decision panel (`app/src/shell/decisions/`) talks to the app frame
 with three messages, all `postMessage` between the shell and its own frame:
@@ -91,7 +109,7 @@ with three messages, all `postMessage` between the shell and its own frame:
 Judging a value is the drawer's; who did what and why is the panel's. The
 panel's "Needs you" only points at where to settle an item.
 
-## 7. Not yet
+## 8. Not yet
 
 Campaign fields (`campaign.*` envelopes citing material spans) as refs;
 re-reading a pin's source on request; images from the document's assets;

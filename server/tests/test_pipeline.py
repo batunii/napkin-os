@@ -294,3 +294,40 @@ def test_synthesis_never_proposes_a_rejected_finding_again(store):
               rejection={"reason": "no", "by": "human:u", "at": "2026-09-28T10:00:00Z", "decision": "d_01REJECT01"})
     _, again, _ = synthesise.run_synthesis(DOC, "4", dict(clan, findings=[fi]), {}, "t@1.0", caps)
     assert fi["id"] not in {f["id"] for f in again["findings_append"]}
+
+
+def test_a_person_corrects_a_fact_and_the_layer_keeps_both(store):
+    from napkin.handlers import correct_fact
+    from napkin.util import TaskError
+    caps = caps_for(store)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    old = next(p for p in rch["facts_append"] if p["unit"] == "proportion")
+    clan = dict(rclan(["IE"]), facts=rch["facts_append"])
+    req = SimpleNamespace(doc=DOC, base="3", clan=clan, handler="correct_fact@1.0",
+                          inp={"fact": old["id"], "value": "31%", "note": "The 2026 panel says 31",
+                               "source_uri": "https://example.org/panel", "by": "human:ana",
+                               "decision_id": "d_01JBCORRECT1"})
+    result, change, _ = correct_fact.run(req, caps)
+    assert change is None
+    pin = result["pin"]
+    assert pin["value"] == 0.31 and pin["key"] == old["key"] and pin.get("market") == old.get("market")
+    assert pin["decision"] == "d_01JBCORRECT1" and pin["id"] != old["id"]
+    assert result["source_record"]["uri"] == "https://example.org/panel"
+    assert result["source_record"]["tier"] == "reviewer-verified"
+    assert caps.layers.resolve(pin["origin"])["value"] == 0.31
+    # nothing to correct, and a note is required
+    for inp, status in (({"value": old["value"]}, 409), ({"note": ""}, 400), ({"value": "lots"}, 400)):
+        with pytest.raises(TaskError) as e:
+            correct_fact.run(SimpleNamespace(**{**req.__dict__, "inp": {**req.inp, **inp}}), caps)
+        assert e.value.status == status
+
+
+def test_a_corrected_value_is_read_in_the_facts_unit():
+    from napkin.handlers.correct_fact import parse_value
+    assert parse_value("23%", "proportion") == 0.23
+    assert parse_value("0.4", "proportion") == 0.4
+    assert parse_value("€4.2m", "eur") == 4200000
+    assert parse_value("1,500", "count") == 1500
+    assert parse_value("Donegal Catch", "text") == "Donegal Catch"
+    assert parse_value("yes", "boolean") is True
