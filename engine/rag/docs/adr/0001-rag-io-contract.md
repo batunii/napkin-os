@@ -110,8 +110,12 @@ entry in `notes`. Kinds: `checker_skipped`, `keyword_only`, `empty_field`, `gene
 Additive and optional, so no existing reader changes; the middleware owner (Shrey) is told
 in the handover. Evidence is unchanged; there are no extra calls.
 
-Found while testing it, not fixed here: on the mix path with the validator on, `validation`
-carries the per-field record (`per_field`, `calls`), which `$defs/validation` does not admit,
-so a live mix response does not validate against its own contract. The offline tests run with
-the validator off and never saw it.
+Found while testing it and fixed next (2026-09-28): on the mix path with the validator on,
+`validation` carried the per-field record (`per_field`, `calls`), which `$defs/validation`
+does not admit, so every live mix response failed its own contract; the offline tests run
+with the validator off and never saw it. `validation` is now `validation_summary()`: the
+backend requested, the one that answered (most common; null when none did), pools, passed
+and rejected summed, fell_back when any field fell back. The per-field records stay in
+`trace.validation.per_field`, and the unchecked fields are named in `degraded`. A live BMW
+request now validates on both paths.
 

@@ -445,9 +445,10 @@ def test_mix_response_carries_degraded_and_validates():
     kinds = {d["kind"]: d for d in resp["degraded"]}
     assert kinds["checker_skipped"]["why"] == "jev not_entitled (401)" and "keyword_only" in kinds
     assert len(resp["notes"]) == len(resp["degraded"]) == 3
-    # the new field validates; `validation` is set aside because the mix path puts its
-    # per-field record there, which the contract does not admit (a separate, older defect)
-    assert rag_io.validate({**resp, "validation": None}, "response") == []
+    assert rag_io.validate(resp, "response") == []          # validation is a contract-shaped summary
+    assert resp["validation"] == {"backend_requested": "jev", "backend_used": "jev", "pool_size": 78,
+                                  "passed": 0, "rejected": 0, "fell_back": True}
+    assert set(resp["trace"]["validation"]["per_field"]) == {"loop3_research", "loop4_insight"}   # detail kept
 
 
 def test_only_real_problems_are_listed():
@@ -457,3 +458,9 @@ def test_only_real_problems_are_listed():
         trace = {"embed": "nim:x", "validation": {"per_field": {"loop3_research": _v()}}}
     resp = rag_io.response_from_multi(MC(), {"loop3_research": "q"}, "r", gist={"problem": "p"})
     assert [d["kind"] for d in resp["degraded"]] == ["empty_field"]      # only the empty field
+
+
+def test_validation_summary_none_when_nothing_was_validated():
+    assert rag_io.validation_summary({}) is None and rag_io.validation_summary({"a": None}) is None
+    s = rag_io.validation_summary({"a": _v(backend_used=None, fell_back=True), "b": _v(backend_used=None, fell_back=True)})
+    assert s["backend_used"] is None and s["fell_back"] is True

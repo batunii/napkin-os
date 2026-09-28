@@ -372,6 +372,25 @@ def degraded_notes(degraded: list, total: int) -> list:
     return lines
 
 
+def validation_summary(per_field: dict) -> "dict | None":
+    """One $defs/validation record for the mix path's per-field records: the backend
+    requested, the backend that answered (the most common one; None when none did), pools,
+    passed and rejected summed, fell_back when any field fell back. The per-field records
+    stay in `trace.validation.per_field`; which fields were left unchecked is in `degraded`.
+    None when no field was validated. (2026-09-28: the per-field record itself used to sit
+    here, which the contract does not admit, so a live mix answer failed its own contract.)"""
+    recs = [v for v in (per_field or {}).values() if isinstance(v, dict)]
+    if not recs:
+        return None
+    used = [v.get("backend_used") for v in recs if v.get("backend_used")]
+    return {"backend_requested": next((str(v["backend_requested"]) for v in recs if v.get("backend_requested")), ""),
+            "backend_used": max(set(used), key=used.count) if used else None,
+            "pool_size": sum(int(v.get("pool_size") or 0) for v in recs),
+            "passed": sum(int(v.get("passed") or 0) for v in recs),
+            "rejected": sum(int(v.get("rejected") or 0) for v in recs),
+            "fell_back": any(bool(v.get("fell_back")) for v in recs)}
+
+
 def response_from(ctx, run_id: str, notes: list[str] | None = None, gist: dict | None = None) -> dict:
     """Shape a BriefContext as $defs/response."""
     blocks = []
@@ -435,7 +454,7 @@ def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None 
         "fields": fields,
         "prompt_text": text,
         "tokens": estimate_tokens(text),
-        "validation": trace.get("validation"),
+        "validation": validation_summary(per_field),
         "notes": list(notes or []) + degraded_notes(degraded, len(fields)),
         "degraded": degraded,
         "trace": mc.trace,
