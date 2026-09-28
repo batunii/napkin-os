@@ -228,6 +228,9 @@ def render_markdown(brief):
     L = [f"# Brief — {title}",
          f"_briefing tool v{m['parser_version']} · {m['parsed_at']} · "
          f"mode: {m['extraction_mode']}_\n"]
+    if m.get("capture_fallback"):     # audit C13: never a quiet rule-based capture
+        L.append(f"> **⚠ Loop 1 capture fell back to the rule-based reader:** {m['capture_fallback'].get('reason')}. "
+                 "Check the captured facts below.\n")
 
     L.append("## Loop 1 · Faithful capture  \n_IPA: background + objectives · no RAG_\n")
     f = l1["fields"]

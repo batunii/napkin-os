@@ -3146,6 +3146,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
 
         llm = f_cap.result() if f_cap else None
         capture_format = "toon" if llm else "json"
+        capture_fallback = None
         if llm:
             how_to_win = f_htw.result()
         else:                                          # BRIEF_CAPTURE=json, or TOON failed
@@ -3158,6 +3159,19 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         else:
             fields, used = extract_heuristic(segs); how_to_win = {}; llm_oqs = []
             mode = "heuristic"; capture_format = "heuristic"
+            # Say so everywhere a person looks (audit C13, Sai 2026-09-29). With a model
+            # configured this is a failure, not the keyless demo: the TOON capture and the
+            # JSON capture both came back empty, and the rule-based reader stood in.
+            if provider:
+                capture_fallback = {"reader": "rules", "reason": "the model capture failed (TOON and "
+                                    "JSON both returned nothing usable); the rule-based reader stood in"}
+                print(f"[!] Loop 1 capture fell back to the rule-based reader: {capture_fallback['reason']}.",
+                      file=sys.stderr)
+                llm_oqs = [{"question": "Check the captured facts: the brief was read by the rule-based "
+                                        "fallback because the model capture failed.",
+                            "why_it_matters": "the rule-based reader fills far fewer fields than the model; "
+                                              "facts it missed are not in the Loop 1 record",
+                            "priority": "high"}]
 
         loop2 = shape_loop2(fields, llm_oqs)
         loop2["review"] = review_loop2(loop2)
@@ -3170,7 +3184,8 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             "meta": {"client": client, "project": project, "source_files": [src_name],
                      "parsed_at": dt.datetime.now().isoformat(timespec="seconds"),
                      "parser_version": PARSER_VERSION, "extraction_mode": mode,
-                     "capture_format": capture_format, "prompt_version": PROMPT_VERSION},
+                     "capture_format": capture_format, "prompt_version": PROMPT_VERSION,
+                     **({"capture_fallback": capture_fallback} if capture_fallback else {})},
             "loop1_capture": loop1, "loop2_brief": loop2,
             "betterbriefs_scorecard": None,            # filled when its call returns
         }

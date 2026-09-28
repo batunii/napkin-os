@@ -483,3 +483,33 @@ def test_retrieval_falls_back_to_capture_when_golden_fails(monkeypatch):
     monkeypatch.setenv("BRIEF_RETRIEVE_FROM", "golden")
     out = pb.run(None, loops37=True, golden=True, raw_text="Acme Bank. Under-30s ignore it.")
     assert out["loops3_7"]["retrieved_from"] == "capture" and "business_problem" in seen[-1]
+
+
+def test_a_failed_model_capture_says_it_fell_back_to_rules(monkeypatch):
+    """TOON and JSON capture both fail while a model is configured (other calls work): the
+    rule-based reader stands in, and the brief says so in meta.capture_fallback, an open
+    question and review.md; the app rationale gives that reason, not 'no API keys' (C13)."""
+    import brief_render
+    sys.path.insert(0, str(HERE.parent / "agent-server"))
+    import mapping
+    monkeypatch.setattr(pb, "capture_toon", lambda segs: None)
+    monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})
+    monkeypatch.setattr(pb, "extract_llm", lambda text, schema: None)
+    monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
+    monkeypatch.setattr(pb, "resolve_provider", lambda: "anthropic")
+    monkeypatch.setenv("BRIEF_ALLOW_NONCLAUDE", "1")          # no transport check in an offline test
+    out = pb.run(None, raw_text="Budget: 50k EUR. The audience is under-30s. Deadline: June.")
+    assert out["meta"]["extraction_mode"] == "heuristic"
+    assert "model capture failed" in out["meta"]["capture_fallback"]["reason"]
+    assert any("rule-based fallback" in q["question"] for q in out["loop2_brief"]["open_questions"]
+               if isinstance(q, dict))
+    assert "fell back to the rule-based reader" in brief_render.render_markdown(out)
+    assert mapping.build_rationale(out).startswith("Capture fell back to the rule-based reader")
+
+
+def test_the_keyless_capture_is_not_called_a_failure(monkeypatch):
+    """No model configured (the keyless demo): rules capture, no capture_fallback, no alarm."""
+    monkeypatch.setattr(pb, "resolve_provider", lambda: None)
+    monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
+    out = pb.run(None, raw_text="Budget: 50k EUR. The audience is under-30s.")
+    assert out["meta"]["extraction_mode"] == "heuristic" and "capture_fallback" not in out["meta"]

@@ -152,3 +152,15 @@ no failed check stays an open question (audit H2). Code: `parse_brief.fill_deriv
 Tests: `test_cannot_fail_silently.py` (kept and marked; an inventing draft still left open;
 the client-page tag; the app rationale).
 
+## Addendum 2026-09-29 — a rule-based Loop 1 capture always says so (audit C13)
+
+When a model is configured but the TOON capture and the JSON capture both return nothing
+usable, the rule-based reader (`extract_heuristic`) still stands in, since the golden
+extraction and the rest of the pipeline can carry the brief. It is no longer quiet:
+`meta.capture_fallback` records the reason, a high-priority open question asks for the
+captured facts to be checked, review.md opens with a warning, the log says it, and the app's
+rationale gives that reason instead of "no API keys". The keyless demo (no model configured)
+is unchanged and not called a failure. Tests: `test_brief_speedups.py`. How good the
+rule-based reader is, and how to improve it, is measured separately (project_plan.clan,
+heuristic_capture_research_2026_09_29).
+
