@@ -9,7 +9,7 @@ import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
 import { AgentFigure } from '../../studio/AgentFigure'
 import { canRun, openInApp, runInApp } from '../appExport'
 import {
-  chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, skippedOf, sourcesOf,
+  changeOf, chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, skippedOf, sourcesOf,
   sureWord, whoOf,
 } from './words'
 
@@ -110,6 +110,7 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
         <Face block={block} />
         <div>
           <div className="dp-line"><b>{w.name}</b> {didWhat(block, view)}</div>
+          {typeof d.was === 'string' && typeof d.now === 'string' && <Change was={d.was} now={d.now} why={d.rationale} />}
           <div className="dp-meta">
             {t && (
               <button className="dp-where" onClick={e => { e.preventDefault(); openInApp(refOfAddress(t.address), t.path) }}>
@@ -201,6 +202,23 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
         </div>
       )}
     </details>
+  )
+}
+
+/** The change itself, on the line: what went, what came, and why. */
+function Change({ was, now, why }: { was: string; now: string; why?: string }) {
+  const c = changeOf(was, now)
+  return (
+    <div className="dp-change">
+      <span>
+        {c.before && <>{c.before} </>}
+        {c.cut && <del>{c.cut}</del>}
+        {c.cut && c.put && ' '}
+        {c.put && <ins>{c.put}</ins>}
+        {c.after && <> {c.after}</>}
+      </span>
+      {why && <span className="dp-change-why">Why: {why}</span>}
+    </div>
   )
 }
 

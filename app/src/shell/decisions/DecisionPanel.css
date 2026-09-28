@@ -157,4 +157,8 @@
 .dp-skip > summary::-webkit-details-marker { display: none; }
 .dp-skip[open] > .dp-acts { margin-top: 6px; }
 .dp-diff { display: grid; gap: 10px; }
+.dp-change { margin-top: 5px; font-size: 12.5px; line-height: 1.45; color: var(--ink2); display: grid; gap: 2px; }
+.dp-change del { color: var(--ink3); text-decoration-color: color-mix(in srgb, var(--ink3) 70%, transparent); }
+.dp-change ins { text-decoration: none; color: var(--ink); background: color-mix(in srgb, var(--accent, #4a7dff) 16%, transparent); border-radius: 3px; padding: 0 2px; }
+.dp-change-why { color: var(--ink3); font-size: 12px; }
 .dp-was { color: var(--ink3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }

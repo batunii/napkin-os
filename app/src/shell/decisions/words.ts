@@ -305,3 +305,25 @@ export function skippedOf(block: DecisionBlock): { lens: string; name: string }[
     .map(t => /lenses_skipped\[([a-z_]+)\]/.exec(t)?.[1]).filter((x): x is string => !!x))]
     .map(lens => ({ lens, name: LENS_NAME[lens] ?? lens }))
 }
+
+/**
+ * What an edit changed, word by word: the words both versions share at the
+ * start and the end are trimmed to a little context either side, so the line
+ * shows the change itself — "…sameness, [with the sale…] [Flipkart can help?]".
+ */
+export function changeOf(was: string, now: string, context = 4): { before: string; cut: string; put: string; after: string } {
+  const a = was.split(/\s+/).filter(Boolean)
+  const b = now.split(/\s+/).filter(Boolean)
+  let p = 0
+  while (p < a.length && p < b.length && a[p] === b[p]) p++
+  let q = 0
+  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++
+  const lead = a.slice(Math.max(0, p - context), p).join(' ')
+  const tail = a.slice(a.length - q, a.length - q + context).join(' ')
+  return {
+    before: (p > context ? '…' : '') + lead,
+    cut: a.slice(p, a.length - q).join(' '),
+    put: b.slice(p, b.length - q).join(' '),
+    after: tail + (q > context ? '…' : ''),
+  }
+}

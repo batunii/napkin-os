@@ -915,6 +915,12 @@ var ClanFields=(function(){
   window.addEventListener('clan:editmode',function(e){
     EDIT=!!(e.detail&&e.detail.active);
     document.documentElement.classList.toggle('clf-editing',EDIT);
+    // Leaving edit mode closes every editor still open; what was not saved
+    // is put back as it was.
+    if(!EDIT){
+      Array.prototype.forEach.call(document.querySelectorAll('.clf-textbar [data-t="cancel"],[data-clf-cancel]'),function(b){ b.click(); });
+      Array.prototype.forEach.call(document.querySelectorAll('[data-clan-text][contenteditable]'),function(x){ x.removeAttribute('contenteditable'); x.__clfEditing=false; });
+    }
     refresh();
   });
   // The OS's decision panel asks to show one thing: a pin, finding, contest,
