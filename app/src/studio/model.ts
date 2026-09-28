@@ -152,8 +152,8 @@ export function agentForWork(work: Work, lens?: string): AgentKey {
  */
 export const WORK_OF_STEP: Readonly<Record<string, Work>> = {
   extract: 'read', extract_ask: 'read', capture: 'read', identify: 'read', lookup: 'read', transcribe: 'read',
-  research: 'research', research_lens: 'research',
-  synthesise: 'synthesise', synthesise_findings: 'synthesise',
+  research: 'research', research_lens: 'research', research_run: 'research', research_merge: 'research',
+  synthesise: 'synthesise', synthesise_findings: 'synthesise', synthesise_finding: 'synthesise', propose_audience: 'synthesise',
   draft: 'draft', draft_brief: 'draft', regenerate_field: 'draft', report: 'draft', compose_report: 'draft', drafter: 'draft',
   judge: 'judge', select: 'judge', verdict: 'judge', golden_critic: 'judge',
 }

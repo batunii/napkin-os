@@ -2,22 +2,31 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Every decision in the open document, as a block, in the OS layer — beside
-// the app, never inside it. The host decides what needs attention
-// (`/decisions`); this only lays it out: those blocks pinned on top with
-// their reasons, then the rest, newest first.
+// The document's decisions, in the OS layer, beside the app. Three parts
+// (owner, 2026-09-28):
+//
+// - Needs you: only what blocks the lock, as the host derives it from the
+//   document's state. Each item points at where it is settled — "Open it"
+//   opens the value's evidence in the app, where it is verified, rejected or
+//   picked. The panel does not verify a second time.
+// - Worth a look: what agents flagged or were unsure of. Nothing waits on it.
+//   A person can accept the call here ("Looks right"), or open the value.
+// - What happened: who did what and why, newest first, grouped by run or by
+//   section. A line opens to the decision, its reasons with what each rests
+//   on, the sources, what was set aside and how sure the agent was. Machine
+//   detail sits last, behind "Technical details".
+//
+// Everything here is the host's view of the chain (`/decisions`); the store
+// behind it keeps far more than this shows.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../../host'
 import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
-import { AgentFigure } from '../../studio/AgentFigure'
-import { AGENTS } from '../../studio/model'
-import { agentOf } from './agentOf'
 import { LogoSpinner } from '../../brand/LogoSpinner'
-import { Block, StandaloneBlock } from './DecisionBlock'
+import { openInApp } from '../appExport'
+import { HistoryLine, NeedsCard, QuietItem } from './DecisionBlock'
+import { refOfAddress, runsOf, sectionsOf } from './words'
 import './DecisionPanel.css'
-
-type Filter = 'all' | 'attention' | `who:${string}`
 
 interface Props {
   /** The open document; the panel reloads when it changes. */
@@ -28,7 +37,10 @@ export default function DecisionPanel({ docPath }: Props) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<DecisionsView | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<Filter>('all')
+  const [by, setBy] = useState<'run' | 'section'>('run')
+  const [quietOpen, setQuietOpen] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [actError, setActError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     host.getDecisions().then(
@@ -42,7 +54,6 @@ export default function DecisionPanel({ docPath }: Props) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setView(null)
-    setFilter('all')
     load()
   }, [docPath, load])
 
@@ -56,8 +67,15 @@ export default function DecisionPanel({ docPath }: Props) {
     return () => { for (const off of offs) off.then(f => f()) }
   }, [load])
 
-  const groups = useMemo(() => group(view), [view])
-  const needs = groups.pinned.length + groups.standalone.length
+  const needs = useMemo(() => needsOf(view), [view])
+  const quiet = useMemo(() => quietOf(view), [view])
+  const blocks = useMemo(() => new Map((view?.decisions ?? []).map(b => [b.decision.id ?? '', b])), [view])
+
+  const looksRight = useCallback((id: string) => {
+    setBusy(id); setActError(null)
+    host.acknowledge(id).then(load, e => setActError(String(e instanceof Error ? e.message : e)))
+      .finally(() => setBusy(null))
+  }, [load])
 
   if (!open) {
     return (
@@ -65,81 +83,83 @@ export default function DecisionPanel({ docPath }: Props) {
         type="button"
         className="dp-rail"
         onClick={() => setOpen(true)}
-        aria-label={needs ? `Decisions, ${needs} need attention` : 'Decisions'}
-        title={needs ? `${needs} need attention` : 'Decisions'}
+        aria-label={needs.length ? `Decisions, ${needs.length} need you` : 'Decisions'}
+        title={needs.length ? `${needs.length} need you` : 'Decisions'}
       >
         <span className="dp-rail-label">Decisions</span>
-        {needs > 0 && <span className="dp-count">{needs}</span>}
+        {needs.length > 0 && <span className="dp-count">{needs.length}</span>}
       </button>
     )
   }
 
-  const who = people(view)
-  const shown = pick(groups, filter)
+  const groups = view ? (by === 'run' ? runsOf(view) : sectionsOf(view)) : []
 
   return (
     <aside className="dp-panel" aria-labelledby="dp-title">
       <div className="dp-head">
-        <div>
-          <div className="eyebrow">This document</div>
+        <div className="dp-head-t">
           <h2 id="dp-title" className="dp-title">Decisions</h2>
+          {view && <span className="dp-sum">{needs.length ? `${needs.length} need${needs.length === 1 ? 's' : ''} you` : 'nothing needs you'}</span>}
         </div>
         <button className="ch-btn ch-btn-icon ch-btn-quiet" onClick={() => setOpen(false)} aria-label="Close decisions">✕</button>
       </div>
-
-      {view && (
-        <p className={`dp-lock ${view.lock.can_lock ? '' : 'dp-lock-blocked'}`}>
-          {view.lock.can_lock
-            ? 'Nothing on the lock list is open.'
-            : `${plural(view.lock.blockers, 'item')} must be resolved before this can be locked.`}
+      {view && !view.problem && (
+        <p className={`dp-lock ${view.lock.can_lock ? 'dp-lock-ok' : ''}`}>
+          <span className="dp-dot" aria-hidden />
+          {view.lock.can_lock ? 'Nothing blocks the lock.' : `It can be locked once ${needs.length === 1 ? 'this is' : 'these are'} settled.`}
         </p>
       )}
-
-      <div className="dp-filters">
-        <div className="ch-seg" role="tablist" aria-label="Show">
-          <button role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')}>All</button>
-          <button role="tab" aria-selected={filter === 'attention'} onClick={() => setFilter('attention')}>
-            Needs attention{needs > 0 ? ` · ${needs}` : ''}
-          </button>
-        </div>
-        {who.length > 1 && (
-          <label className="dp-who">
-            <span className="dp-sr">Decided by</span>
-            <select
-              value={filter.startsWith('who:') ? filter : ''}
-              onChange={e => setFilter((e.target.value || 'all') as Filter)}
-            >
-              <option value="">Decided by anyone</option>
-              {who.map(w => <option key={w.id} value={`who:${w.id}`}>{w.name}</option>)}
-            </select>
-          </label>
-        )}
-      </div>
 
       <div className="dp-scroll">
         {error && <div className="ch-empty">The decisions could not be read: {error}</div>}
         {!error && !view && <div className="dp-loading"><LogoSpinner label="Reading the decisions" /></div>}
         {view?.problem && <div className="ch-empty">{view.problem}</div>}
+        {actError && <div className="dp-err" role="alert">{actError}</div>}
         {view && !view.problem && (
           <>
-            {shown.pinned.length + shown.standalone.length > 0 && (
-              <section aria-label="Needs attention">
-                <div className="eyebrow dp-section">Needs attention</div>
-                {shown.pinned.map((b, i) => <Block key={key(b, i)} block={b} cites={view.cites} who={<Who block={b} />} />)}
-                {shown.standalone.map((a, i) => <StandaloneBlock key={`s${i}`} item={a} />)}
+            <section aria-label="Needs you">
+              <h3 className="dp-sec">Needs you <span className="dp-n">{needs.length}</span></h3>
+              {needs.length === 0 && <div className="dp-done">Nothing is waiting on you.</div>}
+              {needs.map(item => (
+                <NeedsCard key={`${item.code}:${item.address ?? item.text}`} item={item}
+                  block={item.decision ? blocks.get(item.decision) : undefined} />
+              ))}
+            </section>
+
+            {quiet.length > 0 && (
+              <section aria-label="Worth a look">
+                <details className="dp-quiet" open={quietOpen} onToggle={e => setQuietOpen((e.target as HTMLDetailsElement).open)}>
+                  <summary>
+                    <span className="dp-sec dp-sec-inline">Worth a look <span className="dp-n dp-n-quiet">{quiet.length}</span></span>
+                    <span className="dp-hint">agents flagged these; nothing is blocked</span>
+                  </summary>
+                  {quiet.map(q => (
+                    <QuietItem key={q.block.decision.id} block={q.block} text={q.text}
+                      busy={busy === q.block.decision.id} onLooksRight={looksRight} />
+                  ))}
+                </details>
               </section>
             )}
-            {shown.rest.length > 0 && (
-              <section aria-label="Decisions">
-                {shown.pinned.length + shown.standalone.length > 0 && <div className="eyebrow dp-section">Everything else</div>}
-                {shown.rest.map((b, i) => <Block key={key(b, i)} block={b} cites={view.cites} who={<Who block={b} />} />)}
-              </section>
-            )}
-            {shown.pinned.length + shown.standalone.length + shown.rest.length === 0 && (
-              <div className="ch-empty">
-                {filter === 'attention' ? 'Nothing needs attention.' : 'No decisions yet.'}
+
+            <section aria-label="What happened">
+              <div className="dp-hist-h">
+                <h3 className="dp-sec">What happened</h3>
+                <div className="ch-seg dp-by" role="group" aria-label="Group the history">
+                  <button aria-pressed={by === 'run'} onClick={() => setBy('run')}>By run</button>
+                  <button aria-pressed={by === 'section'} onClick={() => setBy('section')}>By section</button>
+                </div>
               </div>
-            )}
+              {groups.length === 0 && <div className="dp-done">No decisions yet.</div>}
+              {groups.map(g => (
+                <div className="dp-run" key={g.key}>
+                  <div className="dp-run-h">
+                    <b>{g.title}</b><span>{g.sub}</span>
+                    {g.open && <button className="dp-link dp-link-end" onClick={() => openInApp(g.open!.ref, g.open!.path)}>Show</button>}
+                  </div>
+                  {g.blocks.map((b, i) => <HistoryLine key={b.decision.id ?? `n${i}`} block={b} view={view} />)}
+                </div>
+              ))}
+            </section>
           </>
         )}
       </div>
@@ -147,73 +167,36 @@ export default function DecisionPanel({ docPath }: Props) {
   )
 }
 
-/** The agent's figure and plain name, or the person. */
-function Who({ block }: { block: DecisionBlock }) {
-  const agent = agentOf(block)
-  return (
-    <span className="dp-who-line">
-      {agent
-        ? <AgentFigure agent={agent} size={34} />
-        : <span className={`dp-mark ${block.who.kind === 'person' ? 'dp-mark-person' : ''}`} aria-hidden>
-            {(block.who.name[0] ?? '?').toUpperCase()}
-          </span>}
-      <span className="dp-name">{whoOf(block).name}</span>
-    </span>
-  )
-}
-
-interface Groups {
-  pinned: DecisionBlock[]
-  standalone: AttentionItem[]
-  rest: DecisionBlock[]
-}
-
-function group(view: DecisionsView | null): Groups {
-  if (!view) return { pinned: [], standalone: [], rest: [] }
-  const ids = new Set(view.decisions.map(b => b.decision.id).filter(Boolean))
-  return {
-    pinned: view.decisions.filter(b => b.attention.length > 0),
-    standalone: view.attention.filter(a => !a.decision || !ids.has(a.decision)),
-    rest: view.decisions.filter(b => b.attention.length === 0),
-  }
-}
-
-function pick(g: Groups, filter: Filter): Groups {
-  if (filter === 'all') return g
-  if (filter === 'attention') return { ...g, rest: [] }
-  const id = filter.slice('who:'.length)
-  const mine = (b: DecisionBlock) => whoOf(b).id === id
-  return { pinned: g.pinned.filter(mine), standalone: [], rest: g.rest.filter(mine) }
+/** What blocks the lock, one item per place. */
+function needsOf(view: DecisionsView | null): AttentionItem[] {
+  if (!view) return []
+  const seen = new Set<string>()
+  return view.attention.filter(a => {
+    if (!a.blocks_lock) return false
+    const k = `${a.code}:${a.address ?? a.text}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
 }
 
 /**
- * Who a block is filed under: the agent when one is recognised (one handler
- * can run several agents), else whoever the host named.
+ * What agents flagged or were unsure of, one item per decision. A decision
+ * whose target is already under "Needs you" (a finding waiting for its check)
+ * is not repeated here, and neither is a finding: it is checked, not waved
+ * through.
  */
-function whoOf(b: DecisionBlock): { id: string; name: string } {
-  const agent = agentOf(b)
-  return agent
-    ? { id: `agent:${agent}`, name: AGENTS[agent].name }
-    : { id: `${b.who.kind}:${b.who.id}`, name: b.who.name }
-}
-
-/** Everyone who decided something, most decisions first. */
-function people(view: DecisionsView | null): { id: string; name: string }[] {
-  const seen = new Map<string, { id: string; name: string; n: number }>()
-  for (const b of view?.decisions ?? []) {
-    const w = whoOf(b)
-    const entry = seen.get(w.id) ?? { ...w, n: 0 }
-    entry.n++
-    seen.set(w.id, entry)
+function quietOf(view: DecisionsView | null): { block: DecisionBlock; text: string }[] {
+  if (!view) return []
+  const needy = new Set(view.attention.filter(a => a.blocks_lock).map(a => refOfAddress(a.address)))
+  const out: { block: DecisionBlock; text: string }[] = []
+  for (const b of view.decisions) {
+    if (b.superseded || b.who.kind !== 'agent' || b.decision.kind === 'finding') continue
+    const quiet = b.attention.filter(r => !r.blocks_lock)
+    if (!quiet.length) continue
+    if (b.targets.some(t => needy.has(refOfAddress(t.address)))) continue
+    const flag = quiet.find(r => r.code === 'flagged') ?? quiet[0]
+    out.push({ block: b, text: flag.text })
   }
-  return [...seen.values()].sort((a, b) => b.n - a.n)
-}
-
-/** Older entries have no id; their place in the list stands in. */
-function key(b: DecisionBlock, i: number): string {
-  return b.decision.id ?? `n${i}`
-}
-
-function plural(n: number, what: string): string {
-  return `${n} ${what}${n === 1 ? '' : 's'}`
+  return out
 }

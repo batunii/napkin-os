@@ -552,6 +552,8 @@ details.records > summary .rt::after{content:" \25BE";color:var(--ink3);font-wei
 details.records[open] > summary .rt::after{content:" \25B4"}
 details.records > summary .rs{font-size:13px;color:var(--ink2)}
 details.records section.region:first-of-type{margin-top:24px}
+.focus-flash{animation:focusflash 1.6s var(--ease)}
+@keyframes focusflash{0%,40%{box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 70%,transparent);background:color-mix(in srgb,var(--amber) 14%,transparent)}100%{box-shadow:none}}
 .rep{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);padding:26px 28px 24px;display:grid;gap:22px}
 .rep-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .rep-top .sp{flex:1}
@@ -638,7 +640,6 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       <a href="#facts">Facts<span id="nav-facts"></span></a>
       <a href="#findings">Findings<span id="nav-findings"></span></a>
       <a href="#selection">Selection</a>
-      <a href="#history">History<span id="nav-history"></span></a>
     </nav>
     <div class="top-act">
       <button type="button" class="btn ghost sm" id="whoBtn" title="Who these review marks are attributed to"></button>
@@ -661,7 +662,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   <div id="jobs" aria-live="polite"></div>
 
   <details class="records" id="records">
-  <summary><span class="rt">Everything recorded</span><span class="rs">The ask, every pinned fact, the findings, what research drew on, and the decision history.</span></summary>
+  <summary><span class="rt">Everything recorded</span><span class="rs">The ask, every pinned fact, the findings and what research drew on. Who decided what, and why, is in Decisions.</span></summary>
   <section class="region" id="ask" aria-labelledby="h-ask">
     <div class="sec-h"><h2 id="h-ask">The ask</h2><span class="count" id="ask-count"></span></div>
     <p class="sec-lede">What the client wants done. Every field says how it got here: <b>you said this</b> is the client's own material, quoted; <b>we inferred this</b> is derived from pinned facts. A field nobody has filled stays empty, with the gate that waits on it.</p>
@@ -687,11 +688,6 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     <div id="selection-body"></div>
   </section>
 
-  <section class="region" id="history" aria-labelledby="h-history">
-    <div class="sec-h"><h2 id="h-history">Decision history</h2><span class="count" id="history-count"></span></div>
-    <p class="sec-lede">Every decision about this document, newest first.</p>
-    <div id="history-body"></div>
-  </section>
   </details>
 
   <footer class="doc-foot" id="docfoot"></footer>
@@ -1348,6 +1344,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       +'</li>';
   }
   function renderHistory(){
+    // The decision history lives in the OS's Decisions panel now.
+    if(!$('history-body')) return;
     var all=decs().slice().sort(function(a,b){ return ts(b)-ts(a); });
     $('history-count').textContent=CHAIN.state==='ok'?all.length+' decisions':CHAIN.state==='loading'?'loading…':'unavailable';
     $('nav-history').textContent=all.length||'';
@@ -2656,6 +2654,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   $('exportBtn').addEventListener('click', function(){ doExport('pdf'); });
 
   window.addEventListener('clan:dataupdated', render);
+  window.addEventListener('clan:focus', function(e){
+    var p=String((e.detail&&e.detail.path)||''), m=/^campaign\.([a-z_]+)/.exec(p);
+    var id=m?'field-'+m[1]:/^selection/.test(p)?'selection':/^report/.test(p)?'report':/^(facts|findings)/.test(p)?p.split(/[\[.]/)[0]:null;
+    var el=id&&$(id); if(!el) return;
+    var rec=$('records'); if(rec&&rec.contains(el)&&!rec.open){ rec.dataset.touched='1'; rec.open=true; }
+    el.scrollIntoView({block:'center',behavior:'smooth'});
+    el.classList.add('focus-flash'); setTimeout(function(){ el.classList.remove('focus-flash'); },1600);
+  });
   render();
   loadChain();
   // The host injects the bridge after this script, so window.clan exists only

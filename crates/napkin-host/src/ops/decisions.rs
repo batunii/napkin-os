@@ -1145,12 +1145,30 @@ fn format_value(v: &Value, unit: Option<&str>) -> String {
         }
         (Value::Number(n), Some("percent_abv")) => format!("{n}% ABV"),
         (Value::Number(n), Some("percent")) => format!("{n}%"),
-        (Value::Number(n), Some(u)) if !matches!(u, "count" | "code" | "text") => {
-            format!("{n} {u}")
+        (Value::Number(n), Some(u @ ("eur" | "gbp" | "usd"))) => {
+            let sym = match u { "eur" => "€", "gbp" => "£", _ => "$" };
+            format!("{sym}{}", compact(n.as_f64().unwrap_or(0.0)))
+        }
+        (Value::Number(n), Some("count" | "units")) => compact(n.as_f64().unwrap_or(0.0)),
+        (Value::Number(n), Some(u)) if !matches!(u, "code" | "text") => {
+            format!("{} {u}", compact(n.as_f64().unwrap_or(0.0)))
         }
         (Value::String(s), _) => s.clone(),
         (other, _) => other.to_string(),
     }
+}
+
+/// A number as a person reads it: 6.1m, 21k, 4.5.
+fn compact(v: f64) -> String {
+    let (d, suf) = match v.abs() {
+        a if a >= 1e9 => (1e9, "bn"),
+        a if a >= 1e6 => (1e6, "m"),
+        a if a >= 1e4 => (1e3, "k"),
+        _ => (1.0, ""),
+    };
+    let x = ((v / d) * 10.0).round() / 10.0;
+    let s = if x.fract() == 0.0 { format!("{}", x as i64) } else { format!("{x}") };
+    format!("{s}{suf}")
 }
 
 /// A short preview of what a field holds: the envelope's `value` when it

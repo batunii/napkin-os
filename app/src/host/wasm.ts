@@ -217,6 +217,11 @@ export const wasmHost: Host = {
     if (resp.status !== 200) throw new Error(`decisions: ${resp.status} ${body}`)
     return JSON.parse(body) as DecisionsView
   },
+  acknowledge: async decision => {
+    const resp = (await boot()).handle('/acknowledge', '', new TextEncoder().encode(JSON.stringify({ decision }))) as RawResponse
+    if (resp.status !== 200) throw new Error(new TextDecoder().decode(asBytes(resp.body)))
+    dispatch(resp)
+  },
 
   setEditMode: async active => { (await boot()).setEditMode(active) },
   // The frame is loaded from srcdoc, so there is no document slot to fill.

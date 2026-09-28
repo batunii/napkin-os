@@ -50,3 +50,12 @@ export function askAppToExport(kind: 'html' | 'pdf'): Promise<boolean> {
     target.postMessage({ type: 'clan:export-request', id, kind }, '*')
   })
 }
+
+/**
+ * Ask the running app to show one thing: a pin, finding, contest, gap or
+ * source by id (the OS's fields open its evidence), or a data path (the app
+ * scrolls to it). Fire and forget — an app that shows neither ignores it.
+ */
+export function openInApp(ref: string, path?: string) {
+  frame?.postMessage({ type: 'clan:open', ref, path }, '*')
+}

@@ -203,6 +203,10 @@ export const httpHost: Host = {
     if (!resp.ok) throw new Error(`decisions: ${resp.status}`)
     return resp.json() as Promise<DecisionsView>
   },
+  acknowledge: async decision => {
+    const resp = await fetch(`${httpHost.clanOrigin()}/acknowledge`, { method: 'POST', body: JSON.stringify({ decision }) })
+    if (!resp.ok) throw new Error(((await resp.json().catch(() => null)) as { error?: string } | null)?.error ?? `acknowledge: ${resp.status}`)
+  },
 
   setEditMode: async active => {
     await request(`/d/${requireDoc()}/edit-mode`, postJson({ active }))

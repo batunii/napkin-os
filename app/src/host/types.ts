@@ -144,7 +144,7 @@ export interface DecisionTarget {
 
 export interface DecisionBlock {
   decision: Decision
-  who: { kind: 'person' | 'agent'; id: string; name: string }
+  who: { kind: 'person' | 'agent'; id: string; name: string; you?: boolean }
   targets: DecisionTarget[]
   attention: AttentionReason[]
   superseded: boolean
@@ -156,6 +156,15 @@ export interface CiteInfo {
   label: string
   detail?: string
   quote?: string
+  /** A fact: its value as a person reads it, and the sources behind it. */
+  value?: string
+  sources?: string[]
+  /** A source the document carries. */
+  uri?: string
+  publisher?: string
+  title?: string
+  published_at?: string
+  tier?: string
 }
 
 export interface DecisionsView {
@@ -210,6 +219,8 @@ export interface Host {
    * person and why — derived by the host, the same for every app.
    */
   getDecisions(): Promise<DecisionsView>
+  /** A person accepts an agent's call ("Looks right"): `/acknowledge`. */
+  acknowledge(decision: string): Promise<void>
 
   // ── The render surface ────────────────────────────────────────────────────
   setEditMode(active: boolean): Promise<void>

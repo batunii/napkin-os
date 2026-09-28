@@ -693,6 +693,16 @@ var ClanFields=(function(){
   });
   document.addEventListener('keydown',function(e){ var m=e.target.closest&&e.target.closest('.clf-chart .mark'); if(m&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); open(m.getAttribute('data-ref')); } });
   window.addEventListener('clan:dataupdated',function(){ loadView().then(refresh); });
+  // The OS's decision panel asks to show one thing: a pin, finding, contest,
+  // gap or source opens its evidence; a data path is the app's to show
+  // (`clan:focus`). Only the shell above this frame may ask.
+  window.addEventListener('message',function(e){
+    var m=e.data; if(e.source!==window.parent||!m||m.type!=='clan:open') return;
+    var ref=String(m.ref||''), el=ref&&document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)');
+    if(el&&el.scrollIntoView) el.scrollIntoView({block:'center',behavior:'smooth'});
+    if(kindOf(ref)) open(ref);
+    else window.dispatchEvent(new CustomEvent('clan:focus',{detail:{path:m.path||ref}}));
+  });
   function start(){ loadView().then(refresh); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
 
