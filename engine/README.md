@@ -56,7 +56,7 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 |---|---|
 | `parse_brief.py` | the pipeline: capture (Loop 1), golden extraction, the gates (`_judge_and_gate`), the zone-3 fill, Loops 3-7 retrieval and synthesis, provenance, `run()` and the CLI |
 | `brief_llm.py` | talking to models: providers, the Claude-only chain, model routes by job, the API and Claude Code transports, `_json_call`, the per-run call ledger, `NoClaudeAvailable` |
-| `brief_ingest.py` | reading a brief: `.txt` / `.md` / `.docx` (document order) / `.pdf` / `.eml` / images (vision model), and sentence segmentation |
+| `brief_ingest.py` | reading a brief: `.txt` / `.md` / `.docx` (document order, hyperlink addresses kept as `text <url>`, since research documents cite by link) / `.pdf` / `.eml` / images (vision model), and sentence segmentation |
 | `brief_render.py` | the brief for people: client brief, review file, Loops 3-7 evidence, provenance, `.docx` / `.pdf` output, marker scrubbing |
 | `golden_critic.py` | the independent critic: schema checks plus one Sonnet-judged call, health and quality scores |
 | `toon_lite.py` | the TOON reader/writer the capture uses |

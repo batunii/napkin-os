@@ -5,6 +5,7 @@ brief_ingest.py — reading a client brief into text (split out of parse_brief.p
                        and images go through the vision model and are tagged in
                        _INGEST_NOTES["transcribed"] so run() can say so (audit critic-G8)
   docx_text(path)      a .docx in document order, tables where they sit (audit critic-G1)
+                       and each hyperlink's address kept as 'text <url>' (2026-09-28)
   ingest_email_text    an .eml body as text
   segment(text)        the sentence / line segments the no-loss ledger counts
 
@@ -148,11 +149,34 @@ def docx_text(path: Path) -> str:
     for child in d.element.body.iterchildren():
         tag = child.tag.rsplit("}", 1)[-1]
         if tag == "p":
-            parts.append(Paragraph(child, d).text)
+            parts.append(_para_text(Paragraph(child, d)))
         elif tag == "tbl":
             for row in Table(child, d).rows:
-                parts.append(" | ".join(c.text for c in row.cells))
+                parts.append(" | ".join("\n".join(_para_text(p) for p in c.paragraphs) for c in row.cells))
     return "\n".join(parts)
+
+
+def _same_address(text: str, url: str) -> bool:
+    """True when a link's visible text already is its address (scheme, mailto: and a
+    trailing slash ignored), so repeating it would add nothing."""
+    norm = lambda x: re.sub(r"^(https?://|mailto:)", "", str(x or "").strip(), flags=re.I).rstrip("/").lower()
+    return norm(text) == norm(url)
+
+
+def _para_text(p) -> str:
+    """A paragraph's text with each external hyperlink's address kept as 'text <url>'.
+    python-docx's Paragraph.text keeps a link's visible text and drops its target, so a
+    fact cited by a link ('source here') lost its source (2026-09-28, for the brand and
+    category research documents, which cite by hyperlink). A link whose text already is
+    its address, and an internal bookmark link, is left as it was."""
+    from docx.text.hyperlink import Hyperlink
+    out = []
+    for item in p.iter_inner_content():
+        text = item.text
+        if isinstance(item, Hyperlink) and item.address and not _same_address(text, item.url):
+            text = f"{text} <{item.url}>"
+        out.append(text)
+    return "".join(out)
 
 
 # Set by ingest() when the text came through the vision model (an image, or a PDF with a
