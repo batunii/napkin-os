@@ -413,6 +413,10 @@ impl Lookup<'_> {
                     .unwrap_or_else(|| id.to_string());
                 (format!("Contest · {key}"), "contest")
             }
+            [Seg::Name("text"), Seg::Key(k)] => (
+                if k.starts_with("report:") { "Report › wording".to_string() } else { "Wording".to_string() },
+                "field",
+            ),
             [Seg::Name("decisions"), Seg::Key(id)] => (self.decision_label(id), "decision"),
             [Seg::Name("materials"), Seg::Key(id)] => {
                 let name = here

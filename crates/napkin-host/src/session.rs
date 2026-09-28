@@ -559,6 +559,7 @@ impl Session {
                 "revision": d.clan().manifest().id,
                 "version": d.version().as_str(),
                 "data": read::data_json(d),
+                "edits": crate::ops::members::edits_map(d.clan()),
             }))
         })
         .ok()

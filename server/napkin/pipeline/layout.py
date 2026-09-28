@@ -45,6 +45,8 @@ Rules:
   band), cl-block, cl-callout, cl-row, cl-table, cl-list, cl-foot.
 - Say each thing once: no sentence or finding twice, and a figure at most twice (a big number and one
   mention in prose is enough).
+- person_wording, when given, is text a person rewrote in the previous version of this report. Keep
+  their words verbatim wherever that part of the report still stands; they chose them.
 - Use only ids you are given. Write the headline as the page's <h1 class="cl-title">."""
 
 
@@ -59,7 +61,8 @@ def _label(p) -> str:
 
 
 def compose(report: dict, pins: dict, findings: dict, contests: dict, gaps: dict, caps, names=(),
-            brand: str = "", markets=(), ask: dict | None = None) -> tuple[str, str, list[str]]:
+            brand: str = "", markets=(), ask: dict | None = None,
+            person_wording=()) -> tuple[str, str, list[str]]:
     """-> (layout html, who laid it out: `agent` or `built`, what the layout rule dropped)."""
     payload = {
         "brand": brand, "markets": list(markets),
@@ -81,6 +84,8 @@ def compose(report: dict, pins: dict, findings: dict, contests: dict, gaps: dict
         "gaps": [{"id": i, "wanted": g.get("wanted") or g.get("key")} for i, g in gaps.items()],
         "ask": [{"ref": f"campaign.{k}", "value": v} for k, v in (ask or {}).items()],
     }
+    if person_wording:
+        payload["person_wording"] = list(person_wording)
     paths = {f"campaign.{k}" for k in (ask or {})}
     dropped: list[str] = []
     try:

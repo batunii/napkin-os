@@ -87,6 +87,14 @@ bridge announces it in the frame as `clan:editmode`. Then:
 - A pin is **corrected**, never overwritten: "Correct it…" takes the right
   value, where it comes from and why, through `/correct`. The field then
   shows the new value, marked updated; the old one stays on record.
+- Wording is rewritten in place. Any element marked `data-clan-text="<key>"`
+  is editable text; a layout's headings, paragraphs, list items, captions and
+  cells are marked when it is mounted (`report:<layout hash>:b<n>`). The
+  person's wording is kept in `shared/edits.yaml` by key, through
+  `/edit-text` — not the data, so it works for any app and any document — and
+  the page shows it in place of its own, sanitised like a layout. Fields
+  inside a sentence stay live. On a refresh the agent is sent the person's
+  wording and told to keep it. An empty edit puts the original back.
 - Findings are verified or rejected; contests are resolved. Neither is edited.
 
 Every edit is the person's pinned decision: a job proposes around it and

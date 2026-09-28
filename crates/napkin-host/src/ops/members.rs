@@ -35,6 +35,10 @@ pub const FINDINGS_PATH: &str = "shared/findings.yaml";
 pub const FACTS_ROLE: &str = "pinned-facts";
 pub const FINDINGS_ROLE: &str = "findings";
 pub const SOURCES_PATH: &str = "shared/sources.yaml";
+/// A person's edits to a view's wording (the OS's edit mode), by key: what
+/// the page shows in place of the text it would have shown. Not the data
+/// layer — any app's text, in any document, whatever its schema.
+pub const EDITS_PATH: &str = "shared/edits.yaml";
 pub const SOURCES_ROLE: &str = "sources";
 
 /// The block in `shared/data.yaml` the host owns. No patch writes it.
@@ -66,6 +70,28 @@ pub const SOURCES: Member = Member {
     role: SOURCES_ROLE,
     key: "sources",
 };
+
+pub const EDITS: Member = Member {
+    path: EDITS_PATH,
+    role: "edits",
+    key: "edits",
+};
+
+/// The edits as a view reads them: key -> the wording that replaces it.
+pub fn edits_map(clan: &ClanFile) -> Value {
+    let mut out = Map::new();
+    for e in read_list(clan, EDITS).unwrap_or_default() {
+        if let (Some(k), Some(h)) = (entry_key(&e), e.get("html").and_then(|v| v.as_str())) {
+            out.insert(k.to_string(), Value::String(h.to_string()));
+        }
+    }
+    Value::Object(out)
+}
+
+/// The `key` of one edits entry.
+pub fn entry_key(entry: &serde_yaml::Value) -> Option<&str> {
+    entry.get("key").and_then(|v| v.as_str())
+}
 
 /// The fields of a source record the projection copies, in order.
 const SOURCE_FIELDS: &[&str] = &[

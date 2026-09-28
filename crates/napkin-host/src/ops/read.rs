@@ -359,6 +359,7 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "version": doc.version().as_str(),
         "facts": members::list_for_agent(clan, members::FACTS),
         "findings": members::list_for_agent(clan, members::FINDINGS),
+        "edits": members::edits_map(clan),
         "pipeline": yaml_to_json("app/pipeline.yaml"),
     })
 }
@@ -406,5 +407,6 @@ fn build_clan_context(doc: &Document, data: &serde_yaml::Value) -> Value {
         "data": data_json,
         "manifest": manifest_json,
         "assets": Value::Object(assets),
+        "edits": members::edits_map(clan),
     })
 }

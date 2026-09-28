@@ -66,6 +66,14 @@ clan-tray{display:block}
 .clf-ed .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .clf-ed .hint{font-size:11.5px;color:var(--clf-ink3)}
 .clf-ed .clf-err{margin:0}
+/* wording a person may rewrite (edit mode), anywhere a page marks it */
+.clf-editing [data-clan-text]{outline:1.5px dashed color-mix(in srgb,var(--clf-chart) 60%,transparent);outline-offset:3px;border-radius:4px;cursor:text}
+.clf-editing [data-clan-text]:hover{outline-color:var(--clf-chart)}
+[data-clan-text][contenteditable="true"]{outline:2px solid var(--clf-chart)!important;background:color-mix(in srgb,var(--clf-chart) 6%,transparent)}
+.clf-edited{position:relative}
+.clf-editing .clf-edited::before{content:"edited";position:absolute;top:-15px;right:0;font-family:var(--clf-mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--clf-green-ink)}
+.clf-textbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;font-size:12px;color:var(--clf-ink3)}
+.clf-textbar .clf-err{margin:0}
 .clf-missing{font-family:var(--clf-mono);font-size:11px;color:var(--clf-create-ink);border:1px dashed var(--clf-create);border-radius:6px;padding:0 5px}
 
 /* ── a chart, a quote, a gap, the sources ────────────────────────────── */
@@ -238,6 +246,7 @@ var ClanFields=(function(){
   function gaps(){ return arr(obj(data().selection).gaps); }
   function contest(id){ return contests().filter(function(c){ return c.id===id; })[0]||null; }
   function gap(id){ return gaps().filter(function(g){ return g.id===id; })[0]||null; }
+  function edits(){ return obj((window.__CLAN__||{}).edits); }
   function docId(){ var m=obj((window.__CLAN__||{}).manifest); return m.document_id||m.id||''; }
   function yr(d){ return d?String(d).slice(0,4):''; }
 
@@ -359,6 +368,7 @@ var ClanFields=(function(){
       .then(function(res){
         if(res&&res.clan&&res.clan.data){
           window.__CLAN__.data=res.clan.data;
+          if(res.clan.edits) window.__CLAN__.edits=res.clan.edits;
           window.dispatchEvent(new CustomEvent('clan:dataupdated',{detail:{source:'review',version:res.clan.version}}));
         }
         return res;
@@ -782,7 +792,78 @@ var ClanFields=(function(){
     return node;
   }
   function layout(html){ var t=document.createElement('template'); t.innerHTML=String(html||''); return clean(t.content); }
-  function mount(el,html){ el.textContent=''; el.appendChild(layout(html)); refresh(); }
+  function mount(el,html){ el.textContent=''; el.appendChild(layout(html)); stampTexts(el,'report:'+hash(String(html||''))); refresh(); }
+
+  // ── wording a person may rewrite ──────────────────────────────────
+  // Any element marked data-clan-text="<key>" shows the person's wording for
+  // that key when there is one, and is editable in edit mode. A layout's text
+  // blocks are marked when it is mounted, keyed by the layout itself.
+  var TEXT_BLOCKS='h1,h2,h3,p,li,blockquote,figcaption,td,th,.cl-eyebrow,.cl-dek,.cl-cap,.cl-label';
+  function hash(str){ var h=5381; for(var i=0;i<str.length;i++) h=((h<<5)+h+str.charCodeAt(i))|0; return (h>>>0).toString(36); }
+  function stampTexts(root, prefix){
+    var n=0;
+    Array.prototype.forEach.call(root.querySelectorAll(TEXT_BLOCKS),function(el){
+      if(el.closest('clan-field,clan-chart,clan-quote,clan-gap,clan-sources,clan-cite,clan-tray')) return;
+      if(el.querySelector(TEXT_BLOCKS)) return; // the innermost block is the text
+      if(!el.textContent.trim()&&!el.querySelector('clan-field,clan-cite')) return;
+      n++; if(!el.hasAttribute('data-clan-text')) el.setAttribute('data-clan-text', prefix+':b'+n);
+    });
+  }
+  function cleanHtml(h){ var d=document.createElement('div'); d.appendChild(layout(h)); return d.innerHTML; }
+  function applyTexts(){
+    var E=edits();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-clan-text]'),function(el){
+      if(el.__clfEditing) return;
+      if(el.__clfOrig===undefined) el.__clfOrig=el.innerHTML;
+      var want=E[el.getAttribute('data-clan-text')];
+      if(typeof want==='string'&&want){
+        if(el.__clfShown!==want){ el.innerHTML=cleanHtml(want); el.__clfShown=want; }
+        el.classList.add('clf-edited'); el.title='Edited by a person';
+      } else if(el.__clfShown!=null){
+        el.innerHTML=el.__clfOrig; el.__clfShown=null; el.classList.remove('clf-edited'); el.removeAttribute('title');
+      }
+    });
+  }
+  function wordsOf(el){
+    var c=el.cloneNode(true);
+    Array.prototype.forEach.call(c.querySelectorAll('clan-field,clan-cite,clan-chart,clan-quote,clan-gap,clan-sources'),function(x){ x.innerHTML=''; x.removeAttribute('contenteditable'); });
+    Array.prototype.forEach.call(c.querySelectorAll('[contenteditable]'),function(x){ x.removeAttribute('contenteditable'); });
+    return c.innerHTML.replace(/&nbsp;/g,' ').trim();
+  }
+  function editText(el){
+    if(el.__clfEditing) return;
+    el.__clfEditing=true;
+    var before=el.innerHTML, key=el.getAttribute('data-clan-text'), was=wordsOf(el);
+    Array.prototype.forEach.call(el.querySelectorAll('clan-field,clan-cite,clan-chart,clan-quote,clan-gap'),function(x){ x.setAttribute('contenteditable','false'); });
+    el.setAttribute('contenteditable','true'); el.focus();
+    var bar=document.createElement('div'); bar.className='clf-textbar';
+    bar.innerHTML='<button type="button" class="clf-btn primary" data-t="save">Save</button><button type="button" class="clf-btn" data-t="cancel">Cancel</button>'
+      +(el.classList.contains('clf-edited')?'<button type="button" class="clf-btn" data-t="restore">Put the original back</button>':'')
+      +'<span>Your wording; the numbers stay live.</span><div class="clf-err" hidden></div>';
+    el.insertAdjacentElement('afterend',bar);
+    function stop(){ el.removeAttribute('contenteditable'); el.__clfEditing=false; bar.remove(); refresh(); }
+    function fail(m){ var e=bar.querySelector('.clf-err'); e.textContent=m; e.hidden=false; Array.prototype.forEach.call(bar.querySelectorAll('button'),function(b){ b.disabled=false; }); }
+    function send(html, done){
+      Array.prototype.forEach.call(bar.querySelectorAll('button'),function(b){ b.disabled=true; });
+      post('/edit-text',{key:key, html:html}).then(function(res){
+        if(res&&res.ok){ loadView(); done(); toast(html?'Saved':'The original wording is back'); return; }
+        fail('Not saved: '+(errorOf(res)||'the host refused'));
+      },function(){ fail('Could not reach the host.'); });
+    }
+    bar.addEventListener('click',function(e){
+      var t=e.target.closest('[data-t]'); if(!t) return; var w=t.getAttribute('data-t');
+      if(w==='cancel'){ el.innerHTML=before; stop(); }
+      else if(w==='save'){ var now=wordsOf(el); if(now===was){ stop(); return; } if(!el.textContent.trim()){ fail('Write something, or cancel.'); return; }
+        send(now,function(){ el.__clfShown=now; stop(); }); }
+      else if(w==='restore'){ send('',function(){ el.__clfShown=''; el.innerHTML=el.__clfOrig; el.__clfShown=null; el.classList.remove('clf-edited'); stop(); }); }
+    });
+    el.addEventListener('keydown',function onKey(e){
+      if(!el.__clfEditing){ el.removeEventListener('keydown',onKey); return; }
+      if(e.key==='Escape'){ e.preventDefault(); bar.querySelector('[data-t="cancel"]').click(); }
+      else if(e.key==='Enter'&&(e.metaKey||e.ctrlKey||/^H[1-3]$/.test(el.tagName))){ e.preventDefault(); bar.querySelector('[data-t="save"]').click(); }
+    });
+    el.addEventListener('paste',function(e){ if(!el.__clfEditing) return; e.preventDefault(); var t=(e.clipboardData||window.clipboardData).getData('text/plain'); document.execCommand('insertText',false,t); });
+  }
 
   // ── wiring ──────────────────────────────────────────────────────────
   // One element that cannot render shows as missing; it never stops the rest.
@@ -792,11 +873,17 @@ var ClanFields=(function(){
     });
   }
   function refresh(){
+    applyTexts();
     each('clan-field',renderField); each('clan-cite',renderCite); each('clan-chart',renderChart);
     each('clan-quote',renderQuote); each('clan-gap',renderGap); each('clan-sources',renderSources); each('clan-tray',renderTray);
   }
   document.addEventListener('click',function(e){
     if(DRAWER&&DRAWER.el.contains(e.target)) return;
+    if(EDIT&&!locked()){
+      var tx=e.target.closest('[data-clan-text]');
+      if(tx&&tx.__clfEditing&&!e.target.closest('[data-ref]')) return; // typing
+      if(tx&&!e.target.closest('[data-ref]')&&!e.target.closest('.clf-textbar')){ e.preventDefault(); editText(tx); return; }
+    }
     if(e.target.closest('[data-clf-lock]')){ act('/approve',{},null,'Locked: this version is accepted'); return; }
     var t=e.target.closest('[data-ref]'); if(!t) return;
     if(!t.closest('clan-field,clan-cite,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray')) return;

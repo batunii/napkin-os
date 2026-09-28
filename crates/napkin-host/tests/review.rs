@@ -477,3 +477,25 @@ fn a_corrected_fact_replaces_the_old_pin_which_stays_on_record() {
     // A replaced fact is not corrected again.
     assert_eq!(f.session.read(|d| review::correct_request(f.session.ctx(), d, &input)).unwrap_err().status, 409);
 }
+
+#[test]
+fn a_person_rewrites_the_wording_and_it_travels_with_the_document() {
+    let f = fixture();
+    let text = |key: &str, html: &str| review::parse_edit_text(&json!({ "key": key, "html": html }).to_string()).unwrap();
+    run(&f, |c, d| review::edit_text(c, d, text("report:ab12:b1", "A growing category, led by own-label"))).unwrap();
+    let edits = yaml(&f, "shared/edits.yaml")["edits"].clone();
+    assert_eq!(edits[0]["key"], "report:ab12:b1");
+    assert_eq!(edits[0]["html"], "A growing category, led by own-label");
+    assert_eq!(edits[0]["by"], f.session.ctx().actor.as_str());
+    let d = &chain(&f).decisions[0];
+    assert_eq!((d.kind.as_deref(), d.action.as_str(), d.pinned), (Some("edit"), "edit_text", true));
+    assert_eq!(edits[0]["decision"].as_str(), d.id.as_deref());
+    // The view is handed it; the same text again is not an edit.
+    assert_eq!(f.session.document_now().unwrap()["edits"]["report:ab12:b1"], "A growing category, led by own-label");
+    assert_eq!(run(&f, |c, d| review::edit_text(c, d, text("report:ab12:b1", "A growing category, led by own-label"))), Err(409));
+    // Empty puts the original back.
+    run(&f, |c, d| review::edit_text(c, d, text("report:ab12:b1", ""))).unwrap();
+    assert_eq!(yaml(&f, "shared/edits.yaml")["edits"], json!([]));
+    assert_eq!(chain(&f).decisions[0].action, "restore_text");
+    assert!(review::parse_edit_text(r#"{"key":"has space","html":"x"}"#).is_err());
+}

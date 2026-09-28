@@ -770,6 +770,59 @@ pub fn edit(ctx: &Ctx, doc: &Document, input: (String, Value, Option<String>, St
     commit(doc, data, Members::of(clan)?, d, "a person's edit", &now)
 }
 
+/// `POST /edit-text`: `{key, html}`.
+pub fn parse_edit_text(raw: &str) -> HostResult<(String, String)> {
+    let v = body(raw)?;
+    let key = required(&v, "key")?;
+    if key.len() > 200 || key.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(HostError::bad_request("`key` is a short name without spaces"));
+    }
+    let html = v.get("html").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    if html.len() > 20_000 {
+        return Err(HostError::bad_request("that is too long for one piece of text"));
+    }
+    Ok((key, html))
+}
+
+/// A person rewrites a piece of a view's text (edit mode): the headline, a
+/// paragraph, a caption. The wording is kept in `shared/edits.yaml` by key —
+/// not in the data, so it works for any app and any document — and one pinned
+/// `edit` decision records it. The view shows it in place of its own text,
+/// sanitised as any layout is. An empty `html` restores the original.
+pub fn edit_text(ctx: &Ctx, doc: &Document, input: (String, String)) -> HostResult<Outcome> {
+    let (key, html) = input;
+    let who = person(ctx, "edit the document")?;
+    not_locked(doc)?;
+    let clan = doc.clan();
+    let now = now();
+    let mut m = Members::of(clan)?;
+    let i = m.edits.iter().position(|e| members::entry_key(e) == Some(key.as_str()));
+    let held = i.and_then(|i| m.edits[i].get("html").and_then(|v| v.as_str()).map(String::from));
+    if held.as_deref() == Some(html.as_str()) || (held.is_none() && html.is_empty()) {
+        return Err(HostError::conflict("the text already reads that way"));
+    }
+    let d_id = new_decision_id();
+    let entry = to_yaml(&serde_json::json!({ "key": key, "html": html, "by": who, "at": now, "decision": d_id }))?;
+    match (i, html.is_empty()) {
+        (Some(i), true) => { m.edits.remove(i); }
+        (Some(i), false) => m.edits[i] = entry,
+        (None, _) => m.edits.push(entry),
+    }
+    let mut d = decided(
+        ctx,
+        &who,
+        "edit",
+        if html.is_empty() { "restore_text" } else { "edit_text" },
+        vec![address(clan.document_id(), &format!("text[{key}]"))],
+        Vec::new(),
+        if html.is_empty() { "Put the original wording back.".to_string() } else { "Rewrote the wording.".to_string() },
+        &now,
+    );
+    d.id = Some(d_id);
+    d.pinned = true;
+    commit(doc, data_of(clan)?, m, d, "a person's wording", &now)
+}
+
 /// `POST /correct`: `{fact, value, source_uri?, rationale}` — asked of the
 /// middleware first, as `/verify` is.
 pub fn parse_correct(raw: &str) -> HostResult<(String, Value, String, String)> {

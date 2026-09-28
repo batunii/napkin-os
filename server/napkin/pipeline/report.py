@@ -196,7 +196,9 @@ def compose(doc, clan, handler, caps):
         report, pin_by, all_findings, {c["id"]: c for c in sel.get("contested") or [] if c.get("id")},
         {g["id"]: g for g in sel.get("gaps") or [] if g.get("id")}, caps, names, brand, markets,
         ask={k: (camp[k] or {}).get("value") for k in ("problem", "objective", "audience_stated", "name")
-             if isinstance(camp.get(k), dict) and isinstance((camp[k] or {}).get("value"), str)})
+             if isinstance(camp.get(k), dict) and isinstance((camp[k] or {}).get("value"), str)},
+        person_wording=[re.sub(r"<[^>]+>", " ", h).strip() for k, h in (clan.get("edits") or {}).items()
+                        if str(k).startswith("report:") and isinstance(h, str) and h.strip()][:40])
     if ldropped:
         log.info("report layout (%s): dropped %d: %s", report["layout_by"], len(ldropped), json.dumps(ldropped)[:600])
     cites = list(dict.fromkeys(list(headline["cites"]) + [c for s in summary for c in s["cites"]] + sorted(used)))

@@ -310,6 +310,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
             facts,
             findings,
             sources,
+            edits: members::read_list(clan, members::EDITS)?,
         },
         prepend,
         &format!("middleware change from {handler}"),

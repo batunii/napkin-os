@@ -373,6 +373,9 @@ freely, never redefine.
     Edit mode). One pinned `edit` decision; a campaign field's envelope
     becomes `origin: stated`, `by` the person. Members and the projection are
     not edited here.
+  - `/edit-text {key, html}` — a person's wording for a piece of a view's
+    text, kept in `shared/edits.yaml` (role `edits`) and handed to the view as
+    `window.__CLAN__.edits`. One pinned `edit` decision on `text[<key>]`.
   - `/correct {fact, value, source_uri?, rationale}` — a person corrects a
     fact. The middleware's `correct_fact` writes the value to the layer with
     the person (or their link) as source; the host pins it, keeps the old pin

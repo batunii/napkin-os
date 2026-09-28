@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use crate::error::HostResult;
 
-use super::members::{self, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
+use super::members::{self, EDITS, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 
 const CHAIN: &str = "agent/decision-chain.yaml";
 
@@ -29,6 +29,8 @@ pub struct Members {
     pub facts: Vec<serde_yaml::Value>,
     pub findings: Vec<serde_yaml::Value>,
     pub sources: Vec<serde_yaml::Value>,
+    /// A person's wording edits (`shared/edits.yaml`); written only once there is one.
+    pub edits: Vec<serde_yaml::Value>,
 }
 
 impl Members {
@@ -38,6 +40,7 @@ impl Members {
             facts: members::read_list(clan, FACTS)?,
             findings: members::read_list(clan, FINDINGS)?,
             sources: members::read_list(clan, SOURCES)?,
+            edits: members::read_list(clan, EDITS)?,
         })
     }
 }
@@ -94,6 +97,8 @@ pub fn assemble(
     let has_sources = !m.sources.is_empty() || clan.has_entry(SOURCES.path);
     let sources_bytes =
         members::write_doc(members::read_doc(clan, SOURCES)?, SOURCES, m.sources.clone())?;
+    let has_edits = !m.edits.is_empty() || clan.has_entry(EDITS.path);
+    let edits_bytes = members::write_doc(members::read_doc(clan, EDITS)?, EDITS, m.edits.clone())?;
     let projected_sources = members::projects_sources(clan)
         .then_some((m.sources.as_slice(), sources_bytes.as_slice()));
 
@@ -138,6 +143,9 @@ pub fn assemble(
     if with_members && has_sources {
         members::register(&mut manifest, SOURCES);
     }
+    if has_edits {
+        members::register(&mut manifest, EDITS);
+    }
 
     let mut chain = if packed.has_entry(CHAIN) {
         DecisionChain::from_yaml(&packed.read_entry(CHAIN)?)?
@@ -162,6 +170,9 @@ pub fn assemble(
     }
     if with_members && has_sources {
         builder.add_entry(SOURCES.path, sources_bytes);
+    }
+    if has_edits {
+        builder.add_entry(EDITS.path, edits_bytes);
     }
     builder.add_entry(CHAIN, chain.to_yaml()?);
     Ok(builder.build()?)
