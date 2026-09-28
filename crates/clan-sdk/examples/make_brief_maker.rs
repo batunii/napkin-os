@@ -42,10 +42,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "brief-maker.app.clan".to_string());
 
     let schema = fs::read_to_string(dir.join("schema.json"))?;
-    // The agent figures are inlined at build (one snippet, both apps).
-    let index_html = app_ui::inline_figures(
+    // The agent figures and the OS's fields are inlined at build (one
+    // snippet each, every app).
+    let index_html = app_ui::inline_fields(
         &dir.join(".."),
-        &fs::read_to_string(dir.join("index.html"))?,
+        &app_ui::inline_figures(&dir.join(".."), &fs::read_to_string(dir.join("index.html"))?)?,
     )?;
     let icon = app_ui::icon_svg(&dir)?;
     let requirements = fs::read_to_string(dir.join("agent/requirements.yaml"))?;

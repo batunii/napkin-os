@@ -214,7 +214,11 @@ fn review(
     op: impl FnOnce(&Ctx, &crate::document::Document) -> crate::error::HostResult<crate::ops::Outcome>,
 ) -> HostResponse {
     match session.perform(ctx, op) {
-        Ok(done) => HostResponse::json(200, &done.reply).with_events(done.events),
+        Ok(done) => {
+            let mut reply = done.reply;
+            reply["clan"] = session.document_now().unwrap_or(Value::Null);
+            HostResponse::json(200, &reply).with_events(done.events)
+        }
         Err(e) => e.into(),
     }
 }

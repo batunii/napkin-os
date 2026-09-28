@@ -542,18 +542,26 @@ impl Session {
         // in and announce with `clan:dataupdated`. Outside `data`: that is the
         // middleware's body, and this is the host's.
         if landed {
-            if let Ok(clan) = self.read(|d| {
-                Ok(serde_json::json!({
-                    "id": d.clan().document_id(),
-                    "revision": d.clan().manifest().id,
-                    "version": d.version().as_str(),
-                    "data": read::data_json(d),
-                }))
-            }) {
+            if let Some(clan) = self.document_now() {
                 envelope["clan"] = clan;
             }
         }
         (envelope, events)
+    }
+
+    /// The open document as it now stands, in the shape a request's `clan`
+    /// has — what rides back beside a reply after a host-side write, so the
+    /// view can swap it into `window.__CLAN__.data`.
+    pub fn document_now(&self) -> Option<Value> {
+        self.read(|d| {
+            Ok(serde_json::json!({
+                "id": d.clan().document_id(),
+                "revision": d.clan().manifest().id,
+                "version": d.version().as_str(),
+                "data": read::data_json(d),
+            }))
+        })
+        .ok()
     }
 }
 

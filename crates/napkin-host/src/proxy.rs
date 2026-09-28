@@ -180,7 +180,9 @@ pub async fn verify(
     let applied = session.perform(ctx, |c, d| {
         review::verify_finding(c, d, &finding, &rationale, &decision_id, &pin)
     })?;
-    Ok((applied.reply, applied.events))
+    let mut reply = applied.reply;
+    reply["clan"] = session.document_now().unwrap_or(Value::Null);
+    Ok((reply, applied.events))
 }
 
 /// Home-screen prompt → the unified proxy with `request_kind = "agent"`.

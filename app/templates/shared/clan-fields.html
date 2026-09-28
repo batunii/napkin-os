@@ -1,0 +1,671 @@
+<!-- The OS's fields: the components every Napkin app shows recorded data with.
+     Spliced into a template at its clan-fields marker by the packer
+     (crates/clan-sdk/examples/shared/app_ui.rs), after the agent figures.
+     Hand-written; the contract is docs/contracts/clan-fields.md. -->
+<style id="clan-fields-css">
+/* Tokens come from the app (the studio's set); each has a fallback so the
+   fields still read in a page that defines none. */
+:root,clan-field,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray,.clf-drawer,.clf-scrim,.clf-toast{
+  --clf-ink:var(--ink,#14161B); --clf-ink2:var(--ink2,#4A4F5C); --clf-ink3:var(--ink3,#737987);
+  --clf-paper:var(--paper,#FFFFFF); --clf-soft:var(--soft,#F5F6F8); --clf-line:var(--line,#D6DAE2); --clf-line2:var(--line-soft,#E7E9EE);
+  --clf-create:var(--create,#FF4F2E); --clf-create-soft:var(--create-soft,#FFF1EE); --clf-create-ink:var(--create-ink,#B8321A);
+  --clf-green-soft:var(--green-soft,#DCFCE7); --clf-green-ink:var(--green-ink,#146C35);
+  --clf-amber:var(--amber,#F5A524); --clf-amber-soft:var(--amber-soft,#FEF3DC); --clf-amber-ink:var(--amber-ink,#8A5A00);
+  --clf-chart:var(--clf-chart-1,#2F64F5); --clf-chart2:var(--clf-chart-2,#9DB5F8);
+  --clf-mono:var(--mono,"Geist Mono",ui-monospace,Menlo,Consolas,monospace);
+  --clf-ease:var(--ease,cubic-bezier(.2,.8,.2,1));
+}
+clan-field,clan-chart,clan-quote,clan-gap,clan-sources{display:contents}
+clan-field[as="big"],clan-field[as="stat"],clan-chart,clan-quote,clan-gap,clan-sources{display:block}
+clan-tray{display:block}
+.clf-lock{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px;flex:none}
+
+/* ── a field ─────────────────────────────────────────────────────────── */
+.clf{all:unset;cursor:pointer;border-radius:6px;transition:background .15s var(--clf-ease);color:inherit}
+.clf:hover{background:color-mix(in srgb,var(--clf-ink) 5%,transparent)}
+.clf:focus-visible{outline:2px solid var(--clf-create);outline-offset:2px}
+.clf-src{font-family:var(--clf-mono);font-size:10.5px;letter-spacing:.02em;color:var(--clf-ink3);white-space:nowrap;font-weight:400}
+.clf-src::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:5px;vertical-align:1px;opacity:.7}
+.clf.in{display:inline;padding:0 2px;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1.5px solid color-mix(in srgb,var(--clf-ink) 22%,transparent)}
+.clf.in .clf-src{margin-left:4px}
+.clf.big,.clf.stat{display:grid;gap:4px;padding:6px;margin:-6px}
+.clf.big .v{font-size:clamp(34px,5vw,54px);font-weight:800;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+.clf.stat .v{font-size:30px;font-weight:800;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.clf.big .c,.clf.stat .c{font-size:13.5px;color:var(--clf-ink2);line-height:1.35}
+.clf.cell{display:inline-grid;justify-items:end;padding:2px 4px;margin:-2px -4px}
+.clf.cell .v{font-weight:700;font-variant-numeric:tabular-nums}
+.clf.claim{display:inline;padding:1px 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.clf .tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--clf-mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:1px 7px;vertical-align:2px;white-space:nowrap;font-weight:500;text-decoration:none}
+.clf.s-check.claim{background:var(--clf-create-soft);border-bottom:1.5px dashed var(--clf-create)}
+.clf.s-check .tag,.clf.s-contest .tag{background:var(--clf-create);color:#fff}
+.clf.s-check.big .v,.clf.s-check.stat .v{text-decoration:underline dashed var(--clf-create) 2px;text-underline-offset:6px}
+.clf.s-verified .tag{background:var(--clf-green-soft);color:var(--clf-green-ink)}
+.clf.s-rejected,.clf.s-replaced{text-decoration:line-through;text-decoration-color:var(--clf-create);color:var(--clf-ink3)}
+.clf.s-rejected .tag,.clf.s-replaced .tag{background:var(--clf-create-soft);color:var(--clf-create-ink)}
+.clf.s-contest .split-v{display:inline-flex;align-items:baseline;gap:6px}
+.clf.s-contest .split-v s{text-decoration:none;opacity:.55;font-weight:400}
+.clf.s-contest.in{border-bottom:1.5px dashed var(--clf-create)}
+.clf.low .tag.conf-l{background:var(--clf-amber-soft);color:var(--clf-amber-ink)}
+.clf.conf.in,.clf.conf.claim{background:repeating-linear-gradient(135deg,transparent 0 5px,color-mix(in srgb,var(--clf-ink) 7%,transparent) 5px 6px)}
+.clf-missing{font-family:var(--clf-mono);font-size:11px;color:var(--clf-create-ink);border:1px dashed var(--clf-create);border-radius:6px;padding:0 5px}
+
+/* ── a chart, a quote, a gap, the sources ────────────────────────────── */
+.clf-chart{display:block;width:100%}
+.clf-chart .eb{display:block;font-family:var(--clf-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--clf-ink3);margin-bottom:8px}
+.clf-chart svg{display:block;width:100%;height:auto;overflow:visible}
+.clf-chart .mark{cursor:pointer}
+.clf-chart .mark:focus{outline:none}
+.clf-chart .mark:hover .bar,.clf-chart .mark:focus-visible .bar,.clf-chart .mark:hover circle,.clf-chart .mark:focus-visible circle{stroke:var(--clf-create);stroke-width:2}
+.clf-chart .foot{font-family:var(--clf-mono);font-size:10.5px;color:var(--clf-ink3);margin-top:6px}
+.clf-quote{all:unset;cursor:pointer;display:grid;gap:14px;border-radius:8px;color:inherit}
+.clf-quote blockquote{margin:0;font-size:clamp(22px,3.2vw,34px);line-height:1.2;font-weight:700;letter-spacing:-.02em;max-width:28ch;text-wrap:balance}
+.clf-quote blockquote::before{content:"\201C"}
+.clf-quote blockquote::after{content:"\201D"}
+.clf-quote .by{font-size:13px;color:var(--clf-ink2)}
+.clf-gap{all:unset;cursor:pointer;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;border:1px dashed var(--clf-line);border-radius:14px;padding:14px 16px;color:inherit}
+.clf-gap .ic{width:28px;height:28px;border-radius:50%;border:1.5px dashed var(--clf-ink3);display:grid;place-items:center;font-family:var(--clf-mono);font-size:13px;color:var(--clf-ink3)}
+.clf-gap b{display:block;font-size:14.5px}
+.clf-gap span span{font-size:13px;color:var(--clf-ink2)}
+.clf-sources{display:grid;gap:10px}
+.clf-sources h2{font-size:14px;font-weight:700;margin:0}
+.clf-sources ol{margin:0;padding:0;list-style:none;display:grid;gap:2px}
+.clf-srcrow{all:unset;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:baseline;padding:6px 8px;margin:0 -8px;border-radius:8px;font-size:13.5px;color:inherit}
+.clf-srcrow:hover{background:color-mix(in srgb,var(--clf-ink) 5%,transparent)}
+.clf-srcrow .n{font-family:var(--clf-mono);font-size:11px;color:var(--clf-ink3)}
+.clf-srcrow .m{font-size:12px;color:var(--clf-ink3);white-space:nowrap}
+.clf-srcrow small{color:var(--clf-ink2);font-size:12.5px}
+
+/* ── the tray: what needs a person, computed by the host ─────────────── */
+.clf-tray{position:sticky;top:0;z-index:19;background:var(--clf-paper);border-bottom:1px solid var(--clf-line);box-shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07)}
+.clf-tray-in{max-width:1120px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.clf-tray .who{display:flex;align-items:center;gap:10px;min-width:0}
+.clf-tray .who .agent-figure{width:30px;height:40px}
+.clf-tray .count{font-weight:700;font-size:14.5px;white-space:nowrap}
+.clf-tray .count.zero{color:var(--clf-green-ink)}
+.clf-tray .items{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 300px;min-width:0}
+.clf-titem{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--clf-line);background:var(--clf-paper);border-radius:999px;padding:3px 10px 3px 8px;font:inherit;font-size:12.5px;cursor:pointer;max-width:100%;color:inherit}
+.clf-titem:hover{border-color:var(--clf-create)}
+.clf-titem .k{font-family:var(--clf-mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--clf-create-ink);flex:none}
+.clf-titem .x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.clf-titem .off{font-size:11px;color:var(--clf-ink3);flex:none}
+.clf-locked{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--clf-green-ink)}
+.clf-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--clf-line);background:var(--clf-paper);border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;color:var(--clf-ink)}
+.clf-btn:hover{border-color:var(--clf-ink3)}
+.clf-btn.primary{background:var(--clf-ink);border-color:var(--clf-ink);color:var(--clf-paper)}
+.clf-btn.danger{color:var(--clf-create-ink);border-color:color-mix(in srgb,var(--clf-create) 45%,var(--clf-line))}
+.clf-btn[disabled]{opacity:.45;cursor:not-allowed}
+.clf-btn .n{font-family:var(--clf-mono);font-size:11px;background:var(--clf-create);color:#fff;border-radius:999px;padding:0 6px}
+
+/* ── the evidence drawer ─────────────────────────────────────────────── */
+.clf-scrim{position:fixed;inset:0;background:rgba(10,12,16,.28);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s var(--clf-ease)}
+.clf-scrim.on{opacity:1;pointer-events:auto}
+.clf-drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);z-index:41;background:var(--clf-paper);color:var(--clf-ink);box-shadow:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.18);transform:translateX(104%);transition:transform .28s var(--clf-ease);display:flex;flex-direction:column;font-size:14px;line-height:1.5}
+.clf-drawer.on{transform:none}
+.clf-dh{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--clf-line2)}
+.clf-dh .crumb{flex:1;min-width:0;font-family:var(--clf-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--clf-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clf-ib{border:1px solid var(--clf-line);background:var(--clf-paper);color:var(--clf-ink);border-radius:999px;width:30px;height:30px;display:grid;place-items:center;cursor:pointer;flex:none}
+.clf-db{overflow:auto;padding:20px 20px 28px;display:grid;gap:20px;align-content:start}
+.clf-dv{display:grid;gap:6px}
+.clf-dv .v{font-size:40px;font-weight:800;letter-spacing:-.035em;line-height:1;font-variant-numeric:tabular-nums}
+.clf-dv .stmt{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.3}
+.clf-dv .c{font-size:14px;color:var(--clf-ink2)}
+.clf-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;border-radius:999px;padding:3px 10px;background:var(--clf-soft);color:var(--clf-ink2);width:max-content;max-width:100%}
+.clf-pill.check{background:var(--clf-create-soft);color:var(--clf-create-ink)}
+.clf-pill.ok{background:var(--clf-green-soft);color:var(--clf-green-ink)}
+.clf-pill.warn{background:var(--clf-amber-soft);color:var(--clf-amber-ink)}
+.clf-pill.conf{background:var(--clf-soft);color:var(--clf-ink);border:1px dashed var(--clf-ink3)}
+.clf-pills{display:flex;flex-wrap:wrap;gap:6px}
+.clf-sec{display:grid;gap:8px}
+.clf-sec > h3{font-family:var(--clf-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--clf-ink3);font-weight:500;margin:0}
+.clf-q{margin:0;padding:14px 16px;background:var(--clf-soft);border-radius:12px;font-size:15px;line-height:1.5}
+.clf-q mark{background:color-mix(in srgb,var(--clf-amber) 40%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+.clf-q .loc{display:block;margin-top:6px;font-family:var(--clf-mono);font-size:11px;color:var(--clf-ink3)}
+.clf-card{border:1px solid var(--clf-line2);border-radius:12px;padding:14px;display:grid;gap:8px}
+.clf-card .t{font-weight:600;font-size:14.5px;line-height:1.3}
+.clf-card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px}
+.clf-card dt{color:var(--clf-ink3)}
+.clf-card dd{margin:0;color:var(--clf-ink2);overflow-wrap:anywhere}
+.clf-card a{color:var(--clf-chart);font-size:13px;font-weight:500;text-decoration:none;width:max-content}
+.clf-card a:hover{text-decoration:underline}
+.clf-rows{display:grid;gap:6px}
+.clf-row{all:unset;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:baseline;padding:9px 12px;border:1px solid var(--clf-line2);border-radius:10px;font-size:13.5px;color:inherit}
+.clf-row:hover{border-color:var(--clf-ink3)}
+.clf-row b{font-variant-numeric:tabular-nums}
+.clf-row small{display:block;color:var(--clf-ink3);font-size:12px}
+.clf-acts{display:flex;flex-wrap:wrap;gap:8px}
+.clf-form{display:grid;gap:10px;padding:14px;border:1px solid var(--clf-line);border-radius:12px}
+.clf-form.bare{border:0;padding:0}
+.clf-form label{display:grid;gap:4px;font-size:12.5px;color:var(--clf-ink2)}
+.clf-form textarea{font:inherit;font-size:14px;color:var(--clf-ink);background:var(--clf-paper);border:1px solid var(--clf-line);border-radius:10px;padding:8px 10px;min-height:64px;resize:vertical}
+.clf-form .req{color:var(--clf-create-ink);font-size:11px}
+.clf-opt{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:12px;border:1px solid var(--clf-line);border-radius:12px;cursor:pointer}
+.clf-opt:has(input:checked){border-color:var(--clf-ink);box-shadow:0 0 0 1px var(--clf-ink)}
+.clf-opt .v{font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.clf-opt .q{font-size:13px;color:var(--clf-ink2)}
+.clf-opt .s{font-family:var(--clf-mono);font-size:11px;color:var(--clf-ink3)}
+.clf-toggle{display:flex;align-items:start;gap:10px;font-size:13.5px;color:var(--clf-ink)}
+.clf-toggle small{display:block;color:var(--clf-ink3);font-size:12px}
+.clf-toggle input{margin-top:3px;accent-color:var(--clf-ink)}
+.clf-hist{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:13px;color:var(--clf-ink2)}
+.clf-hist li{display:grid;grid-template-columns:auto 1fr;gap:8px}
+.clf-hist li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--clf-ink3);margin-top:7px}
+.clf-err{font-size:13px;color:var(--clf-create-ink);background:var(--clf-create-soft);border-radius:10px;padding:8px 12px}
+.clf-muted{color:var(--clf-ink3);font-size:12.5px;margin:0}
+.clf-toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);background:var(--clf-ink);color:var(--clf-paper);padding:9px 16px;border-radius:999px;font-size:13.5px;opacity:0;pointer-events:none;transition:all .25s var(--clf-ease);z-index:60;max-width:calc(100% - 32px)}
+.clf-toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ── the layout vocabulary an agent composes a report from ───────────── */
+.cl-report{background:var(--clf-paper);border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07)}
+.cl-head{padding:48px clamp(20px,5vw,64px) 36px;display:grid;gap:14px;border-bottom:1px solid var(--clf-line2)}
+.cl-head.compact{padding:32px clamp(20px,4vw,44px) 24px;gap:8px;border-bottom:2px solid var(--clf-ink)}
+.cl-eyebrow{font-family:var(--clf-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--clf-ink3)}
+.cl-title{margin:0;font-size:clamp(30px,5.2vw,56px);line-height:1.02;font-weight:800;letter-spacing:-.035em;max-width:17ch;text-wrap:balance}
+.cl-head.compact .cl-title{font-size:clamp(24px,3.4vw,32px);line-height:1.12;max-width:30ch}
+.cl-dek{font-size:17px;color:var(--clf-ink2);max-width:60ch;margin:0}
+.cl-nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));border-bottom:1px solid var(--clf-line2);padding-inline:calc(clamp(20px,5vw,64px) - clamp(12px,2vw,24px))}
+.cl-nums > *{padding:26px clamp(12px,2vw,24px);border-left:1px solid var(--clf-line2)}
+.cl-nums > :first-child{border-left:0}
+.cl-cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);padding:40px clamp(20px,5vw,64px)}
+.cl-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(20px,4vw,48px);align-items:start}
+.cl-prose{display:grid;gap:14px;align-content:start}
+.cl-prose p,.cl-block > p{margin:0;max-width:62ch;font-size:16px;line-height:1.55}
+.cl-report h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.15;text-wrap:balance}
+.cl-report h3{margin:0;font-size:16px;font-weight:700}
+.cl-label{margin:0;font-family:var(--clf-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--clf-ink3);font-weight:500}
+.cl-figure{display:grid;gap:10px;align-content:start}
+.cl-cap{font-size:12.5px;color:var(--clf-ink3)}
+.cl-band{padding:44px clamp(20px,5vw,64px);background:var(--clf-ink);color:var(--clf-paper);--ink:var(--clf-paper);--ink2:color-mix(in srgb,var(--clf-paper) 72%,transparent);--ink3:color-mix(in srgb,var(--clf-paper) 55%,transparent);--line:color-mix(in srgb,var(--clf-paper) 22%,transparent);--line-soft:color-mix(in srgb,var(--clf-paper) 14%,transparent);--paper:var(--clf-ink)}
+.cl-band[data-tone="soft"]{background:var(--clf-soft);color:var(--clf-ink);--ink:initial;--ink2:initial;--ink3:initial;--line:initial;--line-soft:initial;--paper:initial}
+.cl-block{padding:40px clamp(20px,5vw,64px);display:grid;gap:18px;border-top:1px solid var(--clf-line2)}
+.cl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.cl-grid > *{padding:24px clamp(20px,4vw,44px);display:grid;gap:12px;align-content:start}
+.cl-grid > * + *{border-left:1px solid var(--clf-line2)}
+.cl-callout{border:1px dashed var(--clf-line);border-radius:16px;padding:20px;display:grid;gap:14px}
+.cl-row{display:flex;flex-wrap:wrap;gap:28px}
+.cl-table{width:100%;border-collapse:collapse;font-size:14px}
+.cl-table td,.cl-table th{padding:9px 0;border-bottom:1px solid var(--clf-line2);vertical-align:top;text-align:left;font-weight:400}
+.cl-table td:first-child,.cl-table th:first-child{color:var(--clf-ink2);padding-right:12px}
+.cl-table td:last-child{text-align:right}
+.cl-list{margin:0;padding:0;list-style:none;display:grid;gap:12px;counter-reset:m}
+.cl-list > li{display:grid;grid-template-columns:22px 1fr;gap:6px;font-size:15px}
+.cl-list > li::before{counter-increment:m;content:counter(m);font-family:var(--clf-mono);font-size:12px;color:var(--clf-ink3);padding-top:2px}
+.cl-foot{padding:32px clamp(20px,5vw,64px) 40px;border-top:1px solid var(--clf-line2);background:var(--clf-soft)}
+@media (max-width:860px){.cl-cols,.cl-split,.cl-grid{grid-template-columns:1fr}.cl-grid > * + *{border-left:0;border-top:1px solid var(--clf-line2)}}
+@media (max-width:620px){.clf-drawer{top:auto;height:88%;width:100%;border-radius:18px 18px 0 0;transform:translateY(104%)}.clf-titem .x{max-width:170px}}
+@media (prefers-reduced-motion:reduce){.clf-drawer,.clf-scrim,.clf-toast,.clf{transition:none}}
+</style>
+<script>
+/* The OS's fields. Everything a field shows comes from the record the host
+   keeps (window.__CLAN__.data: the projection of pins, findings and sources,
+   the selection, the materials) and from the host's own decision view
+   (clan://decisions): the kind of field and what it asks of a person are the
+   record's, never the tag's. Every action is one host route; the reply
+   carries the document as it now stands, which replaces the page's copy. */
+var ClanFields=(function(){
+  var SCHEME=(navigator.userAgent.indexOf('Windows')!==-1)?'http://clan.localhost':'clan://localhost';
+  var VIEW=null, STACK=[], DRAWER=null;
+  var TICK='<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg>';
+  var LOCK='<svg class="clf-lock" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5.5" rx="1"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>';
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function obj(v){ return v&&typeof v==='object'&&!Array.isArray(v)?v:{}; }
+  function arr(v){ return Array.isArray(v)?v:[]; }
+  function data(){ return obj((window.__CLAN__||{}).data); }
+  function proj(){ return obj(data().projection); }
+  function pins(){ return obj(proj().pins); }
+  function findings(){ return obj(proj().findings); }
+  function sources(){ return obj(proj().sources); }
+  function contests(){ return arr(obj(data().selection).contested); }
+  function gaps(){ return arr(obj(data().selection).gaps); }
+  function contest(id){ return contests().filter(function(c){ return c.id===id; })[0]||null; }
+  function gap(id){ return gaps().filter(function(g){ return g.id===id; })[0]||null; }
+  function docId(){ var m=obj((window.__CLAN__||{}).manifest); return m.document_id||m.id||''; }
+  function yr(d){ return d?String(d).slice(0,4):''; }
+
+  // ── values and labels ───────────────────────────────────────────────
+  function fmt(p){
+    if(!p) return '';
+    var v=p.value, u=p.unit;
+    if(typeof v==='number'){
+      if(u==='proportion') return (Math.round(v*1000)/10)+'%';
+      if(u==='eur') return '€'+short(v);
+      if(u==='gbp') return '£'+short(v);
+      if(u==='usd') return '$'+short(v);
+      if(u==='count'||u==='units') return short(v);
+      return short(v)+(u?' '+u:'');
+    }
+    if(typeof v==='boolean') return v?'yes':'no';
+    return String(v);
+  }
+  function short(n){
+    var a=Math.abs(n);
+    if(a>=1e9) return (Math.round(n/1e8)/10)+'bn';
+    if(a>=1e6) return (Math.round(n/1e5)/10)+'m';
+    if(a>=1e4) return (Math.round(n/100)/10)+'k';
+    return String(Math.round(n*100)/100);
+  }
+  function label(p){
+    if(!p) return '';
+    var k=String(p.key||'').split('.').slice(1).join(' ')||String(p.key||'');
+    k=k.replace(/_(eur|gbp|usd)$/,'').replace(/_/g,' ').replace(/\byoy\b/,'year on year');
+    return k.charAt(0).toUpperCase()+k.slice(1)+(p.market?' · '+p.market:'');
+  }
+  function srcOf(p){ var s=arr(p&&p.sources).filter(function(x){ return /^src_/.test(x); })[0]; return s?{id:s, rec:sources()[s]||null}:null; }
+  function srcShort(p){ var s=srcOf(p); if(!s||!s.rec) return s?'source not in the document':''; return (s.rec.publisher||s.rec.domain||'source')+(s.rec.published_at?' · '+yr(s.rec.published_at):''); }
+
+  // ── what the record says about a ref ────────────────────────────────
+  function kindOf(ref){
+    if(/^f_/.test(ref)) return 'pin';
+    if(/^fi_/.test(ref)) return 'finding';
+    if(/^ct_/.test(ref)) return 'contest';
+    if(/^gap_/.test(ref)) return 'gap';
+    if(/^src_/.test(ref)) return 'source';
+    return null;
+  }
+  function openContestOf(fid){ return contests().filter(function(c){ return c.status==='open'&&arr(c.values).some(function(v){ return v.fact_id===fid; }); })[0]||null; }
+  function marks(path){
+    // The newest classify mark nothing superseded, on this path.
+    var ds=arr(VIEW&&VIEW.decisions);
+    for(var i=0;i<ds.length;i++){ var b=ds[i], d=b.decision||{};
+      if(d.kind!=='classify'||b.superseded) continue;
+      if(arr(b.targets).some(function(t){ return t.path===path; })) return d; }
+    return null;
+  }
+  function confidential(ref){
+    var k=kindOf(ref);
+    if(k==='pin'){ var p=pins()[ref]; var m=marks('facts['+ref+']');
+      if(m&&m.licence) return !(m.licence.model&&m.licence.export&&m.licence.corpus);
+      return !!(p&&p.licence==='client-confidential'); }
+    if(k==='finding'){ var f=findings()[ref]; var m2=marks('findings['+ref+']');
+      if(m2&&m2.licence) return !(m2.licence.model&&m2.licence.export&&m2.licence.corpus);
+      return arr(f&&f.cites).some(confidential); }
+    return false;
+  }
+  function stateOf(ref){
+    var k=kindOf(ref);
+    if(k==='pin'){ var p=pins()[ref]; if(!p) return 'missing'; if(p.replaced_by) return 'replaced'; if(openContestOf(ref)) return 'contest'; return 'sourced'; }
+    if(k==='finding'){ var f=findings()[ref]; if(!f) return 'missing'; return f.status==='proposed'?'check':f.status; }
+    if(k==='contest'){ var c=contest(ref); if(!c) return 'missing'; return c.status==='open'?'contest':'resolved'; }
+    return 'sourced';
+  }
+  // A contest shows as its choice once resolved; a replaced pin as what replaced it.
+  function shownPin(ref){
+    var k=kindOf(ref);
+    if(k==='contest'){ var c=contest(ref); if(c&&c.status==='resolved') return pins()[c.chosen]?c.chosen:null; return null; }
+    return ref;
+  }
+
+  // ── the host ────────────────────────────────────────────────────────
+  function post(route, body){
+    return fetch(SCHEME+route,{method:'POST',body:JSON.stringify(body||{})})
+      .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'status '+r.status}; }).then(function(j){ if(!r.ok&&j&&j.ok!==false) j.ok=false; return j; }); })
+      .then(function(res){
+        if(res&&res.clan&&res.clan.data){
+          window.__CLAN__.data=res.clan.data;
+          window.dispatchEvent(new CustomEvent('clan:dataupdated',{detail:{source:'review',version:res.clan.version}}));
+        }
+        return res;
+      });
+  }
+  function errorOf(res){ if(!res) return 'No answer from the host.'; if(typeof res.error==='string') return res.error; if(res.error&&res.error.message) return res.error.message; if(res.ok===false) return 'The host refused.'; return ''; }
+  function loadView(){
+    return fetch(SCHEME+'/decisions').then(function(r){ return r.ok?r.json():null; })
+      .then(function(v){ VIEW=v; }).catch(function(){ VIEW=null; });
+  }
+
+  // ── rendering ───────────────────────────────────────────────────────
+  function tagFor(st){
+    return st==='check'?'<span class="tag">check</span>':st==='verified'?'<span class="tag">'+TICK+'verified</span>'
+      :st==='rejected'?'<span class="tag">rejected</span>':st==='contest'?'<span class="tag">2 sources</span>'
+      :st==='replaced'?'<span class="tag">replaced</span>':'';
+  }
+  function renderField(el){
+    var ref=el.getAttribute('ref')||'', as=el.getAttribute('as')||'inline', k=kindOf(ref), st=stateOf(ref);
+    var cls={big:'big',stat:'stat',cell:'cell',claim:'claim'}[as]||'in';
+    if(st==='missing'||!k){ el.innerHTML='<span class="clf-missing" title="Not in this document">'+esc(ref||'no ref')+'</span>'; return; }
+    var conf=confidential(ref), cap=el.getAttribute('caption'), tag=tagFor(st), h='', aria='';
+    if(k==='finding'){
+      var f=findings()[ref]; h=(conf?LOCK:'')+esc(f.statement)+' '+tag; aria=f.statement;
+      if(as!=='claim') cls='claim';
+    } else if(k==='contest'&&st==='contest'){
+      var c=contest(ref), vs=arr(c.values);
+      var v='<span class="split-v">'+vs.map(function(x){ return esc(fmt(x)); }).join('<s>or</s>')+'</span>';
+      h=valueShape(as,v,cap||c.key,'',tag,false); aria=(cap||c.key)+': sources disagree';
+    } else {
+      var id=shownPin(ref)||ref, p=pins()[id];
+      if(k==='contest'&&!p){ el.innerHTML='<span class="clf-missing">'+esc(ref)+'</span>'; return; }
+      var pst=k==='contest'?'resolved':st;
+      h=valueShape(as,esc(fmt(p)),cap||label(p),srcShort(p),tagFor(pst),conf||confidential(id));
+      if(p.confidence==='low') h+=' <span class="tag conf-l">low confidence</span>';
+      aria=(cap||label(p))+': '+fmt(p);
+    }
+    el.innerHTML='<button type="button" class="clf '+cls+' s-'+st+(conf?' conf':'')+'" data-ref="'+esc(ref)+'" aria-label="'+esc(aria+' — open the evidence')+'">'+h+'</button>';
+  }
+  function valueShape(as,v,cap,src,tag,conf){
+    if(as==='big'||as==='stat') return '<span class="v">'+v+'</span><span class="c">'+(conf?LOCK:'')+esc(cap)+'</span>'+(src?'<span class="clf-src">'+esc(src)+'</span>':'')+(tag?'<span>'+tag+'</span>':'');
+    if(as==='cell') return '<span class="v">'+(conf?LOCK:'')+v+'</span>'+(tag||(src?'<span class="clf-src">'+esc(src)+'</span>':''));
+    return (conf?LOCK:'')+v+(src?'<span class="clf-src">'+esc(src)+'</span>':'')+(tag?' '+tag:'');
+  }
+
+  function chartLabels(el, ps){
+    var given=(el.getAttribute('labels')||'').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    if(given.length===ps.length) return given;
+    var mk={}, ys={}; ps.forEach(function(p){ mk[p.market||'']=1; ys[yr(p.as_of)]=1; });
+    if(Object.keys(mk).length===ps.length) return ps.map(function(p){ return p.market; });
+    if(Object.keys(ys).length===ps.length) return ps.map(function(p){ return yr(p.as_of); });
+    return ps.map(function(p){ return label(p).split(' · ')[0]; });
+  }
+  function renderChart(el){
+    var refs=(el.getAttribute('refs')||'').split(/\s+/).filter(Boolean), kind=el.getAttribute('kind')||'bar', title=el.getAttribute('title')||'';
+    var rows=refs.map(function(r){ return {ref:r, p:pins()[r]}; });
+    var missing=rows.filter(function(x){ return !x.p||typeof x.p.value!=='number'; }).map(function(x){ return x.ref; });
+    rows=rows.filter(function(x){ return x.p&&typeof x.p.value==='number'; });
+    if(!rows.length){ el.innerHTML='<span class="clf-missing">chart: no recorded numbers'+(missing.length?' ('+esc(missing.join(', '))+')':'')+'</span>'; return; }
+    var ps=rows.map(function(x){ return x.p; }), labels=chartLabels(el,ps), svg='';
+    function mark(x,i,inner){ return '<g class="mark" tabindex="0" role="button" data-ref="'+esc(x.ref)+'" aria-label="'+esc(labels[i]+': '+fmt(x.p)+' — open the source')+'">'+inner+'</g>'; }
+    if(kind==='line'){
+      var W=520,H=el.hasAttribute('compact')?150:250,pl=44,pr=64,pt=18,pb=26, vals=ps.map(function(p){ return p.value; });
+      var lo=Math.min.apply(0,vals), hi=Math.max.apply(0,vals), span=(hi-lo)||Math.abs(hi)||1;
+      lo=lo-span*0.15; hi=hi+span*0.15;
+      var X=function(i){ return pl+(rows.length===1?0:i*(W-pl-pr)/(rows.length-1)); }, Y=function(v){ return pt+(hi-v)*(H-pt-pb)/(hi-lo); };
+      var grid=''; for(var g=0;g<=3;g++){ var gv=lo+(hi-lo)*g/3; grid+='<line x1="'+pl+'" x2="'+(W-pr+8)+'" y1="'+Y(gv)+'" y2="'+Y(gv)+'" stroke="var(--clf-line2)"/><text x="'+(pl-8)+'" y="'+(Y(gv)+4)+'" text-anchor="end" font-size="11" fill="var(--clf-ink3)" font-family="var(--clf-mono)">'+esc(fmt({value:gv,unit:ps[0].unit}))+'</text>'; }
+      var pts=rows.map(function(x,i){ return X(i)+','+Y(x.p.value); });
+      var area='M'+X(0)+','+Y(lo)+' L'+pts.join(' L')+' L'+X(rows.length-1)+','+Y(lo)+'Z';
+      var ms=rows.map(function(x,i){ var last=i===rows.length-1;
+        return mark(x,i,'<rect x="'+(X(i)-16)+'" y="'+pt+'" width="32" height="'+(H-pt-pb)+'" fill="transparent"/><circle cx="'+X(i)+'" cy="'+Y(x.p.value)+'" r="'+(last?5.5:4)+'" fill="'+(last?'var(--clf-chart)':'var(--clf-paper)')+'" stroke="var(--clf-chart)" stroke-width="2"/>'
+          +'<text x="'+X(i)+'" y="'+(H-6)+'" text-anchor="middle" font-size="11" fill="var(--clf-ink3)" font-family="var(--clf-mono)">'+esc(labels[i])+'</text>'
+          +(last?'<text x="'+(X(i)+10)+'" y="'+(Y(x.p.value)+4)+'" font-size="12.5" font-weight="700" fill="var(--clf-ink)">'+esc(fmt(x.p))+'</text>':'')); }).join('');
+      svg='<svg viewBox="0 0 '+W+' '+H+'" role="group" aria-label="'+esc(title)+'">'+grid+'<path d="'+area+'" fill="var(--clf-chart)" opacity=".1"/><polyline points="'+pts.join(' ')+'" fill="none" stroke="var(--clf-chart)" stroke-width="2.2" stroke-linejoin="round"/>'+ms+'</svg>';
+    } else if(kind==='stack'){
+      var W3=520,bh=44,xp=0, total=ps.reduce(function(a,p){ return a+p.value; },0), unitMax=ps[0].unit==='proportion'?1:Math.max(total,1e-9);
+      var parts=rows.map(function(x,i){ var w=W3*x.p.value/unitMax, g=mark(x,i,'<rect class="bar" x="'+xp+'" y="0" width="'+Math.max(w-2,1)+'" height="'+bh+'" rx="4" fill="'+(i%2?'var(--clf-chart2)':'var(--clf-chart)')+'"/><text x="'+(xp+10)+'" y="27" font-size="14" font-weight="700" fill="'+(i%2?'var(--clf-ink)':'#fff')+'">'+esc(fmt(x.p))+'</text><text x="'+xp+'" y="'+(bh+20)+'" font-size="12" fill="var(--clf-ink2)">'+esc(labels[i])+'</text>'); xp+=w; return g; }).join('');
+      var rest=el.getAttribute('rest');
+      if(rest&&xp<W3-4) parts+='<rect x="'+xp+'" y="0" width="'+(W3-xp)+'" height="'+bh+'" rx="4" fill="none" stroke="var(--clf-ink3)" stroke-dasharray="3 3"/><text x="'+(xp+8)+'" y="'+(bh+20)+'" font-size="12" fill="var(--clf-ink3)">'+esc(rest)+'</text>';
+      svg='<svg viewBox="0 0 '+W3+' '+(bh+28)+'" role="group" aria-label="'+esc(title)+'">'+parts+'</svg>';
+    } else {
+      var W2=520,row=38,lw=118,vw=W2-lw-70,mx=Math.max.apply(0,ps.map(function(p){ return p.value; }))||1;
+      if(ps.every(function(p){ return p.unit==='proportion'; })) mx=Math.max(mx,0.0001);
+      svg='<svg viewBox="0 0 '+W2+' '+(rows.length*row+8)+'" role="group" aria-label="'+esc(title)+'">'+rows.map(function(x,i){ var y=i*row+4, w=Math.max(vw*x.p.value/mx,1);
+        return mark(x,i,'<rect x="0" y="'+y+'" width="'+W2+'" height="'+(row-6)+'" fill="transparent"/><text x="0" y="'+(y+20)+'" font-size="13" fill="var(--clf-ink2)">'+esc(labels[i])+'</text><rect x="'+lw+'" y="'+(y+6)+'" width="'+vw+'" height="20" rx="4" fill="var(--clf-line2)"/><rect class="bar" x="'+lw+'" y="'+(y+6)+'" width="'+w+'" height="20" rx="4" fill="var(--clf-chart)"/><text x="'+(lw+w+8)+'" y="'+(y+21)+'" font-size="13" font-weight="700" fill="var(--clf-ink)">'+esc(fmt(x.p))+'</text>'); }).join('')+'</svg>';
+    }
+    var srcs={}; ps.forEach(function(p){ var s=srcShort(p); if(s) srcs[s]=1; });
+    el.innerHTML='<div class="clf-chart">'+(title?'<span class="eb">'+esc(title)+'</span>':'')+svg+'<div class="foot">'+rows.length+' recorded value'+(rows.length===1?'':'s')+(Object.keys(srcs).length?' · '+esc(Object.keys(srcs).join(', ')):'')+(missing.length?' · not shown: '+esc(missing.join(', ')):'')+'</div></div>';
+  }
+  function renderQuote(el){
+    var ref=el.getAttribute('ref')||'', p=pins()[ref], s=srcOf(p), sid=el.getAttribute('source')||(s&&s.id), q=p&&obj(p.quotes)[sid];
+    if(!p||!q){ el.innerHTML='<span class="clf-missing">quote: '+esc(ref)+' has no recorded quote</span>'; return; }
+    var rec=sources()[sid]||{};
+    el.innerHTML='<button type="button" class="clf-quote" data-ref="'+esc(ref)+'"><blockquote>'+esc(q)+'</blockquote><span class="by">'+esc([rec.publisher,rec.title].filter(Boolean).join(', ')||'source')+'</span></button>';
+  }
+  function renderGap(el){
+    var g=gap(el.getAttribute('ref')||'');
+    if(!g){ el.innerHTML='<span class="clf-missing">gap: '+esc(el.getAttribute('ref'))+'</span>'; return; }
+    var tried=arr(g.sources_tried||g.tried);
+    el.innerHTML='<button type="button" class="clf-gap" data-ref="'+esc(g.id)+'"><span class="ic" aria-hidden="true">?</span><span><b>'+esc(g.wanted||g.key||g.id)+'</b><span>'+esc(g.note||'')+(tried.length?' Searched '+tried.length+' place'+(tried.length===1?'':'s')+'; nothing passed the quote check.':'')+'</span></span></button>';
+  }
+  function renderSources(el){
+    var S=sources(), ids=Object.keys(S), used={};
+    Object.keys(pins()).forEach(function(k){ arr(pins()[k].sources).forEach(function(s){ used[s]=(used[s]||0)+1; }); });
+    contests().forEach(function(c){ arr(c.values).forEach(function(v){ if(!pins()[v.fact_id]) arr(v.sources).forEach(function(s){ used[s]=(used[s]||0)+1; }); }); });
+    if(!ids.length){ el.innerHTML=''; return; }
+    el.innerHTML='<section class="clf-sources"><h2>'+esc(el.getAttribute('title')||'Sources')+' ('+ids.length+')</h2><ol>'+ids.map(function(id,i){ var s=S[id];
+      return '<li><button type="button" class="clf-srcrow" data-ref="'+esc(id)+'"><span class="n">'+(i+1)+'</span><span>'+esc(s.publisher||s.domain||id)+(s.title?' — '+esc(s.title):'')+(s.tier?' <small>· '+esc(s.tier)+'</small>':'')+'</span><span class="m">'+(used[id]||0)+' fact'+(used[id]===1?'':'s')+'</span></button></li>'; }).join('')+'</ol></section>';
+  }
+
+  // ── the tray ────────────────────────────────────────────────────────
+  function refOfAddress(a){
+    var p=String(a||'').split('#')[1]||'', m=p.match(/^(?:findings|facts|materials)\[([^\]]+)\]$/)||p.match(/^selection\.contested\[([^\]]+)\]$/);
+    return m?m[1]:p;
+  }
+  // What a person would call the thing a ref names.
+  function named(ref){
+    var k=kindOf(ref);
+    if(k==='finding') return (findings()[ref]||{}).statement||'';
+    if(k==='pin') return label(pins()[ref]);
+    if(k==='contest'){ var c=contest(ref), v=c&&arr(c.values)[0]; return v?label(v.pin||pins()[v.fact_id]||{key:c.key}):''; }
+    return '';
+  }
+  function lockDecision(){ return arr(VIEW&&VIEW.decisions).filter(function(b){ return b.decision&&b.decision.kind==='approve'&&!b.superseded; })[0]||null; }
+  function renderTray(el){
+    if(!VIEW){ el.innerHTML=''; return; }
+    var lock=lockDecision(), items=arr(VIEW.attention).filter(function(a){ return a.blocks_lock; });
+    var h='<div class="clf-tray" role="region" aria-label="What needs you"><div class="clf-tray-in">';
+    if(lock){ h+='<span class="clf-locked">'+TICK+' Locked by '+esc(lock.who&&lock.who.name||'a person')+' · '+esc(String(lock.decision.timestamp||'').slice(0,10))+'</span><span class="items"><span class="clf-muted">Changes from here make a new version.</span></span>'; }
+    else {
+      var fig=typeof NapkinAgents==='object'?NapkinAgents.figure('judge',{state:items.length?'needs-you':'idle',decorative:true}):'';
+      h+='<span class="who">'+fig+'<span class="count'+(items.length?'':' zero')+'">'+(items.length?items.length+' thing'+(items.length===1?'':'s')+' need'+(items.length===1?'s':'')+' you':'Nothing needs you')+'</span></span>';
+      h+='<span class="items">'+items.map(function(a){ var ref=refOfAddress(a.address), shown=!!document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)');
+        return '<button type="button" class="clf-titem" data-ref="'+esc(ref)+'" data-note="'+esc(a.text)+'"><span class="k">'+esc(KIND_LABEL[a.code]||a.code)+'</span><span class="x">'+esc(named(ref)||a.label||a.text)+'</span>'+(shown?'':'<span class="off">not in this layout</span>')+'</button>'; }).join('')+'</span>';
+      h+='<button type="button" class="clf-btn primary" data-clf-lock'+(items.length?' disabled title="Everything listed has to be settled first"':'')+'>Lock report'+(items.length?' <span class="n">'+items.length+'</span>':'')+'</button>';
+    }
+    el.innerHTML=h+'</div></div>';
+  }
+  var KIND_LABEL={open_contest:'Sources disagree',unverified_finding:'Check finding',flagged_field:'Revise',bad_verdict:'Marked bad',unmerged_branch:'Unmerged'};
+  function cssEsc(s){ return String(s).replace(/["\\]/g,'\\$&'); }
+
+  // ── the drawer ──────────────────────────────────────────────────────
+  function ensureDrawer(){
+    if(DRAWER) return DRAWER;
+    var scrim=document.createElement('div'); scrim.className='clf-scrim';
+    var d=document.createElement('aside'); d.className='clf-drawer'; d.setAttribute('role','dialog'); d.setAttribute('aria-modal','true'); d.setAttribute('aria-hidden','true'); d.setAttribute('aria-label','Evidence');
+    d.innerHTML='<div class="clf-dh"><button type="button" class="clf-ib" data-clf="back" aria-label="Back" hidden><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 2 4 7l5 5"/></svg></button><span class="crumb"></span><button type="button" class="clf-ib" data-clf="close" aria-label="Close"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 2l8 8M10 2 2 10"/></svg></button></div><div class="clf-db"></div>';
+    var t=document.createElement('div'); t.className='clf-toast'; t.setAttribute('role','status'); t.setAttribute('aria-live','polite');
+    document.body.appendChild(scrim); document.body.appendChild(d); document.body.appendChild(t);
+    scrim.addEventListener('click',close);
+    d.addEventListener('click',onDrawerClick);
+    d.addEventListener('submit',onDrawerSubmit);
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&d.classList.contains('on')) close(); });
+    DRAWER={scrim:scrim, el:d, body:d.querySelector('.clf-db'), crumb:d.querySelector('.crumb'), back:d.querySelector('[data-clf="back"]'), toast:t};
+    return DRAWER;
+  }
+  function toast(msg){ var t=ensureDrawer().toast; t.textContent=msg; t.classList.add('on'); clearTimeout(toast.h); toast.h=setTimeout(function(){ t.classList.remove('on'); },2600); }
+  function open(ref,push,note){ ensureDrawer(); if(!push) STACK=[]; STACK.push({ref:ref,note:note||''}); draw(); DRAWER.el.classList.add('on'); DRAWER.el.setAttribute('aria-hidden','false'); DRAWER.scrim.classList.add('on'); setTimeout(function(){ DRAWER.el.querySelector('[data-clf="close"]').focus(); },50); }
+  function close(){ if(!DRAWER) return; DRAWER.el.classList.remove('on'); DRAWER.el.setAttribute('aria-hidden','true'); DRAWER.scrim.classList.remove('on'); STACK=[]; }
+  function top(){ return STACK[STACK.length-1]||{}; }
+  function locked(){ return !!lockDecision(); }
+
+  function srcCard(sid,where){
+    var s=sources()[sid];
+    if(/^human:/.test(sid)) return '<div class="clf-card"><span class="t">A person\u2019s verification</span><dl><dt>By</dt><dd>'+esc(sid.slice(6))+'</dd></dl></div>';
+    if(!s) return '<div class="clf-card"><span class="t">'+esc(sid)+'</span><p class="clf-muted">This document does not carry the source\u2019s record: it was pinned before sources travelled with the document.</p></div>';
+    var link=/^https?:\/\//.test(s.uri||'')?'<a href="'+esc(s.uri)+'" target="_blank" rel="noopener noreferrer">Open source \u2197</a>':'';
+    return '<div class="clf-card"><span class="t">'+esc(s.title||s.uri)+'</span><dl>'+(s.publisher?'<dt>From</dt><dd>'+esc(s.publisher)+'</dd>':'')+(s.tier?'<dt>Kind</dt><dd>'+esc(s.tier)+'</dd>':'')
+      +(s.published_at?'<dt>Published</dt><dd>'+esc(s.published_at)+'</dd>':'')+(s.retrieved_at?'<dt>Read</dt><dd>'+esc(s.retrieved_at)+'</dd>':'')+(s.licence?'<dt>Licence</dt><dd>'+esc(s.licence)+'</dd>':'')+(where?'<dt>Where</dt><dd>'+esc(where)+'</dd>':'')
+      +'<dt>Address</dt><dd>'+esc(s.domain||s.uri)+'</dd></dl>'+link+'</div>';
+  }
+  // Mark where the quote states the value, in whichever of the ways sources
+  // write a number it uses: "23%", "23 per cent", "€412 million", "412m".
+  function quoteBlock(q,p){
+    var text=String(q), lower=text.toLowerCase(), at=-1, len=0;
+    spellings(p).some(function(c){ var i=lower.indexOf(c.toLowerCase()); if(i!==-1){ at=i; len=c.length; return true; } return false; });
+    var h=at===-1?esc(text):esc(text.slice(0,at))+'<mark>'+esc(text.slice(at,at+len))+'</mark>'+esc(text.slice(at+len));
+    return '<blockquote class="clf-q">'+h+'<span class="loc">verbatim</span></blockquote>';
+  }
+  function spellings(p){
+    if(!p||p.value==null) return [];
+    var v=p.value, out=[];
+    if(typeof v!=='number') return [String(v)];
+    if(p.unit==='proportion'){ var pc=Math.round(v*1000)/10; return [pc+'%',pc+' per cent',pc+' percent',pc+'pc',String(pc)]; }
+    var a=Math.abs(v);
+    if(a>=1e9){ var bn=Math.round(v/1e8)/10; out.push(bn+' billion',bn+'bn',bn+'b'); }
+    if(a>=1e6){ var mn=Math.round(v/1e5)/10; out.push(mn+' million',mn+'m',mn+' mn'); }
+    if(a>=1e3){ var k=Math.round(v/100)/10; out.push(k+' thousand',k+'k'); }
+    try{ out.push(v.toLocaleString('en-IE')); }catch(e){}
+    out.push(v.toFixed&&v%1?v.toFixed(2):String(v), String(v));
+    return out;
+  }
+  function evidence(p){
+    var h='', qs=obj(p.quotes), srcs=arr(p.sources).filter(function(s){ return /^src_|^human:/.test(s); });
+    if(!srcs.length) return '<p class="clf-muted">No source is recorded for this value.</p>';
+    srcs.forEach(function(sid){ var q=qs[sid];
+      h+='<div class="clf-sec"><h3>'+(q?'What the source says':'Source')+'</h3>'+(q?quoteBlock(q,p):'')+srcCard(sid,'')+'</div>'; });
+    return h;
+  }
+  function pills(ref){
+    var st=stateOf(ref), h='';
+    h+={sourced:'<span class="clf-pill">Sourced · quote checked</span>',check:'<span class="clf-pill check">Derived by the agent · needs your check</span>',verified:'<span class="clf-pill ok">'+TICK+' Verified</span>',rejected:'<span class="clf-pill check">Rejected</span>',contest:'<span class="clf-pill check">Two sources disagree · pick one</span>',resolved:'<span class="clf-pill ok">'+TICK+' Resolved</span>',replaced:'<span class="clf-pill check">Replaced by a person\u2019s pick</span>'}[st]||'';
+    if(confidential(ref)) h+='<span class="clf-pill conf">'+LOCK+'Confidential</span>';
+    var p=pins()[ref]; if(p&&p.confidence&&p.confidence!=='high') h+='<span class="clf-pill warn">'+esc(p.confidence)+' confidence</span>';
+    if(p&&p.stale) h+='<span class="clf-pill warn">stale: the layer has a newer value</span>';
+    return '<div class="clf-pills">'+h+'</div>';
+  }
+  function history(path){
+    var ds=arr(VIEW&&VIEW.decisions).filter(function(b){ return arr(b.targets).some(function(t){ return t.path===path; }); });
+    if(!ds.length) return '';
+    return '<div class="clf-sec"><h3>Recorded</h3><ul class="clf-hist">'+ds.slice(0,6).map(function(b){ var d=b.decision||{};
+      return '<li><span><b>'+esc(d.kind||'edit')+'</b> by '+esc(b.who&&b.who.name||d.agent)+' · '+esc(String(d.timestamp||'').slice(0,16).replace('T',' '))+(d.rationale?' \u2014 \u201c'+esc(d.rationale.length>160?d.rationale.slice(0,157)+'\u2026':d.rationale)+'\u201d':'')+'</span></li>'; }).join('')+'</ul></div>';
+  }
+  function wrote(ref){
+    var el=document.querySelector('clan-field[ref="'+cssEsc(ref)+'"],clan-quote[ref="'+cssEsc(ref)+'"],clan-gap[ref="'+cssEsc(ref)+'"]');
+    if(!el){ var c=document.querySelectorAll('clan-chart'); for(var i=0;i<c.length;i++){ if((' '+c[i].getAttribute('refs')+' ').indexOf(' '+ref+' ')!==-1){ el=c[i]; break; } } }
+    return '<div class="clf-sec"><h3>What the agent wrote</h3>'+(el?'<pre class="clf-q" style="font-family:var(--clf-mono);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere">'+esc(el.outerHTML.replace(/>[\s\S]*<\//,'></'))+'</pre>':'<p class="clf-muted">This layout does not show it. It is still in the record, so the tray lists it.</p>')+'</div>';
+  }
+  function confForm(ref,target){
+    return '<form class="clf-form" data-clf-form="classify" data-target="'+esc(target)+'"><b style="font-size:14px">Confidential</b>'
+      +(confidential(ref)?'<p class="clf-muted">It is already confidential. A new mark replaces the one before.</p>':'')
+      +'<label class="clf-toggle"><input type="checkbox" name="model"><span>Agents may read it<small>Off: no model sees it, the agency\u2019s own included.</small></span></label>'
+      +'<label class="clf-toggle"><input type="checkbox" name="export"><span>May appear in exports<small>Off: withheld from anything that leaves the workspace.</small></span></label>'
+      +'<label class="clf-toggle"><input type="checkbox" name="corpus"><span>May go into the agency\u2019s knowledge<small>Off: other campaigns never see it.</small></span></label>'
+      +'<label>Why <span class="req">required</span><textarea name="why" required placeholder="e.g. Pricing is under NDA until launch"></textarea></label>'
+      +'<div class="clf-err" hidden></div><div class="clf-acts"><button type="submit" class="clf-btn primary">Mark confidential</button><button type="button" class="clf-btn" data-clf="redraw">Cancel</button></div></form>';
+  }
+  function draw(){
+    var t=top(), ref=t.ref, k=kindOf(ref), b='', crumb='', L=locked();
+    DRAWER.back.hidden=STACK.length<2;
+    if(t.note) b+='<p class="clf-err" style="background:var(--clf-soft);color:var(--clf-ink2)">'+esc(t.note)+'</p>';
+    if(k==='pin'){
+      var p=pins()[ref]; crumb='Fact · '+String((p&&p.key)||'').split('.')[0].replace(/_/g,' ');
+      if(!p){ b+='<p class="clf-muted">'+esc(ref)+' is not in this document.</p>'; }
+      else {
+        b+='<div class="clf-dv"><span class="v">'+(confidential(ref)?LOCK:'')+esc(fmt(p))+'</span><span class="c">'+esc(label(p))+' · true as of '+esc(p.as_of)+'</span>'+pills(ref)+'</div>';
+        if(p.replaced_by) b+='<button type="button" class="clf-row" data-open="'+esc(p.replaced_by.fact_id)+'"><span>Replaced by<small>a person resolved the sources\u2019 disagreement</small></span><b>'+esc(fmt(pins()[p.replaced_by.fact_id]))+'</b></button>';
+        var oc=openContestOf(ref); if(oc) b+='<button type="button" class="clf-row" data-open="'+esc(oc.id)+'"><span>Another source says otherwise<small>pick one before lock</small></span><b>'+arr(oc.values).map(fmt).map(esc).join(' or ')+'</b></button>';
+        b+=evidence(p);
+        if(!L) b+='<div class="clf-acts" data-clf-anchor><button type="button" class="clf-btn" data-clf="good">Looks right</button><button type="button" class="clf-btn" data-clf="bad">It\u2019s wrong\u2026</button><button type="button" class="clf-btn" data-clf="conf">Confidential\u2026</button></div>';
+        b+=history('facts['+ref+']');
+      }
+    } else if(k==='finding'){
+      var f=findings()[ref]; crumb='Finding · derived by the agent';
+      if(!f){ b+='<p class="clf-muted">'+esc(ref)+' is not in this document.</p>'; }
+      else {
+        b+='<div class="clf-dv"><span class="stmt">'+(confidential(ref)?LOCK:'')+esc(f.statement)+'</span>'+pills(ref)+'</div>';
+        b+='<div class="clf-sec"><h3>It rests on '+arr(f.cites).length+' recorded fact'+(arr(f.cites).length===1?'':'s')+'</h3><div class="clf-rows">'+arr(f.cites).map(function(c){ var p=pins()[c];
+          return '<button type="button" class="clf-row" data-open="'+esc(c)+'"><span>'+esc(p?label(p):c)+'<small>'+esc(p?srcShort(p):'not in this document')+'</small></span><b>'+(confidential(c)?LOCK:'')+esc(fmt(p))+'</b></button>'; }).join('')+'</div></div>';
+        if(f.confidence) b+='<p class="clf-muted">Confidence '+esc(f.confidence)+': the lowest of the facts it cites, never the model\u2019s own.</p>';
+        if(!L&&f.status==='proposed') b+='<form class="clf-form" data-clf-form="finding" data-clf-anchor><label>Note <span class="clf-muted">(required to reject)</span><textarea name="why" placeholder="What you checked, or what is wrong"></textarea></label><div class="clf-err" hidden></div><div class="clf-acts"><button type="submit" class="clf-btn primary" value="verify">Verify</button><button type="submit" class="clf-btn danger" value="reject">Reject</button><button type="button" class="clf-btn" data-clf="conf">Confidential\u2026</button></div><p class="clf-muted">Verifying writes it to the agency\u2019s knowledge as reviewed by you. Rejecting keeps it on record, struck through, and flags whatever cites it.</p></form>';
+        b+=history('findings['+ref+']');
+      }
+    } else if(k==='contest'){
+      var c=contest(ref); crumb='Sources disagree';
+      if(!c){ b+='<p class="clf-muted">'+esc(ref)+' is not in this document.</p>'; }
+      else {
+        var vs=arr(c.values);
+        b+='<div class="clf-dv"><span class="stmt">'+esc(named(ref))+'</span>'+pills(ref)+'</div>';
+        if(c.status==='open'&&!L){
+          b+='<form class="clf-form bare" data-clf-form="resolve"><div class="clf-sec"><h3>Pick the value the report uses</h3>'+vs.map(function(v){ var sid=arr(v.sources)[0], s=sources()[sid]||{}, q=obj(v.quotes)[sid];
+            return '<label class="clf-opt"><input type="radio" name="pick" value="'+esc(v.fact_id)+'" required><span style="display:grid;gap:6px"><span class="v">'+esc(fmt(v))+'</span>'+(q?'<span class="q">\u201c'+esc(q)+'\u201d</span>':'')+'<span class="s">'+esc([s.publisher||s.domain||sid,s.tier,yr(s.published_at)].filter(Boolean).join(' · '))+(v.from==='pinned'?' · already pinned':'')+'</span></span></label>'; }).join('')+'</div>'
+            +'<label>Why this one <span class="req">required</span><textarea name="why" required placeholder="e.g. Retail-only is the market we are entering"></textarea></label><div class="clf-err" hidden></div><div class="clf-acts"><button type="submit" class="clf-btn primary">Use this value</button></div><p class="clf-muted">The other value stays on record, marked as not chosen.</p></form>';
+        } else {
+          var ch=vs.filter(function(v){ return v.fact_id===c.chosen; })[0];
+          if(ch) b+='<button type="button" class="clf-row" data-open="'+esc(c.chosen)+'"><span>Chosen<small>'+esc(c.reason||'')+'</span><b>'+esc(fmt(ch))+'</b></button>';
+          vs.filter(function(v){ return v.fact_id!==c.chosen; }).forEach(function(v){ b+='<p class="clf-muted">Not chosen, kept on record: '+esc(fmt(v))+' ('+esc(arr(v.sources).join(', '))+').</p>'; });
+        }
+        b+=history('selection.contested['+ref+']');
+      }
+    } else if(k==='gap'){
+      var g=gap(ref); crumb='Looked for, not found';
+      if(g) b+='<div class="clf-dv"><span class="stmt">'+esc(g.wanted||g.key)+'</span><span class="c">'+esc(g.note||'')+'</span></div><div class="clf-sec"><h3>Where the researcher looked</h3><ul class="clf-hist">'+arr(g.sources_tried||g.tried).map(function(x){ return '<li><span>'+esc(x)+'</span></li>'; }).join('')+'</ul></div>';
+    } else if(k==='source'){
+      crumb='Source'; var used=Object.keys(pins()).filter(function(x){ return arr(pins()[x].sources).indexOf(ref)!==-1; });
+      b+=srcCard(ref,'')+'<div class="clf-sec"><h3>Facts taken from it ('+used.length+')</h3><div class="clf-rows">'+used.map(function(x){ var p=pins()[x]; return '<button type="button" class="clf-row" data-open="'+esc(x)+'"><span>'+esc(label(p))+'</span><b>'+esc(fmt(p))+'</b></button>'; }).join('')+'</div></div>';
+    } else {
+      crumb='Needs a person'; b+='<p class="clf-muted">'+esc(ref)+'</p>';
+    }
+    if(k&&k!=='source') b+=wrote(ref);
+    DRAWER.crumb.textContent=crumb; DRAWER.body.innerHTML=b;
+  }
+  function showError(form,msg){ var e=form&&form.querySelector('.clf-err'); if(e){ e.textContent=msg; e.hidden=false; } else toast(msg); }
+  function act(route,body,form,done){
+    var btns=form?form.querySelectorAll('button'):[]; Array.prototype.forEach.call(btns,function(x){ x.disabled=true; });
+    return post(route,body).then(function(res){
+      Array.prototype.forEach.call(btns,function(x){ x.disabled=false; });
+      var err=errorOf(res); if(err&&!(res&&res.ok)){ showError(form,err); return; }
+      return loadView().then(function(){ refresh(); if(STACK.length) draw(); toast(done); });
+    },function(){ showError(form,'Could not reach the host.'); Array.prototype.forEach.call(btns,function(x){ x.disabled=false; }); });
+  }
+  function onDrawerClick(e){
+    var o=e.target.closest('[data-open]'); if(o){ open(o.getAttribute('data-open'),true); return; }
+    var a=e.target.closest('[data-clf]'); if(!a) return; var w=a.getAttribute('data-clf'), ref=top().ref, k=kindOf(ref);
+    var target=(k==='pin'?'facts[':'findings[')+ref+']';
+    if(w==='close') close();
+    else if(w==='back'){ STACK.pop(); draw(); }
+    else if(w==='redraw') draw();
+    else if(w==='good') act('/verdict',{target:target,polarity:'good',rationale:''},null,'Recorded: it looks right');
+    else if(w==='bad'||w==='conf'){
+      var box=document.createElement('div');
+      box.innerHTML=w==='conf'?confForm(ref,target):'<form class="clf-form" data-clf-form="bad" data-target="'+esc(target)+'"><label>What is wrong <span class="req">required</span><textarea name="why" required></textarea></label><div class="clf-err" hidden></div><div class="clf-acts"><button type="submit" class="clf-btn danger">Mark it wrong</button><button type="button" class="clf-btn" data-clf="redraw">Cancel</button></div></form>';
+      var anchor=DRAWER.body.querySelector('[data-clf-anchor]'); if(anchor) anchor.replaceWith(box.firstChild); else DRAWER.body.appendChild(box.firstChild);
+    }
+  }
+  function onDrawerSubmit(e){
+    e.preventDefault(); var form=e.target, kind=form.getAttribute('data-clf-form'), ref=top().ref, fd=new FormData(form), why=String(fd.get('why')||'').trim();
+    if(kind==='finding'){
+      var v=e.submitter&&e.submitter.value;
+      if(v==='reject'){ if(!why){ showError(form,'Say what is wrong, so the agent can fix it.'); return; }
+        act('/verdict',{target:'findings['+ref+']',polarity:'bad',rationale:why},form,'Rejected'); }
+      else act('/verify',{finding:ref,rationale:why},form,'Verified and written to the agency\u2019s knowledge');
+    } else if(kind==='resolve') act('/resolve',{contest:ref,chosen:fd.get('pick'),rationale:why},form,'Resolved');
+    else if(kind==='classify') act('/classify',{target:form.getAttribute('data-target'),model:fd.get('model')==='on',export:fd.get('export')==='on',corpus:fd.get('corpus')==='on',rationale:why},form,'Marked confidential');
+    else if(kind==='bad') act('/verdict',{target:form.getAttribute('data-target'),polarity:'bad',rationale:why},form,'Recorded: marked wrong');
+  }
+
+  // ── agent-written layouts ───────────────────────────────────────────
+  // What an agent may write: the layout vocabulary (cl-* classes), text, and
+  // the clan-* elements. No script, no style, no link, no event handler, no
+  // element or attribute outside these lists; what is dropped is dropped whole.
+  var TAGS={SECTION:1,DIV:1,HEADER:1,FOOTER:1,ARTICLE:1,ASIDE:1,H1:1,H2:1,H3:1,P:1,SPAN:1,STRONG:1,EM:1,B:1,I:1,SMALL:1,BR:1,HR:1,OL:1,UL:1,LI:1,TABLE:1,THEAD:1,TBODY:1,TR:1,TD:1,TH:1,FIGURE:1,FIGCAPTION:1,BLOCKQUOTE:1,
+    'CLAN-FIELD':1,'CLAN-CHART':1,'CLAN-QUOTE':1,'CLAN-GAP':1,'CLAN-SOURCES':1,'CLAN-TRAY':1};
+  var ATTRS={'class':1,ref:1,refs:1,as:1,caption:1,kind:1,title:1,rest:1,labels:1,source:1,compact:1,colspan:1,rowspan:1,'data-tone':1};
+  function clean(node){
+    Array.prototype.slice.call(node.childNodes).forEach(function(n){
+      if(n.nodeType===3) return;
+      if(n.nodeType!==1||!TAGS[n.tagName]){ n.remove(); return; }
+      Array.prototype.slice.call(n.attributes).forEach(function(a){
+        var name=a.name.toLowerCase();
+        if(!ATTRS[name]) n.removeAttribute(a.name);
+        else if(name==='class') n.setAttribute('class',a.value.split(/\s+/).filter(function(c){ return /^cl-[a-z0-9-]+$|^compact$/.test(c); }).join(' '));
+      });
+      clean(n);
+    });
+    return node;
+  }
+  function layout(html){ var t=document.createElement('template'); t.innerHTML=String(html||''); return clean(t.content); }
+  function mount(el,html){ el.textContent=''; el.appendChild(layout(html)); refresh(); }
+
+  // ── wiring ──────────────────────────────────────────────────────────
+  function refresh(){
+    Array.prototype.forEach.call(document.querySelectorAll('clan-field'),renderField);
+    Array.prototype.forEach.call(document.querySelectorAll('clan-chart'),renderChart);
+    Array.prototype.forEach.call(document.querySelectorAll('clan-quote'),renderQuote);
+    Array.prototype.forEach.call(document.querySelectorAll('clan-gap'),renderGap);
+    Array.prototype.forEach.call(document.querySelectorAll('clan-sources'),renderSources);
+    Array.prototype.forEach.call(document.querySelectorAll('clan-tray'),renderTray);
+  }
+  document.addEventListener('click',function(e){
+    if(DRAWER&&DRAWER.el.contains(e.target)) return;
+    if(e.target.closest('[data-clf-lock]')){ act('/approve',{},null,'Locked: this version is accepted'); return; }
+    var t=e.target.closest('[data-ref]'); if(!t) return;
+    if(!t.closest('clan-field,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray')) return;
+    var ref=t.getAttribute('data-ref');
+    if(t.classList.contains('clf-titem')){ var el=document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'center',behavior:'smooth'}); open(ref,false,kindOf(ref)?'':t.getAttribute('data-note')); return; }
+    open(ref);
+  });
+  document.addEventListener('keydown',function(e){ var m=e.target.closest&&e.target.closest('.clf-chart .mark'); if(m&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); open(m.getAttribute('data-ref')); } });
+  window.addEventListener('clan:dataupdated',function(){ loadView().then(refresh); });
+  function start(){ loadView().then(refresh); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
+
+  return {refresh:refresh, reload:function(){ return loadView().then(refresh); }, open:open, layout:layout, mount:mount,
+          format:fmt, label:label, kindOf:kindOf, stateOf:stateOf};
+})();
+</script>

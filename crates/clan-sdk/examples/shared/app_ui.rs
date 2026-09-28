@@ -31,6 +31,31 @@ pub fn inline_figures(templates: &Path, html: &str) -> Result<String, Box<dyn st
     Ok(html.replacen(FIGURES_MARKER, snippet.trim_end(), 1))
 }
 
+/// Where a template asks for the OS's fields: `<clan-field>` and the rest, the
+/// evidence drawer, the needs-you tray and the layout vocabulary an agent
+/// composes a report from.
+pub const FIELDS_MARKER: &str = "<!-- @napkin:clan-fields -->";
+
+/// Splice `app/templates/shared/clan-fields.html` into the template at its
+/// marker, when it has one (an app that shows no recorded data needs none).
+/// Checked like the figures: no closing `</body>` inside it.
+pub fn inline_fields(templates: &Path, html: &str) -> Result<String, Box<dyn std::error::Error>> {
+    match html.matches(FIELDS_MARKER).count() {
+        0 => return Ok(html.to_string()),
+        1 => {}
+        _ => return Err(format!("the template has more than one {FIELDS_MARKER}").into()),
+    }
+    let snippet = fs::read_to_string(templates.join("shared/clan-fields.html"))
+        .map_err(|e| format!("app/templates/shared/clan-fields.html: {e}"))?;
+    if snippet.to_ascii_lowercase().contains("</body") {
+        return Err("the fields snippet contains </body>".into());
+    }
+    if snippet.contains(FIELDS_MARKER) {
+        return Err("the fields snippet contains its own marker".into());
+    }
+    Ok(html.replacen(FIELDS_MARKER, snippet.trim_end(), 1))
+}
+
 /// Where an app's mark lives in its archive. The manifest's `app.icon` names
 /// this member (spec §28: an archive path); the host hands it to the home
 /// screen inline, as a `data:` URI, because a page cannot read into an archive.
