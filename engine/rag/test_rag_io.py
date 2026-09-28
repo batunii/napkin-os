@@ -327,12 +327,13 @@ def test_mix_queries_are_the_brief_generators():
     assert _multi.q == mix_queries.queries_for(rag_io.gist_of(REQ))
 
 
-def test_mix_passes_scope_and_drops_the_bucket_budget():
-    """Authority reaches build_multi; a per-bucket token budget does not, and says so."""
+def test_mix_passes_scope_and_the_bucket_budget():
+    """Authority reaches build_multi, and so does a per-bucket token budget since 2026-09-28
+    (applied per field; before, it was dropped with a note), which the notes explain."""
     req = {**REQ, "limits": {"token_budget": {"craft": 1000}}}
     resp = rag_io.handle(req, build_multi=_multi)
-    assert "budget" not in _multi.kwargs and _multi.kwargs.get("tenant") == REQ["authority"].get("tenant")
-    assert any("token_budget" in n for n in resp["notes"])
+    assert _multi.kwargs.get("budget") == {"craft": 1000} and _multi.kwargs.get("tenant") == REQ["authority"].get("tenant")
+    assert any("token_budget applies per field" in n for n in resp["notes"])
 
 
 def test_buckets_path_still_uses_build():
@@ -488,3 +489,13 @@ def test_cli_run_prints_request_invalid_as_json(tmp_path, capsys):
     bad.write_text(json.dumps({"run_id": "x"}))
     assert rag_io.cli(["--run", str(bad)]) == 1
     assert json.loads(capsys.readouterr().out)["error"] == "RequestInvalid"
+
+
+def test_degraded_says_whether_the_queue_or_jev_was_slow():
+    queued = _v(backend_used=None, fell_back=True,
+                attempts=[{"backend": "jev", "outcome": "timeout", "status": None, "wait_ms": 7950.0, "reply_ms": 0.0, "sent": False}])
+    slow = _v(backend_used=None, fell_back=True,
+              attempts=[{"backend": "jev", "outcome": "timeout", "status": None, "wait_ms": 10.0, "reply_ms": 8010.0, "sent": True}])
+    d = rag_io.degraded_of(embed_mode="nim:x", validation={"a": slow, "b": queued, "c": queued}, counts={"a": 3, "b": 3, "c": 3}, gist={"problem": "p"})
+    why = d[0]["why"]
+    assert "queued 8.0 s behind other fields, never sent" in why and "jev still answering after 8.0 s" in why

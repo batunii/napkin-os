@@ -483,8 +483,14 @@ class Chain:
                 status = getattr(e, "status", None) if kind else None
                 detail = f"{type(e).__name__}: {e}"[:300]
             ms = round((time.perf_counter() - t0) * 1000.0, 1)
-            res.attempts.append({"backend": b.name, "outcome": outcome, "ms": ms,
-                                 "status": status, "detail": detail})
+            attempt = {"backend": b.name, "outcome": outcome, "ms": ms, "status": status, "detail": detail}
+            timing = getattr(b, "timing", None)           # jev: queue wait vs reply (2026-09-28)
+            if callable(timing):
+                try:
+                    attempt.update(timing(query) or {})
+                except Exception:                     # noqa: BLE001 — a diagnostic never fails a call
+                    pass
+            res.attempts.append(attempt)
             if verdicts is None:
                 self._mark_down(i)
                 continue

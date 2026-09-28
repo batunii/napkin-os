@@ -836,3 +836,17 @@ def test_deadline_transport_is_transparent_within_the_deadline():
     client = sdk.TypeSafeClient(api_key="k", retry=sdk.RetryPolicy(max_retries=0),
                                 transport=jj.deadline_transport(httpx2.MockTransport(handler)))
     assert [v.score for v in jj.JevBackend(client).score(Q, passages(3), deadline_s=5)] == [0.8] * 3
+
+
+def test_timing_separates_queue_wait_from_reply():
+    """timing(query) after score(): the time spent waiting for the one-at-a-time lock and the
+    time jev took, read once (2026-09-28 diagnostic)."""
+    import threading
+    be = jj.JevBackend.__new__(jj.JevBackend)
+    be._score_lock, be._timing_lock, be._timings = threading.Lock(), threading.Lock(), {}
+    be._score_locked = lambda q, ps, d, started: (time.sleep(0.05), [])[1]
+    q = jb.Query(text="t")
+    be.score(q, [object()], deadline_s=8.0)
+    t = be.timing(q)
+    assert t["sent"] is True and t["reply_ms"] >= 40 and t["wait_ms"] < 40
+    assert be.timing(q) is None                                  # read once

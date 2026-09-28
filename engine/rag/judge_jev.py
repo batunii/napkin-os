@@ -550,6 +550,8 @@ class JevBackend:
         # run 2026-09-26). Sequential calls cost ~0.7 s each warm; the batches inside a
         # call stay concurrent.
         self._score_lock = threading.Lock()
+        self._timing_lock = threading.Lock()
+        self._timings: dict = {}
 
     def _build_client(self, sdk, env: Mapping[str, str], problems: list[str]):
         """Construct the real TypeSafeClient, recording (not raising) what is missing.
@@ -656,8 +658,33 @@ class JevBackend:
         started = time.monotonic()
         if not passages:
             return []
+        rec = {"t0": started, "t_lock": None, "t_end": None}
+        with self._timing_lock:
+            self._timings[id(query)] = rec
+            while len(self._timings) > 256:       # records nobody asked for are dropped oldest first
+                self._timings.pop(next(iter(self._timings)))
         with self._score_lock:                    # calls from several threads run one at a time
-            return self._score_locked(query, passages, deadline_s, started)
+            rec["t_lock"] = time.monotonic()
+            try:
+                return self._score_locked(query, passages, deadline_s, started)
+            finally:
+                rec["t_end"] = time.monotonic()
+
+    def timing(self, query: Query) -> "dict | None":
+        """How the last score() for `query` spent its time, read once by the validation chain
+        (2026-09-28): {"wait_ms": time queued behind other fields for the one-at-a-time lock,
+        "reply_ms": time from sending to the answer (so far, if still running), "sent": whether
+        it ever got its turn}. A skipped field can then say whether jev was slow or the queue
+        ate its budget. None when there is no record."""
+        with self._timing_lock:
+            rec = self._timings.pop(id(query), None)
+        if rec is None:
+            return None
+        now = time.monotonic()
+        lock = rec["t_lock"]
+        return {"wait_ms": round(((lock if lock is not None else now) - rec["t0"]) * 1000.0, 1),
+                "reply_ms": round(((rec["t_end"] or now) - lock) * 1000.0, 1) if lock is not None else 0.0,
+                "sent": lock is not None}
 
     def _score_locked(self, query: Query, passages: list[Passage], deadline_s: float, started: float) -> list[Verdict]:
         """score() proper, entered under _score_lock; the deadline still counts from `started`,

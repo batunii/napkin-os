@@ -127,7 +127,7 @@ backend, kept}` when a validator ran (`kept`: `ordered` in the default order-onl
 Plus `prompt_text`, `tokens`, `validation` (which backend judged, pool size, passed,
 rejected, fell back — summed over the fields on the mix path; null when off), `notes`, `degraded` and `trace`.
 
-`degraded` (contract 1.4.0, 2026-09-28) lists what did not work as intended for this answer, so the caller can retry, flag or accept without reading the trace: `checker_skipped` (the relevance checker was asked for and did not answer; those fields are in search order, unchecked; `why` names the outcome, e.g. `jev timeout`), `keyword_only` (no embedding answered), `empty_field` (a field or bucket with no passage), `generic_query` (no problem, objective, audience or key message). Each entry is also one plain line in `notes`. Empty when nothing degraded; validation switched off is a choice, not a degradation.
+`degraded` (contract 1.4.0, 2026-09-28) lists what did not work as intended for this answer, so the caller can retry, flag or accept without reading the trace: `checker_skipped` (the relevance checker was asked for and did not answer; those fields are in search order, unchecked; `why` names the outcome and, for a timeout, whether the field was queued and never sent or jev itself was slow), `keyword_only` (no embedding answered), `empty_field` (a field or bucket with no passage), `generic_query` (no problem, objective, audience or key message). Each entry is also one plain line in `notes`. Empty when nothing degraded; validation switched off is a choice, not a degradation.
 
 **Guarantees.**
 - Scope, tenant and brand authorisation come from `authority` only. Brand names, campaign

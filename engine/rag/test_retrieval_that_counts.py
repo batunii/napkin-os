@@ -346,3 +346,14 @@ def test_edge_order_on_the_mix_path(monkeypatch):
     assert [h.cite for h in score.fields["f"]] == ["e1", "e2", "e3", "e4", "e5"]
     assert [h.cite for h in edge.fields["f"]] == ["e1", "e3", "e5", "e4", "e2"]
     assert score.trace["order"] == "score" and edge.trace["order"] == "edge"
+
+
+def test_mix_budget_from_the_request_trims_each_field(monkeypatch):
+    """limits.token_budget reaches build_multi as per-bucket targets (2026-09-28): a small
+    exemplars target keeps fewer exemplars per field, never fewer than the top one."""
+    _store(monkeypatch, {"exemplars": ["e1", "e2", "e3", "e4", "e5"]})
+    monkeypatch.delenv("RAG_MIX_ORDER", raising=False)
+    full = bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([]), per_field=5)
+    tight = bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([]), per_field=5, budget={"exemplars": 1})
+    assert len(full.fields["f"]) > len(tight.fields["f"]) >= 1
+    assert tight.fields["f"][0].cite == "e1"

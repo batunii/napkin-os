@@ -67,8 +67,10 @@ interface: `brief_context.build()` took an untyped dict of pairs plus `brand` an
 ## Consequences
 
 - The middleware owner (Shrey) must sign off the request shape before `locked: true`.
-- `brand.categories` accepts two values but only the first filters; the second is
-  recorded in `notes`. Using it as a widening step is future work.
+- `brand.categories`: the first filters; the rest are `alt_categories`, tried to widen a thin
+  bucket before any filter is dropped (built; this line said "future work" until 2026-09-28).
+- `brand.markets` and `campaign.market` are context for the relevance checker, not a filter: only
+  about 490 of the 7,392 chunks carry a place at all, and it is the agency's city, not the campaign's market.
 - `target`, `research`, `attachments`, `memory` and most of `limits` are accepted now so
   the middleware can start sending them; the validation stage is the first consumer.
 - `loops_3_7` does not go through this contract yet. Until it does, the path that
@@ -118,4 +120,15 @@ backend requested, the one that answered (most common; null when none did), pool
 and rejected summed, fell_back when any field fell back. The per-field records stay in
 `trace.validation.per_field`, and the unchecked fields are named in `degraded`. A live BMW
 request now validates on both paths.
+
+## Addendum 2026-09-28 (3) — token targets on the mix path, and why a check was skipped
+
+- `limits.token_budget` now reaches the mix path: its per-bucket targets replace
+  `MIX_BUDGET` per field (exemplars, craft, rules). Still a target, not a wall: a bucket's top
+  hit is always kept. Before, the mix path dropped the budget with a note.
+- A skipped relevance check now says why: each jev attempt records `wait_ms` (queued for the
+  one-at-a-time lock), `reply_ms` and `sent`, and `degraded.why` reads e.g. "jev timeout:
+  queued 7.9 s behind other fields, never sent" or "jev timeout: jev still answering after
+  8.0 s". Measured 2026-09-28: jev answers in 0.4-0.7 s; this tells a slow jev from a starved
+  queue the next time a field is skipped.
 

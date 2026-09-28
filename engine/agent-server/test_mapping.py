@@ -74,7 +74,9 @@ class TestGoldenMode(unittest.TestCase):
         """Checks the context string includes the brief-quality scorecard and a loops3_7 citation."""
         ctx = self.out["context"]
         self.assertIn("Brief quality", ctx)
-        self.assertIn("›", ctx)  # loops3_7 source › section citations
+        # the precedent the insight/SMP writers read, by title (audit RAG-10, 2026-09-28)
+        self.assertIn("Precedent the strategy writers read", ctx)
+        self.assertIn("Beware of Your Battery Changer (2024)", ctx)
 
     def test_no_client_brands_in_fixture(self):
         """Checks the golden fixture contains no real client/brand names, keeping it de-branded."""
@@ -162,3 +164,19 @@ class TestCoercions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_context_claims_only_precedent_a_writer_read():
+    """Audit RAG-10 (2026-09-28): 'precedent' lists the insight/SMP writers' evidence_ids
+    only; other retrieved sources are counted as background; nothing is claimed on the
+    digest fallback (N5)."""
+    brief = {"loops3_7": {"enabled": True, "sources_used": ["ipa_0015 › Insight", "pb_x › Rules", "pb_y › How"]},
+             "loop2_golden": {"fields": {"insight": {"value": "i", "evidence_ids": ["ipa_0015"]},
+                                         "smp": {"value": "s"}}}}
+    ctx = build_context(brief)
+    assert "**Precedent the strategy writers read:**\n- ipa_0015" in ctx
+    assert "**Retrieved for the strategy notes (background):** 3 playbook and case sections." in ctx
+    assert "grounded in precedent" not in ctx
+    fb = {**brief, "loops3_7": {**brief["loops3_7"], "fallback": {"to": "digests", "reason": "store down"}}}
+    ctx2 = build_context(fb)
+    assert "Precedent" not in ctx2 and "Retrieval fell back to digests" in ctx2

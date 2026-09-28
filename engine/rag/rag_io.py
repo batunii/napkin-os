@@ -318,10 +318,22 @@ def _hit_out(h) -> dict:
 DEGRADED_KINDS = ("checker_skipped", "keyword_only", "empty_field", "generic_query")
 
 
+def _why_one(a: dict) -> str:
+    """One attempt in words: 'jev not_entitled (401)', and for a timeout whether the field
+    waited in the queue and was never sent, or jev itself was slow (2026-09-28)."""
+    base = f"{a.get('backend')} {a.get('outcome')}" + (f" ({a['status']})" if a.get("status") else "")
+    if a.get("outcome") != "timeout" or "wait_ms" not in a:
+        return base
+    wait, reply = a["wait_ms"] / 1000.0, (a.get("reply_ms") or 0) / 1000.0
+    if not a.get("sent"):
+        return f"{base}: queued {wait:.1f} s behind other fields, never sent"
+    return f"{base}: jev still answering after {reply:.1f} s (queued {wait:.1f} s first)"
+
+
 def _why_skipped(v: dict) -> str:
-    """'jev timeout', 'jev not_entitled (401)', ... from a validation record's attempts."""
-    got = sorted({f"{a.get('backend')} {a.get('outcome')}" + (f" ({a['status']})" if a.get("status") else "")
-                  for a in (v.get("attempts") or [])})
+    """'jev timeout: queued 7.9 s behind other fields, never sent', 'jev not_entitled (401)', ...
+    from a validation record's attempts."""
+    got = sorted({_why_one(a) for a in (v.get("attempts") or [])})
     return "; ".join(got) or "no backend answered"
 
 
@@ -419,9 +431,9 @@ def response_from(ctx, run_id: str, notes: list[str] | None = None, gist: dict |
     }
 
 
-# build_multi() takes these of to_build_args()'s keys; `budget` is a per-bucket token
-# budget and has no meaning for per-field retrieval.
-_MULTI_KWARGS = ("brand", "tenant", "context", "admission", "alt_categories")
+# build_multi() takes these of to_build_args()'s keys; `budget` (limits.token_budget)
+# replaces the mix path's per-field bucket targets since 2026-09-28.
+_MULTI_KWARGS = ("brand", "tenant", "context", "admission", "alt_categories", "budget")
 
 
 def gist_of(request: dict) -> dict:
@@ -484,7 +496,8 @@ def handle(request: dict, *, index_dir=None, build=None, build_multi=None) -> di
         from mix_queries import queries_for
         queries = queries_for(gist_of(request))
         if "budget" in kwargs:
-            notes.append("limits.token_budget applies to retrieval.path=buckets only")
+            notes.append("limits.token_budget applies per field on the mix path "
+                         "(exemplars, craft, rules; instructions has no mix bucket)")
         mc = build_multi(pairs, queries, index_dir=index_dir,
                          **{k: v for k, v in kwargs.items() if k in _MULTI_KWARGS})
         return response_from_multi(mc, queries, request["run_id"], notes, gist=gist_of(request))

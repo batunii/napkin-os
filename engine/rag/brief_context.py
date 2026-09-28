@@ -804,7 +804,8 @@ MIX_DEDUPE_FIRST = ("loop4_insight", "loop5_proposition", "loop6_substantiation"
 def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_field: int = 5,
                 brand: str | None = None, tenant: str | None = None, context: str = "",
                 admission: dict | None = None, chain=None, alt_categories=(),
-                candidates: int = CANDIDATES, dedupe_first: tuple = MIX_DEDUPE_FIRST) -> MultiContext:
+                candidates: int = CANDIDATES, dedupe_first: tuple = MIX_DEDUPE_FIRST,
+                budget: dict | None = None) -> MultiContext:
     """The mix path, fast: every field query through brief_context's pipeline in one pass.
 
     What build() does per brief, done once per brief here — plan, scopes, tenants, store,
@@ -880,11 +881,14 @@ def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_fie
     # Its own switch, not RAG_ORDER: engine/.env sets RAG_ORDER=edge for the bucket path,
     # and reading it here would have switched every brief's order unannounced (2026-09-28).
     order = (os.environ.get("RAG_MIX_ORDER") or "score").strip().lower()
+    # A caller's per-bucket token targets (rag_io limits.token_budget) replace the mix
+    # defaults, per field; a target, not a wall: _fill always keeps a bucket's top hit.
+    mix_budget = {**MIX_BUDGET, **{k: int(v) for k, v in (budget or {}).items() if k in MIX_BUDGET}}
     field_order = [f for f in dedupe_first if f in texts] + [f for f in texts if f not in dedupe_first]
     for f in field_order:
         picked = []
         for b in MIX_BUCKETS:
-            blk = _fill(groups[f"{f}|{b}"], MIX_BUDGET[b], MAX_HIT_TOKENS.get(b),
+            blk = _fill(groups[f"{f}|{b}"], mix_budget[b], MAX_HIT_TOKENS.get(b),
                         one_per_client=(b == "exemplars"))
             picked.append(blk.hits)
         ordered = [h for tier in zip(*[p + [None] * (max(map(len, picked)) - len(p)) for p in picked])

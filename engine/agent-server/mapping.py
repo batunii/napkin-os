@@ -226,11 +226,23 @@ def build_context(brief: dict, research_summary: str | None = None) -> str:
 
     l37 = brief.get("loops3_7") or {}
     sources = l37.get("sources_used") or []
-    if l37.get("enabled") and sources:
-        cited = "\n".join(f"- {s}" for s in sources[:8])
-        more = f"\n- …and {len(sources) - 8} more" if len(sources) > 8 else ""
-        lines.append(f"**Strategy grounded in precedent:**\n{cited}{more}")
     fb = l37.get("fallback") or {}
+    # Only what a strategy writer was actually given counts as precedent (audit RAG-10,
+    # 2026-09-28): the insight and SMP writers' evidence_ids. Everything else retrieved fed
+    # the loop syntheses and is background. On the digest fallback there is no precedent
+    # to claim (N5): the fallback line below says what the brief ran on.
+    gf = (brief.get("loop2_golden") or {}).get("fields") or {}
+    read = []
+    for fid in ("insight", "smp"):
+        for e in ((gf.get(fid) or {}).get("evidence_ids") or []) if isinstance(gf.get(fid), dict) else []:
+            if e not in read:
+                read.append(e)
+    if l37.get("enabled") and not fb.get("reason"):
+        if read:
+            lines.append("**Precedent the strategy writers read:**\n" + "\n".join(f"- {s}" for s in read[:8]))
+        if sources:   # evidence_ids are titles, sources_used citations: counted, not subtracted
+            lines.append(f"**Retrieved for the strategy notes (background):** {len(sources)} playbook "
+                         f"and case sections.")
     if fb.get("reason"):
         lines.append(f"**⚠ Retrieval fell back to {fb.get('to', 'digests')}:** {fb['reason']}")
     if l37.get("validation_degraded"):

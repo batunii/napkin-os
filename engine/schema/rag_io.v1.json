@@ -179,7 +179,7 @@
             "type": "string"
           },
           "x-status": "live",
-          "description": "Markets the brand operates in; joins the query text."
+          "description": "Markets the brand operates in; joins the query text. Context for the relevance checker, not a filter: the corpus carries almost no market metadata."
         }
       }
     },
@@ -348,7 +348,7 @@
         "token_budget": {
           "type": "object",
           "x-status": "live",
-          "description": "Per-bucket token TARGETS, merged over the defaults. A target, not a wall — the top hit in a bucket is always kept.",
+          "description": "Per-bucket token TARGETS, merged over the defaults. A target, not a wall — the top hit in a bucket is always kept. On the mix path (1.4.0, 2026-09-28) the targets apply per field to exemplars, craft and rules.",
           "additionalProperties": false,
           "properties": {
             "exemplars": {
