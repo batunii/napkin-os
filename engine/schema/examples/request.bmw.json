@@ -1,0 +1,30 @@
+{
+ "contract_version": "1.4.0",
+ "run_id": "example-bmw-1",
+ "authority": {
+  "tenant": "napkin",
+  "brand": "bmw",
+  "references": [
+   {
+    "name": "Mercedes",
+    "role": "competitor"
+   }
+  ]
+ },
+ "brand": {
+  "name": "BMW",
+  "categories": [
+   "automotive"
+  ],
+  "markets": [
+   "UK"
+  ]
+ },
+ "campaign": {
+  "problem": "hybrids read as a compromise",
+  "objective": "shift consideration without discounting",
+  "audience": "urban professionals 30-45",
+  "key_message": "electric that still drives like a BMW",
+  "campaign_type": "launch"
+ }
+}

@@ -78,3 +78,7 @@ the same bytes. v1.3.0, `locked: false` until the middleware owner signs off. 1.
 
 Reference: `engine/rag/README.md` → *RAG I/O contract*. Reasoning:
 `engine/rag/docs/adr/0001-rag-io-contract.md`. Python side: `engine/rag/rag_io.py`.
+
+## Examples
+
+`examples/request.bmw.json` is a valid `rag_io.v1.json` request (the README's BMW launch example). The middleware can test against it with `python3 rag/rag_io.py --run schema/examples/request.bmw.json`: the response prints as JSON, or the error as `{"error": "RequestInvalid", "problems": [...]}` (exit 1) or `{"error": "StoreUnavailable", "label": ..., "message": ...}` (exit 3). Set `RAG_INDEX=/nonexistent` to get the StoreUnavailable shape.

@@ -464,3 +464,27 @@ def test_validation_summary_none_when_nothing_was_validated():
     assert rag_io.validation_summary({}) is None and rag_io.validation_summary({"a": None}) is None
     s = rag_io.validation_summary({"a": _v(backend_used=None, fell_back=True), "b": _v(backend_used=None, fell_back=True)})
     assert s["backend_used"] is None and s["fell_back"] is True
+
+
+# ---- the CLI the middleware can test against (2026-09-28) --------------------------
+EXAMPLE = HERE.parent / "schema" / "examples" / "request.bmw.json"
+
+
+def test_example_request_is_valid(capsys):
+    assert rag_io.cli([str(EXAMPLE)]) == 0
+    assert "valid against rag_io" in capsys.readouterr().out
+
+
+def test_cli_run_prints_store_unavailable_as_json(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("RAG_STORE", "local")
+    monkeypatch.setattr(rag_io, "handle", lambda r: (_ for _ in ()).throw(rag_io.StoreUnavailable(str(tmp_path), "empty")))
+    assert rag_io.cli(["--run", str(EXAMPLE)]) == 3
+    out = json.loads(capsys.readouterr().out)
+    assert out["error"] == "StoreUnavailable" and out["label"] == str(tmp_path) and "Nothing was searched" in out["message"]
+
+
+def test_cli_run_prints_request_invalid_as_json(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"run_id": "x"}))
+    assert rag_io.cli(["--run", str(bad)]) == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "RequestInvalid"

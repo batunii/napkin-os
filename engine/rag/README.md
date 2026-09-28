@@ -53,6 +53,8 @@ consolidated onto the first — see decision record 0001.
 cd engine/rag
 RAG_STORE=local RAG_INDEX=./_index_v4 python3 -m pytest -q     # full suite, no network
 python3 rag_io.py request.json                                  # validate a request file
+python3 rag_io.py --run ../schema/examples/request.bmw.json     # run it; response or {"error": ...} as JSON
+RAG_INDEX=/nonexistent python3 rag_io.py --run ../schema/examples/request.bmw.json   # the StoreUnavailable shape (exit 3)
 ```
 
 ```python

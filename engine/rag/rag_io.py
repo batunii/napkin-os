@@ -494,10 +494,32 @@ def handle(request: dict, *, index_dir=None, build=None, build_multi=None) -> di
     return response_from(ctx, request["run_id"], notes, gist=gist_of(request))
 
 
-if __name__ == "__main__":                       # validate a request file: rag_io.py req.json
-    if len(sys.argv) != 2:
-        print("usage: rag_io.py <request.json>", file=sys.stderr)
-        sys.exit(2)
-    found = validate(json.loads(Path(sys.argv[1]).read_text()))
-    print("\n".join(found) if found else f"valid against rag_io v{version()}")
-    sys.exit(1 if found else 0)
+def cli(argv: list) -> int:
+    """`rag_io.py req.json` validates a request file; `rag_io.py --run req.json` runs it and
+    prints the response as JSON, or the error as {"error", ...} JSON, so the middleware can
+    test its handling in any language (2026-09-28). Exit codes: 0 ok, 1 RequestInvalid,
+    2 usage, 3 StoreUnavailable. Example: engine/schema/examples/request.bmw.json; with
+    RAG_STORE=local RAG_INDEX=/nonexistent it gives the StoreUnavailable shape."""
+    run = argv[:1] == ["--run"]
+    args = argv[1:] if run else argv
+    if len(args) != 1:
+        print("usage: rag_io.py [--run] <request.json>", file=sys.stderr)
+        return 2
+    request = json.loads(Path(args[0]).read_text())
+    if not run:
+        found = validate(request)
+        print("\n".join(found) if found else f"valid against rag_io v{version()}")
+        return 1 if found else 0
+    try:
+        print(json.dumps(handle(request), default=str))
+        return 0
+    except RequestInvalid as e:
+        print(json.dumps({"error": "RequestInvalid", "problems": e.problems}))
+        return 1
+    except StoreUnavailable as e:
+        print(json.dumps({"error": "StoreUnavailable", "label": e.label, "message": str(e)}))
+        return 3
+
+
+if __name__ == "__main__":
+    sys.exit(cli(sys.argv[1:]))
