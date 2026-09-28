@@ -218,6 +218,8 @@ checkpoint into `outputs/e2e/eval_history.json`, which Claude writes into the
 [Brief Eval Tracker](https://claude.ai/artifact/8wB1KGbm7vFqkTcSscmdyi) page's database
 after each run. After a checkpoint: add its registry entry, run `eval_history.py`, push.
 
+**Brief lists, noise and grounding (2026-09-28, ADR 0013):** `checkpoint_run.py --set test-three` runs a named list from `golden/labels/client/eval_sets.json` (git-ignored). Each report opens with the noise line, measured from registry entries marked `repeat_of` (currently ±16 health per brief), marks every difference as real or noise, and shows each brief's grounding count (`grounding.py`: reasons to believe jev finds not in the client's document; TO CONFIRM requests counted apart). The runner stops before any brief when the critic cannot reach Claude, grades a brief again when no sample answered, and prints "not scored", never 0.
+
 `golden.py` builds 11,651 cases from the corpus's own "Retrieval Queries" with a 1-in-5
 held-out split. Held-out recall@5 **0.928**, recall@10 **0.945** (290 cases, re-measured
 2026-09-23; the weak spot is templated IPA queries at 0.825). The earlier published 0.974 /
@@ -552,6 +554,7 @@ rejected, consequences.
 | [0010](docs/adr/0010-retrieval-wait-closed.md) | The local store answers in under a second: filter masks, one store per process, warm-up |
 | [0011](docs/adr/0011-model-routes-and-jev-checks.md) | Model routes by job, a judge never on its writer's model, and jev as a checker (figures, scorecard, category, synthesis) |
 | [0012](docs/adr/0012-engine-code-structure.md) | Engine code structure: parse_brief split into brief_llm / brief_ingest / brief_render, one .env loader, dead code out |
+| [0013](docs/adr/0013-measurement-noise-and-grounding.md) | Checkpoint reports: brief lists, the noise line from repeat pairs, the grounding count, a runner that checks before it spends |
 
 ## Plans
 

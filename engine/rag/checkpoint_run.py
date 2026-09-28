@@ -14,9 +14,22 @@ before arm runs with RAG_VALIDATOR=none (the old code discarded validation anywa
 after arm runs with the tree's default (jev on); `after_novalidator` isolates jev;
 `after_hero55` writes the insight and SMP on Opus 5.5.
 
-Limits, stated on every report: one judge sample per brief per arm, three briefs, so only
-swings above roughly 13 health points are distinguishable from run-to-run noise (audit
-BW9). The per-check pass/fail lists are the more useful comparison.
+Brief lists (phase A item 5, Sai 2026-09-28): `--set test-three` runs a named list from
+golden/labels/client/eval_sets.json (git-ignored, since brief names are client material);
+`--briefs a,b` still works, and without either the three test briefs run.
+
+Every report states the noise it can see (audit BW9): how far one brief's health moves
+between two runs of code whose behaviour did not change, measured from the registry's
+repeat pairs (eval_checkpoints.json `repeat_of`), and marks each difference from the
+first arm as real or noise against twice that spread. It also carries each brief's
+grounding count (grounding.py: reasons to believe jev finds not in the client's document),
+because health alone rewards a filled field even when its facts are invented.
+
+Before any brief runs, the runner checks that this process can reach Claude for the critic
+(the arms get the CLI transport; so does the critic now), so a missing login stops the run
+at once instead of after the briefs. A brief whose grading got no answer is graded once
+more after CRITIC_RETRY_WAIT_S and is never stamped as graded; an ungraded brief reads
+"not scored", never 0.
 """
 from __future__ import annotations
 
@@ -32,6 +45,93 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE.parent
+E2E = ENGINE / "outputs" / "e2e"
+BRIEFS_DIR = ENGINE.parent / "client_briefs"
+SETS_FILE = HERE / "golden" / "labels" / "client" / "eval_sets.json"
+REGISTRY = HERE / "eval_checkpoints.json"
+DEFAULT_BRIEFS = "mamaliga-engleza,employer-awareness-campaign-brief,friskies-engleza"
+CRITIC_RETRY_WAIT_S = 30
+
+
+def load_sets(path: Path = SETS_FILE) -> dict:
+    """{name: [stem, ...]} from the brief-list file; {} when it does not exist."""
+    if not path.exists():
+        return {}
+    return {k: list(v) for k, v in (json.loads(path.read_text()).get("sets") or {}).items()}
+
+
+def resolve_briefs(set_name: "str | None", briefs: "str | None", sets: "dict | None" = None) -> list:
+    """The stems to run: the named set, else the comma list, else the three test briefs.
+    An unknown set name is an error listing the known ones."""
+    if set_name:
+        sets = load_sets() if sets is None else sets
+        if set_name not in sets:
+            raise SystemExit(f"unknown brief set {set_name!r}; known: {', '.join(sorted(sets)) or 'none'} ({SETS_FILE})")
+        return list(sets[set_name])
+    return [b.strip() for b in (briefs or DEFAULT_BRIEFS).split(",") if b.strip()]
+
+
+def noise_estimate(registry: Path = REGISTRY, e2e: Path = E2E) -> "dict | None":
+    """Run-to-run noise of one brief's health, from the registry's repeat pairs: checkpoints
+    marked `repeat_of` another whose behaviour did not change (9b06017 left the evidence
+    identical; 2d9370c was a refactor). {"pairs": n, "sd": spread of a two-run difference,
+    "brief": the per-brief line (2 x sd), "diffs": [...], "from": [ids]}; None without pairs."""
+    reg = json.loads(registry.read_text())
+    by_id = {c["id"]: c for c in reg["checkpoints"]}
+
+    def health(c):
+        f = e2e / c["dir"] / "rows.json"
+        rows = (json.loads(f.read_text()).get(c["arm"]) or {}) if f.exists() else {}
+        return {k: r.get("health") for k, r in rows.items() if r.get("health") is not None}
+
+    diffs, used = [], []
+    for c in reg["checkpoints"]:
+        base = by_id.get(c.get("repeat_of") or "")
+        if not base:
+            continue
+        a, b = health(base), health(c)
+        d = [b[k] - a[k] for k in a if k in b]
+        if d:
+            diffs += d
+            used.append(f"{base['id']}->{c['id']}")
+    if not diffs:
+        return None
+    sd = (sum(x * x for x in diffs) / len(diffs)) ** 0.5
+    return {"pairs": len(diffs), "sd": round(sd, 1), "brief": round(2 * sd), "diffs": diffs, "from": used}
+
+
+_texts: dict = {}
+
+
+def brief_text(stem: str) -> str:
+    """The client brief's text as the pipeline reads it (cached per process); '' if absent."""
+    if stem not in _texts:
+        sys.path.insert(0, str(ENGINE))
+        import parse_brief as pb
+        src = next((f for f in BRIEFS_DIR.iterdir() if f.stem == stem), None) if BRIEFS_DIR.exists() else None
+        _texts[stem] = pb.ingest(src)[0] if src else ""
+    return _texts[stem]
+
+
+def ground_row(out_dir: Path, stem: str, row: dict) -> dict:
+    """Add the grounding count (grounding.check) of the arm's saved client_brief.md, once."""
+    md = out_dir / f"trace_mix_{stem}" / "client_brief.md"
+    if not md.exists() or row.get("grounding") is not None:
+        return row
+    import grounding
+    g = grounding.check(brief_text(stem), md.read_text())
+    return {**row, "grounding": g if g is not None else {"error": "jev did not answer"}}
+
+
+def preflight(critic: str) -> None:
+    """Stop before any brief runs when the critic cannot reach Claude. The critic runs in this
+    process on the same transport as the arms (CLI unless BRIEF_CLAUDE_TRANSPORT says otherwise)."""
+    os.environ.setdefault("BRIEF_CLAUDE_TRANSPORT", "cli")
+    if critic == "trace":
+        return
+    sys.path.insert(0, str(ENGINE))
+    import parse_brief as pb
+    pb._require_claude("anthropic")
 
 
 def run_one(tree: Path, stem: str, env_extra: dict, out_dir: Path) -> dict:
@@ -76,18 +176,22 @@ def score_row(out_dir: Path, stem: str, row: dict, critic: str) -> dict:
     checkpoint is graded by the same critic (an old worktree's own critic is Sonnet x1).
     The trace's own score is kept as health_trace / quality_trace. No-op without a brief."""
     bo = out_dir / f"trace_mix_{stem}" / "brief_object.json"
-    if not bo.exists() or row.get("critic") == critic:
+    if not bo.exists() or (row.get("critic") == critic and row.get("health") is not None):
         return row
     sys.path.insert(0, str(ENGINE))
     import golden_critic as gc
     model, _, n = critic.partition("x")
     schema = json.loads(gc.SCHEMA_PATH.read_text())
     gb = gc.from_brief_object(json.loads(bo.read_text()))
-    v = gc.validate(schema, gb)
-    v, judged = gc.run_critic_sampled(schema, gb, v, model=model, samples=int(n or 1))
+    v, judged = gc.run_critic_sampled(schema, gb, gc.validate(schema, gb), model=model, samples=int(n or 1))
+    if not judged:                     # no sample answered (a rate limit): once more after a pause
+        print(f"[critic] {stem}: no answer, retrying in {CRITIC_RETRY_WAIT_S} s", file=sys.stderr, flush=True)
+        time.sleep(CRITIC_RETRY_WAIT_S)
+        v, judged = gc.run_critic_sampled(schema, gb, gc.validate(schema, gb), model=model, samples=int(n or 1))
     q = gc.quality_split(schema, gb, v)
-    row = {**row, "health_trace": row.get("health"), "quality_trace": row.get("quality"),
-           "critic": critic, "critic_samples": v.get("critic_samples"), "judged": judged,
+    row = {**row, "health_trace": row.get("health_trace", row.get("health")),
+           "quality_trace": row.get("quality_trace", row.get("quality")),
+           "critic": critic if judged else None, "critic_samples": v.get("critic_samples"), "judged": judged,
            "judge_model": v.get("judge_model"),
            "health": v["health"] if judged else None, "quality": q["quality"] if judged else None,
            "failed_checks": [f"{fr['id']}.{c['id']}" for fr in v["fields"] for c in fr["checks"] if c["status"] == "fail"],
@@ -133,31 +237,70 @@ def render_pairwise(pw: dict, a_arm: str, b_arm: str) -> str:
     return "\n".join(L) + "\n"
 
 
-def render(label: str, arms: dict, rows: dict) -> str:
-    """Markdown: one table per brief across arms, then the per-check differences."""
-    critics = sorted({r.get("critic", "trace (each tree's own)") for rs in rows.values() for r in rs.values()})
-    L = [f"# Checkpoint run {label}", "", f"Scored by: {', '.join(critics)}.", "",
-         "Same three briefs, Claude Code CLI, local store, Sonnet 5 judging once per brief. Three briefs and one "
-         "judge sample each: treat health differences under ~13 points as noise; read the per-check lists.", ""]
-    for stem in rows[next(iter(arms))]:
-        L += [f"## {stem}", "| arm | health | quality | judged | brief s | calls | $ list | failed checks | sign-off fails |",
-              "|---|---|---|---|---|---|---|---|---|"]
+def _score(v) -> str:
+    """A health or quality cell: the number, or 'not scored' (never 0)."""
+    return "not scored" if v is None else str(v)
+
+
+def _grounding_cell(g) -> str:
+    """'invented of claims (+n to confirm)', or why it is missing."""
+    if not g:
+        return ""
+    if "error" in g:
+        return g["error"]
+    return f"{g['invented']} of {g['of']}" + (f" (+{g['to_confirm']} to confirm)" if g.get("to_confirm") else "")
+
+
+def _delta(h, base, line) -> str:
+    """Difference from the first arm, marked real or noise against the per-brief line."""
+    if h is None or base is None:
+        return ""
+    d = h - base
+    if line is None:
+        return f"{d:+d}"
+    return f"{d:+d} ({'real' if abs(d) >= line else 'noise'})"
+
+
+def render(label: str, arms: dict, rows: dict, noise: "dict | None" = None) -> str:
+    """Markdown: the noise line, one table per brief across arms (health, difference from the
+    first arm, grader spread, grounding), then totals over the briefs every arm scored."""
+    critics = sorted({str(r.get("critic") or "not scored") for rs in rows.values() for r in rs.values()})
+    line = noise["brief"] if noise else None
+    base_arm = next(iter(arms))
+    L = [f"# Checkpoint run {label}", "", f"Scored by: {', '.join(critics)}.", ""]
+    if noise:
+        L += [f"**Noise:** one brief's health moves by about ±{noise['brief']} between two runs of unchanged code "
+              f"(2 × {noise['sd']}, from {noise['pairs']} repeat runs: {', '.join(noise['from'])}; scored by the old "
+              f"one-sample critic, so an upper bound). A difference from {base_arm} under {noise['brief']} is marked "
+              "noise. Read the per-check lists and the grounding count beside it.", ""]
+    else:
+        L += ["**Noise:** no repeat runs in the registry, so no line can be drawn; read the per-check lists.", ""]
+    for stem in rows[base_arm]:
+        base = rows[base_arm].get(stem, {}).get("health")
+        L += [f"## {stem}", f"| arm | health | Δ vs {base_arm} | grader spread | invented proof points (RTB) | quality | judged | "
+              "brief s | calls | $ list | failed checks | sign-off fails |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for arm in arms:
             r = rows[arm].get(stem, {})
             if "error" in r:
-                L.append(f"| {arm} | ERROR | | | | | | {r['error']} | |")
+                L.append(f"| {arm} | ERROR | | | | | | | | | {r['error']} | |")
                 continue
-            L.append(f"| {arm} | {r.get('health')} | {r.get('quality')} | {r.get('judged')} | {r.get('brief_secs')} | "
-                     f"{r.get('calls')} | {r.get('usd')} | {', '.join(r.get('failed_checks') or [])} | "
-                     f"{', '.join(r.get('signoff_fails') or [])} |")
+            spread = (r.get("critic_samples") or {}).get("spread")
+            L.append(f"| {arm} | {_score(r.get('health'))} | {'' if arm == base_arm else _delta(r.get('health'), base, line)} | "
+                     f"{'' if spread is None else spread} | {_grounding_cell(r.get('grounding'))} | {_score(r.get('quality'))} | "
+                     f"{r.get('judged')} | {r.get('brief_secs')} | {r.get('calls')} | {r.get('usd')} | "
+                     f"{', '.join(r.get('failed_checks') or [])} | {', '.join(r.get('signoff_fails') or [])} |")
         L.append("")
-    L.append("## Totals")
-    L.append("| arm | health sum | quality sum | brief s sum | $ sum |")
-    L.append("|---|---|---|---|---|")
+    stems = [s for s in rows[base_arm] if all(rows[a].get(s, {}).get("health") is not None for a in arms)]
+    sum_line = f" A difference in the health sum under {round(noise['brief'] * len(stems) ** 0.5)} is noise." if noise and stems else ""
+    L += ["## Totals", f"Over the {len(stems)} of {len(rows[base_arm])} briefs every arm scored.{sum_line}", "",
+          "| arm | health sum | quality sum | invented proof points | brief s sum | $ sum |", "|---|---|---|---|---|---|"]
     for arm in arms:
-        ok = [r for r in rows[arm].values() if "error" not in r and r.get("health") is not None]
-        L.append(f"| {arm} | {sum(r['health'] for r in ok)} | {sum(r['quality'] or 0 for r in ok)} | "
-                 f"{round(sum(r['brief_secs'] or 0 for r in ok), 1)} | {round(sum(r['usd'] for r in ok), 3)} |")
+        ok = [rows[arm][s] for s in stems]
+        inv = [(r.get("grounding") or {}).get("invented") for r in rows[arm].values()]
+        L.append(f"| {arm} | {sum(r['health'] for r in ok) if ok else 'not scored'} | "
+                 f"{sum(r.get('quality') or 0 for r in ok) if ok else 'not scored'} | "
+                 f"{sum(i for i in inv if i is not None) if any(i is not None for i in inv) else ''} | "
+                 f"{round(sum(r.get('brief_secs') or 0 for r in ok), 1)} | {round(sum(r.get('usd') or 0 for r in ok), 3)} |")
     return "\n".join(L) + "\n"
 
 
@@ -166,7 +309,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--before", required=True, help="worktree of the baseline commit")
     ap.add_argument("--after", default=str(ENGINE.parent), help="the tree under test (default: this one)")
-    ap.add_argument("--briefs", default="mamaliga-engleza,employer-awareness-campaign-brief,friskies-engleza")
+    ap.add_argument("--briefs", default=None, help="comma-separated brief stems (default: the three test briefs)")
+    ap.add_argument("--set", default=None, dest="brief_set",
+                    help=f"a named brief list from {SETS_FILE.relative_to(ENGINE)} (overrides --briefs)")
     ap.add_argument("--arms", default="before,after")
     ap.add_argument("--label", default=None)
     ap.add_argument("--critic", default=DEFAULT_CRITIC, metavar="MODEL[xN]",
@@ -180,6 +325,8 @@ def main() -> None:
                     help="an earlier checkpoint dir whose arms (those not named in --arms) are copied "
                          "instead of re-run, e.g. the 'before' arm, which does not change between checkpoints")
     a = ap.parse_args()
+    briefs = resolve_briefs(a.brief_set, a.briefs)
+    preflight(a.critic)
     label = a.label or dt.datetime.now().strftime("%Y-%m-%d_%H%M")
     out = ENGINE / "outputs" / "e2e" / f"checkpoint_{label}"
     all_arms = {"before": (Path(a.before), {"RAG_VALIDATOR": "none"}),
@@ -190,14 +337,12 @@ def main() -> None:
                 "after_hero55": (Path(a.after), {"BRIEF_ROUTE_HERO": "claude-opus-5-5,claude-opus-4-6"})}
     arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
-    briefs = [b.strip() for b in a.briefs.split(",") if b.strip()]
     if a.reuse:
         prev = json.loads((Path(a.reuse) / "rows.json").read_text())
-        for arm, prev_rows in prev.items():
-            if arm in arms or not prev_rows:
-                continue
-            rows[arm] = prev_rows
-            arms = {arm: all_arms[arm], **arms}          # reused arms first in the report
+        reused = [arm for arm, prev_rows in prev.items() if arm not in arms and prev_rows and arm in all_arms]
+        arms = {**{arm: all_arms[arm] for arm in reused}, **arms}   # reused arms first, in their recorded order
+        for arm in reused:
+            rows[arm] = prev[arm]
             out.mkdir(parents=True, exist_ok=True)
             if (Path(a.reuse) / arm).exists() and not (out / arm).exists():
                 shutil.copytree(Path(a.reuse) / arm, out / arm)
@@ -206,6 +351,7 @@ def main() -> None:
                 # scored again with this run's critic, in THIS checkpoint's copy only: the
                 # reused checkpoint's own records are never changed (Sai: leave the past as is)
                 rows[arm] = {stem: score_row(out / arm, stem, r, a.critic) for stem, r in rows[arm].items()}
+            rows[arm] = {stem: ground_row(out / arm, stem, r) for stem, r in rows[arm].items()}
     for arm, (tree, env_extra) in arms.items():
         if rows.get(arm):
             continue                                       # reused
@@ -215,9 +361,12 @@ def main() -> None:
             rows[arm][stem] = run_one(tree, stem, env_extra, out / arm)
             if a.critic != "trace":
                 rows[arm][stem] = score_row(out / arm, stem, rows[arm][stem], a.critic)
+            rows[arm][stem] = ground_row(out / arm, stem, rows[arm][stem])
             print(f"[{arm}] {stem}: {rows[arm][stem]}", file=sys.stderr, flush=True)
             (out / "rows.json").write_text(json.dumps(rows, indent=1))
-    report = render(label, arms, rows)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "rows.json").write_text(json.dumps(rows, indent=1))      # also when every arm was reused
+    report = render(label, arms, rows, noise_estimate())
     if a.pairwise:
         pa, pb_arm = [x.strip() for x in a.pairwise.split(",")][:2]
         pw = pairwise_arms(out, briefs, pa, pb_arm)

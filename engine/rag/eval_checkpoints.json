@@ -1,5 +1,5 @@
 {
- "_doc": "Registry of evaluation checkpoints for eval_history.py and the Brief Eval Tracker page. One entry per measured code state: which outputs/e2e/checkpoint_<dir> holds it, which arm, what changed, and whether it is comparable (same briefs, normal login speed). Brief names stay in the git-ignored outputs, never here.",
+ "_doc": "Registry of evaluation checkpoints for eval_history.py and the Brief Eval Tracker page. One entry per measured code state: which outputs/e2e/checkpoint_<dir> holds it, which arm, what changed, and whether it is comparable (same briefs, normal login speed). Brief names stay in the git-ignored outputs, never here. `repeat_of` marks a checkpoint whose brief behaviour did not change from the named one (same evidence, same prompts): the pair measures run-to-run noise for checkpoint_run's noise line.",
  "tracker_url": "https://claude.ai/artifact/8wB1KGbm7vFqkTcSscmdyi",
  "checkpoints": [
   {
@@ -78,7 +78,9 @@
    "date": "2026-09-26",
    "role": "change",
    "what": "Retrieval wait closed: filter masks, one store per process, warm-up (evidence unchanged)",
-   "comparable": true
+   "comparable": true,
+   "repeat_of": "d45bd57",
+   "repeat_note": "only retrieval speed changed; the evidence was identical"
   },
   {
    "id": "30e890f",
@@ -111,7 +113,9 @@
    "date": "2026-09-27",
    "role": "change",
    "what": "Refactor (ADR 0012): parse_brief split into brief_llm / brief_ingest / brief_render, one .env loader, dead code out; behaviour meant to be unchanged",
-   "comparable": true
+   "comparable": true,
+   "repeat_of": "30e890f",
+   "repeat_note": "refactor; the commits between (3249fe5, 7c749bc) change only a total-failure error and a label"
   }
  ]
 }

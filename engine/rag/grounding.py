@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""
+grounding.py — how many claims in a finished brief are not in the client's document
+(phase A item 5, Sai 2026-09-28). Evaluation only: the pipeline never calls it.
+
+    import grounding
+    g = grounding.check(brief_text, client_brief_md)
+    g["invented"], g["of"], g["to_confirm"]        # e.g. 1, 6, 2
+
+Why: health rewards a filled field and barely penalises an invented one, so a brief that
+fills its reasons to believe with facts the client never gave can outscore one that keeps
+to the document and leaves the gap as an open question (bord-gais 2026-09-28: health 66 vs
+45, the higher one resting on a smart-meter rollout the document never mentions). This
+count sits beside health in every checkpoint report so that cannot pass unseen.
+
+What is counted: each reason to believe from the saved client_brief.md, the brief's facts. jev (jev_checks.claims_supported) answers
+supported / contradicted / not_in_brief per claim; a claim counts as invented when the
+answer is not "supported" at p >= INVENTED_P. A line starting "TO CONFIRM" is the brief
+asking for evidence, not claiming it, so it is counted apart as `to_confirm`. The SMP,
+insight and desired response are meant to go beyond the document and are not counted: on
+the 2026-09-28 trial jev called three purely creative SMPs "not in brief" (media-gaa and
+betfair on the current code, plus-auto on ragAdded), while the one SMP that did invent
+(bord-gais on ragAdded) rested on reasons to believe that were caught anyway.
+Placeholders ("To be agreed") are skipped. Costs one jev request per brief (~1-2 s, no
+Claude calls); returns None when jev cannot answer.
+"""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+INVENTED_P = 0.9                 # the same confidence the pipeline's figure check fails at
+COUNTED = {"Reasons to believe": "rtb"}
+
+
+def claims_from_md(md: str) -> list:
+    """(field, claim) for each reason to believe in a client_brief.md, in order;
+    placeholder lines ('To be agreed') left out."""
+    out, cur = [], None
+    for line in (md or "").splitlines():
+        if line.startswith("## "):
+            cur = COUNTED.get(line[3:].strip())
+            continue
+        t = line.strip()
+        if not cur or not t or "To be agreed" in t:
+            continue
+        out.append((cur, re.sub(r"^[-*]\s+", "", t)))
+    return out
+
+
+def is_request(claim: str) -> bool:
+    """True for the brief's own request for evidence ('TO CONFIRM: ...')."""
+    return claim.strip().upper().startswith("TO CONFIRM")
+
+
+def summarise(claims: list, verdicts: list) -> dict:
+    """{"invented", "of", "to_confirm", "rows"} from (field, claim) pairs and their
+    (verdict, p) answers. `of` counts claims, not requests."""
+    rows = [{"field": f, "claim": c, "verdict": v, "p": p, "request": is_request(c)}
+            for (f, c), (v, p) in zip(claims, verdicts)]
+    flagged = [r for r in rows if r["verdict"] != "supported" and r["p"] >= INVENTED_P]
+    return {"invented": sum(1 for r in flagged if not r["request"]),
+            "of": sum(1 for r in rows if not r["request"]),
+            "to_confirm": sum(1 for r in rows if r["request"]),
+            "rows": rows}
+
+
+def check(brief_text: str, client_brief_md: str) -> "dict | None":
+    """The grounding count of one finished brief against its client brief; None when jev
+    cannot answer. A brief with no counted claims returns zeros."""
+    import jev_checks
+    claims = claims_from_md(client_brief_md)
+    asked = [c for _f, c in claims if not is_request(c)]         # requests are not sent to jev
+    got = jev_checks.claims_supported(brief_text, asked)
+    if got is None:
+        return None
+    answers = iter(got)
+    return summarise(claims, [("request", 1.0) if is_request(c) else next(answers) for _f, c in claims])

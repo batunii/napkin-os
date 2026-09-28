@@ -22,6 +22,12 @@ Four uses, each measured in the 2026-09-24 jev lab (engine/outputs/audit_2026_09
                       passages. Unmeasured against sources (against the brief the lab
                       measured AUC 0.73), so it only marks sentences in the review file.
 
+  claims_supported    evaluation only (grounding.py, 2026-09-28): each claim of a finished
+                      brief as supported / contradicted / not_in_brief against the client
+                      brief. On the 2026-09-28 trial it separated the briefs that invent proof
+                      points (bord-gais and friskies on ragAdded: 4 of 4) from those that do not (0).
+                      Never used inside the pipeline.
+
 Every function returns None when jev cannot answer (no TYPESAFE_API_KEY, SDK missing,
 timeout, bad response, BRIEF_JEV_CHECKS=0) and prints one line saying so; callers record
 that the check did not run and carry on unchecked, never blocked.
@@ -159,6 +165,31 @@ def figures_supported(brief_text: str, items: list) -> "list | None":
     if got is None:
         return None
     return [got.get(f"f{i:03d}") for i in range(len(items))]
+
+
+CLAIM_Q = "Is CLAIM supported by the client brief in the state?"
+CLAIM_CRITERIA = {
+    "supported": "The brief states this, or it follows directly from facts the brief states.",
+    "contradicted": "The brief states something that conflicts with this claim.",
+    "not_in_brief": "The brief does not contain this: the claim adds a fact, figure, source or proof "
+                    "that the brief does not state."}
+
+
+def claims_supported(brief_text: str, claims: list) -> "list | None":
+    """(verdict, p) per claim, verdict one of CLAIM_CRITERIA and p its probability, in the
+    order given. None when jev cannot answer."""
+    asked = {f"c{i:03d}": {"type": "choice", "instructions": {"question": CLAIM_Q, "claim": str(c)[:600]},
+                           "criteria": CLAIM_CRITERIA} for i, c in enumerate(claims)}
+    if not asked:
+        return []
+    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "claim grounding")
+    if got is None:
+        return None
+    out = []
+    for i in range(len(claims)):
+        choice, probs = got[f"c{i:03d}"]
+        out.append((choice, round(float(probs.get(choice, 0.0)), 2)))
+    return out
 
 
 def choose_category(brief_text: str) -> "dict | None":
