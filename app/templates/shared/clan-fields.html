@@ -74,6 +74,10 @@ clan-tray{display:block}
 .clf-editing .clf-edited::before{content:"edited";position:absolute;top:-15px;right:0;font-family:var(--clf-mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--clf-green-ink)}
 .clf-textbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;font-size:12px;color:var(--clf-ink3)}
 .clf-textbar .clf-err{margin:0}
+.clf-why{display:flex;gap:6px;align-items:center;flex-wrap:wrap;width:100%}
+.clf-why input{flex:1 1 220px;min-width:0;font:inherit;font-size:13px;color:var(--clf-ink);background:var(--clf-paper);border:1px solid var(--clf-line);border-radius:999px;padding:5px 12px}
+.clf-why .chip{border:1px solid var(--clf-line);background:var(--clf-paper);color:var(--clf-ink2);border-radius:999px;padding:2px 10px;font:inherit;font-size:12px;cursor:pointer}
+.clf-why .chip:hover{border-color:var(--clf-ink3);color:var(--clf-ink)}
 .clf-missing{font-family:var(--clf-mono);font-size:11px;color:var(--clf-create-ink);border:1px dashed var(--clf-create);border-radius:6px;padding:0 5px}
 
 /* ── a chart, a quote, a gap, the sources ────────────────────────────── */
@@ -431,14 +435,17 @@ var ClanFields=(function(){
     el.innerHTML='<div class="clf-ed" role="group" aria-label="Edit '+esc(el.getAttribute('caption')||path)+'">'
       +(long?'<textarea>'+esc(t)+'</textarea>':'<input type="text" value="'+esc(t)+'">')
       +(list?'<span class="hint">Separate items with commas.</span>':'')
-      +'<div class="clf-err" hidden></div><div class="row"><button type="button" class="clf-btn primary" data-clf-save>Save</button><button type="button" class="clf-btn" data-clf-cancel>Cancel</button><span class="hint">Saved as your decision; agents will not write over it.</span></div></div>';
-    var box=el.querySelector('textarea,input'); box.focus(); if(box.setSelectionRange) box.setSelectionRange(box.value.length,box.value.length);
+      +whyRow()+'<div class="clf-err" hidden></div><div class="row"><button type="button" class="clf-btn primary" data-clf-save>Save</button><button type="button" class="clf-btn" data-clf-cancel>Cancel</button><span class="hint">Saved as your decision; agents will not write over it.</span></div></div>';
+    wireWhy(el.querySelector('.clf-ed'));
+    var box=el.querySelector('.clf-ed textarea, .clf-ed > input'); box.focus(); if(box.setSelectionRange) box.setSelectionRange(box.value.length,box.value.length);
     function done(){ renderPath(el, path, el.getAttribute('as')); }
     function save(){
       var next=fromText(v, box.value), btns=el.querySelectorAll('button');
       if(JSON.stringify(next)===JSON.stringify(v)){ done(); return; }
+      var why=String(el.querySelector('[data-why]').value||'').trim();
+      if(!why){ var e0=el.querySelector('.clf-err'); e0.textContent='Say why you changed it: type a reason or pick one.'; e0.hidden=false; el.querySelector('[data-why]').focus(); return; }
       Array.prototype.forEach.call(btns,function(b){ b.disabled=true; });
-      post('/edit',{path:path, value:next, gate:(env&&env.gate)||el.getAttribute('gate')||'', rationale:'Edited by a person.'}).then(function(res){
+      post('/edit',{path:path, value:next, gate:(env&&env.gate)||el.getAttribute('gate')||'', rationale:why}).then(function(res){
         if(res&&res.ok){ loadView(); toast('Saved'); if(el.isConnected) done(); return; }
         Array.prototype.forEach.call(btns,function(b){ b.disabled=false; });
         var e=el.querySelector('.clf-err'); e.textContent='Not saved: '+(errorOf(res)||'the host refused'); e.hidden=false;
@@ -809,6 +816,13 @@ var ClanFields=(function(){
       n++; if(!el.hasAttribute('data-clan-text')) el.setAttribute('data-clan-text', prefix+':b'+n);
     });
   }
+  // Every edit says why: typed, or one of the usual reasons.
+  var WHY_CHIPS=['Clearer wording','Fix a mistake','The client\u2019s words','Newer information'];
+  function whyRow(){ return '<div class="clf-why"><input type="text" data-why placeholder="Why the change?" aria-label="Why the change">'
+    +WHY_CHIPS.map(function(c){ return '<button type="button" class="chip" data-chip>'+esc(c)+'</button>'; }).join('')+'</div>'; }
+  function wireWhy(box){ box.addEventListener('click',function(e){ var c=e.target.closest('[data-chip]'); if(!c) return; var i=box.querySelector('[data-why]'); i.value=c.textContent; i.focus(); }); }
+  var PART={H1:'headline',H2:'heading',H3:'heading',P:'paragraph',LI:'list item',BLOCKQUOTE:'quote',FIGCAPTION:'caption',TD:'table cell',TH:'table heading'};
+  function partOf(el){ return PART[el.tagName]||(el.classList.contains('cl-dek')?'standfirst':el.classList.contains('cl-eyebrow')?'label':el.classList.contains('cl-cap')?'caption':'text'); }
   function cleanHtml(h){ var d=document.createElement('div'); d.appendChild(layout(h)); return d.innerHTML; }
   function applyTexts(){
     var E=edits();
@@ -837,15 +851,16 @@ var ClanFields=(function(){
     Array.prototype.forEach.call(el.querySelectorAll('clan-field,clan-cite,clan-chart,clan-quote,clan-gap'),function(x){ x.setAttribute('contenteditable','false'); });
     el.setAttribute('contenteditable','true'); el.focus();
     var bar=document.createElement('div'); bar.className='clf-textbar';
-    bar.innerHTML='<button type="button" class="clf-btn primary" data-t="save">Save</button><button type="button" class="clf-btn" data-t="cancel">Cancel</button>'
+    bar.innerHTML=whyRow()+'<button type="button" class="clf-btn primary" data-t="save">Save</button><button type="button" class="clf-btn" data-t="cancel">Cancel</button>'
       +(el.classList.contains('clf-edited')?'<button type="button" class="clf-btn" data-t="restore">Put the original back</button>':'')
-      +'<span>Your wording; the numbers stay live.</span><div class="clf-err" hidden></div>';
-    el.insertAdjacentElement('afterend',bar);
+      +'<span>Your wording, recorded as your decision; the numbers stay live.</span><div class="clf-err" hidden></div>';
+    el.insertAdjacentElement('afterend',bar); wireWhy(bar);
+    var wasText=el.textContent.replace(/\s+/g,' ').trim();
     function stop(){ el.removeAttribute('contenteditable'); el.__clfEditing=false; bar.remove(); refresh(); }
     function fail(m){ var e=bar.querySelector('.clf-err'); e.textContent=m; e.hidden=false; Array.prototype.forEach.call(bar.querySelectorAll('button'),function(b){ b.disabled=false; }); }
     function send(html, done){
       Array.prototype.forEach.call(bar.querySelectorAll('button'),function(b){ b.disabled=true; });
-      post('/edit-text',{key:key, html:html}).then(function(res){
+      post('/edit-text',{key:key, html:html, rationale:String((bar.querySelector('[data-why]')||{}).value||'').trim(), part:partOf(el), was:wasText}).then(function(res){
         if(res&&res.ok){ loadView(); done(); toast(html?'Saved':'The original wording is back'); return; }
         fail('Not saved: '+(errorOf(res)||'the host refused'));
       },function(){ fail('Could not reach the host.'); });
@@ -854,6 +869,7 @@ var ClanFields=(function(){
       var t=e.target.closest('[data-t]'); if(!t) return; var w=t.getAttribute('data-t');
       if(w==='cancel'){ el.innerHTML=before; stop(); }
       else if(w==='save'){ var now=wordsOf(el); if(now===was){ stop(); return; } if(!el.textContent.trim()){ fail('Write something, or cancel.'); return; }
+        if(!String(bar.querySelector('[data-why]').value||'').trim()){ fail('Say why you changed it: type a reason or pick one.'); bar.querySelector('[data-why]').focus(); return; }
         send(now,function(){ el.__clfShown=now; stop(); }); }
       else if(w==='restore'){ send('',function(){ el.__clfShown=''; el.innerHTML=el.__clfOrig; el.__clfShown=null; el.classList.remove('clf-edited'); stop(); }); }
     });

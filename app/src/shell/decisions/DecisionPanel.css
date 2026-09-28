@@ -106,7 +106,8 @@
 /* history */
 .dp-hist-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .dp-hist-h .dp-sec { margin: 0; }
-.dp-by { margin-left: auto; }
+.dp-by { margin-left: auto; flex: none; }
+.dp-by button { white-space: nowrap; }
 .dp-run { background: var(--soft); border-radius: 14px; padding: 4px 0 6px; }
 .dp-run + .dp-run { margin-top: 12px; }
 .dp-run-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 9px 14px 5px; }
@@ -155,3 +156,5 @@
 .dp-skip > summary { list-style: none; display: inline-flex; }
 .dp-skip > summary::-webkit-details-marker { display: none; }
 .dp-skip[open] > .dp-acts { margin-top: 6px; }
+.dp-diff { display: grid; gap: 10px; }
+.dp-was { color: var(--ink3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }

@@ -96,7 +96,10 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
       case 'lock': return 'locked the document'
       case 'start_campaign': case 'create': return 'started the research'
       case 'answer_question': return 'answered a question from the agents'
-      case 'edit_text': return /^Report/.test(what) ? 'rewrote part of the report' : 'rewrote some wording'
+      case 'edit_text': {
+        const part = typeof d.part === 'string' && d.part ? d.part : 'wording'
+        return `rewrote the ${/^Report/.test(what) ? `report’s ${part}` : part}`
+      }
       case 'restore_text': return 'put the original wording back'
       case 'edit_field': return `changed ${what}`
       case 'correct_fact': return `corrected ${what}`

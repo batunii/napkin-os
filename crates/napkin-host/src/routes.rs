@@ -312,7 +312,7 @@ pub fn dispatch(
             crate::ops::review::resolve(c, d, crate::ops::review::Resolve::parse(&req.body_str())?)
         }),
         "/edit-text" => review(session, ctx, |c, d| {
-            crate::ops::review::edit_text(c, d, crate::ops::review::parse_edit_text(&req.body_str())?)
+            crate::ops::review::edit_text(c, d, crate::ops::review::parse_edit_text_full(&req.body_str())?)
         }),
         "/edit" => review(session, ctx, |c, d| {
             crate::ops::review::edit(c, d, crate::ops::review::parse_edit(&req.body_str())?)

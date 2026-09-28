@@ -690,11 +690,15 @@ fn clip_line(s: &str) -> String {
     }
 }
 
-/// `POST /edit`: `{path, value, gate?, rationale?}`.
+/// `POST /edit`: `{path, value, gate?, rationale}` — an edit says why.
 pub fn parse_edit(raw: &str) -> HostResult<(String, Value, Option<String>, String)> {
     let v = body(raw)?;
     let value = v.get("value").cloned().ok_or_else(|| HostError::bad_request("`value` is required"))?;
-    Ok((required(&v, "path")?, value, Some(text(&v, "gate")).filter(|g| !g.is_empty()), text(&v, "rationale")))
+    let rationale = text(&v, "rationale");
+    if rationale.is_empty() {
+        return Err(HostError::bad_request("say why you changed it (`rationale`)"));
+    }
+    Ok((required(&v, "path")?, value, Some(text(&v, "gate")).filter(|g| !g.is_empty()), rationale))
 }
 
 /// A person edits a value in the document (edit mode). The edit is theirs:
@@ -767,10 +771,60 @@ pub fn edit(ctx: &Ctx, doc: &Document, input: (String, Value, Option<String>, St
     d.id = Some(d_id);
     d.pinned = true;
     d.fields_changed = vec![path.clone()];
+    let shown = |v: &Value| match v {
+        Value::String(s) => s.clone(),
+        Value::Array(a) => a.iter().map(|x| x.as_str().map(String::from).unwrap_or_else(|| x.get("name").and_then(Value::as_str).unwrap_or_default().to_string())).collect::<Vec<_>>().join(", "),
+        Value::Null => String::new(),
+        other => other.get("name").and_then(Value::as_str).map(String::from).unwrap_or_else(|| other.to_string()),
+    };
+    let before = current.as_ref().map(|c| if envelope { c.get("value").cloned().unwrap_or(Value::Null) } else { c.clone() }).unwrap_or(Value::Null);
+    let after = segs.iter().try_fold(&data, |v, k| v.get(*k)).map(|v| if envelope { v.get("value").cloned().unwrap_or(Value::Null) } else { v.clone() }).unwrap_or(Value::Null);
+    if !shown(&before).is_empty() {
+        d.extra.insert("was".into(), serde_yaml::Value::String(clip(&shown(&before), 300)));
+    }
+    d.extra.insert("now".into(), serde_yaml::Value::String(clip(&shown(&after), 300)));
     commit(doc, data, Members::of(clan)?, d, "a person's edit", &now)
 }
 
-/// `POST /edit-text`: `{key, html}`.
+/// What a wording edit changed, as the decision records it: which part of the
+/// page, and the words before and after (plain text, clipped).
+#[derive(Debug, Clone, Default)]
+pub struct TextEdit {
+    pub key: String,
+    pub html: String,
+    pub rationale: String,
+    pub part: String,
+    pub was: String,
+}
+
+fn plain(html: &str) -> String {
+    let mut out = String::new();
+    let mut tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => tag = true,
+            '>' => { tag = false; out.push(' '); }
+            _ if !tag => out.push(c),
+            _ => {}
+        }
+    }
+    let words = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    if words.chars().count() > 300 { format!("{}…", words.chars().take(299).collect::<String>()) } else { words }
+}
+
+/// `POST /edit-text`: `{key, html, rationale, part?, was?}`. A rewrite needs
+/// its reason; putting the original back does not.
+pub fn parse_edit_text_full(raw: &str) -> HostResult<TextEdit> {
+    let v = body(raw)?;
+    let (key, html) = parse_edit_text(raw)?;
+    let rationale = text(&v, "rationale");
+    if !html.is_empty() && rationale.is_empty() {
+        return Err(HostError::bad_request("say why you changed it (`rationale`)"));
+    }
+    Ok(TextEdit { key, html, rationale, part: text(&v, "part"), was: text(&v, "was") })
+}
+
+/// `POST /edit-text`: `{key, html}` — the key and wording alone.
 pub fn parse_edit_text(raw: &str) -> HostResult<(String, String)> {
     let v = body(raw)?;
     let key = required(&v, "key")?;
@@ -789,8 +843,8 @@ pub fn parse_edit_text(raw: &str) -> HostResult<(String, String)> {
 /// not in the data, so it works for any app and any document — and one pinned
 /// `edit` decision records it. The view shows it in place of its own text,
 /// sanitised as any layout is. An empty `html` restores the original.
-pub fn edit_text(ctx: &Ctx, doc: &Document, input: (String, String)) -> HostResult<Outcome> {
-    let (key, html) = input;
+pub fn edit_text(ctx: &Ctx, doc: &Document, input: TextEdit) -> HostResult<Outcome> {
+    let TextEdit { key, html, rationale, part, was } = input;
     let who = person(ctx, "edit the document")?;
     not_locked(doc)?;
     let clan = doc.clan();
@@ -815,11 +869,28 @@ pub fn edit_text(ctx: &Ctx, doc: &Document, input: (String, String)) -> HostResu
         if html.is_empty() { "restore_text" } else { "edit_text" },
         vec![address(clan.document_id(), &format!("text[{key}]"))],
         Vec::new(),
-        if html.is_empty() { "Put the original wording back.".to_string() } else { "Rewrote the wording.".to_string() },
+        if !rationale.is_empty() {
+            rationale
+        } else if html.is_empty() {
+            "Put the original wording back.".to_string()
+        } else {
+            "Rewrote the wording.".to_string()
+        },
         &now,
     );
     d.id = Some(d_id);
     d.pinned = true;
+    // Which part, and the words before and after: what the panel says.
+    let was_plain = plain(&held.clone().unwrap_or(was));
+    if !part.is_empty() {
+        d.extra.insert("part".into(), serde_yaml::Value::String(clip(&part, 40)));
+    }
+    if !was_plain.is_empty() {
+        d.extra.insert("was".into(), serde_yaml::Value::String(was_plain));
+    }
+    if !html.is_empty() {
+        d.extra.insert("now".into(), serde_yaml::Value::String(plain(&html)));
+    }
     commit(doc, data_of(clan)?, m, d, "a person's wording", &now)
 }
 
@@ -966,4 +1037,8 @@ pub fn approve(ctx: &Ctx, doc: &Document, rationale: &str) -> HostResult<Outcome
 /// Now, in the one shape the campaign schema's `datetime` accepts.
 fn now() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+fn clip(s: &str, n: usize) -> String {
+    if s.chars().count() > n { format!("{}…", s.chars().take(n - 1).collect::<String>()) } else { s.to_string() }
 }

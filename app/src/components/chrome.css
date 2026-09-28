@@ -457,7 +457,8 @@
 }
 
 /* Edit mode: the one place the shell says the document is open for editing. */
-.ch-btn-editing {
+.ch-btn.ch-btn-editing,
+.ch-btn.ch-btn-editing:hover {
   background: var(--ink);
   color: var(--paper);
   border-color: var(--ink);

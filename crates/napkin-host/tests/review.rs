@@ -449,8 +449,14 @@ fn a_person_edits_a_campaign_field_and_it_is_theirs() {
     assert_eq!(run(&f, |c, d| review::edit(c, d, edit("projection.pins", json!({}), ""))), Err(400));
     assert_eq!(run(&f, |c, d| review::edit(c, d, edit("facts.f_01JA0B3P4Q", json!(1), ""))), Err(400));
     // An empty field needs to say which gate it belongs to.
-    let e = review::parse_edit(&json!({ "path": "campaign.objective", "value": "Win trial" }).to_string()).unwrap();
+    let e = review::parse_edit(&json!({ "path": "campaign.objective", "value": "Win trial", "rationale": "Asked" }).to_string()).unwrap();
     assert_eq!(run(&f, |c, d| review::edit(c, d, e)), Err(400));
+    // And an edit says why.
+    assert!(review::parse_edit(&json!({ "path": "campaign.objective", "value": "Win trial" }).to_string()).is_err());
+    // It records what the field said before and after.
+    let d = &chain(&f).decisions[0];
+    assert_eq!(d.extra.get("now").and_then(|v| v.as_str()), Some("Frozen is seen as second best"));
+    assert_eq!(d.rationale, "Client said so");
 }
 
 #[test]
@@ -481,7 +487,10 @@ fn a_corrected_fact_replaces_the_old_pin_which_stays_on_record() {
 #[test]
 fn a_person_rewrites_the_wording_and_it_travels_with_the_document() {
     let f = fixture();
-    let text = |key: &str, html: &str| review::parse_edit_text(&json!({ "key": key, "html": html }).to_string()).unwrap();
+    let text = |key: &str, html: &str| {
+        review::parse_edit_text_full(&json!({ "key": key, "html": html, "rationale": "Clearer wording",
+                                              "part": "headline", "was": "A growing category" }).to_string()).unwrap()
+    };
     run(&f, |c, d| review::edit_text(c, d, text("report:ab12:b1", "A growing category, led by own-label"))).unwrap();
     let edits = yaml(&f, "shared/edits.yaml")["edits"].clone();
     assert_eq!(edits[0]["key"], "report:ab12:b1");
@@ -490,6 +499,12 @@ fn a_person_rewrites_the_wording_and_it_travels_with_the_document() {
     let d = &chain(&f).decisions[0];
     assert_eq!((d.kind.as_deref(), d.action.as_str(), d.pinned), (Some("edit"), "edit_text", true));
     assert_eq!(edits[0]["decision"].as_str(), d.id.as_deref());
+    assert_eq!(d.rationale, "Clearer wording", "the person's reason is the decision's");
+    assert_eq!(d.extra.get("part").and_then(|v| v.as_str()), Some("headline"));
+    assert_eq!(d.extra.get("was").and_then(|v| v.as_str()), Some("A growing category"));
+    assert_eq!(d.extra.get("now").and_then(|v| v.as_str()), Some("A growing category, led by own-label"));
+    // A rewrite without a reason is refused before anything is looked at.
+    assert!(review::parse_edit_text_full(r#"{"key":"k1","html":"x"}"#).is_err());
     // The view is handed it; the same text again is not an edit.
     assert_eq!(f.session.document_now().unwrap()["edits"]["report:ab12:b1"], "A growing category, led by own-label");
     assert_eq!(run(&f, |c, d| review::edit_text(c, d, text("report:ab12:b1", "A growing category, led by own-label"))), Err(409));

@@ -124,7 +124,15 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
       </summary>
       {hasMore && (
         <div className="dp-ex">
-          <p className="dp-decided">{plain(r?.decided || d.rationale.split(/\. Because/)[0])}</p>
+          {typeof d.now === 'string' || typeof d.was === 'string' ? (
+            <div className="dp-diff">
+              {typeof d.was === 'string' && d.was && <div><h4>Was</h4><p className="dp-was">{d.was}</p></div>}
+              {typeof d.now === 'string' && d.now && <div><h4>Now</h4><p>{d.now}</p></div>}
+              <div><h4>Why</h4><p>{d.rationale}</p></div>
+            </div>
+          ) : (
+            <p className="dp-decided">{plain(r?.decided || d.rationale.split(/\. Because/)[0])}</p>
+          )}
           {r?.because?.length ? (
             <div>
               <h4>Why</h4>
