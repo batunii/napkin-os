@@ -209,6 +209,8 @@ and the requirements carried over from Qdrant are in
 
 **Label scoring (2026-09-28):** `labelset.py confirm <export> --rater cd|planner` keeps each rater's labels apart and marks a pair confirmed only when the raters agree; `labelset.py evaluate --backend jev` scores the validator against human-confirmed labels only, per bucket, as Cohen's kappa and balanced accuracy beside raw agreement, with the cut-off that works best and the raters' agreement with each other (`--truth model` uses the model's pre-labels, for testing the tool only).
 
+**Path comparison (2026-09-28):** `compare_paths.py --brief <stem>` runs one real brief through the three retrieval paths (A buckets, B the real loops path, MIX) and has Sonnet judge them blind: sets cut to the same size, title and text only (no cites or counts), three calls that rotate the order, scores held to 1-5, the answering model recorded. It writes a new dated file in the git-ignored client folder; earlier comparison files are left as recorded. On plus-auto MIX was best in all three positions (mean 5.0, A 3.67, B 2.33).
+
 **Checkpoint log (2026-09-26):** `checkpoint_run.py` measures a commit on the three test
 briefs against the frozen baseline; `eval_checkpoints.json` registers each measured code
 state (dir, arm, what changed, comparable or not); `eval_history.py` assembles every
