@@ -2,6 +2,11 @@
 """
 Loops 3–7 retrieval hook
 ========================
+RETIRED as the brief path (2026-09-28, Sai: retire, do not delete yet). index_available() and
+index_label() still run in every brief; retrieve() is now used only by RAG_PATH=loops, which
+parse_brief announces as retired, and by compare_paths.py. Briefs retrieve through
+brief_context.build_multi (RAG_PATH=mix).
+
 
 A thin runtime adapter over rag.py. The briefing tool (parse_brief.py) imports
 ONLY this for its Loops 3–7 stage; it reuses rag.py's embed + search rather than

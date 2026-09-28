@@ -151,6 +151,18 @@
    "comparable": true,
    "critic": "claude-fable-5-1x3",
    "note": "Scored by a different critic from every earlier checkpoint (Sonnet 5 x1): compare it with f9366c8-fable, not with 2d9370c"
+  },
+  {
+   "id": "c4edf35-edge",
+   "order": 12,
+   "dir": "checkpoint_c4edf35_edge",
+   "arm": "after_edge",
+   "commit": "c4edf35",
+   "date": "2026-09-28",
+   "role": "variant",
+   "what": "Same code as c4edf35 with RAG_MIX_ORDER=edge (each field's strongest passages at both ends): 237 vs 234, every brief inside the noise line; kept off",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
   }
  ]
 }

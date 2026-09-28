@@ -2598,6 +2598,13 @@ def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True, facets=None) 
         # environment variable away until Shrey's finished-brief test confirms the choice.
         # Blind-judged on 6 real briefs: B 23, MIX 20, A 14 (B and MIX within judge noise).
         rag_path = (os.environ.get("RAG_PATH") or "mix").strip().lower()
+        if rag_path == "loops":
+            # Retired 2026-09-28 (Sai: retire it, do not delete it yet; audit RAG-8). The mix
+            # path won the blind path comparison in every position (compare_paths, 9dc83ef)
+            # and is the only one with scope, admission, budgets and validation. Kept for
+            # compare_paths and for comparison runs; said loudly and recorded in the result.
+            print("[!] RAG_PATH=loops is the RETIRED retrieval path, kept only for comparison; "
+                  "briefs use RAG_PATH=mix.", file=sys.stderr)
         loops, retrieval_trace = None, None
         if rag_path == "mix":
             # A mix failure goes to the digests, NOT to the loops path: the loops path would hit
@@ -2642,6 +2649,7 @@ def loops_3_7(loop2, fields, k=5, index_dir=None, synthesize=True, facets=None) 
             "sources_used": sorted(set(citations_all)),
             "synthesis_mode": synthesis_mode,
             "rag_path": rag_path,
+            "rag_path_retired": rag_path == "loops",
             "retrieval_trace": retrieval_trace,
             # Loops whose evidence no validator judged (see _loops_via_mix); [] when every
             # loop was validated or validation is off.

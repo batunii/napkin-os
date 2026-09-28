@@ -334,7 +334,9 @@ def main() -> None:
                 "after_novalidator": (Path(a.after), {"RAG_VALIDATOR": "none"}),
                 # insight/SMP drafts and sharpening on Opus 5.5 (their judges then fall to
                 # Sonnet 5, since a judge never runs on its writer's model; ADR 0011)
-                "after_hero55": (Path(a.after), {"BRIEF_ROUTE_HERO": "claude-opus-5-5,claude-opus-4-6"})}
+                "after_hero55": (Path(a.after), {"BRIEF_ROUTE_HERO": "claude-opus-5-5,claude-opus-4-6"}),
+                # evidence strongest at both ends of each field's list (RAG_MIX_ORDER=edge, A/B)
+                "after_edge": (Path(a.after), {"RAG_MIX_ORDER": "edge"})}
     arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
     if a.reuse:

@@ -877,8 +877,11 @@ def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_fie
     # the fields whose evidence a writer actually reads claim a shared hit first. In
     # query order loop3_research went first and took 1.7 of loop4_insight's 5 slots on
     # average (audit RAG-7). The output keeps the caller's field order.
-    order = [f for f in dedupe_first if f in texts] + [f for f in texts if f not in dedupe_first]
-    for f in order:
+    # Its own switch, not RAG_ORDER: engine/.env sets RAG_ORDER=edge for the bucket path,
+    # and reading it here would have switched every brief's order unannounced (2026-09-28).
+    order = (os.environ.get("RAG_MIX_ORDER") or "score").strip().lower()
+    field_order = [f for f in dedupe_first if f in texts] + [f for f in texts if f not in dedupe_first]
+    for f in field_order:
         picked = []
         for b in MIX_BUCKETS:
             blk = _fill(groups[f"{f}|{b}"], MIX_BUDGET[b], MAX_HIT_TOKENS.get(b),
@@ -895,11 +898,16 @@ def build_multi(pairs: dict, queries: dict[str, str], *, index_dir=None, per_fie
             if h.cite in seen or len(field_hits) >= per_field:
                 continue
             seen.add(h.cite); field_hits.append(h)
+        if order == "edge":
+            # RAG_MIX_ORDER=edge: strongest at both ends over the field's whole list, in its
+            # delivered order, so the A/B measures the ordering alone (2026-09-28: before this
+            # only the bucket path had it; there rules are a block of their own, read first).
+            field_hits = edge_order(field_hits)
         out[f] = field_hits
     out = {f: out[f] for f in texts}                                   # the caller's order
     trace = {"queries": texts, "keywords": keywords, "filters": {k: str(v) for k, v in filters.items()},
              "scopes": list(scopes), "tenants": list(tenants), "embed": mode, "notes": notes,
-             "widened": {f: n for f, n in field_notes.items() if n}, "egress": egress,
+             "widened": {f: n for f, n in field_notes.items() if n}, "egress": egress, "order": order,
              "validation": validation, "calls": {"embed": 1 if mode != "keyword-only" else 0,
                                                  "validator": (validation or {}).get("calls", 0),
                                                  "searches": len(jobs)},

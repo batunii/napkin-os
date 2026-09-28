@@ -41,9 +41,9 @@ middleware ◀─response── rag_io.response_from_multi()  (fields)  |  respo
 | Edge ordering (strongest at both ends) | **built**, `RAG_ORDER=edge`, default off pending A/B | `brief_context.edge_order` |
 | Output: structured chunks + rendered prompt text | **live** | `rag_io.response_from`, `BriefContext.prompt_text` |
 
-Two retrieval paths exist today: `brief_context.build()` (behind `rag_io`) and
-`parse_brief.loops_3_7()`, which is the one currently generating briefs. They are being
-consolidated onto the first — see decision record 0001.
+The brief generator (`parse_brief.loops_3_7()`) retrieves through the same engine as `rag_io`:
+`brief_context.build_multi()`, the mix path. The old per-loop path (`RAG_PATH=loops`, `retrieve.retrieve()`)
+is **retired** (2026-09-28): kept for comparison runs, announced when used, not deleted yet.
 
 ---
 
@@ -520,9 +520,10 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `BRIEF_RERANK` | `1` | `0` disables the LLM rerank in `loops_3_7` |
 | `BRIEF_FULLTEXT` | unset | `1` = A/B arm: the brief generator reads evidence spans (capped 1200 / 800 chars) instead of 220 / 160-char snippets |
 | `BRIEF_SYNTH_MODEL` | unset: the `synth` route, Sonnet 5 (ADR 0011) | pins one model for the per-loop synthesis paragraphs (one call per loop, in parallel), over the route |
-| `RAG_PATH` | `mix` | Which retrieval feeds the brief generator (`loops_3_7`): `mix` = each loop's per-field query through `brief_context.build_multi()` (scope, admission, budgets, widening, validation; ~1.4s warm); `loops` = the previous per-loop retrieve + rerank + case packs. Chosen 2026-09-23; `loops` stays one switch away until Shrey's finished-brief test |
+| `RAG_PATH` | `mix` | Which retrieval feeds the brief generator (`loops_3_7`): `mix` = each loop's per-field query through `brief_context.build_multi()` (scope, admission, budgets, widening, validation; ~1.4s warm); `loops` = the previous per-loop retrieve + rerank + case packs. Chosen 2026-09-23; `loops` is retired (2026-09-28): kept for comparison runs, announced when used, not deleted. |
 | `RAG_VALIDATION_MODE` | `order` | `order` re-sorts by validator score and drops nothing; `gate` also drops what fails the threshold (measured unsafe for briefs: keeps 1/24 useful client exemplars) |
 | `RAG_ORDER` | `score` | `edge` puts the strongest hits at both ends of exemplars and craft |
+| `RAG_MIX_ORDER` | `score` | The mix path's order (every brief): `edge` puts each field's strongest passages at both ends. Its own switch because engine/.env sets `RAG_ORDER=edge` for the bucket path; off until the A/B says otherwise (2026-09-28). |
 | `RAG_VALIDATOR` | unset: `jev` on the brief path (Sai, 2026-09-26), off for `rag_io` callers | Validation chain in priority order, e.g. `jev,nemotron`; `none` switches it off on the brief path |
 | `PAIRWISE_MODEL` / `PAIRWISE_SAMPLES` / `PAIRWISE_WORKERS` | `claude-sonnet-5` / `3` / `2` | the head-to-head judge (`pairwise.py`, opt-in via `checkpoint_run.py --pairwise` or `e2e_eval.py --pairwise`): model, rounds (each asked in both orders), calls in parallel (the Claude Code login rate-limits more) |
 | `RAG_STORE_MEMO` | `1` | `0` opens a fresh local store on every `get_store()` call instead of one per process (ADR 0010) |

@@ -106,3 +106,35 @@ def test_rag_path_mix_is_the_default_and_keeps_the_generator_shape(monkeypatch):
     assert ev["citation"] == "ipa_0003 › Insight" and ev["category"] == "ipa_effectiveness_case"
     assert "insight text" in pb._precedent_blocks(loops, "loop4_insight")[0]    # reaches the generator
 
+
+
+def test_the_loops_path_is_announced_as_retired(monkeypatch, capsys):
+    """RAG_PATH=loops still runs (kept for comparison) but says it is the retired path
+    (Sai, 2026-09-28: retire, do not delete). Its search is stubbed to fail here, so the run
+    ends on the digests; the warning comes first either way."""
+    class Retriever:
+        """Available, labelled, and failing on search."""
+        DEFAULT_INDEX = "x"
+        def index_available(self, index_dir=None): return True
+        def index_label(self, index_dir=None): return "stub"
+        def retrieve(self, *a, **k): raise RuntimeError("stub search")
+    monkeypatch.setenv("RAG_PATH", "loops")
+    monkeypatch.setattr(pb, "_load_retriever", lambda: Retriever())
+    monkeypatch.setattr(pb, "_classify_intent", lambda gist, fields: "launch")
+    monkeypatch.setattr(pb, "_loops37_from_digests", lambda *a, **k: {"enabled": True, "loops": {}})
+    pb.loops_3_7({"problem": {"value": "p"}}, {}, synthesize=False)
+    assert "RAG_PATH=loops is the RETIRED retrieval path" in capsys.readouterr().err
+
+
+def test_the_mix_path_is_not_announced_as_retired(monkeypatch, capsys):
+    monkeypatch.delenv("RAG_PATH", raising=False)
+    monkeypatch.setattr(pb, "_classify_intent", lambda gist, fields: "launch")
+    monkeypatch.setattr(pb, "_loops_via_mix", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("stub")))
+    monkeypatch.setattr(pb, "_loops37_from_digests", lambda *a, **k: {"enabled": True, "loops": {}})
+    class Retriever:
+        DEFAULT_INDEX = "x"
+        def index_available(self, index_dir=None): return True
+        def index_label(self, index_dir=None): return "stub"
+    monkeypatch.setattr(pb, "_load_retriever", lambda: Retriever())
+    pb.loops_3_7({"problem": {"value": "p"}}, {}, synthesize=False)
+    assert "RETIRED" not in capsys.readouterr().err

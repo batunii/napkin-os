@@ -331,3 +331,18 @@ def test_dedupe_lets_the_writer_fields_claim_shared_hits_first(monkeypatch):
     assert [h.cite for h in mc.fields["loop3_research"]] == []
     mc = bc.build_multi({"problem": "p"}, queries, chain=judge.Chain([]), per_field=5, dedupe_first=())
     assert [h.cite for h in mc.fields["loop3_research"]] == ["shared", "e2"]
+
+
+def test_edge_order_on_the_mix_path(monkeypatch):
+    """RAG_MIX_ORDER=edge (2026-09-28): each field's list goes strongest at both ends, same
+    passages; the default leaves the delivered order alone and the trace says which ran.
+    RAG_ORDER (engine/.env: edge, for the bucket path) must not change the mix path."""
+    _store(monkeypatch, {"exemplars": ["e1", "e2", "e3", "e4", "e5"]})
+    monkeypatch.delenv("RAG_MIX_ORDER", raising=False)
+    monkeypatch.setenv("RAG_ORDER", "edge")
+    score = bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([]), per_field=5)
+    monkeypatch.setenv("RAG_MIX_ORDER", "edge")
+    edge = bc.build_multi({"problem": "p"}, {"f": "q"}, chain=judge.Chain([]), per_field=5)
+    assert [h.cite for h in score.fields["f"]] == ["e1", "e2", "e3", "e4", "e5"]
+    assert [h.cite for h in edge.fields["f"]] == ["e1", "e3", "e5", "e4", "e2"]
+    assert score.trace["order"] == "score" and edge.trace["order"] == "edge"
