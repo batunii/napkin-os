@@ -11,7 +11,8 @@
    "date": "2026-09-26",
    "role": "baseline",
    "what": "Before the audit fixes: ragAdded plus the transport switch, validator off",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "48a6f0d",
@@ -23,7 +24,8 @@
    "role": "change",
    "what": "Batch 1 (can't fail silently), batch 3 (retrieval that counts), jev on, SMP rules",
    "comparable": false,
-   "note": "Claude Code login throttled (calls ~10x slower) and jev's concurrency bug left 3 of 5 loops unvalidated; stopped after 2 of 3 briefs"
+   "note": "Claude Code login throttled (calls ~10x slower) and jev's concurrency bug left 3 of 5 loops unvalidated; stopped after 2 of 3 briefs",
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "9b824ab",
@@ -34,7 +36,8 @@
    "date": "2026-09-26",
    "role": "change",
    "what": "Audience rule from the literature, sourced examples, provenance marks, jev calls serialised",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "1f9ee7f",
@@ -45,7 +48,8 @@
    "date": "2026-09-26",
    "role": "change",
    "what": "Batch 2 (hallucination at the source), abbreviation-aware sentence counter",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "d45bd57",
@@ -56,7 +60,8 @@
    "date": "2026-09-26",
    "role": "change",
    "what": "Batch 2 leftovers: grounded app regeneration, quote repair, insight as hypothesis, transcription tag",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "d45bd57-jev-off",
@@ -67,7 +72,8 @@
    "date": "2026-09-26",
    "role": "variant",
    "what": "Same code as d45bd57 with jev switched off (decision 3: what jev alone adds)",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "9b06017",
@@ -80,7 +86,8 @@
    "what": "Retrieval wait closed: filter masks, one store per process, warm-up (evidence unchanged)",
    "comparable": true,
    "repeat_of": "d45bd57",
-   "repeat_note": "only retrieval speed changed; the evidence was identical"
+   "repeat_note": "only retrieval speed changed; the evidence was identical",
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "30e890f",
@@ -91,7 +98,8 @@
    "date": "2026-09-26",
    "role": "change",
    "what": "Model routes by job (RTB and judges off Opus 4.6, syntheses on Sonnet) and jev as a checker (RTB figures, scorecard, category, synthesis)",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "30e890f-hero55",
@@ -102,7 +110,8 @@
    "date": "2026-09-26",
    "role": "variant",
    "what": "Same code as 30e890f with insight and SMP drafts + sharpening on Opus 5.5 (their judges fall to Sonnet 5)",
-   "comparable": true
+   "comparable": true,
+   "critic": "claude-sonnet-5x1"
   },
   {
    "id": "2d9370c",
@@ -115,7 +124,33 @@
    "what": "Refactor (ADR 0012): parse_brief split into brief_llm / brief_ingest / brief_render, one .env loader, dead code out; behaviour meant to be unchanged",
    "comparable": true,
    "repeat_of": "30e890f",
-   "repeat_note": "refactor; the commits between (3249fe5, 7c749bc) change only a total-failure error and a label"
+   "repeat_note": "refactor; the commits between (3249fe5, 7c749bc) change only a total-failure error and a label",
+   "critic": "claude-sonnet-5x1"
+  },
+  {
+   "id": "f9366c8-fable",
+   "order": 10,
+   "dir": "checkpoint_c4edf35",
+   "arm": "before",
+   "commit": "f9366c8",
+   "date": "2026-09-28",
+   "role": "baseline",
+   "what": "The same ragAdded baseline briefs, re-graded by the new critic (Fable 5.1 x3) so today's checkpoint compares like with like; the briefs were not regenerated",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "c4edf35",
+   "order": 11,
+   "dir": "checkpoint_c4edf35",
+   "arm": "after",
+   "commit": "c4edf35",
+   "date": "2026-09-28",
+   "role": "change",
+   "what": "Phase A measurement tools (brief-affecting part: Claude Code schema calls get 3 turns, 9977e6f; Word links kept, 438ea75) plus RAG-module fixes outside the brief path; first checkpoint scored by Fable 5.1 x3 with the noise line and the invented-proof-points count",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3",
+   "note": "Scored by a different critic from every earlier checkpoint (Sonnet 5 x1): compare it with f9366c8-fable, not with 2d9370c"
   }
  ]
 }
