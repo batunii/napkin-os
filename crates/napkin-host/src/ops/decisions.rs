@@ -79,6 +79,9 @@ pub struct Who {
     /// The person's id, or the handler's name without its version.
     pub id: String,
     pub name: String,
+    /// The person looking at the view made it: shown as "You".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub you: bool,
 }
 
 /// One address a decision is about.
@@ -114,7 +117,7 @@ pub struct Attention {
 }
 
 /// What a cite names, in words.
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, Default)]
 pub struct Cite {
     /// `fact`, `finding`, `source`, `material`, `decision`, `person`,
     /// `address` or `unknown`.
@@ -125,6 +128,24 @@ pub struct Cite {
     /// A quote the address points at, when it holds one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote: Option<String>,
+    /// A fact: its value as a person reads it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// A fact: the sources it rests on, by id (each resolved in `cites` when
+    /// the document carries its record).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
+    /// A source: where it was read, and who published it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub published_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -136,6 +157,12 @@ pub struct LockState {
 
 /// `GET /decisions` — see the module docs.
 pub fn decisions(doc: &Document) -> HostResult<DecisionsView> {
+    decisions_for(doc, None)
+}
+
+/// [`decisions`], for a viewer: decisions `viewer` (an actor, `human:<id>`)
+/// made are marked `you`.
+pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<DecisionsView> {
     let clan = doc.clan();
     let doc_id = clan.document_id().to_string();
     let mut view = DecisionsView {
@@ -188,6 +215,7 @@ pub fn decisions(doc: &Document) -> HostResult<DecisionsView> {
         schema: &schema,
         facts: by_id(members::FACTS),
         findings: by_id(members::FINDINGS),
+        sources: by_id(members::SOURCES),
         chain: &chain,
     };
 
@@ -210,8 +238,13 @@ pub fn decisions(doc: &Document) -> HostResult<DecisionsView> {
                 blocks_lock: a.blocks_lock,
             })
             .collect();
+        let mut w = who(d);
+        if w.kind == "person" && viewer.is_some_and(|v| d.actor.as_deref() == Some(v)) {
+            w.you = true;
+            w.name = "You".into();
+        }
         view.decisions.push(DecisionBlock {
-            who: who(d),
+            who: w,
             targets: aims(d).map(|t| ctx.target(t)).collect(),
             attention: reasons,
             superseded: d.superseded_by.is_some(),
@@ -232,10 +265,20 @@ pub fn decisions(doc: &Document) -> HostResult<DecisionsView> {
         .map(String::as_str)
         .filter(|c| !c.trim().is_empty())
         .collect();
-    view.cites = cited
+    let mut cites: BTreeMap<String, Cite> = cited
         .into_iter()
         .map(|c| (c.to_string(), ctx.cite(c)))
         .collect();
+    let behind: BTreeSet<String> = cites
+        .values()
+        .flat_map(|c| c.sources.iter().cloned())
+        .filter(|s| !cites.contains_key(s))
+        .collect();
+    for s in behind {
+        let c = ctx.cite(&s);
+        cites.insert(s, c);
+    }
+    view.cites = cites;
 
     let blockers = attention.iter().filter(|a| a.blocks_lock).count();
     view.lock = LockState {
@@ -253,6 +296,7 @@ struct Lookup<'a> {
     schema: &'a Value,
     facts: BTreeMap<String, Value>,
     findings: BTreeMap<String, Value>,
+    sources: BTreeMap<String, Value>,
     chain: &'a DecisionChain,
 }
 
@@ -430,10 +474,20 @@ impl Lookup<'_> {
             kind,
             label,
             detail,
-            quote: None,
+            ..Default::default()
         };
         if let Some(f) = self.facts.get(id) {
-            return cite("fact", fact_label(f), Some(fact_detail(f)));
+            return Cite {
+                value: f.get("value").map(|v| format_value(v, str_of(f, "unit"))),
+                sources: f
+                    .get("sources")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|s| s.as_str().filter(|s| s.starts_with("src_")).map(String::from))
+                    .collect(),
+                ..cite("fact", fact_label(f), Some(fact_detail(f)))
+            };
         }
         if let Some(f) = self.findings.get(id) {
             let statement = str_of(f, "statement").unwrap_or(id).to_string();
@@ -480,6 +534,32 @@ impl Lookup<'_> {
                 Some(clip(&d.rationale, 200)).filter(|r| !r.is_empty()),
             );
         }
+        if let Some(s) = self.sources.get(id) {
+            let publisher = str_of(s, "publisher").map(String::from);
+            let title = str_of(s, "title").map(String::from);
+            let label = join_with(&[publisher.clone(), title.clone()], " — ");
+            let used = self
+                .facts
+                .values()
+                .filter(|f| {
+                    f.get("sources")
+                        .and_then(Value::as_array)
+                        .is_some_and(|x| x.iter().any(|v| v.as_str() == Some(id)))
+                })
+                .count();
+            return Cite {
+                uri: str_of(s, "uri").map(String::from),
+                publisher,
+                title,
+                published_at: str_of(s, "published_at").map(String::from),
+                tier: str_of(s, "tier").map(String::from),
+                ..cite(
+                    "source",
+                    if label.is_empty() { id.to_string() } else { label },
+                    Some(plural(used, "pinned fact")),
+                )
+            };
+        }
         if id.starts_with("src_") {
             let behind: Vec<String> = self
                 .facts
@@ -521,6 +601,7 @@ impl Lookup<'_> {
                 label: t.label,
                 detail,
                 quote,
+                ..Default::default()
             };
         }
         cite("unknown", id.to_string(), None)
@@ -873,6 +954,7 @@ fn who(d: &Decision) -> Who {
             kind: "person",
             id,
             name,
+            you: false,
         };
     }
     let raw = d.handler.as_deref().unwrap_or(&d.agent);
@@ -881,6 +963,7 @@ fn who(d: &Decision) -> Who {
         kind: "agent",
         name: humanise(&id),
         id,
+        you: false,
     }
 }
 
@@ -997,13 +1080,30 @@ fn citing_findings<'r>(
     }
 }
 
+/// A fact as a person names it: its key in words, and the market.
+/// `market.private_label_share` → "Private label share · IE"; a one-word
+/// leaf keeps its namespace (`awareness.prompted` → "Awareness prompted").
+/// A synthesis fact is named by what it says.
 fn fact_label(f: &Value) -> String {
-    let parts = [
-        str_of(f, "entity").map(String::from),
-        str_of(f, "key").map(String::from),
-        str_of(f, "market").map(String::from),
-    ];
-    let label = join_with(&parts, " · ");
+    let key = str_of(f, "key").unwrap_or_default();
+    let words = if str_of(f, "method") == Some("synthesis") {
+        f.get("value")
+            .and_then(Value::as_str)
+            .map(|s| clip(s, 80))
+            .unwrap_or_default()
+    } else {
+        let parts: Vec<&str> = key.split('.').filter(|p| !p.is_empty()).collect();
+        let leaf = match parts.as_slice() {
+            [.., last] if parts.len() > 1 && last.contains('_') => last.to_string(),
+            _ => parts.join(" "),
+        };
+        let mut w = leaf.replace('_', " ");
+        if let Some(c) = w.get(..1) {
+            w = c.to_uppercase() + &w[1..];
+        }
+        w.replace(" yoy", " year on year")
+    };
+    let label = join_with(&[Some(words).filter(|w| !w.is_empty()), str_of(f, "market").map(String::from)], " · ");
     if label.is_empty() {
         str_of(f, "id").unwrap_or("fact").to_string()
     } else {

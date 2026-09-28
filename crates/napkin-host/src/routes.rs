@@ -304,6 +304,9 @@ pub fn dispatch(
         "/resolve" => review(session, ctx, |c, d| {
             crate::ops::review::resolve(c, d, crate::ops::review::Resolve::parse(&req.body_str())?)
         }),
+        "/acknowledge" => review(session, ctx, |c, d| {
+            crate::ops::review::acknowledge(c, d, &crate::ops::review::parse_acknowledge(&req.body_str())?)
+        }),
         "/approve" => review(session, ctx, |c, d| {
             crate::ops::review::approve(c, d, &crate::ops::review::parse_approve(&req.body_str())?)
         }),
@@ -317,7 +320,7 @@ pub fn dispatch(
 
         // The decision view the shell's OS layer renders: every decision,
         // newest first, with what needs a person — derived here, not by the app.
-        "/decisions" => match session.read(crate::ops::decisions::decisions) {
+        "/decisions" => match session.read(|d| crate::ops::decisions::decisions_for(d, Some(ctx.actor.as_str()))) {
             Ok(v) => HostResponse::json(200, &serde_json::json!(v)),
             Err(e) => e.into(),
         },

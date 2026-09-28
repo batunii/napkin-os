@@ -153,6 +153,12 @@ pub fn parse_verify(raw: &str) -> HostResult<(String, String)> {
     Ok((required(&v, "finding")?, text(&v, "rationale")))
 }
 
+/// `POST /acknowledge`: `{decision, rationale?}`.
+pub fn parse_acknowledge(raw: &str) -> HostResult<(String, String)> {
+    let v = body(raw)?;
+    Ok((required(&v, "decision")?, text(&v, "rationale")))
+}
+
 /// `POST /approve`: `{rationale?}`.
 pub fn parse_approve(raw: &str) -> HostResult<String> {
     let v = if raw.trim().is_empty() {
@@ -621,6 +627,54 @@ pub fn verify_finding(
     );
     d.id = Some(decision_id.to_string());
     commit(doc, data_of(clan)?, m, d, "a finding verified", &now)
+}
+
+/// "Looks right": a person has read what an agent flagged, or how sure it
+/// was, and accepts the call. Recorded as a good verdict that names the
+/// decision (Contract 4 §4), which is what clears it from what needs a person;
+/// the decision's own targets are untouched.
+pub fn acknowledge(ctx: &Ctx, doc: &Document, input: &(String, String)) -> HostResult<Outcome> {
+    let (id, rationale) = input;
+    let who = person(ctx, "accept an agent's call")?;
+    not_locked(doc)?;
+    let chain = chain_of(doc)?;
+    let d = chain
+        .decisions
+        .iter()
+        .find(|d| d.id.as_deref() == Some(id.as_str()))
+        .ok_or_else(|| HostError::not_found(format!("decision {id} is not in this document")))?;
+    if d.kind.as_deref() == Some("finding") {
+        return Err(HostError::bad_request(
+            "a finding is not accepted here: verify it, so it is written to the layer as reviewed",
+        ));
+    }
+    let clan = doc.clan();
+    let now = now();
+    let mut v = decided(
+        ctx,
+        &who,
+        "verdict",
+        "looks_right",
+        vec![address(clan.document_id(), &format!("decisions[{id}]"))],
+        vec![id.clone()],
+        if rationale.is_empty() {
+            format!("Looks right: {}", clip_line(&d.rationale))
+        } else {
+            rationale.clone()
+        },
+        &now,
+    );
+    v.polarity = Some("good".into());
+    commit(doc, data_of(clan)?, Members::of(clan)?, v, "a call accepted", &now)
+}
+
+fn clip_line(s: &str) -> String {
+    let first = s.split(". Because").next().unwrap_or(s).trim();
+    if first.chars().count() > 120 {
+        format!("{}…", first.chars().take(117).collect::<String>())
+    } else {
+        first.to_string()
+    }
 }
 
 /// Lock: accept the document as it stands (D7). Refused while anything on the

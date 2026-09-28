@@ -141,7 +141,10 @@ fn cites_resolve_to_what_they_name() {
     let v = decisions(&example()).unwrap();
     let fact = &v.cites["f_01JA0B2K7M"];
     assert_eq!(fact.kind, "fact");
-    assert_eq!(fact.label, "brand/lunasa · awareness.prompted · IE");
+    assert_eq!(fact.label, "Awareness prompted · IE");
+    assert_eq!(fact.value.as_deref(), Some("47%"));
+    assert!(!fact.sources.is_empty(), "a fact names its sources");
+    assert!(fact.sources.iter().all(|s| v.cites.contains_key(s)), "and each is resolved");
     let detail = fact.detail.as_deref().unwrap();
     assert!(detail.starts_with("47% · as of 2026-06-30"), "{detail}");
 
@@ -307,7 +310,8 @@ fn low_certainty_and_asked_for_attention_clear_once_a_person_decides() {
         Who {
             kind: "person",
             id: "u_a".into(),
-            name: "u_a".into()
+            name: "u_a".into(),
+            you: false,
         }
     );
     assert_eq!(v.decisions[1].who.name, "Extract ask");
@@ -564,4 +568,73 @@ fn paths_split_into_names_and_keys() {
     );
     assert!(segments("").is_empty());
     assert_eq!(humanise("in_market"), "In market");
+}
+
+
+#[test]
+fn a_source_the_document_carries_is_named_and_linked() {
+    let chain = r#"decisions:
+- id: d_01JB0PIN001
+  kind: pin
+  agent: research_lens@1.0
+  action: research_merge
+  rationale: pinned
+  timestamp: '2026-09-28T10:00:00Z'
+  cites: [f_01JB0FACT01]
+"#;
+    let facts = r#"facts:
+- id: f_01JB0FACT01
+  entity: category/food.ready_meals_frozen
+  key: market.private_label_share
+  market: IE
+  value: 0.528
+  unit: proportion
+  sources: [src_shelf01]
+"#;
+    let sources = r#"sources:
+- id: src_shelf01
+  uri: https://example.com/cool-sales
+  title: Cool sales, hot demand
+  publisher: ShelfLife Magazine
+  published_at: '2026-03-10'
+  tier: secondary
+"#;
+    let d = doc_with(&[(CHAIN_PATH, chain), (members::FACTS_PATH, facts), (members::SOURCES_PATH, sources)]);
+    let v = decisions(&d).unwrap();
+    let f = &v.cites["f_01JB0FACT01"];
+    assert_eq!(f.label, "Private label share · IE");
+    assert_eq!(f.value.as_deref(), Some("52.8%"));
+    let s = &v.cites["src_shelf01"];
+    assert_eq!(s.kind, "source");
+    assert_eq!(s.label, "ShelfLife Magazine — Cool sales, hot demand");
+    assert_eq!(s.uri.as_deref(), Some("https://example.com/cool-sales"));
+    assert_eq!(s.tier.as_deref(), Some("secondary"));
+    assert_eq!(s.detail.as_deref(), Some("1 pinned fact"));
+}
+
+#[test]
+fn the_viewer_sees_their_own_decisions_as_you() {
+    let chain = r#"decisions:
+- id: d_01JB0MINE01
+  kind: verdict
+  agent: human:bc0f
+  actor: human:bc0f
+  action: reject_finding
+  polarity: bad
+  rationale: one survey
+  timestamp: '2026-09-28T10:00:00Z'
+- id: d_01JB0THEIRS
+  kind: edit
+  agent: human:ana
+  actor: human:ana
+  action: edit
+  rationale: tidy
+  timestamp: '2026-09-28T09:00:00Z'
+"#;
+    let d = doc_with(&[(CHAIN_PATH, chain)]);
+    let v = decisions_for(&d, Some("human:bc0f")).unwrap();
+    assert!(v.decisions[0].who.you);
+    assert_eq!(v.decisions[0].who.name, "You");
+    assert!(!v.decisions[1].who.you);
+    assert_eq!(v.decisions[1].who.name, "ana");
 }

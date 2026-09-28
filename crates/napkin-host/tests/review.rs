@@ -29,6 +29,12 @@ fn reasoning(decided: &str, cites: &[&str]) -> Value {
             "would_change_if": "the client says otherwise" })
 }
 
+/// Reasoning an agent flagged for a person to look at.
+fn flagged(mut r: Value) -> Value {
+    r["attention"] = json!("It rests on one source.");
+    r
+}
+
 fn pin(id: &str, value: f64, layer: &str) -> Value {
     json!({
         "id": id, "entity": "category/drinks.cider", "key": "market.share_frozen", "value": value,
@@ -89,7 +95,7 @@ fn fixture() -> Fixture {
             "decisions": [
                 { "id": "d_01JA0D02PIN", "kind": "pin", "agent": "research_lens@1.0", "action": "research_merge",
                   "rationale": "pinned", "targets": [format!("{doc}#facts[f_01JA0B3P4Q]")],
-                  "cites": ["src_4f2a"], "reasoning": reasoning("Pinned.", &["src_4f2a"]) },
+                  "cites": ["src_4f2a"], "reasoning": flagged(reasoning("Pinned.", &["src_4f2a"])) },
                 { "id": "d_01JA0D03CON", "kind": "contest", "agent": "research_lens@1.0", "action": "open_contest",
                   "rationale": "two values", "targets": [format!("{doc}#selection.contested[ct_share]")],
                   "cites": ["src_77aa"], "reasoning": reasoning("Opened a contest.", &["src_77aa"]) },
@@ -389,4 +395,31 @@ fn the_routes_carry_the_decisions() {
     assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
     let r = post("/verdict", json!({ "target": "facts[f_01JA0B3P4Q]", "polarity": "sideways" }));
     assert_eq!(r.status, 400);
+}
+
+
+#[test]
+fn looks_right_clears_an_agents_flag_and_nothing_else() {
+    let f = fixture();
+    let flagged_on = |f: &Fixture| {
+        f.session
+            .read(|d| napkin_host::ops::decisions::decisions(d))
+            .unwrap()
+            .attention
+            .iter()
+            .any(|a| a.decision.as_deref() == Some("d_01JA0D02PIN") && a.code == "flagged")
+    };
+    assert!(flagged_on(&f));
+    let before_facts = yaml(&f, "shared/facts.yaml");
+    run(&f, |c, d| review::acknowledge(c, d, &("d_01JA0D02PIN".into(), String::new()))).unwrap();
+    assert!(!flagged_on(&f), "a person has looked");
+    let d = &chain(&f).decisions[0];
+    assert_eq!(d.kind.as_deref(), Some("verdict"));
+    assert_eq!(d.polarity.as_deref(), Some("good"));
+    assert_eq!(d.cites, vec!["d_01JA0D02PIN".to_string()]);
+    assert!(d.rationale.starts_with("Looks right"));
+    assert_eq!(yaml(&f, "shared/facts.yaml"), before_facts, "the pin is untouched");
+    // A finding is verified, not waved through; an unknown decision is not one.
+    assert_eq!(run(&f, |c, d| review::acknowledge(c, d, &("d_01JA0D06SYN".into(), String::new()))), Err(400));
+    assert_eq!(run(&f, |c, d| review::acknowledge(c, d, &("d_01NOPE0000".into(), String::new()))), Err(404));
 }
