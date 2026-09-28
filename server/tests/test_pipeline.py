@@ -64,6 +64,33 @@ def test_research_writes_layers_first_then_pins_contests_and_reuses(store):
     assert {p["id"] for p in change2["facts_append"]} == {p["id"] for p in pins}
 
 
+def test_research_carries_its_evidence_into_the_document(store):
+    """Every pin keeps the verbatim quote each source gave, and every source a pin or a
+    contest value cites arrives as a record in sources_append: a citation leads somewhere."""
+    caps = caps_for(store)
+    _, change, _ = Researcher(DOC, "3", rclan(), "t@1.0", caps, ["market_structure", "media_spend"],
+                              ["IE", "GB"], ["automotive.ev_charging"]).run()
+    pins, recs = change["facts_append"], {s["id"]: s for s in change["sources_append"]}
+    for p in pins:
+        assert set(p["quotes"]) == set(p["sources"]), p["id"]
+        assert all(q.strip() for q in p["quotes"].values())
+    ct = change["data_patch"]["selection"]["contested"][0]
+    cited = {s for p in pins for s in p["sources"]} | {s for v in ct["values"] for s in v["sources"]}
+    assert cited == set(recs)
+    for s in recs.values():
+        assert s["uri"].startswith("http") and s["tier"] and s["title"] and "url" not in s
+    assert all(set(v["quotes"]) == set(v["sources"]) for v in ct["values"])
+    # A second campaign reuses the layer's rows: its pins still quote, and its
+    # sources still resolve to where they were read.
+    _, change2, _ = Researcher("22222222-2222-4333-8444-555555555555", "1", rclan(), "t@1.0",
+                               caps_for(store, research=FakeResearch()), ["market_structure", "media_spend"],
+                               ["IE", "GB"], ["automotive.ev_charging"]).run()
+    recs2 = {s["id"]: s for s in change2["sources_append"]}
+    for p in change2["facts_append"]:
+        assert set(p["sources"]) <= set(recs2) and set(p["quotes"]) == set(p["sources"])
+    assert all(s["uri"].startswith("http") for s in recs2.values())
+
+
 def test_a_failed_unit_is_a_gap_with_its_error(store):
     caps = caps_for(store, research=FakeResearch(fail_on={("media_spend", "IE")}))
     _, change, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],

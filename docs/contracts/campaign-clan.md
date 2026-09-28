@@ -27,7 +27,7 @@ No property in any of them has a `default`.
 
 ---
 
-## 1. Five members
+## 1. Six members
 
 | Member | Holds | Written by |
 |---|---|---|
@@ -35,23 +35,28 @@ No property in any of them has a `default`.
 | `shared/data.yaml` → `selection.*` | Region C — lenses run, coverage, gaps, contests, exclusions | research merges, humans |
 | `shared/facts.yaml` | Region B — pinned facts | the lease holder, or a merge |
 | `shared/findings.yaml` | Agent synthesis, "derived by the agent" | `synthesise_findings`; status changes by humans |
+| `shared/sources.yaml` | What each cited source is: uri, title, publisher, dates, tier, licence | research merges, first record kept |
 | `agent/decision-chain.yaml` | Region D — every decision | the OS layer, append-only |
 
 `shared/data.yaml` also holds two supporting blocks that are not regions:
 
 - `materials` — the index of supplied material (the prompt and each attachment),
   keyed by material id. Spans cite it. Bytes live as assets, by hash.
-- `projection` — the host's read-only scalar copy of the facts and findings
-  members, for view bindings (§5).
+- `projection` — the host's read-only scalar copy of the facts, findings and
+  sources members, for view bindings (§5): pins (each with its `quotes`),
+  findings, and `sources` by id.
 - `intake` — the chat that started the campaign: `intake.messages`, a map
   keyed by message id (§16).
 - `report` — the structured report the middleware composes and the view
   renders read-only (§17).
 
-`shared/facts.yaml` and `shared/findings.yaml` are their own registered members
-with their own roles (D2): a data-update pack replaces `shared/data.yaml` whole
+`shared/facts.yaml`, `shared/findings.yaml` and `shared/sources.yaml` are their
+own registered members with their own roles (D2): a data-update pack replaces `shared/data.yaml` whole
 and would otherwise delete every pin silently. Proposed roles:
-`pinned-facts` and `findings`. Registering them is packaging work.
+`pinned-facts`, `findings` and `sources`. The host registers `sources` the
+first time a change brings one. A pin is frozen with the verbatim quote each
+source gave, and the source's record is frozen beside it: the document says
+where every figure came from without asking the layers.
 
 The document **owns no facts** (D1). Every figure it relies on is a pin into
 the brand or category layer. Nothing in `campaign.*` holds a fact's value.

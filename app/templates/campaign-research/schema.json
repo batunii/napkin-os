@@ -1895,6 +1895,17 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "quotes": {
+                      "type": "object",
+                      "description": "The verbatim passage each source gave for this value, by source id.",
+                      "propertyNames": {
+                        "pattern": "^src_[0-9a-z]{4,}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1
+                      }
                     }
                   }
                 }
@@ -2247,7 +2258,7 @@
     },
     "projection": {
       "type": "object",
-      "description": "HOST-WRITTEN, READ-ONLY (decision D2). A scalar projection of shared/facts.yaml and shared/findings.yaml so view bindings resolve against shared/data.yaml alone. Rebuilt by the host after every change to either member; no agent or human patch may write it; the members are the authority. If built_from does not match the members' hashes the view says so instead of rendering the projection as current.",
+      "description": "HOST-WRITTEN, READ-ONLY (decision D2). A scalar projection of shared/facts.yaml, shared/findings.yaml and shared/sources.yaml so view bindings resolve against shared/data.yaml alone. Rebuilt by the host after every change to either member; no agent or human patch may write it; the members are the authority. If built_from does not match the members' hashes the view says so instead of rendering the projection as current.",
       "additionalProperties": false,
       "required": [
         "built_from",
@@ -2272,6 +2283,9 @@
             },
             "built_at": {
               "$ref": "#/definitions/datetime"
+            },
+            "sources_sha256": {
+              "$ref": "#/definitions/sha256"
             }
           }
         },
@@ -2386,6 +2400,17 @@
                   "boolean"
                 ],
                 "description": "For a stale pin only: the value of the current layer version, offered, never swapped in."
+              },
+              "quotes": {
+                "type": "object",
+                "description": "The verbatim passage each cited source gave for this value, by source id. Frozen with the pin.",
+                "propertyNames": {
+                  "pattern": "^src_[0-9a-z]{4,}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
@@ -2432,6 +2457,55 @@
               },
               "fact_id": {
                 "$ref": "#/definitions/fact_id"
+              }
+            }
+          }
+        },
+        "sources": {
+          "type": "object",
+          "description": "Every source a pin cites, by id: what it is and where to read it. A frozen copy of shared/sources.yaml.",
+          "propertyNames": {
+            "pattern": "^src_[0-9a-z]{4,}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "uri"
+            ],
+            "properties": {
+              "uri": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "publisher": {
+                "type": "string"
+              },
+              "published_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "retrieved_at": {
+                "type": "string"
+              },
+              "tier": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "licence": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "licensed-internal",
+                  "client-confidential"
+                ]
               }
             }
           }

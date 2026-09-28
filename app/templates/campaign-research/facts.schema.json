@@ -186,6 +186,17 @@
                 "description": "Shown as an offer, never applied."
               }
             }
+          },
+          "quotes": {
+            "type": "object",
+            "description": "The verbatim passage each cited source gave for this value, by source id. Frozen with the pin.",
+            "propertyNames": {
+              "pattern": "^src_[0-9a-z]{4,}$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }

@@ -94,10 +94,11 @@ def classify_schema(leaf_codes):
 
 
 class Chunk:
-    def __init__(self, stage, base, patch, read, facts=(), findings=(), decisions=(), message=None):
+    def __init__(self, stage, base, patch, read, facts=(), findings=(), decisions=(), message=None, sources=()):
         self.stage, self.base = stage, base
         self.patch, self.read = patch, read
         self.facts, self.findings, self.decisions = list(facts), list(findings), list(decisions)
+        self.sources = list(sources)
         self.message = message
         self.ids = {d["id"] for d in self.decisions}
 
@@ -105,16 +106,17 @@ class Chunk:
 def combine(doc, chunks) -> dict | None:
     if not chunks:
         return None
-    patch, read, facts, findings, decs = {}, {}, [], [], []
+    patch, read, facts, findings, sources, decs = {}, {}, [], [], [], []
     for c in chunks:
         patch = deep_merge(patch, c.patch)
         for k, v in c.read.items():
             read.setdefault(k, v)  # what the EARLIEST writer of the path read
         facts += [f for f in c.facts if f["id"] not in {x["id"] for x in facts}]
         findings += [f for f in c.findings if f["id"] not in {x["id"] for x in findings}]
+        sources += [s for s in c.sources if s["id"] not in {x["id"] for x in sources}]
         decs += [d for d in c.decisions if d["id"] not in {x["id"] for x in decs}]
     return {"doc": doc, "base_version": chunks[0].base, "read": read if patch else {}, "data_patch": patch,
-            "facts_append": facts, "findings_append": findings, "decisions": decs}
+            "facts_append": facts, "findings_append": findings, "sources_append": sources, "decisions": decs}
 
 
 class CampaignJob:
@@ -173,7 +175,7 @@ class CampaignJob:
         return uid("d_", self.doc, self.id, *parts)
 
     def add_chunk(self, stage, patch, decisions, facts=(), findings=(), text=None, question=None,
-                  msg_decision=None, base=None, read_from=None):
+                  msg_decision=None, base=None, read_from=None, sources=()):
         patch = copy.deepcopy(patch)
         decisions = list(decisions)
         message = None
@@ -204,7 +206,8 @@ class CampaignJob:
             if not any(a == t or t.startswith(a + "[") for d in decisions for t in d["targets"]):
                 decisions[0]["targets"].append(a)
         c = Chunk(stage, base if base is not None else self.W_version, patch,
-                  read_of(read_from if read_from is not None else self.W, patch), facts, findings, decisions, message)
+                  read_of(read_from if read_from is not None else self.W, patch), facts, findings, decisions, message,
+                  sources)
         with self.lock:
             self.chunks.append(c)
             self.W = apply_patch(self.W, patch)
@@ -847,7 +850,7 @@ class CampaignJob:
         text = (f"Research: {result['summary']}"
                 + (f" Sources by tier: {', '.join(f'{v} {k}' for k, v in sorted(tiers.items()))}." if tiers else ""))
         self.add_chunk("research", change["data_patch"], decs, facts=change["facts_append"], text=text,
-                       msg_decision=merge)
+                       msg_decision=merge, sources=change.get("sources_append") or [])
         return True
 
     def stage_synthesise(self):

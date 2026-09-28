@@ -234,7 +234,7 @@ class Researcher:
                 "unit": row["unit"], "as_of": row["as_of"], "retrieved_at": row["retrieved_at"],
                 "layer": row["layer"], "lens": lens, "run": f"{lens}/{market}", "sources": list(row["sources"]),
                 "records": row["source_records"], "method": row.get("method") or "report", "row": row,
-                "quotes": {}}
+                "quotes": _row_quotes(row)}
 
     def _check(self, f: dict, lens: str, market: str, by_sid: dict) -> dict | None:
         """The rules a model-extracted fact must pass."""
@@ -367,7 +367,8 @@ class Researcher:
             for v in ct["values"]:
                 row = self._write(v, cdec, status="contested")
                 vals.append({"value": row["value"], "unit": row["unit"], "fact_id": row["id"],
-                             "from": ", ".join(v["runs"]), "sources": list(v["sources"])})
+                             "from": ", ".join(v["runs"]), "sources": list(v["sources"]),
+                             "quotes": {s: q for s, q in (v.get("quotes") or {}).items() if s in v["sources"]}})
             vals = [{k: x for k, x in v.items() if x is not None} for v in vals]
             if len({repr(v["value"]) for v in vals}) < 2:
                 continue
@@ -438,11 +439,12 @@ class Researcher:
               "derived from source tier and corroboration.")
         merge_dec["fields_changed"] = ["selection.coverage", "selection.coverage_by_market"]
         rsn.give(merge_dec, merge_reasoning(facts_append, contests, gaps, len(units), n_reused))
+        srcs = {s["sid"]: s for u in units for s in u["sources"]}
         change = {"doc": doc, "base_version": self.base, "data_patch": {"selection": sel_patch},
                   "read": read_of(self.data, {"selection": sel_patch}),
                   "facts_append": facts_append, "findings_append": [],
+                  "sources_append": self._source_records(facts_append, contests, srcs, cands),
                   "decisions": run_decs + [merge_dec] + contest_decs}
-        srcs = {s["sid"]: s for u in units for s in u["sources"]}
         result = {"summary": f"{len(units)} lens x market run(s): {len(facts_append)} fact(s) pinned, "
                              f"{len(contests)} contest(s) open, {len(gaps)} gap(s)"
                              + (f", {n_reused} reused from the layers" if n_reused else "") + ".",
@@ -450,6 +452,33 @@ class Researcher:
                   "sources": {sid: {"uri": s["url"], "tier": s["tier"], "licence": "open", "title": s["title"],
                                     "publisher": s["publisher"]} for sid, s in srcs.items()}}
         return result, change, self.hits
+
+    @staticmethod
+    def _source_records(facts_append, contests, srcs, cands) -> list[dict]:
+        """The shared/sources.yaml records for every source a new pin or contest value cites:
+        what it is and where to read it, so a citation in the document leads somewhere. A
+        source read this run has its full record; one reused from the layer has what the
+        layer row carried."""
+        from_layer = {r["id"]: r for c in cands for r in (c.get("records") or []) if r.get("id")}
+        cited = [s for f in facts_append for s in f["sources"]] + \
+                [s for ct in contests for v in ct["values"] for s in v.get("sources") or []]
+        out = []
+        for sid in dict.fromkeys(cited):
+            if not str(sid).startswith("src_"):
+                continue
+            s = srcs.get(sid)
+            if s:
+                rec = {"id": sid, "uri": s["url"], "title": s["title"], "publisher": s["publisher"],
+                       "published_at": s["published_at"], "retrieved_at": s["retrieved_at"],
+                       "tier": s["tier"], "domain": s["domain"], "licence": "open"}
+            elif sid in from_layer and from_layer[sid].get("uri"):
+                r = from_layer[sid]
+                rec = {"id": sid, **{k: r[k] for k in ("uri", "title", "publisher", "published_at", "retrieved_at",
+                                                        "tier", "domain", "licence") if r.get(k) is not None}}
+            else:
+                continue
+            out.append({k: v for k, v in rec.items() if v not in (None, "")})
+        return out
 
     def _write(self, c: dict, dec: dict, status: str) -> dict:
         if c.get("row") and status == "active":
@@ -478,10 +507,21 @@ class Researcher:
                             f"{'/'.join(sorted({r.get('tier', '?') for r in recs}))}"
                             + (" (reused from the layer)" if c.get("row") else "")),
              "layer": row["layer"], "method": row.get("method") or "report"}
+        quotes = {**_row_quotes(row), **(c.get("quotes") or {})}
+        quotes = {s: q for s, q in quotes.items() if s in f["sources"] and isinstance(q, str) and q.strip()}
+        if quotes:
+            f["quotes"] = quotes
         if row.get("market"):
             f["market"] = row["market"]
         assert f["confidence"] in CONF
         return f
+
+
+def _row_quotes(row: dict) -> dict:
+    """The quote each source gave for a layer row, by source id (napkin.layers/1 §4.2
+    carries it on each source record)."""
+    return {r["id"]: r["quote"] for r in row.get("source_records") or []
+            if r.get("id") and isinstance(r.get("quote"), str) and r["quote"].strip()}
 
 
 # ---------------------------------------------------------------------------

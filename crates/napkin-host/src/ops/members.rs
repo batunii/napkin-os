@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The facts and findings members, and the projection the host keeps of them.
+//! The facts, findings and sources members, and the projection the host keeps
+//! of them.
 //!
 //! `shared/facts.yaml` (role `pinned-facts`) and `shared/findings.yaml` (role
 //! `findings`) are members of their own, registered in the manifest like any
@@ -12,6 +13,11 @@
 //! no error. A registered member is carried verbatim by every SDK write that
 //! does not name it (`pack` copies each parent entry and keeps each parent
 //! `files[]` entry), so nothing folds it away.
+//!
+//! `shared/sources.yaml` (role `sources`) holds what each cited source is —
+//! its address, title, publisher, dates, tier and licence — so a citation in
+//! the document leads somewhere without a call to the knowledge layer. Like a
+//! pin it is a frozen copy: the first delivery of an id is the one kept.
 //!
 //! What a view binds to lives in `shared/data.yaml` only, so the host keeps a
 //! read-only scalar copy there — `projection` — and rebuilds it whenever either
@@ -28,6 +34,8 @@ pub const FACTS_PATH: &str = "shared/facts.yaml";
 pub const FINDINGS_PATH: &str = "shared/findings.yaml";
 pub const FACTS_ROLE: &str = "pinned-facts";
 pub const FINDINGS_ROLE: &str = "findings";
+pub const SOURCES_PATH: &str = "shared/sources.yaml";
+pub const SOURCES_ROLE: &str = "sources";
 
 /// The block in `shared/data.yaml` the host owns. No patch writes it.
 pub const PROJECTION_KEY: &str = "projection";
@@ -53,10 +61,45 @@ pub const FINDINGS: Member = Member {
     key: "findings",
 };
 
+pub const SOURCES: Member = Member {
+    path: SOURCES_PATH,
+    role: SOURCES_ROLE,
+    key: "sources",
+};
+
+/// The fields of a source record the projection copies, in order.
+const SOURCE_FIELDS: &[&str] = &[
+    "uri",
+    "title",
+    "publisher",
+    "published_at",
+    "retrieved_at",
+    "tier",
+    "domain",
+    "licence",
+];
+
+/// Whether the document's data schema has room for sources in its projection
+/// (`projection.sources`, and `quotes` on each pin). A document made before
+/// sources existed has a schema that forbids them; its projection is built as
+/// it always was, so it keeps validating.
+pub fn projects_sources(clan: &ClanFile) -> bool {
+    let Ok(bytes) = clan.read_entry("agent/output-schema.json") else {
+        return false;
+    };
+    serde_json::from_slice::<Value>(&bytes)
+        .ok()
+        .and_then(|s| {
+            s.pointer("/properties/projection/properties/sources")
+                .map(|_| ())
+        })
+        .is_some()
+}
+
 /// Whether the document has either member — in its archive or its registry.
 /// A document that does is one whose `projection` the host owns.
 pub fn carries_members(clan: &ClanFile) -> bool {
-    [FACTS, FINDINGS]
+    [FACTS, FINDINGS, SOURCES]
         .iter()
         .any(|m| clan.has_entry(m.path) || clan.manifest().file_by_path(m.path).is_some())
 }
@@ -165,11 +208,17 @@ pub fn register(manifest: &mut Manifest, m: Member) {
 ///
 /// Only keys the entry actually has are copied — a pin missing its `layer` is
 /// left without one for the schema to reject, never given an invented value.
+///
+/// With `sources` (the document's schema has room for them, see
+/// [`projects_sources`]) each pin also carries its `quotes` — the verbatim
+/// passage each source gave for it — and the projection gains `sources`, each
+/// cited source by id, with the member's hash in `built_from`.
 pub fn projection(
     facts: &[serde_yaml::Value],
     facts_bytes: &[u8],
     findings: &[serde_yaml::Value],
     findings_bytes: &[u8],
+    sources: Option<(&[serde_yaml::Value], &[u8])>,
     built_at: &str,
 ) -> Value {
     let mut pins = Map::new();
@@ -196,6 +245,11 @@ pub fn projection(
         ] {
             if let Some(v) = f.get(k).filter(|v| !v.is_null()) {
                 pin.insert(k.into(), v.clone());
+            }
+        }
+        if sources.is_some() {
+            if let Some(q) = f.get("quotes").filter(|v| v.is_object()) {
+                pin.insert("quotes".into(), q.clone());
             }
         }
         let stale = f.get("stale").filter(|v| !v.is_null());
@@ -228,7 +282,7 @@ pub fn projection(
         found.insert(id.to_string(), Value::Object(entry));
     }
 
-    serde_json::json!({
+    let mut out = serde_json::json!({
         "built_from": {
             "facts_sha256": clan_sdk::hash::sha256_prefixed(facts_bytes),
             "findings_sha256": clan_sdk::hash::sha256_prefixed(findings_bytes),
@@ -236,5 +290,23 @@ pub fn projection(
         },
         "pins": Value::Object(pins),
         "findings": Value::Object(found),
-    })
+    });
+    if let Some((sources, sources_bytes)) = sources {
+        let mut by_id = Map::new();
+        for s in sources {
+            let Some(id) = entry_id(s) else { continue };
+            let s = serde_json::to_value(s).unwrap_or(Value::Null);
+            let mut src = Map::new();
+            for k in SOURCE_FIELDS {
+                if let Some(v) = s.get(*k).filter(|v| !v.is_null()) {
+                    src.insert((*k).into(), v.clone());
+                }
+            }
+            by_id.insert(id.to_string(), Value::Object(src));
+        }
+        out["built_from"]["sources_sha256"] =
+            Value::String(clan_sdk::hash::sha256_prefixed(sources_bytes));
+        out["sources"] = Value::Object(by_id);
+    }
+    out
 }

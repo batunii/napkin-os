@@ -7,7 +7,7 @@
 //!
 //! The middleware never writes a document and neither does the app that asked
 //! it. It answers with a `change` — a merge patch over `shared/data.yaml`,
-//! entries to append to the facts and findings members, and the decisions
+//! entries to append to the facts, findings and sources members, and the decisions
 //! that justify them — and the host applies that as ONE [`Change`] through the
 //! single write funnel, as the actor `process:middleware`. What the app gets
 //! back is informational: the envelope, with `change` replaced by whether it
@@ -30,7 +30,7 @@ use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
 
 use super::edit::attributed;
-use super::members::{self, Member, FACTS, FINDINGS, PROJECTION_KEY};
+use super::members::{self, Member, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 use super::{json_merge, Outcome};
 
 /// The transport verb that reads a job without starting work: the one
@@ -187,6 +187,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     };
     let facts_append = entries(change, "facts_append")?;
     let findings_append = entries(change, "findings_append")?;
+    let sources_append = entries(change, "sources_append")?;
     let decisions = entries(change, "decisions")?;
     let rule = ReasoningRule::of(clan)?;
     for d in &decisions {
@@ -199,6 +200,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     if data_patch.is_none()
         && facts_append.is_empty()
         && findings_append.is_empty()
+        && sources_append.is_empty()
         && decisions.is_empty()
     {
         return Ok(Outcome::unchanged(serde_json::json!({
@@ -252,6 +254,9 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     let mut findings = members::list_of(&findings_doc, FINDINGS)?;
     let new_findings = append(&mut findings, &findings_append, FINDINGS)?;
     check_findings(&new_findings, &facts)?;
+    let sources_doc = members::read_doc(clan, SOURCES)?;
+    let mut sources = members::list_of(&sources_doc, SOURCES)?;
+    let new_sources = append_sources(&mut sources, &sources_append)?;
 
     // A job decision about nothing but contested fields describes a write
     // that did not happen; it is kept inside the contest instead.
@@ -269,6 +274,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     json_merge(&mut data, &split.patch);
     if new_facts.is_empty()
         && new_findings.is_empty()
+        && new_sources.is_empty()
         && recorded.is_empty()
         && contests.is_empty()
         && data == current
@@ -278,6 +284,12 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
 
     let facts_bytes = members::write_doc(facts_doc, FACTS, facts.clone())?;
     let findings_bytes = members::write_doc(findings_doc, FINDINGS, findings.clone())?;
+    // The sources member is written once there is something in it; a
+    // document that never cited one does not grow an empty file.
+    let has_sources = !sources.is_empty() || clan.has_entry(SOURCES.path);
+    let sources_bytes = members::write_doc(sources_doc, SOURCES, sources.clone())?;
+    let projected_sources = members::projects_sources(clan)
+        .then_some((sources.as_slice(), sources_bytes.as_slice()));
 
     // 5. The data: the applicable part of the patch merged over what is
     //    there, then the projection rebuilt from the member bytes just
@@ -286,7 +298,14 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     if let Some(obj) = data.as_object_mut() {
         obj.insert(
             PROJECTION_KEY.into(),
-            members::projection(&facts, &facts_bytes, &findings, &findings_bytes, &now),
+            members::projection(
+                &facts,
+                &facts_bytes,
+                &findings,
+                &findings_bytes,
+                projected_sources,
+                &now,
+            ),
         );
     }
 
@@ -312,6 +331,9 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     let mut manifest = packed.manifest().clone();
     members::register(&mut manifest, FACTS);
     members::register(&mut manifest, FINDINGS);
+    if has_sources {
+        members::register(&mut manifest, SOURCES);
+    }
 
     let mut chain = if packed.has_entry(CHAIN) {
         DecisionChain::from_yaml(&packed.read_entry(CHAIN)?)?
@@ -343,6 +365,9 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
     }
     builder.add_entry(FACTS.path, facts_bytes);
     builder.add_entry(FINDINGS.path, findings_bytes);
+    if has_sources {
+        builder.add_entry(SOURCES.path, sources_bytes);
+    }
     builder.add_entry(CHAIN, chain.to_yaml()?);
     let bytes = builder.build()?;
 
@@ -358,6 +383,7 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
         "handler": ctx.handler,
         "facts_appended": new_facts.len(),
         "findings_appended": new_findings.len(),
+        "sources_appended": new_sources.len(),
         "decisions_appended": recorded.len() + contests.len(),
     });
     let change: Change = doc
@@ -1012,6 +1038,49 @@ fn append(items: &mut Vec<serde_yaml::Value>, new: &[Value], m: Member) -> HostR
                 m.path
             )));
         }
+        items.push(y);
+        added.push(entry.clone());
+    }
+    Ok(added)
+}
+
+/// Append source records, returning the ones that were new.
+///
+/// A source is who said something, not a claim: the same id delivered again
+/// with a different title or retrieval date (two lenses citing one page) is
+/// the same source, so the record first delivered is kept and the later one
+/// dropped — never a conflict. Each record needs a `src_` id and the `uri`
+/// it was read from; a verification by a person is cited as `human:<id>` and
+/// has no record here.
+fn append_sources(items: &mut Vec<serde_yaml::Value>, new: &[Value]) -> HostResult<Vec<Value>> {
+    let mut added = Vec::new();
+    for entry in new {
+        let id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|s| s.starts_with("src_") && s.len() > 4)
+            .ok_or_else(|| {
+                HostError::bad_request(format!(
+                    "a source for {} has no `src_` id",
+                    SOURCES.path
+                ))
+            })?;
+        if entry
+            .get("uri")
+            .and_then(Value::as_str)
+            .map_or(true, |u| u.trim().is_empty())
+        {
+            return Err(HostError::bad_request(format!("source {id} has no uri")));
+        }
+        if items.iter().any(|e| members::entry_id(e) == Some(id))
+            || added
+                .iter()
+                .any(|e: &Value| e.get("id").and_then(Value::as_str) == Some(id))
+        {
+            continue;
+        }
+        let y = serde_yaml::to_value(entry)
+            .map_err(|e| HostError::bad_request(format!("{id} is not representable: {e}")))?;
         items.push(y);
         added.push(entry.clone());
     }

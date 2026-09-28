@@ -27,6 +27,15 @@ def _vkey(v) -> str:
     return json.dumps(v, sort_keys=True)
 
 
+def _quotes(cs: list[dict]) -> dict:
+    """Each source's quote across candidates that agree: the first one a source gave."""
+    out: dict = {}
+    for c in cs:
+        for sid, q in (c.get("quotes") or {}).items():
+            out.setdefault(sid, q)
+    return out
+
+
 def merge(candidates: list[dict], pinned: dict[tuple, dict], open_contest_keys: set[str]) -> dict:
     """candidates: [{entity, key, market?, value, unit, sources: [src ids], run: '<lens>/<market>', ...}]
     pinned: identity -> the pin the document holds.
@@ -46,6 +55,7 @@ def merge(candidates: list[dict], pinned: dict[tuple, dict], open_contest_keys: 
         if len(by_value) == 1:
             merged = dict(cs[0])
             merged["sources"] = list(dict.fromkeys(s for c in cs for s in c["sources"]))
+            merged["quotes"] = _quotes(cs)
             merged["runs"] = list(dict.fromkeys(c["run"] for c in cs))
             if prior is not None:
                 if _vkey(prior.get("value")) == _vkey(merged["value"]):
@@ -63,6 +73,7 @@ def merge(candidates: list[dict], pinned: dict[tuple, dict], open_contest_keys: 
             for vs in by_value.values():
                 m = dict(vs[0])
                 m["sources"] = list(dict.fromkeys(s for c in vs for s in c["sources"]))
+                m["quotes"] = _quotes(vs)
                 m["runs"] = list(dict.fromkeys(c["run"] for c in vs))
                 vals.append(m)
             contests.append({"key": ckey, "identity": ident, "pinned": prior, "values": vals})

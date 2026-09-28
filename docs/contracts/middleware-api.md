@@ -174,6 +174,9 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
                   "selection": {}, "materials": {} },
   "facts_append": [ "entries per facts.schema.json" ],
   "findings_append": [ "entries per findings.schema.json" ],
+  "sources_append": [ { "id": "src_...", "uri": "https://...", "title": "...", "publisher": "...",
+                        "published_at": "YYYY-MM-DD | null", "retrieved_at": "YYYY-MM-DD",
+                        "tier": "...", "domain": "...", "licence": "open" } ],
   "decisions": [ { "id": "d_...", "kind": "edit | finding | contest | pin | verdict (§10.7)", "agent": "<handler>",
                    "action": "...", "rationale": "...", "targets": ["<doc-id>#<path>"],
                    "cites": ["f_...", "src_...", "mat_..."], "handler": "...", "backend": "...",
@@ -223,10 +226,17 @@ Every change must leave the document valid against the campaign schemas
   self-reported), licence (the strictest of its sources), `as_of` (when true) ≤
   `retrieved_at` (when learned), `origin fact://<layer>/<entity path>/<key>@<version>`,
   and the `decision` that pinned it. No two pins share entity + key + market
-  with different values.
+  with different values. A pin carries `quotes`: for each of its `src_`
+  sources, the verbatim passage that source gave for the value.
+- **`sources_append`** (optional): a record for every `src_` source a new pin
+  or contest value cites — `id` and `uri` required, with its title, publisher,
+  dates, tier, domain and licence — so a citation in the document leads to
+  where it was read without a call to the layers. The host keeps the first
+  record it is given for an id; a later one for the same id is dropped, never
+  a conflict (two lenses citing one page under different titles).
 - **Contests.** Two runs disagreeing on one entity + key (+ market) produce a
   `selection.contested` entry, `status: open`, carrying every value with its
-  `fact_id`, `from` and `sources`, and a `contest` decision targeting it. None
+  `fact_id`, `from`, `sources` and `quotes`, and a `contest` decision targeting it. None
   of the contested values is pinned — nothing is silently picked.
 - **`findings_append`**: each validates against `findings.schema.json`; always
   `status: proposed` (only a human verifies — D1 amended); `derived_by` = the
@@ -356,7 +366,7 @@ The template never writes middleware output. When a `clan://api-proxy` reply for
    refuses;
 2. applies it through the single write funnel as ONE Change: `data_patch` →
    `shared/data.yaml`, `facts_append` → `shared/facts.yaml`, `findings_append` →
-   `shared/findings.yaml`, decisions appended with `actor: process:middleware`,
+   `shared/findings.yaml`, `sources_append` → `shared/sources.yaml`, decisions appended with `actor: process:middleware`,
    `handler` and `backend` the response's, `scope` the one the host resolved,
    and the decision's own `id`, `kind`, `targets`, `cites`, `rationale` and
    `reasoning` as fields (`claimed_agent` = its `agent` when that is not the

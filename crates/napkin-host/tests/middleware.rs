@@ -12,7 +12,9 @@
 use std::sync::Arc;
 
 use clan_sdk::{ClanFile, DecisionChain};
-use napkin_host::ops::members::{FACTS_PATH, FACTS_ROLE, FINDINGS_PATH, FINDINGS_ROLE};
+use napkin_host::ops::members::{
+    FACTS_PATH, FACTS_ROLE, FINDINGS_PATH, FINDINGS_ROLE, SOURCES_PATH, SOURCES_ROLE,
+};
 use napkin_host::ops::middleware;
 use napkin_host::{Ctx, DocId, Document, FsStore, HostEvent, Session};
 use serde_json::{json, Value};
@@ -1547,4 +1549,138 @@ fn a_declaration_the_host_cannot_read_refuses_the_change() {
         let why = refused_reason(&f, reply_for(&clan));
         assert!(why.contains("app/pipeline.yaml `reasoning"), "{bad}: {why}");
     }
+}
+
+// ── sources: the evidence travels with the document ────────────────────────
+
+/// A schema with room for sources in the projection, the way the Research
+/// Tool's is after this change: nothing else about it is checked.
+const SCHEMA_WITH_SOURCES: &str =
+    r#"{"type":"object","properties":{"projection":{"type":"object","properties":{"sources":{"type":"object"}}}}}"#;
+
+/// A fresh document whose data schema is `schema`.
+fn fixture_with_schema(schema: &str) -> Fixture {
+    let f = fixture();
+    let clan = on_disk(&f);
+    let mut b = clan_sdk::ClanBuilder::new(clan.manifest().clone());
+    for (path, entry) in clan.read_all_entries().unwrap() {
+        if path != clan_sdk::MANIFEST_PATH && path != "agent/output-schema.json" {
+            b.add_entry(path, entry);
+        }
+    }
+    b.add_entry("agent/output-schema.json", schema.as_bytes().to_vec());
+    std::fs::write(f.id.as_str(), b.build().unwrap()).unwrap();
+    f.session.open(f.id.clone()).unwrap();
+    f
+}
+
+fn source(id: &str, title: &str) -> Value {
+    json!({ "id": id, "uri": "https://example.com/panel-2026", "title": title,
+            "publisher": "Example Panel", "published_at": "2026-06-30",
+            "retrieved_at": "2026-09-12", "tier": "syndicated", "domain": "example.com",
+            "licence": "open" })
+}
+
+/// `reply_for`, with the first pin quoting its source and the source's record.
+fn reply_with_sources(clan: &Value, title: &str) -> Value {
+    let mut r = reply_for(clan);
+    r["change"]["facts_append"][0]["quotes"] =
+        json!({ "src_4f2a": "Prompted awareness reached 61% by June." });
+    r["change"]["sources_append"] = json!([source("src_4f2a", title)]);
+    r
+}
+
+#[test]
+fn sources_land_in_their_own_member_and_the_projection_carries_them() {
+    let f = fixture_with_schema(SCHEMA_WITH_SOURCES);
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(&f, reply_with_sources(&clan, "Panel, June 2026"));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+
+    let after = on_disk(&f);
+    assert_eq!(
+        after.manifest().file_by_path(SOURCES_PATH).unwrap().role,
+        SOURCES_ROLE
+    );
+    let report = clan_sdk::validate(&after);
+    assert!(report.is_valid(), "{}", report.display());
+    assert_eq!(yaml(&after, SOURCES_PATH)["sources"][0]["id"], "src_4f2a");
+
+    // What a view binds to: the source by id, and the quote on the pin.
+    let p = &yaml(&after, "shared/data.yaml")["projection"];
+    assert_eq!(p["sources"]["src_4f2a"]["uri"], "https://example.com/panel-2026");
+    assert_eq!(p["sources"]["src_4f2a"]["publisher"], "Example Panel");
+    assert!(p["sources"]["src_4f2a"].get("id").is_none());
+    assert_eq!(
+        p["pins"]["f_01JA0B3P4Q"]["quotes"]["src_4f2a"],
+        "Prompted awareness reached 61% by June."
+    );
+    assert_eq!(
+        p["built_from"]["sources_sha256"],
+        clan_sdk::hash::sha256_prefixed(&after.read_entry(SOURCES_PATH).unwrap())
+    );
+}
+
+#[test]
+fn a_source_delivered_again_keeps_its_first_record() {
+    let f = fixture_with_schema(SCHEMA_WITH_SOURCES);
+    let clan = f.session.clan_context_for_agent();
+    settle(&f, reply_with_sources(&clan, "Panel, June 2026"));
+
+    // A second lens cites the same page under another title, with a new pin
+    // of its own: the change lands, and the source is not a conflict.
+    let clan = f.session.clan_context_for_agent();
+    let mut r = reply_with_sources(&clan, "Example Panel — H1 2026 report");
+    r["change"]["data_patch"] = json!({});
+    r["change"]["read"] = json!({});
+    r["change"]["facts_append"] = json!([fact("f_01JA0B3P6S", 0.3, false)]);
+    r["change"]["findings_append"] = json!([]);
+    r["change"]["decisions"] = json!([]);
+    let (out, _) = settle(&f, r);
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+
+    let sources = yaml(&on_disk(&f), SOURCES_PATH)["sources"].clone();
+    assert_eq!(sources.as_array().unwrap().len(), 1);
+    assert_eq!(sources[0]["title"], "Panel, June 2026");
+}
+
+#[test]
+fn a_document_made_before_sources_keeps_its_projection_shape() {
+    // The generic schema has no `projection.sources`: the member is still
+    // kept, but the projection is built as it always was.
+    let f = fixture();
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(&f, reply_with_sources(&clan, "Panel, June 2026"));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    let after = on_disk(&f);
+    assert_eq!(yaml(&after, SOURCES_PATH)["sources"][0]["id"], "src_4f2a");
+    let p = &yaml(&after, "shared/data.yaml")["projection"];
+    assert!(p.get("sources").is_none(), "{p}");
+    assert!(p["built_from"].get("sources_sha256").is_none());
+    assert!(p["pins"]["f_01JA0B3P4Q"].get("quotes").is_none());
+}
+
+#[test]
+fn a_change_without_sources_writes_no_sources_member() {
+    let f = fixture_with_schema(SCHEMA_WITH_SOURCES);
+    let clan = f.session.clan_context_for_agent();
+    settle(&f, reply_for(&clan));
+    let after = on_disk(&f);
+    assert!(!after.has_entry(SOURCES_PATH));
+    assert!(after.manifest().file_by_path(SOURCES_PATH).is_none());
+    // The projection still says there are none, in the shape the schema has.
+    let p = &yaml(&after, "shared/data.yaml")["projection"];
+    assert_eq!(p["sources"], json!({}));
+}
+
+#[test]
+fn a_source_without_a_uri_or_a_src_id_is_refused() {
+    let f = fixture_with_schema(SCHEMA_WITH_SOURCES);
+    let clan = f.session.clan_context_for_agent();
+    let mut r = reply_with_sources(&clan, "Panel");
+    r["change"]["sources_append"][0]["uri"] = json!(" ");
+    assert!(refused_reason(&f, r).contains("src_4f2a has no uri"));
+    let mut r = reply_with_sources(&clan, "Panel");
+    r["change"]["sources_append"][0]["id"] = json!("human:ana");
+    assert!(refused_reason(&f, r).contains("no `src_` id"));
 }
