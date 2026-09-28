@@ -179,6 +179,10 @@ class FakeModel:
         return {"findings": out, "audience": None}
 
     @staticmethod
+    def r_layout(p):
+        return fake_layout(p)
+
+    @staticmethod
     def r_report(p):
         secs, first = [], None
         for l in p["lenses"]:
@@ -193,6 +197,25 @@ class FakeModel:
                 "summary": [{"text": "Read the sections below.", "cites": [first]},
                             {"text": "Nothing is cited here.", "cites": []}],
                 "sections": secs}
+
+
+def fake_layout(p):
+    """A layout the way an agent writes one, with the mistakes the rule must catch."""
+    nums = [x["id"] for x in p["pins"] if isinstance(x["value"], (int, float))]
+    fi = [x["id"] for x in p["findings"]]
+    big = "".join(f'<clan-field ref="{i}" as="big"></clan-field>' for i in nums[:3])
+    return {"html": (
+        f'<header class="cl-head" onclick="x()"><span class="cl-eyebrow">Research</span>'
+        f'<h1 class="cl-title">{p["headline"]["text"]}</h1><script>steal()</script></header>'
+        f'<div class="cl-nums evil">{big}</div>'
+        f'<section class="cl-block"><p>Grounded. <clan-cite refs="{" ".join(nums[:1])}"></clan-cite></p>'
+        + (f'<p><clan-field ref="{fi[0]}" as="claim"></clan-field></p>' if fi else "")
+        + '<p>This sentence has no evidence at all.</p>'
+        f'<p>A made-up 73% share. <clan-cite refs="{nums[0]}"></clan-cite></p>'
+        '<p>Invented: <clan-field ref="f_NOTREAL01"></clan-field> and more.</p>'
+        f'<clan-chart kind="bar" refs="{" ".join(nums[:3])}" title="By lens"></clan-chart>'
+        '<img src="x" onerror="bad()"><a href="javascript:bad()">link</a></section>'
+        '<footer class="cl-foot"><clan-sources></clan-sources></footer>')}
 
 
 class FakeResearch:

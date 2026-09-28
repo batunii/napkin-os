@@ -530,6 +530,28 @@ body.fresh main{padding-top:24px}
 }
 /* ---------- the report ---------- */
 section.report{margin-top:36px}
+/* Two modes (owner, 2026-09-28). Working: the crew, the stages and the
+   question; no half-built document. Done: the report the agent laid out, what
+   needs you at the top, and everything recorded behind one disclosure. */
+body.working #report,body.working #records,body.working #hero,body.working #gates,body.working #jobs,body.working #tray,body.working #docfoot,
+body.working .nav,body.working #extractBtn,body.working #researchBtn,body.working #synthBtn,body.working #lockBtn{display:none!important}
+body.fresh #tray,body.fresh #records{display:none!important}
+body.done #hero,body.done #gates,body.done #lockBtn{display:none!important}
+body.done:not(.records-open) .nav,body.done:not(.records-open) #extractBtn,body.done:not(.records-open) #researchBtn,body.done:not(.records-open) #synthBtn{display:none!important}
+body.done #start{display:none}
+body.done.show-run #start{display:block}
+clan-tray .clf-tray{top:var(--top-h,53px)}
+.rep-layout{margin-top:14px}
+.rep-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--ink3)}
+.rep-bar .sp{flex:1}
+details.records{margin-top:48px;border-top:1px solid var(--line);padding-top:8px}
+details.records > summary{list-style:none;cursor:pointer;display:grid;gap:2px;padding:16px 0}
+details.records > summary::-webkit-details-marker{display:none}
+details.records > summary .rt{font-weight:700;font-size:16px}
+details.records > summary .rt::after{content:" \25BE";color:var(--ink3);font-weight:400}
+details.records[open] > summary .rt::after{content:" \25B4"}
+details.records > summary .rs{font-size:13px;color:var(--ink2)}
+details.records section.region:first-of-type{margin-top:24px}
 .rep{border:1px solid var(--line-soft);border-radius:22px;background:var(--paper);box-shadow:var(--shadow);padding:26px 28px 24px;display:grid;gap:22px}
 .rep-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .rep-top .sp{flex:1}
@@ -603,6 +625,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
 }
 </style>
 <!-- @napkin:agent-figures -->
+<!-- @napkin:clan-fields -->
 </head>
 <body>
 <header class="top no-print" role="banner">
@@ -628,6 +651,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   </div>
 </header>
 
+<clan-tray id="tray"></clan-tray>
 <main id="doc">
   <div id="notices"></div>
   <div class="hero band" id="hero"></div>
@@ -636,6 +660,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   <div id="gates"></div>
   <div id="jobs" aria-live="polite"></div>
 
+  <details class="records" id="records">
+  <summary><span class="rt">Everything recorded</span><span class="rs">The ask, every pinned fact, the findings, what research drew on, and the decision history.</span></summary>
   <section class="region" id="ask" aria-labelledby="h-ask">
     <div class="sec-h"><h2 id="h-ask">The ask</h2><span class="count" id="ask-count"></span></div>
     <p class="sec-lede">What the client wants done. Every field says how it got here: <b>you said this</b> is the client's own material, quoted; <b>we inferred this</b> is derived from pinned facts. A field nobody has filled stays empty, with the gate that waits on it.</p>
@@ -666,6 +692,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     <p class="sec-lede">Every decision about this document, newest first.</p>
     <div id="history-body"></div>
   </section>
+  </details>
 
   <footer class="doc-foot" id="docfoot"></footer>
 </main>
@@ -1077,9 +1104,9 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var canConfirm=(env.origin==='extracted'||env.origin==='proposed');
     h+='<div class="ctl no-print" role="group" aria-label="Review '+esc(f.label)+'">'
       +(canConfirm?'<button type="button" class="btn sm live" data-act="confirm" data-field="'+f.k+'" data-address="'+esc(A)+'">'+ICON.check.replace('<svg','<svg style="width:12px;height:12px"')+'Confirm</button>':'')
-      +'<button type="button" class="btn sm" data-act="verdict-good" data-field="'+f.k+'" data-address="'+esc(A)+'" title="'+esc(STUB.verdict)+'" aria-disabled="true">Good</button>'
-      +'<button type="button" class="btn sm" data-act="verdict-bad" data-field="'+f.k+'" data-address="'+esc(A)+'" title="'+esc(STUB.verdict)+'" aria-disabled="true">Bad…</button>'
-      +'<button type="button" class="btn sm" data-act="classify" data-field="'+f.k+'" data-address="'+esc(A)+'" title="'+esc(STUB.classify)+'" aria-disabled="true">Confidential…</button>'
+      +'<button type="button" class="btn sm live" data-act="verdict-good" data-field="'+f.k+'" data-address="'+esc(A)+'">Good</button>'
+      +'<button type="button" class="btn sm live" data-act="verdict-bad" data-field="'+f.k+'" data-address="'+esc(A)+'">Bad…</button>'
+      +'<button type="button" class="btn sm live" data-act="classify" data-field="'+f.k+'" data-address="'+esc(A)+'">Confidential…</button>'
       +'<span class="sp"></span>'
       +'<button type="button" class="btn sm ghost" data-act="why" data-path="'+esc(p)+'" data-address="'+esc(A)+'">Why is this here?</button>'
       +'</div>';
@@ -1136,7 +1163,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
             +'<td><div class="key">'+esc(x.key)+'</div><div class="by mono">'+esc(id)+(x.market?' · <span class="pill" style="padding:0 6px">'+esc(x.market)+'</span>':' · all markets')+(x.method?' · '+esc(x.method):'')+'</div></td>'
             +'<td><div class="val'+(isText?' text':'')+'">'+esc(v)+'</div><div class="by">'+esc(x.unit)+'</div>'
             +(x.stale?'<div class="stale" role="note"><div><b>Stale.</b> The layer has moved on to v'+esc(x.current_version||'?')+'. This pin keeps its value.'+(x.current_value!==undefined?' Current: <b>'+esc(x.current_value)+'</b>.':' The current value is not in the projection.')+'</div>'
-              +'<div class="no-print">'+stubBtn('Take current version…', STUB.pin, 'pin', addr('facts['+id+']'))+'</div></div>':'')
+              +'<div class="muted" style="font-size:12px">Running research again takes the current version.</div></div>':'')
             +'</td>'
             +'<td class="dates">'+esc(x.as_of)+(x.retrieved_at?'<div class="by">learned '+esc(x.retrieved_at)+'</div>':'')+'</td>'
             +'<td><span class="pill '+(x.confidence==='high'?'ok':x.confidence==='low'?'alert':'')+'" title="Derived from source tier and corroboration, never asserted">'+esc(x.confidence)+'</span></td>'
@@ -1187,7 +1214,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
         +(citing.length?'<dt>'+(st==='rejected'?'Flags':'Used by')+'</dt><dd>'+citing.map(function(x){ return '<a class="pill'+(st==='rejected'?' alert':'')+'" href="#field-'+x.k+'">'+(st==='rejected'?'<span class="d"></span>':'')+esc(x.label)+'</a>'; }).join(' ')+(st==='rejected'?' <span style="font-size:12px;color:var(--create-ink)">revise to stop citing it</span>':st==='proposed'?' <span class="muted" style="font-size:12px">a brief may use it only visibly labelled</span>':'')+'</dd>':'')
         +'</dl>';
       h+='<div class="ctl no-print" role="group" aria-label="Review '+esc(id)+'">'
-        +(st==='proposed'?stubBtn('Verify…', STUB.finding, 'verify', A)+stubBtn('Reject…', STUB.finding, 'reject', A):'')
+        +(st==='proposed'?'<button type="button" class="btn sm live" data-act="verify" data-address="'+esc(A)+'">Verify or reject…</button>':'')
         +'<span class="sp"></span><button type="button" class="btn sm ghost" data-act="why" data-path="findings['+esc(id)+']" data-address="'+esc(A)+'">Why is this here?</button></div>';
       return h+'</article>';
     }).join('')+'</div>';
@@ -1353,9 +1380,21 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     sb.title=hasPins?'synthesise_findings over the pinned facts':'Synthesis reads the pins; there are none yet';
   }
 
+  function mode(){
+    var fresh=document.body.classList.contains('fresh');
+    var working=!!(CHAT.job&&(jobActive()||liveQuestion()));
+    document.body.classList.toggle('working', working&&!fresh);
+    document.body.classList.toggle('done', !working&&!fresh);
+    var rec=$('records'), hasLayout=isObj(D().report)&&typeof D().report.layout==='string';
+    // Opened for you only while there is no report to read; once you open or
+    // close it yourself, it stays as you left it.
+    if(rec&&!rec.dataset.touched&&rec.open!==!hasLayout){ rec.dataset.auto=String(!hasLayout); rec.open=!hasLayout; }
+    document.body.classList.toggle('records-open', !!(rec&&rec.open));
+    var top=document.querySelector('.top'); if(top) document.documentElement.style.setProperty('--top-h', top.offsetHeight+'px');
+  }
   function render(){
     try{
-      renderNotices(); renderHero(); renderReport(); renderChat(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop(); syncTitle();
+      renderNotices(); renderHero(); renderReport(); renderChat(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop(); syncTitle(); mode();
     }catch(e){
       console.error(e);
       $('notices').innerHTML='<div class="notice" role="alert"><b>The view could not render this document.</b> '+esc(e&&e.message)+'</div>';
@@ -1417,6 +1456,11 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(typeof dlg.showModal==='function') dlg.showModal(); else dlg.setAttribute('open','');
     var c=form.querySelector('[data-close]'); if(c) c.addEventListener('click',function(e){ e.preventDefault(); closeDialog(); });
     if(onReady) onReady(form);
+    // App frames are sandboxed without allow-forms: a form never submits, so a
+    // submit button runs the form's handler on its click instead.
+    Array.prototype.forEach.call(form.querySelectorAll('button[type="submit"]'), function(btn){
+      btn.addEventListener('click', function(e){ e.preventDefault(); if(btn.disabled) return;
+        if(typeof form.onsubmit==='function') form.onsubmit({preventDefault:function(){}, target:form, submitter:btn}); else closeDialog(); }); });
     var first=form.querySelector('textarea,input:not([type=hidden]),select'); if(first) first.focus();
   }
   function closeDialog(){ if(dlg.open) dlg.close(); else dlg.removeAttribute('open'); if(lastFocus&&lastFocus.focus) lastFocus.focus(); }
@@ -1513,7 +1557,24 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       });
   }
 
-  // ── STUBS: show the control and the typed decision it will record.
+  // ── A person's decisions go to the host's routes (Contract 4 §8); the reply
+  // carries the document as it now stands.
+  function hostDecide(route, body){
+    return fetch(clanScheme+route, {method:'POST', body:JSON.stringify(body)})
+      .then(function(r){ return r.json().catch(function(){ return {ok:false, error:'status '+r.status}; }); })
+      .then(function(res){
+        if(res&&res.clan&&res.clan.data){ window.__CLAN__.data=res.clan.data; window.dispatchEvent(new CustomEvent('clan:dataupdated',{detail:{source:'review'}})); }
+        loadChain(); if(window.ClanFields) ClanFields.reload();
+        return res;
+      });
+  }
+  function decideFoot(label){ return '<div class="foot"><span class="why" id="dlg-err"></span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">'+esc(label)+'</button></div>'; }
+  function submitDecision(route, body, done){
+    hostDecide(route, body).then(function(res){
+      if(res&&res.ok){ closeDialog(); toast(done); }
+      else { var e=$('dlg-err'); var m=(res&&(typeof res.error==='string'?res.error:res.error&&res.error.message))||'the host refused'; if(e) e.textContent='Not recorded: '+m; else toast('Not recorded: '+m); }
+    }).catch(function(err){ toast('Not recorded: '+err); });
+  }
   function doVerdict(k, polarity){
     var f=FIELD[k], A=addr('campaign.'+k);
     var codes=['other']; decs().forEach(function(d){ if(d.reason_code && codes.indexOf(d.reason_code)===-1) codes.push(d.reason_code); });
@@ -1521,8 +1582,10 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       +(polarity==='bad'?'<p style="margin:0">A bad verdict stops re-extraction from writing over the field until it is revised, or the verdict overridden with a reason. It blocks the lock while unanswered.</p>':'<p style="margin:0">A good verdict feeds exemplars.</p>')
       +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Reason code<input type="text" name="code" list="codes" value="'+(polarity==='bad'?'other':'')+'"><datalist id="codes">'+codes.map(function(c){return '<option value="'+esc(c)+'">';}).join('')+'</datalist></label>'
       +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Rationale '+(polarity==='bad'?'<span class="req">required</span>':'(required for other)')+'<textarea name="why" '+(polarity==='bad'?'required':'')+'></textarea></label>'
-      +'<div id="dlg-prev"></div>'+stubFoot(STUB.verdict),
-      function(fm){ function upd(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', {kind:'verdict', polarity:polarity, reason_code:fm.code.value||undefined, targets:[A], actor:'human:'+(reviewer()||'<you>'), rationale:fm.why.value}); } fm.addEventListener('input',upd); upd(); fm.onsubmit=function(e){ e.preventDefault(); }; });
+      +decideFoot(polarity==='bad'?'Mark it bad':'Mark it good'),
+      function(fm){ fm.onsubmit=function(e){ e.preventDefault();
+        if(polarity==='bad'&&!fm.why.value.trim()){ fm.why.reportValidity(); return; }
+        submitDecision('/verdict', {target:'campaign.'+k, polarity:polarity, reason_code:fm.code.value||undefined, rationale:fm.why.value.trim()}, 'Recorded.'); }; });
   }
   function doClassify(k){
     var f=FIELD[k], A=addr('campaign.'+k), env=camp()[k]||{};
@@ -1532,23 +1595,13 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       +'<fieldset><legend>May it reach…</legend>'
       +['model','export','corpus'].map(function(d){ return '<label class="opt"><input type="checkbox" name="'+d+'"'+(L[d]?' checked':'')+'><span><b>'+{model:'The model',export:'An export',corpus:'The corpus'}[d]+'</b><br><span class="muted" style="font-size:12px">'+{model:'prompt selection may include it',export:'it may appear in anything sent outside',corpus:'it may enter the dossier the system learns from'}[d]+'</span></span></label>'; }).join('')+'</fieldset>'
       +(backed?'<div class="flag amber"><div>This field is backed by pins. The mark supersedes the licence of those facts in the layer, so it does not leak into the next campaign.</div></div>':'')
-      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Rationale<textarea name="why"></textarea></label>'
-      +'<div id="dlg-prev"></div>'+stubFoot(STUB.classify),
-      function(fm){ function upd(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', {kind:'classify', targets:[A], licence:{model:fm.model.checked, export:fm.export.checked, corpus:fm.corpus.checked}, cites:backed?env.fact_ids:undefined, actor:'human:'+(reviewer()||'<you>'), rationale:fm.why.value}); } fm.addEventListener('input',upd); fm.addEventListener('change',upd); upd(); fm.onsubmit=function(e){ e.preventDefault(); }; });
+      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Why <span class="req">required</span><textarea name="why" required></textarea></label>'
+      +decideFoot('Mark it'),
+      function(fm){ fm.onsubmit=function(e){ e.preventDefault(); if(!fm.why.value.trim()){ fm.why.reportValidity(); return; }
+        submitDecision('/classify', {target:'campaign.'+k, model:fm.model.checked, export:fm.export.checked, corpus:fm.corpus.checked, rationale:fm.why.value.trim()}, 'Marked.'); }; });
   }
-  function doFinding(id, act){
-    var f=fnds()[id], A=addr('findings['+id+']'); if(!f) return;
-    var flags=fieldsCiting(id);
-    openDialog('<h2 id="dlg-title">'+(act==='verify'?'Verify':'Reject')+' finding</h2><div class="addr">'+esc(A)+'</div>'
-      +'<div class="card s-proposed" style="box-shadow:none"><span class="derived">'+ICON.agent+'Derived by the agent</span><div class="stmt">'+esc(f.statement)+'</div>'+pinChips(f.cites)+'</div>'
-      +(act==='verify'?'<p style="margin:0">Verifying creates a <span class="mono">human:&lt;you&gt;</span> source at tier reviewer-verified, writes the finding to the layer as a synthesis fact citing these pins, and pins it. It inherits the strictest licence among its citations.</p>'
-        :'<p style="margin:0">Rejecting flags every field that cites it'+(flags.length?' — '+flags.map(function(x){return '<b>'+esc(x.label)+'</b>';}).join(', '):'')+' — and the lock waits until they are revised.</p>')
-      +'<label style="display:grid;gap:4px;font-size:12.5px;color:var(--ink2)">Rationale '+(act==='reject'?'<span class="req">required</span>':'')+'<textarea name="why"></textarea></label>'
-      +'<div id="dlg-prev"></div>'+stubFoot(STUB.finding),
-      function(fm){ function upd(){ $('dlg-prev').innerHTML=preview('The decision this will record (W2-O2)', act==='verify'
-          ? {kind:'verify', targets:[A], cites:[id].concat(f.cites), source:{uri:'human:'+(reviewer()||'<you>'), tier:'reviewer-verified'}, rationale:fm.why.value}
-          : {kind:'verdict', polarity:'bad', targets:[A], cites:[id].concat(f.cites), flags:flags.map(function(x){return addr('campaign.'+x.k);}), rationale:fm.why.value}); } fm.addEventListener('input',upd); upd(); fm.onsubmit=function(e){ e.preventDefault(); }; });
-  }
+  // A finding is verified or rejected where every app does it: the OS's drawer.
+  function doFinding(id){ if(window.ClanFields) ClanFields.open(id); }
   function doPin(a){
     var id=/facts\[(.+)\]$/.exec(a); id=id&&id[1]; var p=pins()[id]; if(!p) return;
     openDialog('<h2 id="dlg-title">Take the current version</h2><div class="addr">'+esc(a)+'</div>'
@@ -1580,8 +1633,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
     h+='<ul class="blockers"><li class="info"><span class="k">Branches</span><span>Unmerged agent branches are checked by the host at lock.</span></li>'
       +(st.length?'<li class="info"><span class="k">Stale pins</span><span>'+st.length+' stale pin'+(st.length===1?'':'s')+' ('+st.map(function(id){ return '<a href="#fact-'+esc(id)+'">'+esc(pins()[id].key)+'</a>'; }).join(', ')+') will be accepted as frozen.</span></li>':'')+'</ul>';
-    h+='<div class="foot"><span class="why">'+esc(b.length?'Disabled while anything above is open.':STUB.lock)+'</span><button type="button" class="btn" data-close>Close</button><button type="button" class="btn primary" disabled aria-disabled="true" title="'+esc(b.length?b.length+' blockers':STUB.lock)+'">Accept and lock</button></div>';
-    openDialog(h);
+    h+='<div class="foot"><span class="why" id="dlg-err">'+esc(b.length?'Disabled while anything above is open.':'One approve decision records this exact version.')+'</span><button type="button" class="btn" data-close>Close</button><button type="submit" class="btn primary"'+(b.length?' disabled':'')+'>Accept and lock</button></div>';
+    openDialog(h, function(fm){ fm.onsubmit=function(e){ e.preventDefault(); if(blockers().length) return; submitDecision('/approve', {}, 'Locked: this version is accepted.'); }; });
   }
 
   // ── reviewer
@@ -2422,11 +2475,29 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(newer.length) out.push(newer.length+' decision'+(newer.length===1?'':'s')+' about the ask or the selection since ('+newer.slice(0,3).map(function(d){ return (d.action||d.kind||'edit')+' by '+human(d.actor||d.agent); }).join('; ')+(newer.length>3?'; …':'')+').');
     return out;
   }
+  var MOUNTED=null;
   function renderReport(){
     var el=$('report'), r=D().report;
     $('nav-report-a').hidden=!isObj(r);
-    if(!isObj(r)){ el.hidden=true; el.innerHTML=''; return; }
+    if(!isObj(r)){ el.hidden=true; el.innerHTML=''; MOUNTED=null; return; }
     el.hidden=false;
+    if(typeof r.layout==='string'&&window.ClanFields){
+      // The agent's layout, over the record: the OS renders every figure in it.
+      var stale=reportStale(r);
+      var bar='<div class="rep-bar no-print"><span class="derived">'+ICON.agent+'laid out by '+(r.layout_by==='agent'?'the agent':'the middleware, from the report')+'</span><span>built '+esc(fmtDate(r.built_at))+'</span><span class="sp"></span>'
+        +(stale.length?'<span style="color:var(--create-ink)">The document has moved on since.</span>':'')
+        +'<button type="button" class="btn sm ghost" data-act="show-run">How it ran</button>'
+        +'<button type="button" class="btn sm'+(stale.length?' primary':'')+'" data-act="report-refresh"'+(CHAT.reportBusy?' disabled':'')+'>'+(CHAT.reportBusy?'Refreshing…':'Refresh report')+'</button></div>'
+        +(CHAT.reportErr?'<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>':'');
+      var key=r.built_at+'|'+r.layout.length;
+      if(MOUNTED!==key){
+        el.innerHTML='<div id="rep-bar"></div><article class="cl-report rep-layout" id="rep-layout" aria-label="Report"></article>';
+        ClanFields.mount($('rep-layout'), r.layout); MOUNTED=key;
+      } else ClanFields.refresh();
+      $('rep-bar').innerHTML=bar;
+      return;
+    }
+    MOUNTED=null;
     var stale=reportStale(r), hl=isObj(r.headline)?r.headline:{};
     var h='<div class="rep"><div class="rep-top"><span class="eyebrow">Report</span><span class="derived">'+ICON.agent+'composed by the agent</span><span class="sp"></span>'
       +'<span class="srcline">built '+esc(fmtDate(r.built_at))+'</span>'
@@ -2556,9 +2627,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       case 'verdict-good': doVerdict(b.getAttribute('data-field'),'good'); break;
       case 'verdict-bad': doVerdict(b.getAttribute('data-field'),'bad'); break;
       case 'classify': doClassify(b.getAttribute('data-field')); break;
-      case 'resolve': doResolve(b.getAttribute('data-contest')); break;
-      case 'verify': doFinding(/findings\[(.+)\]$/.exec(b.getAttribute('data-address'))[1],'verify'); break;
-      case 'reject': doFinding(/findings\[(.+)\]$/.exec(b.getAttribute('data-address'))[1],'reject'); break;
+      case 'resolve': if(window.ClanFields) ClanFields.open(b.getAttribute('data-contest')); break;
+      case 'verify': doFinding(/findings\[(.+)\]$/.exec(b.getAttribute('data-address'))[1]); break;
       case 'pin': doPin(b.getAttribute('data-address')); break;
       case 'why': doWhy(b.getAttribute('data-path'), b.getAttribute('data-address')); break;
       case 'who': doWho(); break;
@@ -2571,10 +2641,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       case 'q-send': var qi=$('qtext-'+b.getAttribute('data-q')); doAnswer(b.getAttribute('data-q'), null, qi?qi.value:''); break;
       case 'q-resend': doResend(b.getAttribute('data-q')); break;
       case 'report-refresh': doRefreshReport(); break;
+      case 'show-run': document.body.classList.toggle('show-run'); var st=$('start'); if(st&&document.body.classList.contains('show-run')) st.scrollIntoView({block:'start',behavior:'smooth'}); break;
       case 'goto-confirm': gotoConfirm(b.getAttribute('data-field')); break;
     }
   });
   $('lockBtn').addEventListener('click', doLock);
+  $('records').addEventListener('toggle', function(){
+    if(this.dataset.auto===String(this.open)) delete this.dataset.auto; else this.dataset.touched='1';
+    document.body.classList.toggle('records-open', this.open); });
   $('whoBtn').addEventListener('click', doWho);
   $('extractBtn').addEventListener('click', doExtract);
   $('researchBtn').addEventListener('click', doResearch);

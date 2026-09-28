@@ -210,3 +210,30 @@ def test_verifying_a_finding_writes_it_to_the_layer_as_reviewed(store):
         with pytest.raises(TaskError) as e:
             verify_finding.run(req, caps)
         assert e.value.status == status
+
+
+def test_the_agent_lays_the_report_out_and_the_rule_holds_it_to_the_record(store):
+    caps = caps_for(store)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend", "market_structure"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    clan = dict(rclan(["IE"]), facts=rch["facts_append"])
+    rpt, _, _, _ = report.compose(DOC, clan, "t@1.0", caps)
+    html = rpt["layout"]
+    assert rpt["layout_by"] == "agent"
+    for gone in ("<script", "onclick", "onerror", "<img", "<a ", "javascript:", "evil", "no evidence at all",
+                 "73%", "f_NOTREAL01"):
+        assert gone not in html, gone
+    assert 'class="cl-nums"' in html and "<clan-chart" in html and "<clan-sources></clan-sources>" in html
+    assert "Grounded." in html
+
+
+def test_a_layout_that_loses_its_evidence_is_built_from_the_report(store):
+    from fakes import FakeModel
+    caps = caps_for(store, model=FakeModel({"layout": lambda p: {"html": "<p>Nothing but words.</p>"}}))
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    clan = dict(rclan(["IE"]), facts=rch["facts_append"])
+    rpt, _, _, _ = report.compose(DOC, clan, "t@1.0", caps)
+    assert rpt["layout_by"] == "built"
+    assert rpt["headline"]["text"] in rpt["layout"].replace("&#x27;", "'")
+    assert "<clan-field" in rpt["layout"] and "<clan-sources></clan-sources>" in rpt["layout"]

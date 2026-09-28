@@ -5,7 +5,7 @@
 <style id="clan-fields-css">
 /* Tokens come from the app (the studio's set); each has a fallback so the
    fields still read in a page that defines none. */
-:root,clan-field,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray,.clf-drawer,.clf-scrim,.clf-toast{
+:root,clan-field,clan-cite,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray,.clf-drawer,.clf-scrim,.clf-toast{
   --clf-ink:var(--ink,#14161B); --clf-ink2:var(--ink2,#4A4F5C); --clf-ink3:var(--ink3,#737987);
   --clf-paper:var(--paper,#FFFFFF); --clf-soft:var(--soft,#F5F6F8); --clf-line:var(--line,#D6DAE2); --clf-line2:var(--line-soft,#E7E9EE);
   --clf-create:var(--create,#FF4F2E); --clf-create-soft:var(--create-soft,#FFF1EE); --clf-create-ink:var(--create-ink,#B8321A);
@@ -15,7 +15,7 @@
   --clf-mono:var(--mono,"Geist Mono",ui-monospace,Menlo,Consolas,monospace);
   --clf-ease:var(--ease,cubic-bezier(.2,.8,.2,1));
 }
-clan-field,clan-chart,clan-quote,clan-gap,clan-sources{display:contents}
+clan-field,clan-cite,clan-chart,clan-quote,clan-gap,clan-sources{display:contents}
 clan-field[as="big"],clan-field[as="stat"],clan-chart,clan-quote,clan-gap,clan-sources{display:block}
 clan-tray{display:block}
 .clf-lock{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px;flex:none}
@@ -28,6 +28,7 @@ clan-tray{display:block}
 .clf-src::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:5px;vertical-align:1px;opacity:.7}
 .clf.in{display:inline;padding:0 2px;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1.5px solid color-mix(in srgb,var(--clf-ink) 22%,transparent)}
 .clf.in .clf-src{margin-left:4px}
+.clf.in.txt{font-weight:inherit;border-bottom-style:dotted}
 .clf.big,.clf.stat{display:grid;gap:4px;padding:6px;margin:-6px}
 .clf.big .v{font-size:clamp(34px,5vw,54px);font-weight:800;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
 .clf.stat .v{font-size:30px;font-weight:800;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
@@ -47,12 +48,16 @@ clan-tray{display:block}
 .clf.s-contest.in{border-bottom:1.5px dashed var(--clf-create)}
 .clf.low .tag.conf-l{background:var(--clf-amber-soft);color:var(--clf-amber-ink)}
 .clf.conf.in,.clf.conf.claim{background:repeating-linear-gradient(135deg,transparent 0 5px,color-mix(in srgb,var(--clf-ink) 7%,transparent) 5px 6px)}
+.clf-cite{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:var(--clf-mono);font-size:10.5px;letter-spacing:.02em;color:var(--clf-ink3);border:1px solid var(--clf-line);border-radius:999px;padding:0 7px;line-height:17px;vertical-align:1px;white-space:nowrap;margin-left:2px}
+.clf-cite:hover{border-color:var(--clf-ink3);color:var(--clf-ink)}
+.clf-cite:focus-visible{outline:2px solid var(--clf-create);outline-offset:2px}
+.clf-cite.s-check{border-color:var(--clf-create);color:var(--clf-create-ink)}
 .clf-missing{font-family:var(--clf-mono);font-size:11px;color:var(--clf-create-ink);border:1px dashed var(--clf-create);border-radius:6px;padding:0 5px}
 
 /* ── a chart, a quote, a gap, the sources ────────────────────────────── */
 .clf-chart{display:block;width:100%}
 .clf-chart .eb{display:block;font-family:var(--clf-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--clf-ink3);margin-bottom:8px}
-.clf-chart svg{display:block;width:100%;height:auto;overflow:visible}
+.clf-chart svg{display:block;width:100%;max-width:600px;height:auto;overflow:visible}
 .clf-chart .mark{cursor:pointer}
 .clf-chart .mark:focus{outline:none}
 .clf-chart .mark:hover .bar,.clf-chart .mark:focus-visible .bar,.clf-chart .mark:hover circle,.clf-chart .mark:focus-visible circle{stroke:var(--clf-create);stroke-width:2}
@@ -159,7 +164,7 @@ clan-tray{display:block}
 .cl-head{padding:48px clamp(20px,5vw,64px) 36px;display:grid;gap:14px;border-bottom:1px solid var(--clf-line2)}
 .cl-head.compact{padding:32px clamp(20px,4vw,44px) 24px;gap:8px;border-bottom:2px solid var(--clf-ink)}
 .cl-eyebrow{font-family:var(--clf-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--clf-ink3)}
-.cl-title{margin:0;font-size:clamp(30px,5.2vw,56px);line-height:1.02;font-weight:800;letter-spacing:-.035em;max-width:17ch;text-wrap:balance}
+.cl-title{margin:0;font-size:clamp(28px,4.4vw,46px);line-height:1.05;font-weight:800;letter-spacing:-.03em;max-width:22ch;text-wrap:balance}
 .cl-head.compact .cl-title{font-size:clamp(24px,3.4vw,32px);line-height:1.12;max-width:30ch}
 .cl-dek{font-size:17px;color:var(--clf-ink2);max-width:60ch;margin:0}
 .cl-nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));border-bottom:1px solid var(--clf-line2);padding-inline:calc(clamp(20px,5vw,64px) - clamp(12px,2vw,24px))}
@@ -260,6 +265,7 @@ var ClanFields=(function(){
     if(/^ct_/.test(ref)) return 'contest';
     if(/^gap_/.test(ref)) return 'gap';
     if(/^src_/.test(ref)) return 'source';
+    if(/^cite:/.test(ref)) return 'cite';
     return null;
   }
   function openContestOf(fid){ return contests().filter(function(c){ return c.status==='open'&&arr(c.values).some(function(v){ return v.fact_id===fid; }); })[0]||null; }
@@ -336,7 +342,8 @@ var ClanFields=(function(){
       if(k==='contest'&&!p){ el.innerHTML='<span class="clf-missing">'+esc(ref)+'</span>'; return; }
       var pst=k==='contest'?'resolved':st;
       h=valueShape(as,esc(fmt(p)),cap||label(p),srcShort(p),tagFor(pst),conf||confidential(id));
-      if(p.confidence==='low') h+=' <span class="tag conf-l">low confidence</span>';
+      if(typeof p.value==='string'&&cls==='in') cls='in txt';
+      if(p.confidence==='low'&&(as==='big'||as==='stat')) h+=' <span class="tag conf-l">low confidence</span>';
       aria=(cap||label(p))+': '+fmt(p);
     }
     el.innerHTML='<button type="button" class="clf '+cls+' s-'+st+(conf?' conf':'')+'" data-ref="'+esc(ref)+'" aria-label="'+esc(aria+' — open the evidence')+'">'+h+'</button>';
@@ -383,13 +390,23 @@ var ClanFields=(function(){
       if(rest&&xp<W3-4) parts+='<rect x="'+xp+'" y="0" width="'+(W3-xp)+'" height="'+bh+'" rx="4" fill="none" stroke="var(--clf-ink3)" stroke-dasharray="3 3"/><text x="'+(xp+8)+'" y="'+(bh+20)+'" font-size="12" fill="var(--clf-ink3)">'+esc(rest)+'</text>';
       svg='<svg viewBox="0 0 '+W3+' '+(bh+28)+'" role="group" aria-label="'+esc(title)+'">'+parts+'</svg>';
     } else {
-      var W2=520,row=38,lw=118,vw=W2-lw-70,mx=Math.max.apply(0,ps.map(function(p){ return p.value; }))||1;
+      var W2=520,row=38,lw=Math.min(210,Math.max(80,Math.max.apply(0,labels.map(function(l){ return String(l).length; }))*7.4+12)),vw=W2-lw-70,mx=Math.max.apply(0,ps.map(function(p){ return p.value; }))||1;
       if(ps.every(function(p){ return p.unit==='proportion'; })) mx=Math.max(mx,0.0001);
       svg='<svg viewBox="0 0 '+W2+' '+(rows.length*row+8)+'" role="group" aria-label="'+esc(title)+'">'+rows.map(function(x,i){ var y=i*row+4, w=Math.max(vw*x.p.value/mx,1);
         return mark(x,i,'<rect x="0" y="'+y+'" width="'+W2+'" height="'+(row-6)+'" fill="transparent"/><text x="0" y="'+(y+20)+'" font-size="13" fill="var(--clf-ink2)">'+esc(labels[i])+'</text><rect x="'+lw+'" y="'+(y+6)+'" width="'+vw+'" height="20" rx="4" fill="var(--clf-line2)"/><rect class="bar" x="'+lw+'" y="'+(y+6)+'" width="'+w+'" height="20" rx="4" fill="var(--clf-chart)"/><text x="'+(lw+w+8)+'" y="'+(y+21)+'" font-size="13" font-weight="700" fill="var(--clf-ink)">'+esc(fmt(x.p))+'</text>'); }).join('')+'</svg>';
     }
     var srcs={}; ps.forEach(function(p){ var s=srcShort(p); if(s) srcs[s]=1; });
     el.innerHTML='<div class="clf-chart">'+(title?'<span class="eb">'+esc(title)+'</span>':'')+svg+'<div class="foot">'+rows.length+' recorded value'+(rows.length===1?'':'s')+(Object.keys(srcs).length?' · '+esc(Object.keys(srcs).join(', ')):'')+(missing.length?' · not shown: '+esc(missing.join(', ')):'')+'</div></div>';
+  }
+  // A sentence's evidence, when it states no figure of its own: who says so.
+  function renderCite(el){
+    var refs=(el.getAttribute('refs')||'').split(/[\s,]+/).filter(Boolean), who=[], check=false;
+    refs.forEach(function(r){ var k=kindOf(r);
+      if(k==='pin'&&pins()[r]){ var s=srcShort(pins()[r]).split(' · ')[0]; if(s&&who.indexOf(s)===-1) who.push(s); }
+      else if(k==='finding'&&findings()[r]){ if(findings()[r].status==='proposed') check=true; if(who.indexOf('a finding')===-1) who.push('a finding'); }
+      else if(k==='contest'){ check=check||stateOf(r)==='contest'; if(who.indexOf('two sources')===-1) who.push('two sources'); } });
+    if(!who.length){ el.innerHTML='<span class="clf-missing">cite: nothing in this document</span>'; return; }
+    el.innerHTML='<button type="button" class="clf-cite'+(check?' s-check':'')+'" data-ref="cite:'+esc(refs.join(','))+'" aria-label="'+esc('Evidence: '+who.join(', '))+'">'+esc(who[0])+(who.length>1?' +'+(who.length-1):'')+'</button>';
   }
   function renderQuote(el){
     var ref=el.getAttribute('ref')||'', p=pins()[ref], s=srcOf(p), sid=el.getAttribute('source')||(s&&s.id), q=p&&obj(p.quotes)[sid];
@@ -575,13 +592,20 @@ var ClanFields=(function(){
     } else if(k==='gap'){
       var g=gap(ref); crumb='Looked for, not found';
       if(g) b+='<div class="clf-dv"><span class="stmt">'+esc(g.wanted||g.key)+'</span><span class="c">'+esc(g.note||'')+'</span></div><div class="clf-sec"><h3>Where the researcher looked</h3><ul class="clf-hist">'+arr(g.sources_tried||g.tried).map(function(x){ return '<li><span>'+esc(x)+'</span></li>'; }).join('')+'</ul></div>';
+    } else if(k==='cite'){
+      crumb='What this rests on';
+      b+='<div class="clf-rows">'+ref.slice(5).split(',').map(function(r){ var kk=kindOf(r), t='', v='';
+        if(kk==='pin'){ var p=pins()[r]; t=label(p); v=fmt(p); }
+        else if(kk==='finding'){ var f=findings()[r]||{}; t=f.statement||r; v=f.status||''; }
+        else if(kk==='contest'){ t=named(r); v=stateOf(r)==='contest'?'sources disagree':'resolved'; }
+        return '<button type="button" class="clf-row" data-open="'+esc(r)+'"><span>'+esc(t)+'</span><b>'+esc(v)+'</b></button>'; }).join('')+'</div>';
     } else if(k==='source'){
       crumb='Source'; var used=Object.keys(pins()).filter(function(x){ return arr(pins()[x].sources).indexOf(ref)!==-1; });
       b+=srcCard(ref,'')+'<div class="clf-sec"><h3>Facts taken from it ('+used.length+')</h3><div class="clf-rows">'+used.map(function(x){ var p=pins()[x]; return '<button type="button" class="clf-row" data-open="'+esc(x)+'"><span>'+esc(label(p))+'</span><b>'+esc(fmt(p))+'</b></button>'; }).join('')+'</div></div>';
     } else {
       crumb='Needs a person'; b+='<p class="clf-muted">'+esc(ref)+'</p>';
     }
-    if(k&&k!=='source') b+=wrote(ref);
+    if(k&&k!=='source'&&k!=='cite') b+=wrote(ref);
     DRAWER.crumb.textContent=crumb; DRAWER.body.innerHTML=b;
   }
   function showError(form,msg){ var e=form&&form.querySelector('.clf-err'); if(e){ e.textContent=msg; e.hidden=false; } else toast(msg); }
@@ -594,6 +618,10 @@ var ClanFields=(function(){
     },function(){ showError(form,'Could not reach the host.'); Array.prototype.forEach.call(btns,function(x){ x.disabled=false; }); });
   }
   function onDrawerClick(e){
+    // App frames are sandboxed without allow-forms, so a form never submits:
+    // a submit button acts on its click, in every frame alike.
+    var sb=e.target.closest('button[type="submit"]'), sf=sb&&sb.closest('form[data-clf-form]');
+    if(sf){ e.preventDefault(); onDrawerSubmit({preventDefault:function(){}, target:sf, submitter:sb}); return; }
     var o=e.target.closest('[data-open]'); if(o){ open(o.getAttribute('data-open'),true); return; }
     var a=e.target.closest('[data-clf]'); if(!a) return; var w=a.getAttribute('data-clf'), ref=top().ref, k=kindOf(ref);
     var target=(k==='pin'?'facts[':'findings[')+ref+']';
@@ -614,7 +642,9 @@ var ClanFields=(function(){
       if(v==='reject'){ if(!why){ showError(form,'Say what is wrong, so the agent can fix it.'); return; }
         act('/verdict',{target:'findings['+ref+']',polarity:'bad',rationale:why},form,'Rejected'); }
       else act('/verify',{finding:ref,rationale:why},form,'Verified and written to the agency\u2019s knowledge');
-    } else if(kind==='resolve') act('/resolve',{contest:ref,chosen:fd.get('pick'),rationale:why},form,'Resolved');
+    } else if(kind==='resolve'){ if(!fd.get('pick')){ showError(form,'Pick the value the report uses.'); return; } if(!why){ showError(form,'Say why this one.'); return; }
+      act('/resolve',{contest:ref,chosen:fd.get('pick'),rationale:why},form,'Resolved'); }
+    else if(!why){ showError(form,'Say why.'); return; }
     else if(kind==='classify') act('/classify',{target:form.getAttribute('data-target'),model:fd.get('model')==='on',export:fd.get('export')==='on',corpus:fd.get('corpus')==='on',rationale:why},form,'Marked confidential');
     else if(kind==='bad') act('/verdict',{target:form.getAttribute('data-target'),polarity:'bad',rationale:why},form,'Recorded: marked wrong');
   }
@@ -624,7 +654,7 @@ var ClanFields=(function(){
   // the clan-* elements. No script, no style, no link, no event handler, no
   // element or attribute outside these lists; what is dropped is dropped whole.
   var TAGS={SECTION:1,DIV:1,HEADER:1,FOOTER:1,ARTICLE:1,ASIDE:1,H1:1,H2:1,H3:1,P:1,SPAN:1,STRONG:1,EM:1,B:1,I:1,SMALL:1,BR:1,HR:1,OL:1,UL:1,LI:1,TABLE:1,THEAD:1,TBODY:1,TR:1,TD:1,TH:1,FIGURE:1,FIGCAPTION:1,BLOCKQUOTE:1,
-    'CLAN-FIELD':1,'CLAN-CHART':1,'CLAN-QUOTE':1,'CLAN-GAP':1,'CLAN-SOURCES':1,'CLAN-TRAY':1};
+    'CLAN-FIELD':1,'CLAN-CITE':1,'CLAN-CHART':1,'CLAN-QUOTE':1,'CLAN-GAP':1,'CLAN-SOURCES':1,'CLAN-TRAY':1};
   var ATTRS={'class':1,ref:1,refs:1,as:1,caption:1,kind:1,title:1,rest:1,labels:1,source:1,compact:1,colspan:1,rowspan:1,'data-tone':1};
   function clean(node){
     Array.prototype.slice.call(node.childNodes).forEach(function(n){
@@ -645,6 +675,7 @@ var ClanFields=(function(){
   // ── wiring ──────────────────────────────────────────────────────────
   function refresh(){
     Array.prototype.forEach.call(document.querySelectorAll('clan-field'),renderField);
+    Array.prototype.forEach.call(document.querySelectorAll('clan-cite'),renderCite);
     Array.prototype.forEach.call(document.querySelectorAll('clan-chart'),renderChart);
     Array.prototype.forEach.call(document.querySelectorAll('clan-quote'),renderQuote);
     Array.prototype.forEach.call(document.querySelectorAll('clan-gap'),renderGap);
@@ -655,7 +686,7 @@ var ClanFields=(function(){
     if(DRAWER&&DRAWER.el.contains(e.target)) return;
     if(e.target.closest('[data-clf-lock]')){ act('/approve',{},null,'Locked: this version is accepted'); return; }
     var t=e.target.closest('[data-ref]'); if(!t) return;
-    if(!t.closest('clan-field,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray')) return;
+    if(!t.closest('clan-field,clan-cite,clan-chart,clan-quote,clan-gap,clan-sources,clan-tray')) return;
     var ref=t.getAttribute('data-ref');
     if(t.classList.contains('clf-titem')){ var el=document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'center',behavior:'smooth'}); open(ref,false,kindOf(ref)?'':t.getAttribute('data-note')); return; }
     open(ref);

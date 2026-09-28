@@ -2257,6 +2257,19 @@
               }
             }
           }
+        },
+        "layout": {
+          "type": "string",
+          "maxLength": 200000,
+          "description": "How the report looks: HTML in the OS's vocabulary (docs/contracts/clan-fields.md), every figure a clan-* element over the record. Checked by the middleware's layout rule; sanitised again by the view."
+        },
+        "layout_by": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "built"
+          ],
+          "description": "Whether the agent laid it out, or the middleware built it from the structured report because the agent's did not pass the layout rule."
         }
       }
     },

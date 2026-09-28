@@ -22,6 +22,7 @@ from ..doc import (CAMPAIGN_FIELDS, LENS_TITLES, LENSES, ctx_data, ctx_facts, ct
 from ..rules.cite import clean_claim
 from ..util import bad, canon_sha, iso
 from .. import reasoning as rsn
+from . import layout
 
 log = logging.getLogger("napkin.report")
 
@@ -189,6 +190,13 @@ def compose(doc, clan, handler, caps):
     report = {"built_at": iso(), "handler": handler, "based_on": based_on(clan),
               "headline": headline, "summary": summary, "sections": sections,
               "confirm": confirm_list(doc, camp), "not_researched": not_researched(sel, markets)}
+    # How it looks: the agent's layout over the same record, checked in code (Contract 5).
+    all_findings = {f["id"]: f for f in ctx_findings(clan) if isinstance(f.get("id"), str)}
+    report["layout"], report["layout_by"], ldropped = layout.compose(
+        report, pin_by, all_findings, {c["id"]: c for c in sel.get("contested") or [] if c.get("id")},
+        {g["id"]: g for g in sel.get("gaps") or [] if g.get("id")}, caps, names, brand, markets)
+    if ldropped:
+        log.info("report layout (%s): dropped %d: %s", report["layout_by"], len(ldropped), json.dumps(ldropped)[:600])
     cites = list(dict.fromkeys(list(headline["cites"]) + [c for s in summary for c in s["cites"]] + sorted(used)))
     hits = [{"id": c, "scope": pin_by[c].get("layer", ""), "source": pin_by[c].get("origin", "")}
             for c in cites if c in pin_by]

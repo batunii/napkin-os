@@ -25,6 +25,7 @@ layout leaves out is listed as such and opens in the drawer.
 | Element | Attributes | Shows |
 |---|---|---|
 | `<clan-field ref>` | `as`: `inline` (default) · `big` · `stat` · `cell` · `claim`; `caption` | A pin (`f_…`): its value, formatted from its unit, and its source. A finding (`fi_…`): its statement. A contest (`ct_…`): both values while open, the pick once resolved. |
+| `<clan-cite refs>` | | A sentence's evidence when it states no figure of its own: who says so ("Retail Pulse +1"); opens the list of what it rests on. |
 | `<clan-chart refs kind>` | `kind`: `bar` · `line` · `stack`; `title`, `labels` (comma list), `rest` (stack: the unmeasured remainder, drawn without a number), `compact` | Only pins with a number. A ref that is not one is named in the footer, never drawn. |
 | `<clan-quote ref>` | `source` (a `src_` id; default the pin's first) | The pin's verbatim quote from that source. |
 | `<clan-gap ref>` | | A `selection.gaps` entry: what was looked for and where. |
