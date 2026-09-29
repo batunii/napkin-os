@@ -39,7 +39,7 @@ def test_grounding_counts_invented_but_not_requests(monkeypatch):
     import jev_checks
     asked = []
 
-    def fake(text, claims):
+    def fake(text, claims, research=None):
         asked.extend(claims)
         return [("supported", 0.97), ("not_in_brief", 0.99)]
     monkeypatch.setattr(jev_checks, "claims_supported", fake)
@@ -55,7 +55,7 @@ def test_grounding_below_threshold_is_not_invented():
 
 def test_grounding_none_when_jev_silent(monkeypatch):
     import jev_checks
-    monkeypatch.setattr(jev_checks, "claims_supported", lambda t, c: None)
+    monkeypatch.setattr(jev_checks, "claims_supported", lambda t, c, research=None: None)
     assert grounding.check("brief", MD) is None
 
 

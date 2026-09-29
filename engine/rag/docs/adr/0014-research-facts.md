@@ -48,10 +48,19 @@ markers are then moved out of the prose into the field's `fact_refs`
 app mapping passes them on as a `fact_refs` key by app field name until the campaign CLAN's
 source field is confirmed (question with Shrey).
 
+## C1c (built)
+
+The grounding count (ADR 0013) accepts current facts as support. `meta.research_facts.used`
+now keeps each fact's line, so a later check sees what the writers saw without the database.
+Given those lines, jev answers supported (by the brief), supported_by_research, contradicted
+or not_in_brief; the report shows e.g. "0 of 5 (+1 to confirm, 2 from research)". A brief
+written without facts is asked exactly the old question, so earlier checkpoints stay
+comparable. The grader (golden_critic) was left alone: it never sees the client brief and
+none of its rubric tests compares a field with the brief, so a research-backed claim is not
+marked down there.
+
 ## Next
 
-- C1c: the grounding count and the grader treat a claim as supported by the brief or a current
-  fact, and say which.
 - C1d: where the brief and a fact differ, both values are kept with their origin for the CLAN
   merge report (the per-field fact list itself landed with C1b as `fact_refs`).
 - C2: the territory check's rival from the brand's competitor facts.

@@ -126,3 +126,32 @@ def test_the_fill_keeps_refs_and_the_app_passes_them_through(monkeypatch):
     out = mapping.map_brief({"meta": {}, "loop1_capture": {}, "loop2_brief": {}, "loop2_golden": {"fields": gf}})
     assert out["fact_refs"]["reasons_to_believe"][0]["id"] == "f-1"
     assert out["reasons_to_believe"][0] == "40 shops put a Hearthstone near you"          # no marker in the app text
+
+
+# ---------- C1c: the grounding count accepts current facts as support ----------
+
+def test_grounding_counts_research_backed_claims_apart(monkeypatch):
+    import grounding
+    import jev_checks
+    got = {}
+    def fake(text, claims, research=None):
+        got["research"] = research
+        return [("supported_by_research", 0.95), ("not_in_brief", 0.97)] if research else [("not_in_brief", 0.95)] * len(claims)
+    monkeypatch.setattr(jev_checks, "claims_supported", fake)
+    md = "## Reasons to believe\n- 40 shops put a Hearthstone near you\n- Voted best bakery in Europe\n"
+    lines = [rf.line(f) for f in rf.current(FIXTURE_FACTS)[0]]
+    g = grounding.check("A bakery.", md, research=lines)
+    assert got["research"] == lines and (g["invented"], g["of"], g.get("from_research")) == (1, 2, 1)
+    g0 = grounding.check("A bakery.", md)                                   # no facts: exactly as before
+    assert got["research"] is None and g0["invented"] == 2 and "from_research" not in g0
+
+
+def test_the_record_keeps_the_fact_lines_for_later_checks():
+    rec = rf.record(*rf.current(FIXTURE_FACTS))
+    assert rec["used"][0]["line"].startswith("[F:f-1 v2] brand shops: 40 shops")
+
+
+def test_report_cell_shows_research_support():
+    import checkpoint_run as cr
+    assert cr._grounding_cell({"invented": 0, "of": 5, "to_confirm": 1, "from_research": 2}) == "0 of 5 (+1 to confirm, 2 from research)"
+    assert cr._grounding_cell({"invented": 1, "of": 4}) == "1 of 4"

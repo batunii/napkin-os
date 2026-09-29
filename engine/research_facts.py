@@ -80,7 +80,9 @@ def record(usable: list, skipped: list) -> dict:
     """What the run was given, for meta.research_facts: every usable fact's id and version,
     and every skipped one with the reason."""
     return {"given": len(usable) + len(skipped),
-            "used": [{"id": f["id"], "version": f.get("version"), "scope": scope(f)} for f in usable],
+            # the line too, so later checks (the grounding count) see what the writers saw
+            "used": [{"id": f["id"], "version": f.get("version"), "scope": scope(f), "line": line(f)}
+                     for f in usable],
             "skipped": skipped}
 
 

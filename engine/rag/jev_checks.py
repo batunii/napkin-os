@@ -178,14 +178,31 @@ CLAIM_CRITERIA = {
                     "that the brief does not state."}
 
 
-def claims_supported(brief_text: str, claims: list) -> "list | None":
+CLAIM_Q_RESEARCH = ("Is CLAIM supported by the client brief, or by the verified research facts, "
+                    "in the state?")
+CLAIM_CRITERIA_RESEARCH = {
+    "supported": "The client brief states this, or it follows directly from facts the brief states.",
+    "supported_by_research": "The brief does not state it, but one of the verified research facts does, "
+                             "or it follows directly from one.",
+    "contradicted": "The brief or a research fact states something that conflicts with this claim.",
+    "not_in_brief": "Neither the brief nor the research facts contain this: the claim adds a fact, "
+                    "figure, source or proof that neither states."}
+
+
+def claims_supported(brief_text: str, claims: list, research: "list | None" = None) -> "list | None":
     """(verdict, p) per claim, verdict one of CLAIM_CRITERIA and p its probability, in the
-    order given. None when jev cannot answer."""
-    asked = {f"c{i:03d}": {"type": "choice", "instructions": {"question": CLAIM_Q, "claim": str(c)[:600]},
-                           "criteria": CLAIM_CRITERIA} for i, c in enumerate(claims)}
+    order given. With `research` (verified fact lines, C1c 2026-09-29) jev also sees the
+    facts and may answer supported_by_research; without it the question is exactly as before,
+    so reports stay comparable. None when jev cannot answer."""
+    q, crit = (CLAIM_Q_RESEARCH, CLAIM_CRITERIA_RESEARCH) if research else (CLAIM_Q, CLAIM_CRITERIA)
+    asked = {f"c{i:03d}": {"type": "choice", "instructions": {"question": q, "claim": str(c)[:600]},
+                           "criteria": crit} for i, c in enumerate(claims)}
     if not asked:
         return []
-    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "claim grounding")
+    state = {"client_brief": str(brief_text or "")[:STATE_CHARS]}
+    if research:
+        state["verified_research_facts"] = "\n".join(str(r) for r in research)[:STATE_CHARS // 4]
+    got = _ask(state, asked, "claim grounding")
     if got is None:
         return None
     out = []

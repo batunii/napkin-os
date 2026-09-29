@@ -119,7 +119,10 @@ def ground_row(out_dir: Path, stem: str, row: dict) -> dict:
     if not md.exists() or row.get("grounding") is not None:
         return row
     import grounding
-    g = grounding.check(brief_text(stem), md.read_text())
+    bo = out_dir / f"trace_mix_{stem}" / "brief_object.json"
+    used = (((json.loads(bo.read_text()).get("meta") or {}).get("research_facts") or {}).get("used") or []) if bo.exists() else []
+    research = [u["line"] for u in used if isinstance(u, dict) and u.get("line")]
+    g = grounding.check(brief_text(stem), md.read_text(), research=research)
     return {**row, "grounding": g if g is not None else {"error": "jev did not answer"}}
 
 
@@ -248,7 +251,9 @@ def _grounding_cell(g) -> str:
         return ""
     if "error" in g:
         return g["error"]
-    return f"{g['invented']} of {g['of']}" + (f" (+{g['to_confirm']} to confirm)" if g.get("to_confirm") else "")
+    extra = [f"+{g['to_confirm']} to confirm"] if g.get("to_confirm") else []
+    extra += [f"{g['from_research']} from research"] if g.get("from_research") else []
+    return f"{g['invented']} of {g['of']}" + (f" ({', '.join(extra)})" if extra else "")
 
 
 def _delta(h, base, line) -> str:

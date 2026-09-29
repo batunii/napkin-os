@@ -34,6 +34,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 INVENTED_P = 0.9                 # the same confidence the pipeline's figure check fails at
+SUPPORTED = ("supported", "supported_by_research")
 COUNTED = {"Reasons to believe": "rtb"}
 
 
@@ -62,20 +63,26 @@ def summarise(claims: list, verdicts: list) -> dict:
     (verdict, p) answers. `of` counts claims, not requests."""
     rows = [{"field": f, "claim": c, "verdict": v, "p": p, "request": is_request(c)}
             for (f, c), (v, p) in zip(claims, verdicts)]
-    flagged = [r for r in rows if r["verdict"] != "supported" and r["p"] >= INVENTED_P]
-    return {"invented": sum(1 for r in flagged if not r["request"]),
-            "of": sum(1 for r in rows if not r["request"]),
-            "to_confirm": sum(1 for r in rows if r["request"]),
-            "rows": rows}
+    flagged = [r for r in rows if r["verdict"] not in SUPPORTED and r["p"] >= INVENTED_P]
+    out = {"invented": sum(1 for r in flagged if not r["request"]),
+           "of": sum(1 for r in rows if not r["request"]),
+           "to_confirm": sum(1 for r in rows if r["request"]),
+           "rows": rows}
+    research = sum(1 for r in rows if r["verdict"] == "supported_by_research" and not r["request"])
+    if research:
+        out["from_research"] = research
+    return out
 
 
-def check(brief_text: str, client_brief_md: str) -> "dict | None":
-    """The grounding count of one finished brief against its client brief; None when jev
-    cannot answer. A brief with no counted claims returns zeros."""
+def check(brief_text: str, client_brief_md: str, research: "list | None" = None) -> "dict | None":
+    """The grounding count of one finished brief against its client brief and, when the
+    brief was written with verified research facts, those facts (C1c, 2026-09-29: a claim a
+    fact supports is counted as from_research, not as invented). None when jev cannot
+    answer. A brief with no counted claims returns zeros."""
     import jev_checks
     claims = claims_from_md(client_brief_md)
     asked = [c for _f, c in claims if not is_request(c)]         # requests are not sent to jev
-    got = jev_checks.claims_supported(brief_text, asked)
+    got = jev_checks.claims_supported(brief_text, asked, research=research or None)
     if got is None:
         return None
     answers = iter(got)
