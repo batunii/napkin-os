@@ -78,6 +78,11 @@ const CREW = `var NapkinAgents=(function(T){
   }
   return {
     keys:T.keys, lenses:T.lenses, name:AGENT_FIGURES.name, role:AGENT_FIGURES.role,
+    // The name each agent introduces itself by, the same in every app, and its
+    // job in plain words: given.extract 'Ellis', job.extract 'reads'.
+    given:AGENT_FIGURES.given, job:AGENT_FIGURES.job,
+    // How an agent signs what it says: who('judge') 'Jude \u00b7 checks'.
+    who:function(k){ return AGENT_FIGURES.given[k]?AGENT_FIGURES.given[k]+' \u00b7 '+AGENT_FIGURES.job[k]:''; },
     forWork:forWork, ofDecision:ofDecision,
     // A figure by the work it stands for: figure('judge'), figure('research', o, 'media_spend').
     figure:function(w,o,lens){ return agentFigure(forWork(w,lens),o); }
@@ -100,11 +105,15 @@ export function figureSnippet(css: string): string {
   const svg: string[] = []
   const name: string[] = []
   const role: string[] = []
+  const given: string[] = []
+  const job: string[] = []
   let badge = ''
   for (const key of AGENT_KEYS) {
     svg.push(`${key}:${js(renderToStaticMarkup(<AgentFigure agent={key} />))}`)
     name.push(`${key}:${js(AGENTS[key].name)}`)
     role.push(`${key}:${js(AGENTS[key].role)}`)
+    given.push(`${key}:${js(AGENTS[key].given)}`)
+    job.push(`${key}:${js(AGENTS[key].job)}`)
     if (!badge) {
       const needs = renderToStaticMarkup(<AgentFigure agent={key} state="needs-you" />)
       badge = needs.slice(needs.indexOf('<g class="af-badge">'), needs.lastIndexOf('</svg>'))
@@ -116,7 +125,7 @@ export function figureSnippet(css: string): string {
     '     `npm run figures` in app/. -->',
     `<style id="agent-figures-css">\n${css.trim()}\n</style>`,
     '<script>',
-    `var AGENT_FIGURES={svg:{${svg.join(',\n')}},\nname:{${name.join(',')}},\nrole:{${role.join(',')}},\nbadge:${js(badge)}};`,
+    `var AGENT_FIGURES={svg:{${svg.join(',\n')}},\nname:{${name.join(',')}},\nrole:{${role.join(',')}},\ngiven:{${given.join(',')}},\njob:{${job.join(',')}},\nbadge:${js(badge)}};`,
     HELPER,
     CREW.replace('${TABLES}', js2(JSON.stringify({
       keys: AGENT_KEYS, work: AGENT_FOR_WORK, lens: AGENT_OF_LENS, lenses: LENS_IDS, step: WORK_OF_STEP,

@@ -42,6 +42,10 @@ export interface Agent {
   name: string
   /** One line: what it does. */
   role: string
+  /** The name it introduces itself by, the same in every app: "Ellis". */
+  given: string
+  /** Its job in two or three plain words, after the name: "Ellis · reads". */
+  job: string
   stage: Stage
   run: Run
   fanOut?: FanOut
@@ -54,33 +58,37 @@ export interface Agent {
 /** What an agent is doing right now. */
 export type AgentState = 'idle' | 'working' | 'needs-you'
 
-const lens = (key: LensAgentKey, name: string, id: LensId, role: string): Agent =>
-  ({ key, name, role, stage: 'research', run: 'parallel', fanOut: 'market', lens: id, handler: 'research_lens@1' })
+const lens = (key: LensAgentKey, name: string, id: LensId, role: string, given: string, job: string): Agent =>
+  ({ key, name, role, given, job, stage: 'research', run: 'parallel', fanOut: 'market', lens: id, handler: 'research_lens@1' })
 
 export const AGENTS: Readonly<Record<AgentKey, Agent>> = {
   extract: {
     key: 'extract', name: 'Extract', stage: 'research', run: 'serial', handler: 'extract_ask@1',
     role: 'Reads the prompt and attachments and proposes the ask.',
+    given: 'Ellis', job: 'reads',
   },
-  market_structure: lens('market_structure', 'Market structure', 'market_structure', 'Sizes the category: value, volume, share and growth.'),
-  positioning: lens('positioning', 'Brands and positioning', 'brands_positioning', 'Maps the brand and its comparators: awareness, claims, prices.'),
-  culture: lens('culture', 'Consumer and culture', 'consumer_culture', 'Finds who buys, when and why, and what is shifting.'),
-  codes: lens('codes', 'Category codes', 'category_codes', 'Reads the category’s visual and verbal conventions.'),
-  rhythm: lens('rhythm', 'Rhythm and moments', 'rhythm_moments', 'Charts the seasons, peaks and moments that matter.'),
-  media: lens('media', 'Media and spend', 'media_spend', 'Tracks who spends what, where.'),
-  regulation: lens('regulation', 'Regulation', 'regulation_clearance', 'Lists what may and may not be said, and where.'),
-  effectiveness: lens('effectiveness', 'Effectiveness', 'effectiveness_evidence', 'Finds work in the category that is proven to have worked.'),
+  market_structure: lens('market_structure', 'Market structure', 'market_structure', 'Sizes the category: value, volume, share and growth.', 'Max', 'the market'),
+  positioning: lens('positioning', 'Brands and positioning', 'brands_positioning', 'Maps the brand and its comparators: awareness, claims, prices.', 'Bo', 'the brands'),
+  culture: lens('culture', 'Consumer and culture', 'consumer_culture', 'Finds who buys, when and why, and what is shifting.', 'Cam', 'the shoppers'),
+  codes: lens('codes', 'Category codes', 'category_codes', 'Reads the category’s visual and verbal conventions.', 'Cody', 'the ads'),
+  rhythm: lens('rhythm', 'Rhythm and moments', 'rhythm_moments', 'Charts the seasons, peaks and moments that matter.', 'Remy', 'the timing'),
+  media: lens('media', 'Media and spend', 'media_spend', 'Tracks who spends what, where.', 'Mo', 'the spend'),
+  regulation: lens('regulation', 'Regulation', 'regulation_clearance', 'Lists what may and may not be said, and where.', 'Lex', 'the rules'),
+  effectiveness: lens('effectiveness', 'Effectiveness', 'effectiveness_evidence', 'Finds work in the category that is proven to have worked.', 'Eden', 'what worked'),
   synthesis: {
     key: 'synthesis', name: 'Synthesis', stage: 'research', run: 'serial', handler: 'synthesise_findings@1',
     role: 'Turns pinned facts into findings, derived by the agent until a person verifies them.',
+    given: 'Sam', job: 'finds the points',
   },
   drafter: {
     key: 'drafter', name: 'Drafter', stage: 'brief', run: 'parallel', fanOut: 'field',
     role: 'Drafts one brief field from the campaign’s evidence.',
+    given: 'Dara', job: 'writes',
   },
   judge: {
     key: 'judge', name: 'Judge', stage: 'brief', run: 'serial',
     role: 'Reads the whole brief after the drafts and checks it holds together.',
+    given: 'Jude', job: 'checks',
   },
 }
 

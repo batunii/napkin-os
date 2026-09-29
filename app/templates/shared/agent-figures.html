@@ -92,6 +92,16 @@
   /* Still reads as working without motion. */
   .agent-figure[data-state='working'] .af-body { transform: rotate(8deg); }
 }
+
+/* Ink bodies (Ellis, Jude) follow the theme, so in dark mode they turn light and
+   can vanish on a light ground (a paper page, a report). An outline in the
+   page's own ink keeps them visible on any ground. Coloured bodies need none. */
+.agent-figure .af-body [fill='var(--plan)'] {
+  stroke: var(--af-edge, var(--ink));
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
 </style>
 <script>
 var AGENT_FIGURES={svg:{extract:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Extract, Reads the prompt and attachments and proposes the ask.\" style=\"--af-phase:0.697\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 8 L41.5 40 L6.5 40Z\" fill=\"var(--plan)\"><\/path><g class=\"af-emblem\"><g><rect x=\"19.4\" y=\"29.3\" width=\"9.2\" height=\"6.4\" rx=\"0.8\" fill=\"var(--plan-eye)\" opacity=\"0.88\"><\/rect><path d=\"M21.2 31.4 h5.6 M21.2 33.6 h4\" stroke=\"var(--plan)\" stroke-width=\"0.9\" stroke-linecap=\"round\"><\/path><\/g><\/g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
@@ -108,6 +118,8 @@ drafter:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" w
 judge:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Judge, Reads the whole brief after the drafts and checks it holds together.\" style=\"--af-phase:0.167\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"34\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"34\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g transform=\"rotate(-5 24 23.5)\"><path d=\"M11.5 11 H36.5 V36 H11.5Z\" fill=\"var(--plan)\"><\/path><g class=\"af-emblem\"><path d=\"M20.2 27.5 l2.6 2.6 l5 -5\" stroke=\"var(--plan-eye)\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.7\" y=\"17.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"17.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>"},
 name:{extract:"Extract",market_structure:"Market structure",positioning:"Brands and positioning",culture:"Consumer and culture",codes:"Category codes",rhythm:"Rhythm and moments",media:"Media and spend",regulation:"Regulation",effectiveness:"Effectiveness",synthesis:"Synthesis",drafter:"Drafter",judge:"Judge"},
 role:{extract:"Reads the prompt and attachments and proposes the ask.",market_structure:"Sizes the category: value, volume, share and growth.",positioning:"Maps the brand and its comparators: awareness, claims, prices.",culture:"Finds who buys, when and why, and what is shifting.",codes:"Reads the category’s visual and verbal conventions.",rhythm:"Charts the seasons, peaks and moments that matter.",media:"Tracks who spends what, where.",regulation:"Lists what may and may not be said, and where.",effectiveness:"Finds work in the category that is proven to have worked.",synthesis:"Turns pinned facts into findings, derived by the agent until a person verifies them.",drafter:"Drafts one brief field from the campaign’s evidence.",judge:"Reads the whole brief after the drafts and checks it holds together."},
+given:{extract:"Ellis",market_structure:"Max",positioning:"Bo",culture:"Cam",codes:"Cody",rhythm:"Remy",media:"Mo",regulation:"Lex",effectiveness:"Eden",synthesis:"Sam",drafter:"Dara",judge:"Jude"},
+job:{extract:"reads",market_structure:"the market",positioning:"the brands",culture:"the shoppers",codes:"the ads",rhythm:"the timing",media:"the spend",regulation:"the rules",effectiveness:"what worked",synthesis:"finds the points",drafter:"writes",judge:"checks"},
 badge:"<g class=\"af-badge\"><circle class=\"af-badge-ring\" cx=\"40\" cy=\"8\" r=\"6\"><\/circle><path class=\"af-badge-bubble\" d=\"M40 2 a6 6 0 1 1 -3.9 10.55 l-2.6 1.95 l1.3 -3.5 A6 6 0 0 1 40 2Z\"><\/path><path class=\"af-badge-mark\" d=\"M40 5 v3.6\"><\/path><circle class=\"af-badge-dot\" cx=\"40\" cy=\"11\" r=\"0.95\"><\/circle><\/g>"};
 function agentFigure(key,o){
   var F=AGENT_FIGURES, s=F.svg[key]; if(!s) return ''; o=o||{};
@@ -146,6 +158,11 @@ var NapkinAgents=(function(T){
   }
   return {
     keys:T.keys, lenses:T.lenses, name:AGENT_FIGURES.name, role:AGENT_FIGURES.role,
+    // The name each agent introduces itself by, the same in every app, and its
+    // job in plain words: given.extract 'Ellis', job.extract 'reads'.
+    given:AGENT_FIGURES.given, job:AGENT_FIGURES.job,
+    // How an agent signs what it says: who('judge') 'Jude · checks'.
+    who:function(k){ return AGENT_FIGURES.given[k]?AGENT_FIGURES.given[k]+' · '+AGENT_FIGURES.job[k]:''; },
     forWork:forWork, ofDecision:ofDecision,
     // A figure by the work it stands for: figure('judge'), figure('research', o, 'media_spend').
     figure:function(w,o,lens){ return agentFigure(forWork(w,lens),o); }
