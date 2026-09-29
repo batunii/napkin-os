@@ -150,6 +150,12 @@ pub struct SpinoffSpec {
     /// reasoning behind facts this document is now built on.
     #[serde(default = "default_true")]
     pub pin_source_decisions: bool,
+    /// Carry the source whole under `data.upstream.<id>` (Contract 4 §5):
+    /// its data frozen there, its facts, findings and sources merged into
+    /// this document's own, its whole chain, branches and assets. Excludes
+    /// `map`. Off by default, so an app that does not opt in grafts as before.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub upstream: bool,
 }
 
 // Hand-written so an absent `spinoff:` block and a declared one that omits
@@ -162,6 +168,7 @@ impl Default for SpinoffSpec {
             map: None,
             lift: BTreeMap::new(),
             pin_source_decisions: true,
+            upstream: false,
         }
     }
 }
@@ -188,6 +195,34 @@ pub struct Lineage {
     /// True when this file was produced by `clan merge`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub merge: bool,
+    /// What an upstream spin-off carried from its direct parent (Contract 4
+    /// §5.3), so a host can tell later whether the parent has moved on.
+    /// Absent on every other file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carried: Option<Carried>,
+}
+
+/// The state of the direct parent an upstream spin-off was taken from
+/// (Contract 4 §5.3). Every hash is [`crate::hash::sha256_prefixed`] of the
+/// entry's bytes as read — the form `projection.built_from` uses — so the
+/// parent's current entries compare without parsing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Carried {
+    /// The parent's `document_id`: its key in `data.upstream`. Not
+    /// `lineage.parent_id`, which is the parent's revision.
+    pub document_id: String,
+    /// Of the parent's `shared/data.yaml`.
+    pub data_sha256: String,
+    /// Of each member the parent had; absent without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub facts_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub findings_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sources_sha256: Option<String>,
+    /// The newest parent decision with an id; absent when none has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_decision: Option<String>,
 }
 
 /// One parent of a merged CLAN file (spec §24.2).
@@ -297,6 +332,13 @@ impl Manifest {
     /// predates it (whose first write will adopt that `id`).
     pub fn document_id(&self) -> &str {
         self.document_id.as_deref().unwrap_or(&self.id)
+    }
+
+    /// What this document carried from the parent it was spun off from
+    /// (Contract 4 §5.3), if it was spun off with `upstream`. Every revision
+    /// keeps it: it describes the document, not the last write.
+    pub fn carried(&self) -> Option<&Carried> {
+        self.lineage.as_ref().and_then(|l| l.carried.as_ref())
     }
 
     /// Turn this (cloned) manifest into the next revision of the same

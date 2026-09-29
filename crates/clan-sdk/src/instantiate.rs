@@ -22,14 +22,34 @@ use uuid::Uuid;
 use serde_yaml::{Mapping, Value};
 
 use crate::container::{ClanBuilder, ClanFile, MANIFEST_PATH};
-use crate::decision::{Decision, DecisionChain};
+use crate::decision::{Certainty, Decision, DecisionChain, ReasonPoint, Reasoning};
 use crate::error::{Error, Result};
-use crate::manifest::{AppInfo, FileEntry, Lineage, ParentRef, ViewState};
+use crate::hash::sha256_prefixed;
+use crate::manifest::{AppInfo, Carried, FileEntry, Lineage, Manifest, ParentRef, ViewState};
+use crate::merge::MERGE_REPORT_PATH;
 
 const DATA_PATH: &str = "shared/data.yaml";
 const APP_MANIFEST_PATH: &str = "app/manifest.yaml";
 const CHAIN_PATH: &str = "agent/decision-chain.yaml";
 const ASSET_PREFIX: &str = "human/assets/";
+const BRANCH_PREFIX: &str = "agents/";
+const UPSTREAM_PREFIX: &str = "upstream/";
+
+/// The data key an upstream spin-off freezes its sources under (Contract 4
+/// §5.2), and the host-owned key it leaves behind.
+const UPSTREAM_KEY: &str = "upstream";
+const PROJECTION_KEY: &str = "projection";
+
+/// The list members an upstream spin-off merges by id: role, the path a file
+/// that does not register it keeps it at, and the key its list sits under.
+const MEMBERS: [(&str, &str, &str); 3] = [
+    ("pinned-facts", "shared/facts.yaml", "facts"),
+    ("findings", "shared/findings.yaml", "findings"),
+    ("sources", "shared/sources.yaml", "sources"),
+];
+
+/// Who writes a spin-off's own decisions.
+const SPINOFF_AGENT: &str = "napkin-spinoff";
 
 /// Options for [`instantiate`].
 #[derive(Debug, Clone)]
@@ -129,6 +149,7 @@ pub fn instantiate(template: &ClanFile, opts: InstantiateOptions) -> Result<Vec<
         delta: format!("instantiated from template {} v{}", app.name, app.version),
         parents: Vec::new(),
         merge: false,
+        carried: None,
     });
     manifest.view = Some(ViewState {
         present: true,
@@ -271,6 +292,14 @@ pub struct SpinoffOptions {
 /// The target app declares the shape of the graft in `app.spinoff`, because the
 /// target is what knows its own schema. Both parents are recorded, so the new
 /// file states which app it is *and* which exact document authorised it.
+///
+/// With `app.spinoff.upstream` the source travels whole (Contract 4 §5): its
+/// data frozen at `data.upstream.<source document_id>` beside any upstream it
+/// held itself, its facts, findings and sources merged into the new
+/// document's own, its whole chain, agent branches, merge report and assets,
+/// and `lineage.carried` recording what was taken. No address is rewritten,
+/// so everything upstream still resolves. Without it the source's data is
+/// grafted at `map`, or folded in at the root, as it always was.
 pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> Result<Vec<u8>> {
     let tpl_manifest = template.manifest();
     if tpl_manifest.document_type.as_deref() != Some("template") {
@@ -304,6 +333,31 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
         }
     }
 
+    let map = opts
+        .map
+        .as_deref()
+        .or(spec.map.as_deref())
+        .filter(|m| !m.is_empty());
+    if spec.upstream {
+        if let Some(map) = map {
+            return Err(Error::OutputRejected(format!(
+                "{} carries a spin-off whole under upstream.<id>, so it takes no map \
+                 (given {map:?})",
+                app.name
+            )));
+        }
+        if let Some(to) = spec
+            .lift
+            .values()
+            .find(|to| to.split('.').next() == Some(UPSTREAM_KEY))
+        {
+            return Err(Error::OutputRejected(format!(
+                "{} lifts into {to:?}, but upstream is the frozen copy and is read-only",
+                app.name
+            )));
+        }
+    }
+
     let now = Utc::now().to_rfc3339();
     let id = opts
         .instance_id
@@ -317,30 +371,72 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
         .source_uri
         .unwrap_or_else(|| format!("file:///unknown/{}.clan", src_manifest.id));
 
+    let src_doc = src_manifest.document_id().to_string();
+
     // ── the data layer: the source's facts, in the target's shape ──────────
-    let mut src_data: Value = source
-        .read_entry(DATA_PATH)
-        .ok()
-        .and_then(|b| serde_yaml::from_slice(&b).ok())
+    let src_data_bytes = source.read_entry(DATA_PATH).ok();
+    let mut src_data: Value = src_data_bytes
+        .as_deref()
+        .and_then(|b| serde_yaml::from_slice(b).ok())
         .unwrap_or_else(|| Value::Mapping(Mapping::new()));
     let mut data = Value::Mapping(Mapping::new());
+    let mut seeds = Vec::new();
 
-    // Lift the few fields that belong elsewhere in the target schema, taking
-    // them out of the source before the rest is grafted wholesale.
-    for (from, to) in &spec.lift {
-        if let Some(v) = take_dotted(&mut src_data, from) {
-            set_dotted(&mut data, to, v);
+    if spec.upstream {
+        if src_data.is_null() {
+            src_data = Value::Mapping(Mapping::new());
         }
-    }
-    match opts.map.as_deref().or(spec.map.as_deref()) {
-        Some(path) if !path.is_empty() => set_dotted(&mut data, path, src_data),
-        // No declared namespace: fold the source in at the root, without
-        // overwriting anything a lift rule has already placed there.
-        _ => {
-            if let (Some(dst), Some(src)) = (data.as_mapping_mut(), src_data.as_mapping()) {
-                for (k, v) in src {
-                    if !dst.contains_key(k) {
-                        dst.insert(k.clone(), v.clone());
+        // The frozen copy is the source's data less what the source's host
+        // derived (`projection`) and what it had carried itself (`upstream`,
+        // hoisted beside it below).
+        let hoisted = src_data.as_mapping_mut().and_then(|m| {
+            m.remove(PROJECTION_KEY);
+            m.remove(UPSTREAM_KEY)
+        });
+        // A lift copies here: the frozen copy stays whole, and the seeded
+        // field says where it came from.
+        for (from, to) in &spec.lift {
+            if let Some(v) = get_dotted(&src_data, from).filter(|v| !v.is_null()) {
+                set_dotted(&mut data, to, v.clone());
+                seeds.push(seed_decision(
+                    &id,
+                    &src_doc,
+                    &src_manifest.title,
+                    &app.name,
+                    from,
+                    to,
+                    &now,
+                ));
+            }
+        }
+        let mut upstream = Mapping::new();
+        upstream.insert(Value::String(src_doc.clone()), src_data);
+        if let Some(Value::Mapping(older)) = hoisted {
+            for (k, v) in older {
+                if !upstream.contains_key(&k) {
+                    upstream.insert(k, v);
+                }
+            }
+        }
+        set_dotted(&mut data, UPSTREAM_KEY, Value::Mapping(upstream));
+    } else {
+        // Lift the few fields that belong elsewhere in the target schema,
+        // taking them out of the source before the rest is grafted wholesale.
+        for (from, to) in &spec.lift {
+            if let Some(v) = take_dotted(&mut src_data, from) {
+                set_dotted(&mut data, to, v);
+            }
+        }
+        match map {
+            Some(path) => set_dotted(&mut data, path, src_data),
+            // No declared namespace: fold the source in at the root, without
+            // overwriting anything a lift rule has already placed there.
+            None => {
+                if let (Some(dst), Some(src)) = (data.as_mapping_mut(), src_data.as_mapping()) {
+                    for (k, v) in src {
+                        if !dst.contains_key(k) {
+                            dst.insert(k.clone(), v.clone());
+                        }
                     }
                 }
             }
@@ -351,11 +447,18 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
         .into_bytes();
 
     // ── the decision chain: why these facts are what they are ─────────────
-    let mut src_chain = source
-        .read_entry(CHAIN_PATH)
-        .ok()
-        .and_then(|b| DecisionChain::from_yaml(&b).ok())
-        .unwrap_or_default();
+    let mut src_chain = match source.read_entry(CHAIN_PATH) {
+        // Carried whole means carried or refused: a chain this SDK cannot
+        // read is not silently left behind.
+        Ok(b) if spec.upstream => DecisionChain::from_yaml(&b).map_err(|e| {
+            Error::OutputRejected(format!(
+                "the source's decision chain does not parse, so it cannot be carried: {e}"
+            ))
+        })?,
+        Ok(b) => DecisionChain::from_yaml(&b).unwrap_or_default(),
+        Err(_) => DecisionChain::default(),
+    };
+    let last_decision = src_chain.decisions.iter().find_map(|d| d.id.clone());
     let carried = src_chain.decisions.len();
     if spec.pin_source_decisions {
         for d in &mut src_chain.decisions {
@@ -370,11 +473,19 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
     {
         chain.decisions.append(&mut tpl_chain.decisions);
     }
+    let what = if spec.upstream {
+        format!(
+            "its data, frozen under upstream.{src_doc}, its facts, findings, sources, \
+             branches and assets, and {carried} decision(s)"
+        )
+    } else {
+        format!("the data layer and {carried} decision(s)")
+    };
     let mut marker = Decision::new(
-        "napkin-spinoff",
+        SPINOFF_AGENT,
         format!("spin off \"{}\" into {}", src_manifest.title, app.name),
         format!(
-            "Carried the data layer and {carried} decision(s) from \"{}\" ({}). \
+            "Carried {what} from \"{}\" ({}). \
              Everything below this entry was decided in that document; it stays \
              binding here until something in this one supersedes it.",
             src_manifest.title,
@@ -384,6 +495,8 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
     );
     marker.pinned = true;
     chain.prepend(marker);
+    // Newest first: the seeds sit above the marker, in lift order.
+    chain.decisions.splice(0..0, seeds);
     let chain_bytes = chain.to_yaml()?;
 
     // ── the manifest: two parents, because there were two ─────────────────
@@ -421,6 +534,7 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
         ],
         // Not a `clan merge` product — two origins, one of them an app.
         merge: false,
+        carried: None,
     });
     manifest.view = Some(ViewState {
         present: true,
@@ -430,25 +544,251 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
     });
 
     // ── the entries: the target's app, the source's assets ────────────────
-    let mut builder = ClanBuilder::new(manifest);
-    let mut have: Vec<String> = Vec::new();
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     for (path, bytes) in template.read_all_entries()? {
         if path == MANIFEST_PATH || path == DATA_PATH || path == CHAIN_PATH {
             continue;
         }
-        have.push(path.clone());
-        builder.add_entry(path, bytes);
+        entries.push((path, bytes));
     }
-    // Mood boards, logos, reference stills — the material the decisions were
-    // made about travels with them. The template's own assets win a collision.
-    for (path, bytes) in source.read_all_entries()? {
-        if path.starts_with(ASSET_PREFIX) && !have.contains(&path) {
-            builder.add_entry(path, bytes);
+    let src_entries = source.read_all_entries()?;
+    if spec.upstream {
+        let lineage = manifest.lineage.as_mut().expect("set above");
+        lineage.carried = Some(carry_upstream(
+            &mut manifest.files,
+            &mut entries,
+            source,
+            &src_entries,
+            &src_doc,
+            src_data_bytes.as_deref().unwrap_or_default(),
+            last_decision,
+        )?);
+    } else {
+        // Mood boards, logos, reference stills — the material the decisions
+        // were made about travels with them. The template's own assets win a
+        // collision.
+        for (path, bytes) in &src_entries {
+            if path.starts_with(ASSET_PREFIX) && !entries.iter().any(|(p, _)| p == path) {
+                entries.push((path.clone(), bytes.clone()));
+            }
         }
+    }
+
+    let mut builder = ClanBuilder::new(manifest);
+    for (path, bytes) in entries {
+        builder.add_entry(path, bytes);
     }
     builder.add_entry(DATA_PATH, data_bytes);
     builder.add_entry(CHAIN_PATH, chain_bytes);
     builder.build()
+}
+
+/// Carry what an upstream spin-off takes besides the data and the chain
+/// (Contract 4 §5.2) into the new document's `entries` and `files`, and say
+/// what was taken (§5.3).
+///
+/// `entries` holds the target's own entries on the way in; the target keeps
+/// every path it already has except a member, which it shares with the source
+/// by merging.
+fn carry_upstream(
+    files: &mut Vec<FileEntry>,
+    entries: &mut Vec<(String, Vec<u8>)>,
+    source: &ClanFile,
+    src_entries: &[(String, Vec<u8>)],
+    src_doc: &str,
+    src_data_bytes: &[u8],
+    last_decision: Option<String>,
+) -> Result<Carried> {
+    let src_manifest = source.manifest();
+    let mut carried = Carried {
+        document_id: src_doc.to_string(),
+        data_sha256: sha256_prefixed(src_data_bytes),
+        facts_sha256: None,
+        findings_sha256: None,
+        sources_sha256: None,
+        last_decision,
+    };
+
+    // Facts, findings and sources: merged by id into the target's own, so the
+    // new document verifies, rejects and corrects its copies.
+    for (role, default_path, key) in MEMBERS {
+        let path = src_manifest
+            .files_with_role(role)
+            .next()
+            .map_or(default_path, |f| f.path.as_str());
+        let Some((_, src_bytes)) = src_entries.iter().find(|(p, _)| p == path) else {
+            continue;
+        };
+        let hash = Some(sha256_prefixed(src_bytes));
+        match role {
+            "pinned-facts" => carried.facts_sha256 = hash,
+            "findings" => carried.findings_sha256 = hash,
+            _ => carried.sources_sha256 = hash,
+        }
+        let own = entries.iter().position(|(p, _)| p == path);
+        let merged = merge_member(own.map(|i| entries[i].1.as_slice()), src_bytes, key, path)?;
+        match own {
+            Some(i) => entries[i].1 = merged,
+            None => entries.push((path.to_string(), merged)),
+        }
+        register_carried(
+            files,
+            src_manifest,
+            path,
+            Some(yaml_entry(role, path, role)),
+        );
+    }
+
+    // The source's merge report names the source's data, which is no longer
+    // at the root, so it goes beside the frozen copy.
+    if let Some((_, bytes)) = src_entries.iter().find(|(p, _)| p == MERGE_REPORT_PATH) {
+        let path = format!("{UPSTREAM_PREFIX}{src_doc}/{MERGE_REPORT_PATH}");
+        entries.push((path.clone(), bytes.clone()));
+        let id = format!("upstream-merge-report-{src_doc}");
+        register_carried(
+            files,
+            src_manifest,
+            &path,
+            Some(yaml_entry(&id, &path, "upstream-merge-report")),
+        );
+    }
+
+    // Unmerged agent branches, merge reports carried from further upstream,
+    // and the assets: each at its own path, the target's own winning.
+    for (path, bytes) in src_entries {
+        let carries = path.starts_with(BRANCH_PREFIX)
+            || path.starts_with(UPSTREAM_PREFIX)
+            || path.starts_with(ASSET_PREFIX);
+        if !carries || entries.iter().any(|(p, _)| p == path) {
+            continue;
+        }
+        entries.push((path.clone(), bytes.clone()));
+        register_carried(files, src_manifest, path, None);
+    }
+    Ok(carried)
+}
+
+/// Merge the source's copy of a list member into the target's: the target's
+/// entries first, then the source's in order, skipping an id the target
+/// already holds. A target with no entries takes the source's bytes unchanged.
+fn merge_member(own: Option<&[u8]>, src: &[u8], key: &str, path: &str) -> Result<Vec<u8>> {
+    let parse = |bytes: &[u8], whose: &str| -> Result<Mapping> {
+        if bytes.iter().all(u8::is_ascii_whitespace) {
+            return Ok(Mapping::new());
+        }
+        match serde_yaml::from_slice::<Value>(bytes) {
+            Ok(Value::Mapping(m)) => Ok(m),
+            Ok(Value::Null) => Ok(Mapping::new()),
+            _ => Err(Error::OutputRejected(format!(
+                "{whose} {path} is not a mapping with a `{key}` list"
+            ))),
+        }
+    };
+    let list = |doc: &Mapping| match doc.get(key) {
+        Some(Value::Sequence(items)) => items.clone(),
+        _ => Vec::new(),
+    };
+    let mut doc = match own {
+        Some(bytes) => parse(bytes, "the target's")?,
+        None => Mapping::new(),
+    };
+    let mut items = list(&doc);
+    if items.is_empty() {
+        return Ok(src.to_vec());
+    }
+    let theirs = list(&parse(src, "the source's")?);
+    let id_of = |v: &Value| v.get("id").and_then(Value::as_str).map(str::to_string);
+    let held: std::collections::BTreeSet<String> = items.iter().filter_map(id_of).collect();
+    items.extend(
+        theirs
+            .into_iter()
+            .filter(|v| id_of(v).map_or(true, |id| !held.contains(&id))),
+    );
+    doc.insert(Value::String(key.to_string()), Value::Sequence(items));
+    serde_yaml::to_string(&doc)
+        .map(String::into_bytes)
+        .map_err(|e| Error::OutputRejected(format!("failed to serialise merged {path}: {e}")))
+}
+
+/// Register a carried entry in the new document's `files[]` under the
+/// source's own registration, or `fallback` when the source had none. The
+/// target's registration of the path wins; a source id the target already
+/// uses for another path gets the source's document id appended.
+fn register_carried(
+    files: &mut Vec<FileEntry>,
+    src: &Manifest,
+    path: &str,
+    fallback: Option<FileEntry>,
+) {
+    if files.iter().any(|f| f.path == path) {
+        return;
+    }
+    let Some(mut entry) = src.file_by_path(path).cloned().or(fallback) else {
+        return;
+    };
+    entry.sha256 = None; // `ClanBuilder::build` hashes the bytes written
+    if files.iter().any(|f| f.id == entry.id) {
+        entry.id = format!("{}-{}", entry.id, src.document_id());
+    }
+    files.push(entry);
+}
+
+/// A YAML member's registry entry; `ClanBuilder::build` fills in its hash.
+fn yaml_entry(id: &str, path: &str, role: &str) -> FileEntry {
+    FileEntry {
+        id: id.to_string(),
+        path: path.to_string(),
+        role: role.to_string(),
+        content_type: "application/yaml".into(),
+        priority: None,
+        sha256: None,
+    }
+}
+
+/// The edit decision that records one lift of an upstream spin-off (Contract
+/// 4 §5.4): the seeded field, the upstream address it was copied from, and why
+/// there was nothing else to do.
+fn seed_decision(
+    doc: &str,
+    src_doc: &str,
+    src_title: &str,
+    app_name: &str,
+    from: &str,
+    to: &str,
+    now: &str,
+) -> Decision {
+    let decided = format!("Seeded {to} from {from} in \"{src_title}\".");
+    let cite = format!("{src_doc}#{from}");
+    Decision {
+        kind: Some("edit".into()),
+        actor: Some("process:spinoff".into()),
+        targets: vec![format!("{doc}#{to}")],
+        cites: vec![cite.clone()],
+        fields_changed: vec![to.split('.').next().unwrap_or(to).to_string()],
+        pinned: true,
+        reasoning: Some(Reasoning {
+            decided: decided.clone(),
+            because: vec![ReasonPoint {
+                point: format!("{app_name} seeds {to} from the upstream {from}"),
+                cites: vec![cite],
+                ..Default::default()
+            }],
+            rejected: Vec::new(),
+            only_option: Some(
+                "The target app declares this lift; the value is copied unchanged.".into(),
+            ),
+            certainty: Certainty {
+                level: "high".into(),
+                why: "the value is the upstream value, copied".into(),
+                ..Default::default()
+            },
+            would_change_if: format!(
+                "a person edits {to}, or the document takes newer upstream data"
+            ),
+            ..Default::default()
+        }),
+        ..Decision::new(SPINOFF_AGENT, "seed", decided, now)
+    }
 }
 
 /// Descend a dotted path, creating mappings as needed, and set a value.
@@ -476,6 +816,17 @@ fn set_dotted(root: &mut Value, path: &str, value: Value) {
     cur.as_mapping_mut()
         .expect("just ensured mapping")
         .insert(Value::String((*last).to_string()), value);
+}
+
+/// The value at a dotted path, if it is there.
+fn get_dotted<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
+    let keys: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+    if keys.is_empty() {
+        return None;
+    }
+    keys.iter().try_fold(root, |cur, k| {
+        cur.as_mapping()?.get(Value::String((*k).to_string()))
+    })
 }
 
 /// Remove and return the value at a dotted path, if it is there.
@@ -721,6 +1072,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             pin_source_decisions: true,
+            upstream: false,
         }
     }
 

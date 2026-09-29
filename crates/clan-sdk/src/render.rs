@@ -60,6 +60,7 @@ pub fn render(clan: &ClanFile) -> Result<Vec<u8>> {
         delta: "materialised human view (clan render)".into(),
         parents: Vec::new(),
         merge: false,
+        carried: manifest.carried().cloned(),
     });
     new_manifest.view = Some(ViewState {
         present: true,

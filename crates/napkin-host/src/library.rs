@@ -553,6 +553,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             pin_source_decisions: true,
+            upstream: false,
         }
     }
 
