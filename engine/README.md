@@ -89,7 +89,7 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `ANTHROPIC_API_KEY` | Claude (the default lead link; also the independent critic) |
 | `BRIEF_CLAUDE_TRANSPORT` | how Claude links are sent: `api` (default, the key above), `cli` (your Claude Code login via `claude -p`, no API credit used), `auto` (the key, switching to the Claude Code login if it has no credit or is rejected). Also `serve.py --claude-code / --api / --auto` and `e2e_eval.py --transport`. See [ADR 0005](rag/docs/adr/0005-claude-transport.md) |
 | `BRIEF_PROVIDER` | pin one provider as the lead link (the rest stay as fallback) |
-| `BRIEF_SMP_CANDIDATES` / `BRIEF_GOLDEN` | SMP draft count (default 6) / run the golden-brief pass |
+| `BRIEF_SMP_CANDIDATES` / `BRIEF_GOLDEN` | SMP draft count (default 4, one per angle seed, since 2026-09-29; was 6) / run the golden-brief pass |
 | `BRIEF_MAX_TOKENS` | override every call's output ceiling |
 | (temperature) | not sent | Claude calls never send it: Opus 5.5 and Sonnet 5 reject it with a 400 (ADR 0011, 2026-09-29). Only the non-Claude fallback path sends 0.2. |
 | `BRIEF_CLIP_CHARS` / `BRIEF_CLIP_EXTRACT_CHARS` | brief clip for judge calls (6500) / for the capture (12000) |

@@ -199,6 +199,18 @@
    "what": "Compact judge replies (BRIEF_JUDGE_FORMAT=compact, phase C change 2): 205 vs 234 on the old format; the employer SMP went empty (no verdict for ownable). Hero judge output halved (about 8 s, $0.02 a brief). Paired replay: stricter on ownable. Not adopted; the old format stays the default",
    "comparable": true,
    "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "edd44e9-smp4",
+   "order": 16,
+   "dir": "checkpoint_smp4_ab",
+   "arm": "after_smp4",
+   "commit": "edd44e9",
+   "date": "2026-09-29",
+   "role": "variant",
+   "what": "4 SMP drafts instead of 6, one per angle seed (BRIEF_SMP_CANDIDATES=4, CC4 remainder): 247 vs 234 on 6 drafts (noise), 297 s vs 347 s, Claude $1.08 vs $1.13; same-drafts replay: verdicts on drafts 1-4 unchanged (86% = the judge's own noise), a passing draft every time. Adopted as the default",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
   }
  ]
 }

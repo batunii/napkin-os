@@ -456,7 +456,10 @@ def main() -> None:
                 # answered one object per test
                 "after_nosharpen": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "full"}),
                 # compact judge answers: pass lists by test number, short reasons (phase C change 2)
-                "after_compactjudge": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "compact"})}
+                "after_compactjudge": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "compact"}),
+                # 4 SMP drafts instead of 6, one per angle seed (CC4 remainder)
+                "after_smp4": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "full",
+                                               "BRIEF_SMP_CANDIDATES": "4"})}
     arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
     if a.reuse:

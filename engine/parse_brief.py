@@ -1346,10 +1346,15 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         # Non-hero fields generate once. N is tunable (a stronger model needs fewer).
         n_cand = int(os.environ.get("BRIEF_HERO_CANDIDATES", "4")) if fid in ("insight", "smp") else 1
         # The SMP is the brief's hardest field to own — map its white space once, generate
-        # a wider, angle-seeded spread, and gate every candidate on territory (below).
+        # an angle-seeded spread, and gate every candidate on territory (below). Four drafts,
+        # one per angle seed, since 2026-09-29 (Sai, CC4): against six, health 247 vs 234
+        # (noise), the judge's verdicts on the first four unchanged (86% agreement, its own
+        # noise level) and a passing draft in every replay; drafts 5 and 6 only repeated
+        # the first two angles. About 10 s and $0.02 a brief less. BRIEF_SMP_CANDIDATES=6
+        # restores the old spread.
         territory = None
         if fid == "smp":
-            n_cand = max(n_cand, int(os.environ.get("BRIEF_SMP_CANDIDATES", "6")))
+            n_cand = max(n_cand, int(os.environ.get("BRIEF_SMP_CANDIDATES", "4")))
             territory = f_terr.result() if f_terr else _smp_territory(brief_text, val("competitor_context"), rivals)
             if territory is None:
                 # No mapped competitor: the territory tests are skipped, and the brief says so

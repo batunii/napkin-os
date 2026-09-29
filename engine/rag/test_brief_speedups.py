@@ -255,6 +255,31 @@ def test_hero_fields_batched_calls_and_parallel_waves(monkeypatch):
     assert set(calls) == {"territory", "gen_batch", "judge_batch", "gen"}
 
 
+def test_the_smp_asks_for_four_drafts_one_per_angle(monkeypatch):
+    """Default since 2026-09-29 (Sai, CC4): four SMP drafts, each pulled a different way by
+    one of the four sourced angle seeds; BRIEF_SMP_CANDIDATES=6 restores six."""
+    seen = []
+    _fake_models(monkeypatch, [])
+    fake = pb._json_call
+
+    def spy(user, system=None, **kw):
+        """Keep the SMP's batched generation prompt."""
+        if '"candidates"' in (system or "") and "ANGLES" in user:
+            seen.append(user)
+        return fake(user, system=system, **kw)
+    monkeypatch.setattr(pb, "_json_call", spy)
+    for v in ("BRIEF_PARALLEL", "BRIEF_HERO_CANDIDATES", "BRIEF_SMP_CANDIDATES", "BRIEF_SHARPEN"):
+        monkeypatch.delenv(v, raising=False)
+    _fill(monkeypatch)
+    angles = seen[0].split("ANGLES", 1)[1]
+    assert [f"draft {i}" in angles for i in range(1, 6)] == [True] * 4 + [False]
+    assert all(seed in angles for seed in pb.SMP_ANGLE_SEEDS)
+    seen.clear()
+    monkeypatch.setenv("BRIEF_SMP_CANDIDATES", "6")
+    _fill(monkeypatch)
+    assert "draft 6" in seen[0].split("ANGLES", 1)[1]
+
+
 def test_with_the_sharpen_pass_on_there_are_13_calls(monkeypatch):
     """BRIEF_SHARPEN=1: a sharpen and a re-judge for each hero line on top of the default 9."""
     calls = []
