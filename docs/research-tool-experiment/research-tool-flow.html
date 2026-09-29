@@ -1,0 +1,740 @@
+<title>Research Tool, Under the Hood</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#FBFBFA; --card:#FFFFFF; --soft:#F2F3F5; --line:#DCDFE5; --line-soft:#E9EBEF;
+  --ink:#14161B; --ink2:#4A4F5C; --ink3:#737987;
+  --plan:#16181D; --plan-fg:#F4F5F7;
+  --accent:#FF4F2E; --accent-soft:#FFF1EE;
+  /* one colour per layer, from the agent palette */
+  --browser:#2F64F5; --browser-soft:#EAF0FF;
+  --host:#7D52F4;    --host-soft:#F1ECFF;
+  --mw:#C98A00;      --mw-soft:#FFF6DC;
+  --peri:#1E9E68;    --peri-soft:#E3F7EE;
+  --f:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#0F1114; --card:#16191E; --soft:#1B1F25; --line:#2D323C; --line-soft:#232830;
+    --ink:#EEF0F3; --ink2:#B6BBC6; --ink3:#8E94A1;
+    --plan:#1B1F26; --plan-fg:#F4F5F7;
+    --accent:#FF6A4D; --accent-soft:#2A1612;
+    --browser:#7FA2FF; --browser-soft:#16203A;
+    --host:#A98BFF;    --host-soft:#211A38;
+    --mw:#FFC23D;      --mw-soft:#2A2210;
+    --peri:#5ED3A0;    --peri-soft:#0F2A1F;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#0F1114; --card:#16191E; --soft:#1B1F25; --line:#2D323C; --line-soft:#232830;
+  --ink:#EEF0F3; --ink2:#B6BBC6; --ink3:#8E94A1;
+  --plan:#1B1F26; --plan-fg:#F4F5F7;
+  --accent:#FF6A4D; --accent-soft:#2A1612;
+  --browser:#7FA2FF; --browser-soft:#16203A;
+  --host:#A98BFF;    --host-soft:#211A38;
+  --mw:#FFC23D;      --mw-soft:#2A2210;
+  --peri:#5ED3A0;    --peri-soft:#0F2A1F;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font:15px/1.6 var(--f);margin:0}
+a{color:inherit}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--soft);border:1px solid var(--line-soft);border-radius:5px;padding:.05em .35em;word-break:break-word}
+pre{font-family:var(--mono);font-size:12.5px;line-height:1.55;background:var(--soft);border:1px solid var(--line-soft);border-radius:10px;padding:12px 14px;overflow-x:auto;margin:10px 0}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+h1,h2,h3{text-wrap:balance;letter-spacing:-.02em;margin:0}
+h1{font-size:clamp(30px,5vw,44px);font-weight:800;line-height:1.05;letter-spacing:-.035em}
+h2{font-size:26px;font-weight:800;margin-bottom:6px}
+h3{font-size:17px;font-weight:600}
+p{margin:.5em 0}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:40px;max-width:1240px;margin:0 auto;padding-inline:24px;padding-block:28px 80px}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 20px);align-self:start;max-height:calc(100vh - 40px);overflow:auto;font-size:13px}
+nav.toc a{display:block;text-decoration:none;color:var(--ink2);padding:3px 0 3px 10px;border-left:2px solid var(--line-soft)}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--ink);border-left-color:var(--ink)}
+nav.toc .grp{margin-top:14px;margin-bottom:4px}
+main{min-width:0}
+section{padding-top:36px;scroll-margin-top:16px}
+.lede{max-width:68ch;color:var(--ink2);font-size:16.5px}
+.hero{background:var(--plan);color:var(--plan-fg);border-radius:18px;padding:28px 30px}
+.hero .eyebrow{color:#9AA0AC}
+.hero p{color:#C9CDD5;max-width:70ch}
+.howto{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.howto span{font-family:var(--mono);font-size:12px;border:1px solid #3A3F4A;border-radius:999px;padding:4px 10px;color:#DADDE3}
+
+/* layer chips */
+.lyr{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 9px;font-weight:500;white-space:nowrap}
+.lyr::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.l-b{color:var(--browser);background:var(--browser-soft)}
+.l-h{color:var(--host);background:var(--host-soft)}
+.l-m{color:var(--mw);background:var(--mw-soft)}
+.l-p{color:var(--peri);background:var(--peri-soft)}
+
+/* the map */
+.map{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:18px}
+.lane{border-radius:14px;padding:12px;border:1px solid var(--line-soft);background:var(--card);display:flex;flex-direction:column;gap:6px}
+.lane h3{font-size:14px;display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.lane .where{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.lane a.mod{display:block;text-decoration:none;font-size:12.5px;padding:6px 8px;border-radius:8px;background:var(--soft);border-left:3px solid var(--c)}
+.lane a.mod:hover{background:var(--line-soft)}
+.lane a.mod b{font-family:var(--mono);font-size:11px;color:var(--c);margin-right:5px}
+.lane.b{--c:var(--browser)} .lane.h{--c:var(--host)} .lane.m{--c:var(--mw)} .lane.p{--c:var(--peri)}
+.lane{border-top:4px solid var(--c)}
+.wires{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px;font-size:12.5px}
+.wire{border:1px dashed var(--line);border-radius:10px;padding:8px 10px;color:var(--ink2)}
+.wire b{color:var(--ink);font-weight:600}
+.scroll{overflow-x:auto}
+
+/* module cards */
+.mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:14px}
+.mod-card{background:var(--card);border:1px solid var(--line-soft);border-radius:12px;padding:14px 16px;scroll-margin-top:16px}
+.mod-card:target{outline:2px solid var(--accent);outline-offset:2px}
+.mod-card .id{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--c)}
+.mod-card h3{margin:2px 0 2px}
+.mod-card .file{font-family:var(--mono);font-size:11.5px;color:var(--ink3);word-break:break-all}
+.mod-card p{font-size:13.5px;color:var(--ink2);margin:.45em 0}
+.mod-card dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12.5px;margin:.5em 0 0}
+.mod-card dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);padding-top:2px}
+.mod-card dd{margin:0;color:var(--ink2)}
+.c-b{--c:var(--browser)} .c-h{--c:var(--host)} .c-m{--c:var(--mw)} .c-p{--c:var(--peri)}
+.mod-card{border-top:3px solid var(--c)}
+
+/* steps */
+.step{display:grid;grid-template-columns:62px minmax(0,1fr);gap:18px;padding:22px 0;border-top:1px solid var(--line-soft);scroll-margin-top:16px}
+.step:target .num{background:var(--accent);color:#fff}
+.num{font-family:var(--mono);font-weight:500;font-size:14px;width:52px;height:52px;border-radius:12px;display:grid;place-items:center;background:var(--plan);color:var(--plan-fg)}
+.step h3{font-size:19px;margin-bottom:2px}
+.sees{color:var(--ink2);font-size:14px;margin:4px 0 10px}
+.sees b{color:var(--ink);font-weight:600}
+.chain{list-style:none;padding:0;margin:10px 0;display:grid;gap:0}
+.chain li{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px dashed var(--line-soft);font-size:14px}
+.chain li:last-child{border-bottom:0}
+.chain .who{padding-top:2px}
+.chain .ref{font-family:var(--mono);font-size:11.5px;color:var(--ink3);display:block;margin-top:2px;word-break:break-all}
+.becomes{background:var(--card);border:1px solid var(--line-soft);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13.5px}
+.becomes .eyebrow{margin-bottom:4px}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;padding:8px 12px;margin-top:10px;font-size:13.5px}
+.note b{font-weight:600}
+details{background:var(--card);border:1px solid var(--line-soft);border-radius:10px;padding:8px 14px;margin-top:10px}
+details summary{cursor:pointer;font-size:13.5px;font-weight:500;color:var(--ink2)}
+details[open] summary{margin-bottom:6px}
+
+/* tables */
+.tbl{overflow-x:auto;margin-top:10px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line-soft)}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);font-weight:500}
+td code{font-size:.82em}
+
+/* findings */
+.finds{display:grid;gap:10px;margin-top:14px}
+.find{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;background:var(--card);border:1px solid var(--line-soft);border-radius:12px;padding:12px 14px}
+.find .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;border-radius:6px;padding:3px 7px;height:fit-content;white-space:nowrap}
+.t-risk{background:var(--accent-soft);color:var(--accent)}
+.t-gap{background:var(--mw-soft);color:var(--mw)}
+.t-info{background:var(--soft);color:var(--ink2)}
+.find h3{font-size:15px}
+.find p{font-size:13.5px;color:var(--ink2);margin:.3em 0 0}
+
+.mermaid-wrap{background:var(--card);border:1px solid var(--line-soft);border-radius:14px;padding:12px;overflow-x:auto;margin-top:14px}
+pre.mermaid{background:#fff;border:0;color:#14161B;min-width:760px}
+.foot{margin-top:50px;font-size:12.5px;color:var(--ink3);border-top:1px solid var(--line-soft);padding-top:14px}
+
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr;gap:10px;padding-inline:16px}
+  nav.toc{position:static;max-height:none;display:none}
+  .map{grid-template-columns:1fr 1fr}
+  .wires{grid-template-columns:1fr}
+}
+@media (max-width:520px){
+  .map{grid-template-columns:1fr}
+  .step{grid-template-columns:1fr;gap:8px}
+  .num{width:44px;height:44px}
+  .chain li{grid-template-columns:1fr;gap:2px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <div class="eyebrow grp">Start</div>
+  <a href="#top">What this is</a>
+  <a href="#map">The map</a>
+  <a href="#sequence">One run, in order</a>
+  <div class="eyebrow grp">Modules</div>
+  <a href="#mods-b">Browser · B</a>
+  <a href="#mods-h">Rust host · H</a>
+  <a href="#mods-m">Middleware · M</a>
+  <a href="#mods-p">Mock backend · P</a>
+  <div class="eyebrow grp">The flow</div>
+  <a href="#s0">S0 Install the app</a>
+  <a href="#s1">S1 Open the studio</a>
+  <a href="#s2">S2 New document</a>
+  <a href="#s3">S3 Load the app</a>
+  <a href="#s4">S4 Type and attach</a>
+  <a href="#s5">S5 Save the ask</a>
+  <a href="#s6">S6 Start the job</a>
+  <a href="#s7">S7 Poll and apply</a>
+  <a href="#s8">S8 Extract</a>
+  <a href="#s9">S9 Identify and ask</a>
+  <a href="#s10">S10 Select lenses</a>
+  <a href="#s11">S11 Research</a>
+  <a href="#s12">S12 Synthesise</a>
+  <a href="#s13">S13 Report</a>
+  <a href="#s14">S14 After the report</a>
+  <div class="eyebrow grp">Reference</div>
+  <a href="#journey">One request's journey</a>
+  <a href="#file">Inside the .clan</a>
+  <a href="#fail">When it fails</a>
+  <a href="#found">Worth knowing</a>
+</nav>
+
+<main>
+<header class="hero" id="top">
+  <div class="eyebrow">Napkin Studio OS · Research Tool · branch task/character-sheet @ 82bcf22</div>
+  <h1>Research Tool, under the hood</h1>
+  <p>What runs, who calls whom, and what each piece of data turns into, from the moment you open the app to the finished report. It was traced from the code, and every step names the file and function that does the work.</p>
+  <p>Every block has an ID. The modules are <b>B</b> browser, <b>H</b> Rust host, <b>M</b> middleware and <b>P</b> peripherals (the mock backend today), and the flow steps are <b>S0–S14</b>. To ask about one, quote its ID, for example "explain H7" or "what happens in S11 if two lenses disagree".</p>
+  <div class="howto"><span>B · browser</span><span>H · Rust host</span><span>M · middleware</span><span>P · peripherals</span><span>S · flow step</span></div>
+</header>
+
+<!-- ============================ MAP ============================ -->
+<section id="map">
+  <div class="eyebrow">The map</div>
+  <h2>Four processes, three wires</h2>
+  <p class="lede">The browser never talks to the middleware or to Claude. Everything goes through the Rust host, which owns the document. The middleware owns the thinking. The peripherals (the mock backend) stand in for the model, web research and the shared knowledge store.</p>
+  <div class="map">
+    <div class="lane b"><h3>Browser <span class="where">your tab</span></h3>
+      <a class="mod" href="#B1"><b>B1</b>Web shell</a>
+      <a class="mod" href="#B2"><b>B2</b>Frame composer</a>
+      <a class="mod" href="#B3"><b>B3</b>Bridge (window.clan)</a>
+      <a class="mod" href="#B4"><b>B4</b>Research Tool view</a>
+      <a class="mod" href="#B5"><b>B5</b>Agent figures + crew</a>
+    </div>
+    <div class="lane h"><h3>Rust host <span class="where">:8091</span></h3>
+      <a class="mod" href="#H1"><b>H1</b>napkin-web router + tenant</a>
+      <a class="mod" href="#H2"><b>H2</b>Sandbox gate, tokens, quota</a>
+      <a class="mod" href="#H3"><b>H3</b>Session (one per doc)</a>
+      <a class="mod" href="#H4"><b>H4</b>Read ops</a>
+      <a class="mod" href="#H5"><b>H5</b>Edit ops</a>
+      <a class="mod" href="#H6"><b>H6</b>api-proxy + settle</a>
+      <a class="mod" href="#H7"><b>H7</b>Apply a middleware change</a>
+      <a class="mod" href="#H8"><b>H8</b>Decisions view</a>
+      <a class="mod" href="#H9"><b>H9</b>clan-sdk (the format)</a>
+      <a class="mod" href="#H10"><b>H10</b>Store on disk</a>
+    </div>
+    <div class="lane m"><h3>Middleware <span class="where">:8798</span></h3>
+      <a class="mod" href="#M1"><b>M1</b>Task endpoint</a>
+      <a class="mod" href="#M2"><b>M2</b>Registry</a>
+      <a class="mod" href="#M3"><b>M3</b>Capabilities</a>
+      <a class="mod" href="#M4"><b>M4</b>Campaign job</a>
+      <a class="mod" href="#M5"><b>M5</b>Stage code (6)</a>
+      <a class="mod" href="#M6"><b>M6</b>Researcher fan-out</a>
+      <a class="mod" href="#M7"><b>M7</b>Rules</a>
+      <a class="mod" href="#M8"><b>M8</b>Reasoning (R1)</a>
+      <a class="mod" href="#M9"><b>M9</b>Port clients</a>
+    </div>
+    <div class="lane p"><h3>Peripherals <span class="where">:8797 mock</span></h3>
+      <a class="mod" href="#P1"><b>P1</b>Router</a>
+      <a class="mod" href="#P2"><b>P2</b>claude -p runner</a>
+      <a class="mod" href="#P3"><b>P3</b>Model port</a>
+      <a class="mod" href="#P4"><b>P4</b>Research port</a>
+      <a class="mod" href="#P5"><b>P5</b>Retrieval port</a>
+      <a class="mod" href="#P6"><b>P6</b>Layers port (SQLite)</a>
+    </div>
+  </div>
+  <div class="wires">
+    <div class="wire"><b>Browser → host.</b> The shell uses <code>/api/…</code> with a tenant cookie. The app frame uses <code>/s/&lt;token&gt;/…</code>, which the bridge knows as <code>clan://</code> (the host rewrites the address).</div>
+    <div class="wire"><b>Host → middleware.</b> One route: <code>POST /v1/tasks</code>, speaking <code>napkin.middleware/1</code>. It carries the whole document on every call, polls included.</div>
+    <div class="wire"><b>Middleware → peripherals.</b> Four ports by base URL: model <code>/v1/messages</code>, research <code>/v1/research</code>, retrieval <code>/v1/retrieve</code>, layers <code>/v1/layers/…</code>. Swapping mock for real is only a URL change.</div>
+  </div>
+</section>
+
+<!-- ============================ SEQUENCE ============================ -->
+<section id="sequence">
+  <div class="eyebrow">One run, in order</div>
+  <h2>From "Start research" to the report</h2>
+  <p class="lede">This is the happy path with one question from the agent. Each arrow is a real HTTP call. The middleware works in a background thread; the app finds out what happened by polling.</p>
+  <div class="mermaid-wrap">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant V as B4 Research view
+  participant H as H Rust host
+  participant M as M Middleware
+  participant P as P Mock backend
+  V->>H: upload-asset (each file)
+  H->>H: store file + extract text sidecar
+  V->>H: patch-data (prompt, materials, message)
+  H->>H: human decision + new revision
+  V->>H: api-proxy start_campaign
+  H->>M: POST /v1/tasks (payload + whole doc + file text)
+  M-->>H: job queued, change null
+  M->>P: extract: model call
+  loop every 1s to 6s
+    V->>H: api-proxy job_status (free)
+    H->>M: POST /v1/tasks job_status (+ whole doc)
+    M-->>H: job state + staged change
+    H->>H: apply change (R1 check, merge, decisions)
+    H-->>V: reply + new document data
+  end
+  M->>P: identify: layers lookups + model call
+  M-->>H: needs_input + question
+  V->>H: patch-data (your answer, as you)
+  V->>H: api-proxy answer_question
+  H->>M: POST /v1/tasks answer_question
+  M->>P: select: model call
+  M->>P: research: per lens x market: /v1/research, add_source, model extract_facts, layers append
+  M->>P: synthesise: model call
+  Note over M: report waits until the host holds every earlier decision
+  M->>P: report: model call
+  M-->>H: done + report change
+  H-->>V: report lands in the document
+</pre>
+  </div>
+</section>
+
+<!-- ============================ MODULES ============================ -->
+<section id="mods-b">
+  <div class="eyebrow">Modules</div>
+  <h2><span class="lyr l-b">Browser</span></h2>
+  <p class="lede">The shell is React. The Research Tool is one plain HTML file inside the .clan, running in a sandboxed iframe with no access to the shell.</p>
+  <div class="mods">
+    <article class="mod-card c-b" id="B1"><div class="id">B1</div><h3>Web shell</h3>
+      <div class="file">app/src/App.tsx · app/src/host/http.ts · app/src/host/index.ts</div>
+      <p>The Napkin window: toolbar, home screen, the Decisions panel, export. It picks a "host" implementation: <code>httpHost</code> on the web, wasm for offline files.</p>
+      <dl><dt>Calls</dt><dd>H1 <code>/api/session</code>, <code>/home</code>, <code>/apps</code>, <code>/documents</code>, <code>/d/{doc}</code>, <code>/d/{doc}/human-html</code>, SSE <code>/events</code></dd>
+      <dt>Called by</dt><dd>you</dd></dl></article>
+    <article class="mod-card c-b" id="B2"><div class="id">B2</div><h3>Frame composer</h3>
+      <div class="file">app/src/shell/AppRuntime.tsx:103-192 · http.ts:217-246</div>
+      <p>It takes the app's HTML from the host, splices the bridge in before the last <code>&lt;/body&gt;</code>, rewrites <code>clan://localhost</code> to <code>/s/&lt;token&gt;</code>, posts the page to <code>preview-html</code>, and points the iframe at <code>/s/&lt;token&gt;/document</code>.</p>
+      <dl><dt>Sandbox</dt><dd><code>allow-scripts allow-popups</code>: no same-origin, no forms.</dd>
+      <dt>Calls</dt><dd>H1 <code>preview-html</code>, H2 <code>/document</code></dd></dl></article>
+    <article class="mod-card c-b" id="B3"><div class="id">B3</div><h3>Bridge: <code>window.clan</code></h3>
+      <div class="file">app/src/bridge/structuredEditBridge.ts</div>
+      <p>The app's only way out. The functions are <code>patchData</code> (a human write), <code>apiProxy</code> (agent work), <code>uploadAsset</code>, <code>setTitle</code> and <code>exportDoc</code>. When the host answers with new data, it swaps <code>__CLAN__.data</code> and fires <code>clan:dataupdated</code>.</p>
+      <dl><dt>Calls</dt><dd>H2 → H5 / H6</dd><dt>Called by</dt><dd>B4</dd></dl></article>
+    <article class="mod-card c-b" id="B4"><div class="id">B4</div><h3>Research Tool view</h3>
+      <div class="file">app/templates/campaign-research/index.html (2,594 lines)</div>
+      <p>The intake, the progress stepper, question cards, the report and the fact and finding panels. It never computes research; it renders <code>data</code> and the job replies. Its state is <code>CHAT</code> (the job, live narration, answers) and <code>POLL</code> (backoff).</p>
+      <dl><dt>Key fns</dt><dd><code>doSend</code> :2170 · <code>startCampaign</code> :2237 · <code>onJobReply</code> :2253 · <code>pollNow</code> :2287 · <code>doAnswer</code> :2301 · <code>renderReport</code> :2425</dd></dl></article>
+    <article class="mod-card c-b" id="B5"><div class="id">B5</div><h3>Agent figures + crew</h3>
+      <div class="file">app/templates/shared/agent-figures.html ← app/src/studio/*</div>
+      <p>Spliced into the app when it is packaged. <code>agentFigure()</code> draws a character; <code>NapkinAgents.forWork('research', lens)</code> says which one does a stage. Display only.</p></article>
+  </div>
+</section>
+
+<section id="mods-h">
+  <h2><span class="lyr l-h">Rust host</span></h2>
+  <p class="lede">The OS layer. It owns the document file: every write goes through it and every write is recorded as a decision. It knows nothing about research.</p>
+  <div class="mods">
+    <article class="mod-card c-h" id="H1"><div class="id">H1</div><h3>napkin-web router + tenant</h3>
+      <div class="file">crates/napkin-web/src/{main,lib,api,tenant,state}.rs</div>
+      <p>An axum server. The cookie <code>napkin_tenant</code> (a UUID) is your workspace. <code>/api/*</code> needs the cookie. <code>/s/*</code> is for app frames and uses a token instead. On first use of a workspace it installs every <code>.clan</code> from <code>NAPKIN_WEB_SEED</code>.</p>
+      <dl><dt>Actor</dt><dd><code>human:&lt;tenant uuid&gt;</code> on every write</dd></dl></article>
+    <article class="mod-card c-h" id="H2"><div class="id">H2</div><h3>Sandbox gate, tokens, quota</h3>
+      <div class="file">crates/napkin-web/src/{sandbox,tokens,meter}.rs</div>
+      <p><code>/s/{token}/{route}</code>. The token maps to (tenant, doc) with a 12-hour lifetime, and an unknown token gets 403. Every <code>api-proxy</code> call costs one unit of quota, except <code>job_status</code>. The route is passed to napkin-host's dispatcher.</p>
+      <dl><dt>Quota</dt><dd><code>NAPKIN_AGENT_CAP</code>, default 40 per tenant per process; we run 400</dd></dl></article>
+    <article class="mod-card c-h" id="H3"><div class="id">H3</div><h3>Session</h3>
+      <div class="file">crates/napkin-host/src/session.rs</div>
+      <p>One open document (LRU of 32). <code>perform()</code> locks, runs an operation on the snapshot, writes the resulting change, and moves the snapshot to the new version. The version is the sha256 of the archive.</p></article>
+    <article class="mod-card c-h" id="H4"><div class="id">H4</div><h3>Read ops</h3>
+      <div class="file">crates/napkin-host/src/ops/read.rs · view.rs · html.rs</div>
+      <p><code>human_html</code> injects <code>window.__CLAN__ = {data, manifest, assets}</code>. <code>clan_context_for_agent</code> builds the document block sent to the middleware. <code>attach_extracted_text</code> adds file text or images to the payload. <code>view::resolve</code> serves the installed app's newest HTML.</p></article>
+    <article class="mod-card c-h" id="H5"><div class="id">H5</div><h3>Edit ops</h3>
+      <div class="file">crates/napkin-host/src/ops/edit.rs</div>
+      <p><code>patch_data</code>: merge-patch (RFC 7396), check against the schema, record a decision, and create a new revision. <code>upload_asset</code>: store the file and extract its text into <code>human/assets/.extracted/</code> in the same write. <code>set_title</code>.</p></article>
+    <article class="mod-card c-h" id="H6"><div class="id">H6</div><h3>api-proxy + settle</h3>
+      <div class="file">crates/napkin-host/src/proxy.rs · session.rs:499-557</div>
+      <p>It wraps the app's payload as <code>{request_kind, payload, clan}</code> and posts it to <code>workspace.yaml → proxies.middleware.endpoint</code>. If the reply carries a <code>change</code>, it hands it to H7 and returns the new data to the app.</p>
+      <dl><dt>Never sends</dt><dd>scope, tenant or idempotency key</dd></dl></article>
+    <article class="mod-card c-h" id="H7"><div class="id">H7</div><h3>Apply a middleware change</h3>
+      <div class="file">crates/napkin-host/src/ops/middleware.rs:137-377</div>
+      <p>It checks the doc id and the structured reasoning (R1). It detects a stale base and turns conflicting fields into contests. It appends facts and findings, rebuilds the <code>projection</code>, and prepends the decisions with actor <code>process:middleware</code>, all in one archive write.</p></article>
+    <article class="mod-card c-h" id="H8"><div class="id">H8</div><h3>Decisions view</h3>
+      <div class="file">crates/napkin-host/src/ops/decisions.rs</div>
+      <p>Read-only. It turns the chain into blocks for the Decisions panel: who decided, what it touched, what needs attention, and the lock list (open contests, unverified findings, bad verdicts, unmerged branches).</p></article>
+    <article class="mod-card c-h" id="H9"><div class="id">H9</div><h3>clan-sdk</h3>
+      <div class="file">crates/clan-sdk/src/{pack,instantiate,container,decision,manifest}.rs</div>
+      <p>The format library. <code>instantiate</code> makes a document from an app. <code>pack</code> validates, prepends a decision, compresses the chain, and makes a new revision. The container is a ZIP with the manifest first.</p></article>
+    <article class="mod-card c-h" id="H10"><div class="id">H10</div><h3>Store on disk</h3>
+      <div class="file">crates/napkin-web/src/store.rs</div>
+      <p><code>&lt;data&gt;/&lt;tenant&gt;/documents/doc-…clan</code> and <code>&lt;data&gt;/&lt;tenant&gt;/apps/&lt;app_id&gt;/app.clan</code>. Every write rewrites the whole file. There is no base-version check yet (W2-A4).</p>
+      <dl><dt>Now at</dt><dd><code>~/Documents/Code/napkin-os-wt/stack/data</code></dd></dl></article>
+  </div>
+</section>
+
+<section id="mods-m">
+  <h2><span class="lyr l-m">Middleware</span></h2>
+  <p class="lede">Python and FastAPI in <code>server/napkin</code>. This is where research happens: stages, model prompts, rules, merging and reasoning. It never writes the document; it proposes changes, and the host applies them.</p>
+  <div class="mods">
+    <article class="mod-card c-m" id="M1"><div class="id">M1</div><h3>Task endpoint</h3>
+      <div class="file">server/napkin/app.py:108-257</div>
+      <p><code>POST /v1/tasks</code>. It checks <code>request_kind == middleware</code>, rejects scope keys in the body (rule M3), then branches on the task: <code>job_status</code>, <code>answer_question</code>, <code>start_campaign</code>, short tasks and long tasks.</p>
+      <dl><dt>Scope</dt><dd>from config (<code>org/dev-agency</code>, <code>brand/dev-brand</code>), never the request</dd></dl></article>
+    <article class="mod-card c-m" id="M2"><div class="id">M2</div><h3>Registry</h3>
+      <div class="file">server/napkin/registry.py</div>
+      <p>An explicit map from task to handler (<code>start_campaign@1</code>, <code>answer_question@1</code>, …). It resolves against the document's own <code>app/pipeline.yaml</code>. Unknown tasks or handlers fail loudly, and every pipeline is checked at startup.</p></article>
+    <article class="mod-card c-m" id="M3"><div class="id">M3</div><h3>Capabilities</h3>
+      <div class="file">server/napkin/capabilities.py</div>
+      <p>Each job gets a <code>caps</code> object: <code>model.structured()</code>, <code>research.search()</code>, <code>retrieval</code> and <code>layers</code>, each behind a process-wide semaphore and tagged with the job id. Handlers can only reach the outside through this.</p></article>
+    <article class="mod-card c-m" id="M4"><div class="id">M4</div><h3>Campaign job</h3>
+      <div class="file">server/napkin/pipeline/campaign.py:120-305</div>
+      <p>A daemon thread running six stages in order. Each stage emits a <b>chunk</b> (patch, facts, findings, decisions, message), computed once so that repeats are identical. It keeps a working copy <code>W</code> of the document. It pauses on a question and resumes on an answer.</p>
+      <dl><dt>Lives</dt><dd>in memory only (<code>JobStore</code>, max 500)</dd></dl></article>
+    <article class="mod-card c-m" id="M5"><div class="id">M5</div><h3>Stage code</h3>
+      <div class="file">pipeline/extract.py · campaign.py (identify, select) · research.py · synthesise.py · report.py</div>
+      <p>Extract, identify, select, research, synthesise and report. Each stage makes one or more structured model calls, then code checks everything the model said: quotes must be verbatim, numbers must match, and cites must resolve. See S8–S13.</p></article>
+    <article class="mod-card c-m" id="M6"><div class="id">M6</div><h3>Researcher fan-out</h3>
+      <div class="file">server/napkin/pipeline/research.py:98-484</div>
+      <p>One unit per lens × market, run on a thread pool. Each unit tries to reuse recent layer facts, otherwise it does web research → registers sources → extracts facts → checks quotes. Then everything is merged into pins or contests.</p></article>
+    <article class="mod-card c-m" id="M7"><div class="id">M7</div><h3>Rules</h3>
+      <div class="file">server/napkin/rules/*.py</div>
+      <p>Deterministic code the model can't override: quote finding, market codes, budget bands, source tiering by domain, confidence from tiers, merge, cite checks, identify rules.</p></article>
+    <article class="mod-card c-m" id="M8"><div class="id">M8</div><h3>Reasoning (R1)</h3>
+      <div class="file">server/napkin/reasoning.py</div>
+      <p>Builds each decision's <code>reasoning</code>: decided, because (with cites), rejected, certainty, and would_change_if. The model supplies "grounds". Code drops any point whose cites don't resolve, and <b>certainty is always set by code</b>, never by the model.</p></article>
+    <article class="mod-card c-m" id="M9"><div class="id">M9</div><h3>Port clients</h3>
+      <div class="file">model.py · research.py · retrieval.py · layers/http.py</div>
+      <p>Model: an Anthropic or OpenAI-compatible wire with structured output, validated locally and retried once. Research: <code>POST /v1/research</code>. Layers: scope in headers, a deterministic Idempotency-Key on writes, and any failure raises <code>LayersError</code>.</p></article>
+  </div>
+</section>
+
+<section id="mods-p">
+  <h2><span class="lyr l-p">Peripherals (the mock backend)</span></h2>
+  <p class="lede">One standard-library Python process on :8797 in <code>mock-backend/</code>. It fakes the four services the real deployment will have. It holds no middleware logic; it stores, searches and generates. Model answers come from a fresh <code>claude -p</code> run each time.</p>
+  <div class="mods">
+    <article class="mod-card c-p" id="P1"><div class="id">P1</div><h3>Router</h3>
+      <div class="file">mock-backend/server.py</div>
+      <p>It routes by path prefix to the four families, logs one line per request (never the body), and answers <code>/healthz</code>. <code>MOCK_FAKES</code> switches families on or off.</p></article>
+    <article class="mod-card c-p" id="P2"><div class="id">P2</div><h3><code>claude -p</code> runner</h3>
+      <div class="file">mock-backend/common.py:224-417</div>
+      <p>A fresh process in an empty temp dir, with no session, no settings and no MCP. The system prompt goes through a pipe and the schema through <code>--json-schema</code>. There are 4 slots shared by all families, with a disk cache for research and retrieval.</p></article>
+    <article class="mod-card c-p" id="P3"><div class="id">P3</div><h3>Model port</h3>
+      <div class="file">mock-backend/model_port.py</div>
+      <p><code>/v1/messages</code> (Anthropic) and <code>/v1/chat/completions</code> (OpenAI/NIM) translate to <code>claude -p</code> with the schema and hand back <code>structured_output</code>. Never cached.</p></article>
+    <article class="mod-card c-p" id="P4"><div class="id">P4</div><h3>Research port</h3>
+      <div class="file">mock-backend/research_port.py</div>
+      <p><code>POST /v1/research</code> runs <code>claude -p</code> with WebSearch and WebFetch tools, returning sources with verbatim excerpts. Results are cached by query. It does not check that quotes are really on the page; the middleware's own quote check is the guard.</p></article>
+    <article class="mod-card c-p" id="P5"><div class="id">P5</div><h3>Retrieval port</h3>
+      <div class="file">mock-backend/retrieval_port.py</div>
+      <p><code>/v1/packs</code> and <code>/v1/retrieve</code> search the award-corpus digests in <code>engine/packs_dist</code>, and each quote is checked verbatim against the file. <b>The Research Tool never calls it</b>; only Brief Maker does.</p></article>
+    <article class="mod-card c-p" id="P6"><div class="id">P6</div><h3>Layers port (SQLite)</h3>
+      <div class="file">mock-backend/layers_port.py</div>
+      <p>The shared knowledge store: categories, brands, rosters, sources and versioned facts, with each fact written together with its decision in one transaction. Scope comes in headers. Writes need an Idempotency-Key; the same key with a different body is a 409 (the bug we fixed in 82bcf22).</p></article>
+  </div>
+</section>
+
+<!-- ============================ FLOW ============================ -->
+<section id="flow">
+  <div class="eyebrow">The flow</div>
+  <h2>Step by step</h2>
+  <p class="lede">Each step lists what you see, then the chain of calls in order, then what the data has become at the end. Line numbers are in the <code>characters</code> worktree.</p>
+
+  <article class="step" id="s0"><div class="num">S0</div><div>
+    <h3>The app gets installed</h3>
+    <p class="sees">Before anyone opens it: <b>Research Tool v0.3.0</b> appears on the home screen.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">build</span></span><div><code>npm run apps</code> regenerates the figures snippet, then packs the template into <code>campaign-research.app.clan</code>. The snippet is spliced at the <code>@napkin:agent-figures</code> marker.<span class="ref">crates/clan-sdk/examples/make_campaign_research.rs · examples/shared/app_ui.rs:11-32</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H1</span></span><div>On the first request of a workspace, <code>seed_library</code> installs every .clan in <code>NAPKIN_WEB_SEED</code> with <code>install_app</code>, which replaces any existing copy.<span class="ref">napkin-web/src/state.rs:122-159 · napkin-host/src/library.rs:135-171</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      The template (view HTML, <code>app/pipeline.yaml</code>, <code>agent/output-schema.json</code>, empty facts and findings, icon) → <code>&lt;data&gt;/&lt;tenant&gt;/apps/ie.napkin.campaign-research/app.clan</code>.</div>
+  </div></article>
+
+  <article class="step" id="s1"><div class="num">S1</div><div>
+    <h3>You open the studio</h3>
+    <p class="sees">A spinning Napkin disc ("Opening the studio…"), then <b>the home screen</b> with your apps and recent documents.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">B1</span></span><div><code>GET /api/session</code> returns <code>{tenant, sandbox_origin, quota}</code>. The cookie is minted here on first visit.<span class="ref">http.ts:28-50 · api.rs:101-107 · tenant.rs:121-150</span></div></li>
+      <li><span class="who"><span class="lyr l-b">B1</span></span><div><code>GET /api/t/{t}/home</code> and <code>/home/human-html</code>: the home screen is itself a CLAN app. Then <code>GET /apps</code> and an SSE stream on <code>/events</code>.<span class="ref">App.tsx:262-306 · api.rs:111-113, 217-221, 450-463</span></div></li>
+    </ol>
+  </div></article>
+
+  <article class="step" id="s2"><div class="num">S2</div><div>
+    <h3>You open the Research Tool: a new document is made</h3>
+    <p class="sees">The app opens on the intake panel. Behind it, a fresh document now exists on disk.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">B1</span></span><div><code>POST /api/t/{t}/documents {app_id}</code>.<span class="ref">App.tsx:198-205 · api.rs:138-146</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H9</span></span><div><code>library::create_instance</code> → <code>clan_sdk::instantiate(template, fresh_data)</code>: a new document id, lineage pointing at the template, data reset to <code>{}</code>, everything else copied.<span class="ref">library.rs:197-225 · clan-sdk/src/instantiate.rs:82-160</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H2</span></span><div><code>open_view</code> opens a Session and mints the frame token (tenant + doc, 12 h).<span class="ref">api.rs:63-89 · tokens.rs:47-72</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Installed app → <code>documents/doc-ie-napkin-campaign-research-xxxxxxxx.clan</code>, plus a token that is the app frame's only credential.</div>
+  </div></article>
+
+  <article class="step" id="s3"><div class="num">S3</div><div>
+    <h3>The app is loaded into its frame</h3>
+    <p class="sees">The Research Tool renders. It believes it is talking to <code>clan://localhost</code>.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-h">H4</span></span><div><code>GET …/human-html</code>: the installed app's HTML, untouched, plus <code>styles.css</code> and <code>&lt;script&gt;window.__CLAN__ = {data, manifest, assets}&lt;/script&gt;</code>. The decision chain is left out; the app fetches it lazily from <code>/chain</code>.<span class="ref">ops/read.rs:83-132, 369-410 · html.rs:16-43</span></div></li>
+      <li><span class="who"><span class="lyr l-b">B2</span></span><div>It splices the bridge before the last <code>&lt;/body&gt;</code>, rewrites <code>clan://localhost</code> to <code>/s/&lt;token&gt;</code>, adds a fetch shim, posts the page to <code>preview-html</code>, and sets the iframe src to <code>/s/&lt;token&gt;/document</code>.<span class="ref">AppRuntime.tsx:103-192 · http.ts:217-246</span></div></li>
+      <li><span class="who"><span class="lyr l-b">B3</span></span><div>The bridge calls <code>GET /capabilities</code> once, then polls <code>/edit-mode</code> every 400 ms.<span class="ref">structuredEditBridge.ts:141-158, 237-248</span></div></li>
+    </ol>
+    <div class="note"><b>Security:</b> on the web path the frame has no CSP. The sandbox stops it reaching the shell, but it can fetch any URL. The strict CSP exists only for files opened offline. See <a href="#found">Worth knowing</a>.</div>
+  </div></article>
+
+  <article class="step" id="s4"><div class="num">S4</div><div>
+    <h3>You type the ask and attach files</h3>
+    <p class="sees">Text in the prompt box, file chips under it. <b>Nothing is sent yet.</b></p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">B4</span></span><div>A delegated <code>input</code> listener keeps <code>CHAT.draft</code>, <code>CHAT.name</code> and <code>CHAT.who</code>. <code>addFiles</code> keeps the File objects in <code>CHAT.files</code>.<span class="ref">index.html:2498-2521, 2139-2144</span></div></li>
+    </ol>
+  </div></article>
+
+  <article class="step" id="s5"><div class="num">S5</div><div>
+    <h3>You press "Start research": the ask is saved, as you</h3>
+    <p class="sees">"Uploading X (1 of 2)…". Then your request appears as a sheet at the top.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">B4</span></span><div><code>doSend</code>: for each file, hash it (sha256) and call <code>clan.uploadAsset(name, bytes, 'human')</code>.<span class="ref">index.html:2170-2196</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H5</span></span><div><code>/upload-asset</code> stores the file at <code>human/assets/&lt;name&gt;</code> and extracts its text (txt, md, csv, json, PDF; up to 24,000 characters) into <code>human/assets/.extracted/&lt;name&gt;.txt</code>, recording an <code>upload-asset</code> decision.<span class="ref">ops/edit.rs:322-361 · ops/mod.rs:33,108-137</span></div></li>
+      <li><span class="who"><span class="lyr l-b">B4</span></span><div>One human write: <code>clan.patchData({materials, intake.messages, campaign.id/name}, {actor:'human', action:'start_campaign'})</code>.<span class="ref">index.html:2203-2220, 1842-1848</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H5·H9</span></span><div><code>patch_data</code>: RFC 7396 merge → validate against <code>agent/output-schema.json</code> → prepend a decision (actor <code>human:&lt;tenant&gt;</code>) → new revision id → whole archive written.<span class="ref">ops/edit.rs:138-230 · clan-sdk/src/pack.rs:1052-1111, 242-498</span></div></li>
+    </ol>
+    <details><summary>The patch it writes</summary>
+<pre><code>materials:
+  mat_&lt;ulid&gt;: {kind: prompt, name: Prompt, sha256, media_type: text/plain,
+               received_at, licence: client-confidential}
+  mat_&lt;ulid&gt;: {kind: email|deck|client_brief|other, name, sha256,
+               asset: assets/&lt;name&gt;, licence: client-confidential}
+intake:
+  messages:
+    msg_&lt;ulid&gt;: {role: user, by: human:&lt;id&gt;, at, text: &lt;prompt&gt;,
+                material_id, attachments: [mat ids]}
+campaign:
+  id:   {value: cmp_&lt;ulid&gt;, origin: stated, gate: created, by, decision: d_…}
+  name: {value: &lt;working name&gt;, origin: stated, …}</code></pre></details>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Your words and files → <b>materials</b> (hashed, marked client-confidential) + one <b>user message</b> + one <b>human decision</b> in the chain. The file text now sits in a sidecar, ready for the middleware.</div>
+  </div></article>
+
+  <article class="step" id="s6"><div class="num">S6</div><div>
+    <h3>The research job starts</h3>
+    <p class="sees">The progress card appears with six steps, and Extract is "working".</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">B4·B3</span></span><div><code>clan.apiProxy('middleware', {task:'start_campaign', input:{prompt, attachments:[{material_id, name, sha256}]}})</code> → <code>POST /s/&lt;token&gt;/api-proxy</code>.<span class="ref">index.html:2237-2241 · structuredEditBridge.ts:74-89</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H2</span></span><div>The token is resolved to (tenant, doc) and one unit of quota is spent.<span class="ref">sandbox.rs:46-94 · meter.rs:38-86</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H6·H4</span></span><div><code>proxy::api_proxy</code> adds each attachment's extracted <code>text</code> (or base64 image), builds <code>clan</code> (data, facts, findings, chain, pipeline, schema, version) and posts <code>{request_kind, payload, clan}</code> to <code>http://127.0.0.1:8798/v1/tasks</code>.<span class="ref">proxy.rs:20-131 · ops/read.rs:234-364</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M1·M2</span></span><div><code>Middleware.handle</code> validates, <code>registry.resolve</code> picks <code>start_campaign@1</code>, and a document can't have two campaigns running at once (409).<span class="ref">app.py:108-163 · registry.py:45-75</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M4</span></span><div><code>start_campaign.start()</code> checks that every attachment is already in <code>data.materials</code> with the same hash, then builds a <code>CampaignJob</code>, stores it and starts its thread.<span class="ref">handlers/start_campaign.py:10-34 · campaign.py:120-147</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M1</span></span><div>It replies at once: <code>job {id, state: queued, progress 0/6}</code>, <code>change: null</code>. H6 passes it back unchanged.<span class="ref">app.py:85-105</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      The app's two-field payload → a full request carrying your whole document → a <b>job id</b>, which the app keeps in <code>sessionStorage</code> so a reload can pick the job up again.</div>
+  </div></article>
+
+  <article class="step" id="s7"><div class="num">S7</div><div>
+    <h3>Polling: how agent work lands in your document</h3>
+    <p class="sees">The stepper advances, narration lines appear ("Read 2 materials…"), and fields fill in. This loop runs under every stage from S8 to S13.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-b">B4</span></span><div><code>pollNow</code> → <code>apiProxy('middleware', {task:'job_status', input:{job_id}})</code>. The delay starts at 1 s, then grows ×1.4 up to 6 s. Polls are free.<span class="ref">index.html:2282-2290</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H6</span></span><div>Same path as S6: the whole current document goes along on every poll.</div></li>
+      <li><span class="who"><span class="lyr l-m">M4</span></span><div><code>reply_change(clan)</code> records the host's latest document, finds the chunks whose decisions are not yet in <code>clan.decision_chain</code>, and <code>combine()</code>s them into one change.<span class="ref">campaign.py:105-117, 275-287</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H7</span></span><div><code>middleware::apply</code>:
+        <ol>
+          <li>Doc id matches.</li>
+          <li>R1: reasoning is required on pin, contest and finding decisions, and on edits under <code>campaign</code>, <code>selection</code> and <code>report</code> (declared in pipeline.yaml).</li>
+          <li>Stale base? Fields you changed meanwhile become <b>contests</b>.</li>
+          <li>Facts and findings are appended.</li>
+          <li><code>projection</code> is rebuilt.</li>
+          <li><code>pack</code>: schema check, new revision.</li>
+          <li>Decisions are prepended with actor <code>process:middleware</code>.</li>
+          <li>One write.</li>
+        </ol><span class="ref">ops/middleware.rs:137-377, 811-972</span></div></li>
+      <li><span class="who"><span class="lyr l-h">H6</span></span><div>It replaces <code>data.change</code> with <code>{applied, base_stale, applied_fields, contested_fields, contests}</code> and adds <code>clan: {version, data}</code>.<span class="ref">session.rs:499-557</span></div></li>
+      <li><span class="who"><span class="lyr l-b">B3·B4</span></span><div>The bridge swaps <code>__CLAN__.data</code> and fires <code>clan:dataupdated</code>, and the view re-renders. <code>onJobReply</code> stores the state, stage, question and live messages.<span class="ref">structuredEditBridge.ts:83-86 · index.html:2253-2275</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Middleware chunks (patch + facts + findings + decisions + a chat message) → <b>one staged change</b> → <b>one new revision</b> of your .clan, with every agent decision attributed to <code>process:middleware</code> and the handler. The middleware learns that a chunk "landed" by seeing its decision ids in the next poll's document. There is no applied flag.</div>
+  </div></article>
+
+  <article class="step" id="s8"><div class="num">S8</div><div>
+    <h3>Stage 1 · Extract: read the ask</h3>
+    <p class="sees"><b>Extract</b> is working. Then: "Read 2 materials. Filled from what they say: problem, objective, markets…"</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-m">M5</span></span><div><code>stage_extract</code> → <code>run_extract</code>. It skips brand, client and categories, which identify owns.<span class="ref">campaign.py:399-418 · pipeline/extract.py:268-359</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P3</span></span><div>Model call <code>extract</code>. Input: the materials. The schema asks for each field with a <b>verbatim quote</b> and its material id.<span class="ref">extract.py:30-72</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7</span></span><div><code>verify()</code>:
+        <ul>
+          <li>every quote must be found in its material;</li>
+          <li>markets become ISO codes;</li>
+          <li>the budget is turned into a band and the figure dropped;</li>
+          <li>dates need a year in the quote;</li>
+          <li>the subject brand is removed from competitors;</li>
+          <li>fields you own (confirmed or stated) are never written.</li>
+        </ul><span class="ref">extract.py:110-205 · rules/quotes.py · rules/budget.py</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Material text → <code>campaign.&lt;field&gt; = {value, origin: extracted, source: {material_id, locator, quote}, decision}</code> + one <code>extract</code> decision with reasoning. Certainty is high, or medium if the rules dropped anything.</div>
+  </div></article>
+
+  <article class="step" id="s9"><div class="num">S9</div><div>
+    <h3>Stage 2 · Identify: brand, categories, markets, and asking you</h3>
+    <p class="sees">Either "X is the client's brand (read from the material)", or a <b>question card</b> ("Extract asks") with options, each showing its evidence.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-m">M9</span></span><div><code>layers.leaves()</code> → <code>GET /v1/layers/categories</code>: the category tree.<span class="ref">campaign.py:452 · layers/http.py:110-114</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P3</span></span><div>Model call <code>identify</code> (once per job): brands with quotes, client, and up to 2 category leaves from the tree. Each quote is checked in the material.<span class="ref">campaign.py:361-396, 43-55</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7</span></span><div><code>decide_subject</code>: one brand claimed by a "Brand:" or "our" cue → it is the subject. Otherwise one non-comparator brand → the subject. Otherwise → <b>ask</b>.<span class="ref">rules/identify.py:31-71</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P6</span></span><div><code>PUT /v1/layers/brands/{ref}</code>, then <code>GET /v1/layers/roster/{ref}</code>. If the brand has a roster row, its categories are pinned as facts (<code>pin</code> decision, action <code>lookup</code>).<span class="ref">campaign.py:523-565</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M4</span></span><div>No roster and no answer yet → <code>ask()</code>: a question <code>{id, text, options, allow_text, address}</code> goes into a chunk, and the job state becomes <code>needs_input</code>.<span class="ref">campaign.py:420-450</span></div></li>
+      <li><span class="who"><span class="lyr l-b">B4</span></span><div>You pick an option. <b>Two calls:</b> (1) <code>patchData</code> writes your answer as you (<code>origin: confirmed</code> or <code>stated</code>) plus your chat message; (2) <code>apiProxy answer_question {job_id, question_id, option_id|text}</code>.<span class="ref">index.html:2301-2350</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M4</span></span><div><code>answer()</code> checks the question id, stores the value, sets the state to running and wakes the thread. Identify then reruns from the top with your answer in place.<span class="ref">campaign.py:307-340</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P6</span></span><div>If you confirmed categories and there was no roster: <code>add_source(human:…)</code> + <code>PUT roster</code>, which writes your answer back to the shared brand layer for next time.<span class="ref">campaign.py:614-624</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Brand, categories and markets → field envelopes marked <code>extracted</code> (from text), <code>proposed</code> (from the roster) or <code>confirmed</code>/<code>stated</code> (yours). <b>The middleware never writes your answer</b>; the view does, as you. Your category answer also becomes a roster row in the shared layers.</div>
+  </div></article>
+
+  <article class="step" id="s10"><div class="num">S10</div><div>
+    <h3>Stage 3 · Select: which lenses to research</h3>
+    <p class="sees"><b>Judge</b>: "Researching 8 lenses across Ireland and the UK. Regulation is skipped: …"</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-p">P3</span></span><div>Model call <code>select</code>: research every lens by default, skip one only if the prompt says so, and give a reason for each skip.<span class="ref">campaign.py:724-778, 57-63</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7</span></span><div>A skip without a reason is ignored. A per-market skip only counts when there is more than one market. Result: <b>pairs</b> = lens × market, minus skips.</div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Prompt + markets + categories → <code>selection.lenses_skipped[]</code> and the work list for S11. Certainty is high if every skip quotes the prompt.</div>
+  </div></article>
+
+  <article class="step" id="s11"><div class="num">S11</div><div>
+    <h3>Stage 4 · Research: the fan-out</h3>
+    <p class="sees"><b>The researchers</b> (the eight lens figures): "Research: … Sources by tier: 3 primary, 5 secondary". Then facts appear with sources and confidence.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-m">M6</span></span><div><code>Researcher.run()</code> runs one <code>unit(lens, market)</code> per pair on a thread pool (<code>NAPKIN_RESEARCH_CONCURRENCY</code>, default 4).<span class="ref">research.py:320-329</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P6</span></span><div><b>Reuse first:</b> <code>GET /v1/layers/facts?…key_prefix=&lt;lens&gt;</code> for each entity. Recent active rows (≤ 30 days) are reused, with no web call.<span class="ref">research.py:157-167</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P4</span></span><div><code>POST /v1/research {query, lens, market, max_sources: 6}</code>. The mock runs <code>claude -p</code> with WebSearch and WebFetch and returns sources with verbatim excerpts.<span class="ref">research.py:169-182 · mock research_port.py</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7·P6</span></span><div>Each source is <b>tiered by its URL</b> (government and statistics sites → primary; trade press → secondary; else tertiary), then <code>POST /v1/layers/sources</code> returns its id.<span class="ref">rules/tiering.py:75-86 · layers/http.py:145-155</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P3</span></span><div>Model call <code>extract_facts</code>: facts with a unit, an as-of date and <b>evidence quotes</b> per source.<span class="ref">research.py:202-216, 60-95</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7</span></span><div><code>_check()</code>: the quote must be verbatim in an excerpt, the number must appear in the quote (within 1%), a date needs its year, and a proportion must be 0–1. Anything that fails is dropped or recorded as a gap.<span class="ref">research.py:239-307 · rules/figures.py:72-92</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7·P6</span></span><div><code>merge</code>, grouped by entity + key + market: one value → a <b>pin</b>; different values → a <b>contest</b>. Each pin is written to the layers first (<code>POST /v1/layers/facts</code>, fact + decision in one transaction), then pinned into the document.<span class="ref">research.py:331-484 · rules/merge.py:30-69</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7</span></span><div>Confidence comes from source tiers: primary = medium, extra independent domains raise it, and tertiary-only facts are capped.<span class="ref">rules/confidence.py:21-30</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Web pages → sources (tiered, in the layers) → candidate facts → checked facts → <b>layer rows</b> (shared across documents) → <b>pins</b> in <code>shared/facts.yaml</code> with a <code>fact://</code> origin. Plus <code>selection.coverage</code> (filled / thin / empty), <code>gaps</code> and <code>contested</code>. Decisions: one <code>research_run</code> per unit, one <code>research_merge</code>, and one <code>open_contest</code> per disagreement.</div>
+    <div class="note"><b>Where the 409 came from:</b> two units registering the same URL with different titles. Any layers failure here stops the whole stage. See <a href="#fail">When it fails</a>.</div>
+  </div></article>
+
+  <article class="step" id="s12"><div class="num">S12</div><div>
+    <h3>Stage 5 · Synthesise: findings from pins</h3>
+    <p class="sees"><b>Synthesis</b>: "N findings, each derived by the agent and waiting for a person to verify or reject."</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-p">P3</span></span><div>Model call <code>synthesise</code>: findings drawn only from the pins they cite (cites limited to real pin ids), no new numbers, at most one per lens, and an optional audience.<span class="ref">synthesise.py:26-161</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M7</span></span><div><code>clean_claim</code>: cites must resolve and no figure may appear that isn't in a cited pin. A finding's confidence is the lowest of its cites, one step lower for a single or stale cite.<span class="ref">rules/cite.py:14-24 · confidence.py:33-37</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Pins → <b>findings</b> in <code>shared/findings.yaml</code>, all <code>status: proposed</code>, + maybe <code>campaign.audience</code> (proposed). No pins → a no-op decision "Nothing to synthesise".</div>
+  </div></article>
+
+  <article class="step" id="s13"><div class="num">S13</div><div>
+    <h3>Stage 6 · Report</h3>
+    <p class="sees"><b>Drafter</b>: "Report ready." The report appears: headline, summary, a section per lens with cite chips, and a "Confirm before the brief" list.</p>
+    <ol class="chain">
+      <li><span class="who"><span class="lyr l-m">M4</span></span><div><b>Waits</b> (in 30-second checks) until the host's document holds every earlier decision. It writes from your real document, not its own copy.<span class="ref">campaign.py:232-236</span></div></li>
+      <li><span class="who"><span class="lyr l-p">P3</span></span><div>Model call <code>report</code>: a headline, a summary and claims per lens, each citing pin or finding ids. If this call fails, the code still builds the report with plain text.<span class="ref">report.py:55-198, 113-116</span></div></li>
+      <li><span class="who"><span class="lyr l-m">M5</span></span><div>Code adds the identity section, pin, finding, gap and contest blocks, <code>confirm[]</code>, <code>not_researched[]</code> and <code>based_on</code> (the hashes of facts and findings).<span class="ref">report.py:242-287</span></div></li>
+    </ol>
+    <div class="becomes"><div class="eyebrow">What becomes of what</div>
+      Pins + findings + gaps + contests → <code>data.report</code>, one structured object (not HTML), set whole with one <code>report</code> decision. The view draws it (<code>renderReport</code>). Job → <code>done</code>.</div>
+  </div></article>
+
+  <article class="step" id="s14"><div class="num">S14</div><div>
+    <h3>After the report: what you can do today</h3>
+    <p class="sees">Confirm fields, resolve contests, open the Decisions panel, export.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Action</th><th>Works?</th><th>What runs</th></tr></thead>
+      <tbody>
+        <tr><td>Confirm a field</td><td>Yes</td><td><code>patchData('campaign.&lt;k&gt;', {…origin: confirmed}, {action: confirm})</code> → H5. Sends a rationale only, no structured reasoning.</td></tr>
+        <tr><td>Resolve a contest</td><td>Yes</td><td><code>patchData('selection.contested', …status: resolved, chosen, reason)</code> → H5</td></tr>
+        <tr><td>Refresh report</td><td>Yes</td><td><code>apiProxy compose_report</code>, a short task that runs synchronously in M1</td></tr>
+        <tr><td>Decisions panel</td><td>Yes</td><td>B1 → <code>/s/&lt;token&gt;/decisions</code> → H8</td></tr>
+        <tr><td>Export HTML/PDF</td><td>Yes</td><td>The view builds clean HTML → <code>exportDoc</code> → H → download via <code>/api/…/export/{handle}</code></td></tr>
+        <tr><td>Verify / reject a finding</td><td><b>Preview only</b></td><td>The dialog shows the decision it would record; the Record button is disabled</td></tr>
+        <tr><td>Good / Bad / Confidential on a field</td><td><b>Preview only</b></td><td>Same</td></tr>
+        <tr><td>Lock and accept</td><td><b>Always disabled</b></td><td>Lists blockers. Every finding starts as unverified and blocks lock, and verifying is not built yet</td></tr>
+      </tbody></table></div>
+  </div></article>
+</section>
+
+<!-- ============================ JOURNEY ============================ -->
+<section id="journey">
+  <div class="eyebrow">Reference</div>
+  <h2>One request's journey: a <code>job_status</code> poll</h2>
+  <p class="lede">The same call, as each layer sees it.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Hop</th><th>Shape</th></tr></thead>
+    <tbody>
+      <tr><td><span class="lyr l-b">B4 → B3</span></td><td><code>apiProxy('middleware', {task:'job_status', input:{job_id}})</code></td></tr>
+      <tr><td><span class="lyr l-b">B3 → H2</span></td><td><code>POST /s/&lt;token&gt;/api-proxy</code> body <code>{request_kind:'middleware', payload:{task, input}}</code></td></tr>
+      <tr><td><span class="lyr l-h">H6 → M1</span></td><td><code>POST /v1/tasks</code> body <code>{request_kind, payload, clan:{id, revision, version, app, schema, data, facts, findings, decision_chain, context, lineage, pipeline}}</code></td></tr>
+      <tr><td><span class="lyr l-m">M1 → H6</span></td><td><code>{api:'napkin.middleware/1', task, handler, job:{id, state, progress, stage, question, error}, result:{summary, messages}, change:{doc, base_version, read, data_patch, facts_append, findings_append, decisions} | null, trace:{scope, backend, model, hits, usage}}</code></td></tr>
+      <tr><td><span class="lyr l-h">H7</span></td><td>It applies <code>change</code> and replaces it with <code>{applied, version, base_stale, applied_fields, contested_fields, contests}</code></td></tr>
+      <tr><td><span class="lyr l-h">H6 → B3</span></td><td><code>{ok, status, endpoint, data: &lt;the reply above&gt;, error, clan:{id, revision, version, data}}</code></td></tr>
+      <tr><td><span class="lyr l-b">B3 → B4</span></td><td><code>__CLAN__.data = clan.data</code>; <code>clan:dataupdated</code>; <code>onJobReply(data)</code></td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="file">
+  <h2>Inside the .clan</h2>
+  <p class="lede">A ZIP with the manifest first. Every write makes a new revision id; the document id stays the same, and addresses look like <code>&lt;document_id&gt;#campaign.brand</code>.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Entry</th><th>What it holds</th><th>Written by</th></tr></thead>
+    <tbody>
+      <tr><td><code>manifest.yaml</code></td><td>ids, title, app block, lineage, file registry with sha256</td><td>H9 on every write</td></tr>
+      <tr><td><code>shared/data.yaml</code></td><td><code>campaign.*</code> field envelopes, <code>selection</code>, <code>materials</code>, <code>intake.messages</code>, <code>report</code>, <code>projection</code></td><td>H5 (you), H7 (middleware)</td></tr>
+      <tr><td><code>shared/facts.yaml</code></td><td>pins: value, unit, as_of, sources, confidence, <code>fact://</code> origin</td><td>H7 only</td></tr>
+      <tr><td><code>shared/findings.yaml</code></td><td>findings: statement, cites, status</td><td>H7 only</td></tr>
+      <tr><td><code>agent/decision-chain.yaml</code></td><td>every decision, newest first, prepend only</td><td>H5, H7</td></tr>
+      <tr><td><code>agent/output-schema.json</code></td><td>the schema every write is checked against</td><td>the app</td></tr>
+      <tr><td><code>app/pipeline.yaml</code></td><td>tasks → handlers, R1 edits, merge policies</td><td>the app (read by M2 and H7)</td></tr>
+      <tr><td><code>human/index.html</code></td><td>the view (the installed app's newer copy is served instead)</td><td>the app</td></tr>
+      <tr><td><code>human/assets/…</code>, <code>.extracted/…</code></td><td>your files and their extracted text</td><td>H5</td></tr>
+    </tbody></table></div>
+  <p style="margin-top:12px">The document does not own facts. The <b>layers</b> (P6) are the shared record; a pin is a frozen copy of one layer row version. Two documents researching the same brand share layer rows and reuse them within 30 days.</p>
+</section>
+
+<!-- ============================ FAILURE ============================ -->
+<section id="fail">
+  <h2>When it fails</h2>
+  <p class="lede">Any exception inside a stage becomes a <code>stage_failed</code> decision and the job goes to <code>failed</code>. Whatever landed before stays in the document. That is the message you saw: "The researchers stopped: the job failed."</p>
+  <div class="tbl"><table>
+    <thead><tr><th>What goes wrong</th><th>Result</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>A web research call fails, or one fact-extraction call fails</td><td>Contained: a gap is recorded for that lens and market, and research carries on</td><td>research.py:178-181, 212-216</td></tr>
+      <tr><td>The report prose call fails</td><td>Contained: the report is built with plain text</td><td>report.py:113-116</td></tr>
+      <tr><td>No pins to synthesise</td><td>Contained: a no-op decision</td><td>campaign.py:858-866</td></tr>
+      <tr><td><b>Any layers error</b> (sources, facts, roster, brands)</td><td><b>Stage fails</b></td><td>layers/http.py:104 → campaign.py:237-245</td></tr>
+      <tr><td>Extract, identify, select or synthesise model error</td><td>Stage fails</td><td>campaign.py:237-245</td></tr>
+      <tr><td>Report with no pins and no findings</td><td>Job fails at report</td><td>report.py</td></tr>
+      <tr><td>The host refuses a change (missing reasoning, stale base with no read-set)</td><td><code>change.applied: false</code> + reason. The view shows "The host did not apply the last change"</td><td>ops/middleware.rs:147-224</td></tr>
+      <tr><td>Middleware restarted mid-job</td><td>Job is gone (404 <code>unknown_job</code>); start again</td><td>jobs.py (in memory)</td></tr>
+    </tbody></table></div>
+</section>
+
+<!-- ============================ FOUND ============================ -->
+<section id="found">
+  <div class="eyebrow">Worth knowing</div>
+  <h2>What the trace turned up</h2>
+  <p class="lede">These came out of reading the code for this page. None is fixed here; each is a candidate for a decision or a task.</p>
+  <div class="finds">
+    <div class="find"><span class="tag t-risk">risk</span><div><h3>App frames have no CSP on the web</h3><p>The sandbox blocks the shell and cookies, but the Research Tool frame can <code>fetch</code> any URL, so a hostile app could send document data out. The strict CSP (<code>connect-src 'none'</code>) is applied only to offline files. <span class="mono">AppRuntime.tsx · wasmFrame.ts:25-45</span></p></div></div>
+    <div class="find"><span class="tag t-risk">risk</span><div><h3>No lease and no version check on writes</h3><p>Two tabs, or a person and the middleware, can write the same document. The host catches stale middleware changes (they become contests), but the store itself overwrites the whole file without checking the base (W2-A4). <span class="mono">napkin-web/src/store.rs:103-112</span></p></div></div>
+    <div class="find"><span class="tag t-risk">risk</span><div><h3>Any layers error stops research</h3><p>A single failed layers write inside one lens unit fails the whole research stage, as with the 409 we just fixed. Research and model errors are contained as gaps; layers errors are not. <span class="mono">research.py:325</span></p></div></div>
+    <div class="find"><span class="tag t-gap">gap</span><div><h3>Lock can never succeed today</h3><p>Every finding starts unverified and blocks lock, and Verify/Reject is a preview-only dialog. So any campaign with findings can't be locked yet. Building W2-O2 (the verify, resolve, verdict and lock routes) is what unblocks it.</p></div></div>
+    <div class="find"><span class="tag t-gap">gap</span><div><h3>Jobs live only in middleware memory</h3><p>A middleware restart, or a machine reboot like tonight's, drops every running campaign. The report stage also waits for the host to poll back, so closing the tab pauses the job at report until you reopen it.</p></div></div>
+    <div class="find"><span class="tag t-gap">gap</span><div><h3>Your confirmations carry no structured reasoning</h3><p>The Research Tool's Confirm and Resolve send a one-line rationale. R1 structured reasoning is enforced only on middleware changes. Whether people must give reasons on these edits is your call.</p></div></div>
+    <div class="find"><span class="tag t-info">info</span><div><h3>One middleware identity for all web tenants</h3><p>napkin-web sends no scope, and the middleware takes scope from its own config (<code>org/dev-agency</code>). In this setup every workspace writes into the same layers scope. That's fine for dev, but it needs the credential-to-tenant mapping before real agencies.</p></div></div>
+    <div class="find"><span class="tag t-info">info</span><div><h3>The view guesses who you are</h3><p>The host knows your tenant but does not tell the app. The view uses a saved reviewer id, the newest <code>human:</code> actor in the chain, or asks you to type one ("Your user id").</p></div></div>
+    <div class="find"><span class="tag t-info">info</span><div><h3>Research doesn't use the award corpora</h3><p>Retrieval (P5) is wired and healthy, but only Brief Maker calls it. The Research Tool gets everything from web research and the layers.</p></div></div>
+    <div class="find"><span class="tag t-info">info</span><div><h3>Small leftovers</h3><p>The mock's default data dir is hard-coded to an old session scratchpad path (<span class="mono">common.py:42</span>). pipeline.yaml's header still says "No handler code exists". The research port sends no scope headers (open item O8).</p></div></div>
+  </div>
+</section>
+
+<div class="foot">Traced from <code>~/Documents/Code/napkin-os-wt/characters</code> at <code>82bcf22</code> (branch task/character-sheet) on 2026-09-25. Contracts: <code>docs/contracts/middleware-api.md</code>, <code>peripherals.md</code>, <code>campaign-clan.md</code>, <code>os-layer.md</code>. Line numbers drift as the code changes; the function names are the stable reference.</div>
+</main>
+</div>

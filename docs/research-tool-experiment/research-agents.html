@@ -1,0 +1,852 @@
+<title>Research Agents Review</title>
+<style>
+:root{
+  --bg:#fbfaf7; --panel:#ffffff; --ink:#1d1c1a; --ink-2:#4a4843; --ink-3:#77736b;
+  --rule:#e4e0d8; --rule-2:#d3cec3; --accent:#2f5d8a; --accent-bg:#eaf1f8;
+  --warn:#8a5a00; --warn-bg:#fdf3dc; --bad:#9b2c2c; --bad-bg:#fbe9e7; --ok:#2e6b3a; --ok-bg:#e8f3ea;
+  --code-bg:#f2efe8; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161614; --panel:#1e1e1b; --ink:#ecebe6; --ink-2:#c3c0b8; --ink-3:#8f8b82;
+    --rule:#33322e; --rule-2:#45433e; --accent:#8db8e3; --accent-bg:#1e2a36;
+    --warn:#e7b85a; --warn-bg:#2e2616; --bad:#f09a90; --bad-bg:#341d1b; --ok:#8fcf9b; --ok-bg:#1a2b1e;
+    --code-bg:#262521;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161614; --panel:#1e1e1b; --ink:#ecebe6; --ink-2:#c3c0b8; --ink-3:#8f8b82;
+  --rule:#33322e; --rule-2:#45433e; --accent:#8db8e3; --accent-bg:#1e2a36;
+  --warn:#e7b85a; --warn-bg:#2e2616; --bad:#f09a90; --bad-bg:#341d1b; --ok:#8fcf9b; --ok-bg:#1a2b1e;
+  --code-bg:#262521;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans)}
+main{max-width:1040px;margin:0 auto;padding:32px 16px 96px}
+h1{font-size:30px;line-height:1.2;margin:0 0 8px;letter-spacing:-.01em}
+h2{font-size:22px;margin:48px 0 12px;padding-top:12px;border-top:1px solid var(--rule)}
+h3{font-size:17px;margin:28px 0 8px}
+h4{font-size:15px;margin:20px 0 6px;color:var(--ink-2)}
+p,li{color:var(--ink)}
+.lede{color:var(--ink-2);font-size:16px;margin:0 0 16px}
+.meta{color:var(--ink-3);font-size:13px}
+a{color:var(--accent)}
+code,kbd,.ref{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow-x:auto;line-height:1.5;border:1px solid var(--rule)}
+pre code{background:none;padding:0}
+pre.mermaid{background:var(--panel);font-size:12px}
+table{border-collapse:collapse;width:100%;margin:10px 0 18px;font-size:13.5px;background:var(--panel)}
+th,td{border:1px solid var(--rule);padding:6px 9px;text-align:left;vertical-align:top}
+th{background:var(--code-bg);font-weight:600;color:var(--ink-2)}
+.wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.wrap table{min-width:720px}
+.box{border:1px solid var(--rule-2);border-radius:10px;padding:12px 16px;margin:14px 0;background:var(--panel)}
+.box.warn{border-color:var(--warn);background:var(--warn-bg)}
+.box.bad{border-color:var(--bad);background:var(--bad-bg)}
+.box.ok{border-color:var(--ok);background:var(--ok-bg)}
+.box.note{border-color:var(--accent);background:var(--accent-bg)}
+.box h3,.box h4{margin-top:4px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid var(--rule-2);color:var(--ink-2);white-space:nowrap}
+.tag.det{border-color:var(--ok);color:var(--ok)}
+.tag.llm{border-color:var(--accent);color:var(--accent)}
+.tag.bug{border-color:var(--bad);color:var(--bad)}
+.tag.risk{border-color:var(--warn);color:var(--warn)}
+.tag.seen{border-color:var(--ink-3);color:var(--ink-3)}
+nav.toc{border:1px solid var(--rule);border-radius:10px;padding:10px 16px;background:var(--panel);margin:18px 0}
+nav.toc ol{margin:4px 0;padding-left:20px}
+nav.toc li{margin:2px 0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.cols{grid-template-columns:1fr} h1{font-size:25px}}
+.small{font-size:13px;color:var(--ink-2)}
+ul.tight li,ol.tight li{margin:2px 0}
+dl.agent{display:grid;grid-template-columns:170px 1fr;gap:4px 14px;margin:8px 0 16px;border:1px solid var(--rule);border-radius:10px;padding:10px 14px;background:var(--panel)}
+dl.agent dt{font-weight:600;color:var(--ink-2);font-size:13.5px}
+dl.agent dd{margin:0;font-size:14px}
+@media (max-width:640px){dl.agent{grid-template-columns:1fr} dl.agent dt{margin-top:6px}}
+blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--rule-2);color:var(--ink-2)}
+</style>
+
+<main>
+<h1>Research Agents Review</h1>
+<p class="lede">A code-level account of the Research Tool's multi-agent research flow. It follows one campaign from the person's request to the lock, and ends with a design for a better test and eval harness. It is written for the engineer who will review the flow and build that harness.</p>
+<p class="meta">Code: the <code>task/clan-fields</code> worktree at <code>/home/batunii/Documents/Code/napkin-os-wt/clan-fields</code>, HEAD <code>cf4e45b</code>, read on 2026-09-28. Paths are relative to the worktree root unless marked otherwise. References are <code>file:line</code>. The worktree had uncommitted edits while this was written, in <code>server/napkin/pipeline/synthesise.py</code>, <code>handlers/synthesise_findings.py</code> (a <code>redo: audience</code> input), <code>campaign-research/index.html</code> (+15 lines), <code>pipeline.yaml</code> (+1 line) and <code>app/src/shell/decisions/*</code>. For <code>synthesise.py</code> this document cites HEAD. For <code>index.html</code> it cites the working copy, which can be up to 15 lines off HEAD. Contract sections are cited as <code>middleware-api §8.4</code>, <code>campaign-clan §11</code> and so on. Nothing here changes code.</p>
+
+<div class="box note">
+<h3>Summary</h3>
+<ul class="tight">
+<li><b>Shape.</b> A campaign is one middleware job, <code>start_campaign</code>, with six stages in order: extract, identify, select, research, synthesise, report. Layout runs inside report. The job holds each stage's output as a cached "chunk" and hands the host every chunk not yet in the document's decision chain, on every poll. The host applies each change, rebuilds the projection and returns the document. A person then reviews through host routes and locks.</li>
+<li><b>Model versus code.</b> Every model call is structured output validated against a JSON schema and retried once. After each call, deterministic code decides what is written: verbatim-quote checks, figure-in-quote checks, the cite rule, the merge and contest rule, the layout rule, and derived confidence. The model's own confidence is never read.</li>
+<li><b>Cost.</b> Model calls per campaign are <b>6 + S</b> logical calls, where S is the number of lens×market units that got at least one source. A few more happen when a person types a category the tree does not know. Research calls are <b>R ≤ 8 × markets</b>. In the latest real run (2026-09-28, 15:41–15:54 UTC) the whole job took about <b>13 minutes</b>. Research was about 3 of them. Layout took 5.7: its call timed out at the mock's 180 s and the SDK retried it.</li>
+<li><b>Testing today.</b> Coverage is broad and fast (126 pytest tests in the working tree, about 10 s, plus a contract suite and Rust host tests). All of it runs on hand-written fakes. Nothing replays a recorded real run. Nothing evaluates research quality, layout quality or timing. There is no browser end-to-end test of the review flow.</li>
+<li><b>Bugs found.</b> See <a href="#bugs">§4.3</a>; numbers 1, 4, 5 and 7 have been fixed since. The ones to look at first:
+  <ul class="tight">
+  <li>Layer decisions for the merge and for contests are stored with an empty rationale. I confirmed this in the dev layer DB.</li>
+  <li>The cite rule drops claims that mention years, or money written as €1.5m.</li>
+  <li>A refused stage leaves the job waiting at report forever. That blocks both a new campaign and Refresh report on the document.</li>
+  <li>The layout rule accepts <code>&lt;clan-field ref="gap_…"&gt;</code>, which crashes the view's renderer.</li>
+  <li>The reviewer source written by <code>/verify</code> never reaches <code>shared/sources.yaml</code>.</li>
+  <li>A host-opened stale-write contest cannot be resolved, so it blocks the lock forever.</li>
+  </ul></li>
+</ul>
+</div>
+
+<nav class="toc"><b>Contents</b>
+<ol>
+<li><a href="#flow">The end-to-end flow</a></li>
+<li><a href="#agents">Each agent: reads, calls, checks, writes, decides</a></li>
+<li><a href="#cost">Cost and time</a></li>
+<li><a href="#fail">Failure modes, and bugs found</a></li>
+<li><a href="#tested">What is tested today, and the gaps</a></li>
+<li><a href="#harness">A better harness: design and priorities</a></li>
+<li><a href="#appendix">Appendix: the example document, logs and commands</a></li>
+</ol></nav>
+
+<!-- ================================================================== -->
+<h2 id="flow">1. The end-to-end flow</h2>
+
+<h3>1.1 Components</h3>
+<div class="wrap"><table>
+<tr><th>Component</th><th>What it is</th><th>Where</th></tr>
+<tr><td>App (the view)</td><td>The Research Tool: one HTML page inside a sandboxed iframe (<code>sandbox="allow-scripts allow-popups"</code>, with no allow-forms and no allow-same-origin). It writes only the person's own writes, and it runs the polling loop.</td><td><code>app/templates/campaign-research/index.html</code>; frame at <code>app/src/shell/AppRuntime.tsx:186</code></td></tr>
+<tr><td>OS fields</td><td>The <code>&lt;clan-*&gt;</code> elements, the evidence drawer, the tray, and a sanitiser for the agent's layout.</td><td><code>app/templates/shared/clan-fields.html</code>; contract <code>clan-fields.md</code></td></tr>
+<tr><td>Host</td><td>Rust. It proxies tasks to the middleware and settles each reply: validates it, applies the change, writes members and the projection. It also serves the review routes and the decision view.</td><td><code>crates/napkin-host/src/proxy.rs</code>, <code>session.rs</code>, <code>ops/middleware.rs</code>, <code>ops/review.rs</code>, <code>ops/decisions.rs</code>, <code>ops/members.rs</code>, <code>ops/assemble.rs</code></td></tr>
+<tr><td>Web layer</td><td>Multi-tenant server with the agent quota meter.</td><td><code>crates/napkin-web/src/meter.rs</code>, <code>sandbox.rs</code></td></tr>
+<tr><td>Middleware</td><td>Python and FastAPI. <code>POST /v1/tasks</code> dispatches a task. Jobs run in background threads and hold their state in memory.</td><td><code>server/napkin/app.py</code>, <code>jobs.py</code>, <code>pipeline/*.py</code>, <code>rules/*.py</code></td></tr>
+<tr><td>Peripherals</td><td>Four ports: model (<code>napkin.model/1</code>), research (<code>napkin.research/1</code>), retrieval (not used by research), and layers (<code>napkin.layers/1</code>).</td><td><code>server/napkin/model.py</code>, <code>research.py</code>, <code>layers/http.py</code>; contract <code>peripherals.md</code></td></tr>
+<tr><td>Mock backend</td><td>The dev stand-in for all four ports. Model and research calls go to <code>claude -p</code> subprocesses; layers is SQLite.</td><td><code>mock-backend/</code>; stack <code>../stack/start.sh</code></td></tr>
+</table></div>
+
+<h3>1.2 Sequence</h3>
+<p class="small">Solid arrows are requests; dashed arrows are replies. The research block runs up to <code>NAPKIN_RESEARCH_CONCURRENCY</code> (default 4) units at a time.</p>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor P as Person
+  participant A as App (sandboxed iframe)
+  participant H as Host (napkin-host / napkin-web)
+  participant M as Middleware job (CampaignJob)
+  participant LLM as Model port
+  participant R as Research port
+  participant L as Layers port
+
+  P->>A: prompt + files, Send
+  A->>H: uploadAsset per file, then patchData (materials, user message) as human
+  A->>H: apiProxy middleware start_campaign (metered: 1 unit)
+  H->>M: POST /v1/tasks {request_kind, payload, clan}
+  M-->>H: job queued/running, change null
+  Note over M: worker thread starts: STAGES in order
+  M->>LLM: extract (1 call)
+  M->>LLM: identify (1 call, cached per job)
+  M->>L: note_brand, roster lookup
+  loop every poll: 1 s, x1.4, capped at 6 s (free)
+    A->>H: apiProxy job_status
+    H->>M: job_status + current clan
+    M-->>H: change = every chunk whose decisions the clan lacks
+    H->>H: settle_middleware: validate, apply, assemble members + projection
+    H-->>A: envelope + clan (document now)
+  end
+  alt identify cannot decide
+    M-->>H: state needs_input, job.question
+    A->>P: question card
+    P->>A: picks an option or types text
+    A->>H: patchData (answer message, confirmed/stated field) as human
+    A->>H: apiProxy answer_question (metered)
+    H->>M: answer_question, clan with the person's write
+  end
+  M->>LLM: select (1 call)
+  par up to 4 units in flight
+    M->>L: facts(layer, entity, lens prefix, market): reuse if fresh
+    M->>R: POST /v1/research (lens, market)
+    M->>L: add_source per returned source
+    M->>LLM: extract_facts (1 call per unit with sources)
+  end
+  M->>L: append each merged pin / contest value (merge decision first)
+  M->>LLM: synthesise (1 call)
+  Note over M: report waits until a poll's clan holds every earlier decision
+  M->>LLM: report (1 call)
+  M->>LLM: layout (1 call)
+  M-->>H: state done, last change (repeated on later polls)
+  P->>A: review in the drawer / tray
+  A->>H: /verdict /classify /resolve /acknowledge
+  A->>H: /verify
+  H->>M: verify_finding (short, not metered)
+  M->>L: add_source(human), append synthesis fact
+  M-->>H: result.pin, change null
+  A->>H: /approve (409 while anything blocks the lock)
+</pre>
+
+<h3>1.3 Job states</h3>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> queued: start_campaign accepted (app.py:153-163)
+  queued --> running: worker picks the next stage (campaign.py:225-234)
+  running --> needs_input: a stage returns False (identify asks)
+  needs_input --> running: answer_question accepted (campaign.py:310-343)
+  running --> running: report waits for a poll whose clan holds earlier decisions (campaign.py:235-239)
+  running --> failed: a stage raises (campaign.py:242-248, fail() 260-275)
+  running --> done: stage_idx reaches 6 (campaign.py:253-258)
+  done --> [*]
+  failed --> [*]
+</pre>
+<p class="small">The job lives only in the middleware's memory (<code>JobStore</code>, <code>jobs.py:58</code>). When the store passes <code>MAX_JOBS = 500</code>, finished jobs are evicted (<code>jobs.py:19</code>, <code>jobs.py:66-73</code>). A restart loses every job: later polls get <code>404 unknown_job</code> (<code>jobs.py:74-81</code>). <code>needs_input</code> never times out (<code>middleware-api §2 Jobs</code>).</p>
+
+<h3>1.4 Stage table</h3>
+<div class="wrap"><table>
+<tr><th>#</th><th>Stage and code</th><th>App figure</th><th>Model call (purpose · schema · max_tokens)</th><th>Other calls</th><th>Writes</th><th>Can stop the job</th></tr>
+<tr><td>1</td><td><b>extract</b><br><code>campaign.py:402-421</code> → <code>extract.py:268 run_extract</code></td><td>Extract</td><td><code>extract</code> · <code>extract.py:52 SCHEMA</code> · 8000</td><td>none (roster proposals from pins already in the document, <code>extract.py:244</code>)</td><td><code>campaign.*</code> (except brand, client_org, categories), <code>materials</code>, one agent message</td><td>On a model error: fails the job</td></tr>
+<tr><td>2</td><td><b>identify</b><br><code>campaign.py:455-705</code></td><td>Extract (work "read")</td><td><code>identify</code> · <code>identify_schema</code> (<code>campaign.py:73</code>) · 4000, <b>once per job</b> (<code>identify_raw</code>, <code>:364-399</code>). Optionally <code>classify_category</code> · 500 (<code>:596-599</code>), only when typed text matches no leaf</td><td>layers: <code>leaves</code>, <code>find_brands</code>, <code>note_brand</code>, <code>roster</code>, <code>find</code>, <code>add_source</code> + <code>set_roster</code> after a person confirms the categories (<code>:617-627</code>)</td><td><code>campaign.brand</code> / <code>client_org</code> / <code>categories</code>, roster pins, or a question</td><td><code>needs_input</code> (<code>ask</code>, <code>:423-453</code>)</td></tr>
+<tr><td>3</td><td><b>select</b><br><code>campaign.py:727-781</code></td><td>Judge</td><td><code>select</code> · <code>SELECT_SCHEMA</code> (<code>:86</code>) · 2000</td><td>none</td><td><code>selection.lenses_skipped</code></td><td>On a model error: fails the job</td></tr>
+<tr><td>4</td><td><b>research</b><br><code>campaign.py:818-854</code> → <code>research.py:124 Researcher</code></td><td>One researcher per lens</td><td><code>extract_facts</code> · <code>facts_schema</code> (<code>research.py:78</code>) · 8000, <b>one per unit</b> that got sources</td><td>research: one <code>search</code> per unit not reused; layers: <code>facts</code> per entity per unit, <code>add_source</code> per source, <code>append</code> per pin or contest value</td><td>facts (pins), <code>sources_append</code>, <code>selection.lenses_run</code>/<code>coverage</code>/<code>coverage_by_market</code>/<code>gaps</code>/<code>contested</code></td><td>Research and model errors become gaps. A <b>layers</b> error fails the job.</td></tr>
+<tr><td>5</td><td><b>synthesise</b><br><code>campaign.py:856-882</code> → <code>synthesise.py:63</code> (HEAD)</td><td>Synthesis</td><td><code>synthesise</code> · <code>schema(pin_ids)</code> · 6000</td><td>none</td><td>findings (status <code>proposed</code>), <code>campaign.audience</code> (proposed)</td><td>With no pins: records "nothing to synthesise". On a model error: fails the job.</td></tr>
+<tr><td>6</td><td><b>report</b> (+ layout)<br><code>campaign.py:884-895</code> → <code>report.py:56 compose</code> → <code>layout.py:59 compose</code></td><td>Drafter (work "draft")</td><td><code>report</code> · <code>report.py:47 schema</code> · 6000; then <code>layout</code> · <code>{html: string}</code> · 8000</td><td>none</td><td><code>report</code> (whole), <code>report.layout</code>, <code>report.layout_by</code></td><td>Model errors fall back: built prose and a built layout. It waits for the earlier stages to land.</td></tr>
+</table></div>
+<p class="small">The contract's stage table (<code>middleware-api §8.1</code>) says synthesise may also write <code>campaign.in_market</code>. The code never does. The same table does not mention layout, which is <code>clan-fields.md §4</code> ("Contract 5"; <code>peripherals.md</code> also calls itself Contract 5).</p>
+
+<h3>1.5 The reply and the <code>change</code></h3>
+<p>Every reply to <code>start_campaign</code>, <code>job_status</code> and <code>answer_question</code> is the §2 envelope, with <code>task: start_campaign</code> (<code>app.py:102-105</code>, <code>middleware-api §8.2</code>):</p>
+<pre><code>{ api: "napkin.middleware/1", task: "start_campaign", handler: "start_campaign@1.0",
+  job:    { id, state, stage, progress: {done, total: 6}, question | null, started_at, finished_at, error },
+  result: { summary, messages: [{id, text, stage}] },
+  change: { doc, base_version, read, data_patch, facts_append, findings_append, sources_append, decisions } | null,
+  trace:  { scope, backend, model, hits, usage: {input_tokens, output_tokens} } }</code></pre>
+<ul>
+<li><b>Chunks.</b> Each stage calls <code>add_chunk</code> (<code>campaign.py:177-215</code>) once. The chunk holds the patch, the read-set, the facts, findings, sources and decisions, and the agent message. Each field the patch writes is added to the first decision's <code>targets</code> when no decision names it (<code>:204-207</code>).</li>
+<li><b>What a reply carries.</b> <code>reply_change</code> (<code>:278-290</code>) sends every chunk whose decision ids are not all in <code>known_ids(clan)</code> (<code>doc.py:134-141</code>). <code>known_ids</code> includes decisions a host contest withheld. <code>combine</code> (<code>:106-119</code>) merges the chunks: <code>base_version</code> is the earliest chunk's, and <code>read</code> holds each path's earliest reader. After <code>done</code>, a poll with nothing pending gets the last change again.</li>
+<li><b>Working copy.</b> <code>sync</code> (<code>:152-168</code>) rebuilds the job's working copy <code>W</code> from the request's clan, plus chunks that have not landed yet, plus the person's answers not yet written (<code>d_PENDINGANSWER</code>). Later stages read <code>W</code>. The report stage instead reads <code>latest_clan</code>, the document the host last sent.</li>
+<li><b>Decisions.</b> Each one comes from <code>doc.decision()</code> (<code>doc.py:230</code>). Reasoning follows <code>reasoning.py</code>: <code>decided</code>, <code>because[]</code> with cites, <code>rejected[]</code> or <code>only_option</code>, <code>certainty</code> (always derived), <code>would_change_if</code>, and optional <code>attention</code>. <code>make()</code> raises on a malformed shape (<code>reasoning.py:92-103</code>).</li>
+</ul>
+
+<h3>1.6 The host applies it: settle, projection</h3>
+<p class="small">The host findings in 1.6, 1.8, 3.5, 4 and 5.4 come from a delegated read of the Rust sources. I spot-checked them but did not re-read every line.</p>
+<ol>
+<li><b>Proxy.</b> <code>api_proxy</code> (<code>proxy.rs:106</code>) splices attachment text and images from the <code>.extracted/</code> sidecar into the payload (<code>read.rs:234-321</code>). It then sends <code>{request_kind, payload, clan}</code>. <code>clan</code> is <code>clan_context_for_agent</code> (<code>read.rs:334-364</code>), which carries the whole <code>data</code> (projection included), the whole chain, and facts, findings and pipeline. It does <b>not</b> carry the sources member. It does not apply any <code>classify</code> marks. The HTTP client has <b>no timeout</b> (<code>proxy.rs:32</code>).</li>
+<li><b>Settle.</b> <code>Session::settle_middleware</code> (<code>session.rs:499-550</code>):
+  <ul class="tight">
+  <li>checks <code>api</code>;</li>
+  <li>runs <code>middleware::apply</code> (<code>ops/middleware.rs:137</code>);</li>
+  <li>replaces <code>data.change</code> with the outcome;</li>
+  <li>when the change landed, attaches <code>clan = document_now()</code> and emits <code>DataChanged</code>.</li>
+  </ul>
+  A refusal is <code>{applied:false, reason}</code> under <code>ok:true</code>. It is never an HTTP error.</li>
+<li><b>Plan</b> (<code>ops/middleware.rs:153-349</code>):
+  <ul class="tight">
+  <li><code>change.doc</code> must match the document.</li>
+  <li>No <code>projection</code> key is allowed in the patch.</li>
+  <li>Every decision's reasoning is checked. The floor is pin, contest, finding, verdict, and any edit whose action is <code>propose</code>. The app adds the edits under <code>campaign</code>, <code>selection</code> and <code>report</code> (<code>pipeline.yaml</code> <code>reasoning.edits</code>). A missing or malformed reasoning <b>refuses the whole change</b>.</li>
+  <li>Host-owned fields (<code>actor</code>, <code>scope</code>, <code>handler</code>, <code>backend</code>, <code>timestamp</code>) are overwritten. The sent values are kept as <code>claimed_*</code>.</li>
+  <li>If the base is stale and there is no read-set, the change is refused ("rerun").</li>
+  <li>If the base is stale and a read-set exists, each key applies if nobody changed it since. Otherwise the host opens a <b>host contest</b> (<code>kind: contest</code>, chain-only) and withholds the job's decision.</li>
+  <li><code>facts_append</code> and <code>findings_append</code> are deduplicated by id. The same id with different content refuses the change.</li>
+  <li><code>sources_append</code> keeps the first record for an id.</li>
+  <li>An exact repeat is "already applied".</li>
+  </ul></li>
+<li><b>Assemble</b> (<code>ops/assemble.rs:77</code>):
+  <ul class="tight">
+  <li>writes <code>shared/facts.yaml</code>, <code>findings.yaml</code> and <code>sources.yaml</code>;</li>
+  <li>rebuilds <code>data.projection</code> from the exact member bytes (<code>ops/members.rs:217-315</code>: <code>built_from.{facts,findings,sources}_sha256</code>, <code>pins[id]</code> with <code>stale</code>, <code>quotes</code> and <code>replaced_by</code>, <code>findings[id]</code>, <code>sources[id]</code>);</li>
+  <li>validates against the schema;</li>
+  <li>prepends the decisions to <code>agent/decision-chain.yaml</code>.</li>
+  </ul>
+  The store does <b>not</b> check <code>Change::base</code> (W2-A4, <code>store.rs:173-185</code>). Within one process, the view mutex serialises writes.</li>
+</ol>
+
+<h3>1.7 The app's two modes</h3>
+<p>The modes are chosen by <code>mode()</code> (<code>index.html:1381-1392</code>, CSS <code>:533-542</code>). The rule is <code>working = !!(CHAT.job &amp;&amp; (jobActive() || liveQuestion()))</code>, where <code>jobActive</code> matches <code>sending|checking|queued|running</code> (<code>:1925</code>).</p>
+<div class="wrap"><table>
+<tr><th>Mode</th><th>When</th><th>Shows</th></tr>
+<tr><td><b>fresh</b></td><td>No thread, no campaign fields, no job (<code>:2163-2165</code>)</td><td>The composer only.</td></tr>
+<tr><td><b>working</b></td><td>A job is active or a question is live</td><td>Only <code>#start</code>: the request sheet, the stepper of six stages with the crew figures, and the question card. The report, records, tray, nav and action buttons are hidden (<code>:536-537</code>).</td></tr>
+<tr><td><b>done</b></td><td>Otherwise</td><td>The agent's layout in <code>&lt;article class="cl-report"&gt;</code> via <code>ClanFields.mount</code> (<code>renderReport</code>, <code>:2477-2527</code>), and the tray. "Everything recorded" sits behind one disclosure; it opens by itself only when there is no layout. The run can be shown with "How it ran".</td></tr>
+</table></div>
+<p>Polling: <code>onJobReply</code> (<code>:2304-2326</code>) → <code>schedulePoll</code> (1 s, ×1.4, capped at 6 s, <code>:2333-2337</code>) → <code>pollNow</code> (<code>job_status</code>, <code>:2338-2341</code>). <code>resumeJob</code> polls once when the document opens (<code>:2344-2351</code>). There is no cap on the number of polls and no overall timeout.</p>
+<p>Answers: <code>doAnswer</code> (<code>:2352-2391</code>) first writes the person's message. For an option pick it also writes <code>campaign.&lt;field&gt;</code> with origin <code>confirmed</code> or <code>stated</code> and <code>by: human:&lt;id&gt;</code>. Only then does it send <code>answer_question</code> (<code>:2392-2401</code>). This matches <code>middleware-api §8.3</code>.</p>
+
+<h3>1.8 A person's review and the lock</h3>
+<div class="wrap"><table>
+<tr><th>Action (where)</th><th>Route</th><th>What the host does</th><th>Decision</th></tr>
+<tr><td>Looks right / It's wrong on a pin or field (drawer; app dialogs)</td><td><code>/verdict</code></td><td>Bad needs a rationale. Good on a finding is refused ("verify it"). <code>review.rs:104-124</code>, <code>:387-404</code>.</td><td><code>verdict</code> mark_good / mark_bad</td></tr>
+<tr><td>Reject a finding (drawer)</td><td><code>/verdict</code> bad on <code>findings[id]</code></td><td>The finding must be <code>proposed</code>. Sets <code>status: rejected</code> and <code>rejection{…}</code>. <code>review.rs:357-385</code>.</td><td><code>verdict</code> reject_finding</td></tr>
+<tr><td>Verify a finding (drawer)</td><td><code>/verify</code></td><td>Mints a decision id, calls the middleware's <code>verify_finding</code>, which writes a <code>human:</code> source and a synthesis fact to the layer (<code>handlers/verify_finding.py:28-87</code>). The host then pins the returned fact and sets <code>verified</code>. <code>review.rs:544-630</code>, <code>proxy.rs:139-186</code>.</td><td><code>verify</code> verify_finding</td></tr>
+<tr><td>Use this value (contest drawer)</td><td><code>/resolve</code></td><td>Works only on <code>selection.contested[id]</code>. Pins the frozen <code>values[].pin</code> and marks same-identity pins <code>replaced_by</code>. <code>review.rs:437-538</code>.</td><td><code>resolve</code> resolve_contest</td></tr>
+<tr><td>Confidential… (drawer)</td><td><code>/classify</code></td><td>Records <code>{model, export, corpus}</code> and enforces nothing. The layer licence part is not built (<code>clan-fields.md §6</code>).</td><td><code>classify</code></td></tr>
+<tr><td>Looks right on a flagged agent decision (OS decision panel)</td><td><code>/acknowledge</code></td><td>Clears non-blocking attention only. Not listed in <code>os-layer §8</code>.</td><td><code>verdict</code> looks_right</td></tr>
+<tr><td>Lock report (tray)</td><td><code>/approve</code></td><td>409 unless <code>decisions(doc).lock.can_lock</code>. <code>review.rs:683-720</code>.</td><td><code>approve</code> lock</td></tr>
+</table></div>
+<p>Lock blockers (<code>decisions.rs:612-821</code>) follow <code>campaign-clan §11</code> items 1–5:</p>
+<ol class="tight">
+<li>open contests, from <code>selection.contested</code> and from unresolved chain <code>contest</code> decisions;</li>
+<li>unmerged branches;</li>
+<li>findings still <code>proposed</code>;</li>
+<li>fields citing a rejected finding;</li>
+<li>unanswered bad verdicts.</li>
+</ol>
+<p>The app's own <code>blockers()</code> (<code>index.html:905-925</code>) adds "Missing · gate", item 6, which the host does not enforce. So the app and the host can disagree about whether the document can lock. The lock itself is checked only by the review routes (<code>review.rs:195-211</code>). <code>middleware::apply</code> and <code>patch_data</code> do not check it.</p>
+
+<!-- ================================================================== -->
+<h2 id="agents">2. Each agent</h2>
+<p>Tags: <span class="tag llm">model</span> marks a model call. <span class="tag det">code</span> marks a deterministic step. Every model call goes through <code>ModelPort.call</code> (<code>model.py:313-369</code>). It validates the output against the schema, retries once with the validation error fed back, and otherwise raises <code>ModelError(invalid_output)</code>. Handlers never see the wire.</p>
+
+<h3>2.1 Extract ("Read the ask")</h3>
+<dl class="agent">
+<dt>Reads</dt><dd>The prompt and each attachment's host-extracted text, as materials with ids (<code>doc.build_materials</code>, <code>doc.py:269</code>). Also the subject brand's roster pins, if the document already holds them.</dd>
+<dt>Deterministic first</dt><dd><span class="tag det">code</span> <code>roster_proposals</code> (<code>extract.py:244-261</code>): roster pins give <code>categories</code> and <code>client_org</code> as <code>proposed</code>. In <code>start_campaign</code> these fields are skipped, because identify owns them (<code>campaign.py:404-407</code>).</dd>
+<dt>Model call</dt><dd><span class="tag llm">model</span> <code>extract</code>, <code>SYSTEM</code> (<code>extract.py:30</code>), <code>SCHEMA</code> (<code>:52-72</code>), max_tokens 8000 (<code>:284-288</code>). Every value comes back with <code>{quote, material_id}</code>, plus <code>grounds</code>.</dd>
+<dt>Checked in code</dt><dd><code>verify()</code> (<code>extract.py:110-205</code>):
+  <ul class="tight">
+  <li><b>Quote check:</b> the quote must be found in the material by <code>find_quote</code> (<code>rules/quotes.py:38-59</code>). It tries an exact match first, then one folded for whitespace and typographic quote marks. It ignores case only when the quote is 12 characters or more. The stored quote is the material's own substring. A quote that fails drops the value, with a note.</li>
+  <li><b>Markets:</b> ISO 3166-1 alpha-2 only (<code>rules/markets.py:24</code>).</li>
+  <li><b>Budget:</b> reduced to a band and never stored as a figure; the span keeps no quote. A non-EUR amount within ±15% of a band edge abstains (<code>rules/budget.py:20-30</code>).</li>
+  <li><b>in_market:</b> explicit YYYY-MM-DD dates whose year appears in the quote.</li>
+  <li><b>Competitors:</b> the subject brand is removed.</li>
+  <li><b>Human-owned fields are never written</b> (<code>doc.human_owned</code>, <code>doc.py:144-157</code>): origin confirmed or stated, or an unanswered bad verdict.</li>
+  </ul></dd>
+<dt>Writes</dt><dd><code>campaign.*</code> envelopes, <code>origin: extracted</code>, each with a <code>source</code> span or per-item <code>item_provenance</code>. Re-extracted lists are merged (<code>merge_list_field</code>, <code>:212-241</code>). New <code>materials</code> are written with licence <code>client-confidential</code>.</dd>
+<dt>Decisions</dt><dd>One <code>edit</code>, action <code>extract</code>, carrying <code>material_read</code> and <code>abstained</code>. Its reasoning comes from <code>extract_reasoning</code> (<code>:366-413</code>): the model's grounds, cite-checked against the material ids. Certainty is <b>high</b> when every value verified. It is <b>medium</b> when the rules dropped any value, <b>low</b> when nothing was written, and is capped by the lowest roster pin. <code>attention</code> lists what was dropped.</dd>
+<dt>Person afterwards</dt><dd>Confirm the extracted fields in <code>report.confirm</code> (brand, categories, markets, competitor_set first; <code>report.py:259-282</code>).</dd>
+</dl>
+
+<h3>2.2 Identify (Extract's second job)</h3>
+<dl class="agent">
+<dt>Reads</dt><dd>The materials and the category tree (<code>layers.leaves()</code>). Also the brand layer's roster row for the subject brand, and the person's earlier answers (<code>self.answers</code>, <code>pending_text</code>).</dd>
+<dt>Model calls</dt><dd><span class="tag llm">model</span> <code>identify</code> (<code>campaign.py:364-399</code>), max_tokens 4000. It returns brands with quote, basis (<code>brand_label|named_as_ours|none</code>) and a comparator flag, the client organisation, and at most two category leaves (enum = tree codes). It is <b>cached for the job</b>: re-running identify after an answer makes no second call. <span class="tag llm">model</span> <code>classify_category</code>, max_tokens 500 (<code>:596-599</code>), runs only when typed text matches no leaf via <code>layers.find</code>.</dd>
+<dt>Checked in code</dt><dd><span class="tag det">code</span>
+  <ul class="tight">
+  <li>Every brand, client and category needs a verified span (<code>_span</code>, <code>:350-362</code>). As a fallback, the brand's name is matched as a whole word in the material.</li>
+  <li><code>decide_subject</code> (<code>rules/identify.py:44-71</code>). A claimed basis counts only when the verified quote carries its cue and names the brand (<code>checked_basis</code>, <code>:31-41</code>). If exactly one claimed, non-comparator brand remains, it is the subject. If exactly one brand is named and it is not a comparator, it is the subject at certainty medium. Anything else asks.</li>
+  <li>Categories come from roster pins as <code>proposed</code>. Without a roster row the job asks, with ranked options plus "both" plus "Something else" (<code>category_options</code>, <code>:74-90</code>).</li>
+  <li>With no markets the job asks for free text. Free text is resolved by <code>markets.from_text</code> (<code>rules/markets.py:31</code>) and asked again as options.</li>
+  <li>A subject brand listed among the comparators is removed from <code>competitor_set</code> (<code>:667-688</code>).</li>
+  </ul></dd>
+<dt>Writes</dt><dd><code>campaign.brand</code> (extracted), <code>client_org</code> (extracted or proposed), <code>categories</code> (proposed, citing the roster pins), and the roster pins themselves. When a person confirms the categories, it <b>writes the brand layer's roster</b> with a <code>reviewer-verified</code> source for that person (<code>:617-627</code>). That is a write to shared knowledge from a chat answer.</dd>
+<dt>Decisions</dt><dd>
+  <ul class="tight">
+  <li><code>edit</code> identify, with reasoning from <code>identify_reasoning</code> (<code>:707-725</code>). Certainty is high for a label or an "ours" cue, medium for the only brand named. The roster pins' derived levels also feed it.</li>
+  <li><code>pin</code> lookup for the roster row (deterministic).</li>
+  <li><code>edit</code> identify for each question. It is always certainty low, with attention "Waiting for your answer".</li>
+  </ul></dd>
+<dt>Person afterwards</dt><dd>Answer the question (buttons or text). Then confirm the brand if its certainty was medium (the attention note).</dd>
+</dl>
+
+<h3>2.3 Judge (select)</h3>
+<dl class="agent">
+<dt>Reads</dt><dd>The prompt text only, plus the markets, the categories (with their <code>regulated</code> flag) and the eight lenses with their standing questions (<code>research.py:39-56</code>).</dd>
+<dt>Model call</dt><dd><span class="tag llm">model</span> <code>select</code>, <code>SELECT_SYSTEM</code> (<code>campaign.py:57</code>), <code>SELECT_SCHEMA</code> (<code>:86-89</code>), max_tokens 2000. The prompt tells it: "Research everything by default".</dd>
+<dt>Checked in code</dt><dd><span class="tag det">code</span> (<code>:742-757</code>):
+  <ul class="tight">
+  <li>A skip without a reason is ignored, so the lens runs.</li>
+  <li>A per-market skip counts only when the market is in the campaign and there is more than one market.</li>
+  </ul>
+  In <code>select_reasoning</code> (<code>:783-816</code>), certainty is <b>high</b> when there is no skip or every skip's reason quotes the prompt (<code>find_quote</code>). It is <b>medium</b>, with attention, when any skip is the model's inference.</dd>
+<dt>Writes</dt><dd><code>selection.lenses_skipped</code> (<code>{lens, market?, reason, decision}</code>). The chosen pairs live only in the job's memory (<code>self.selected</code>).</dd>
+<dt>Person afterwards</dt><dd>Check any inferred skip. "Research a skipped lens…" in the decision panel re-runs one through <code>research_lens</code>.</dd>
+</dl>
+
+<h3>2.4 The lens researchers (one unit per lens × market)</h3>
+<dl class="agent">
+<dt>Reads</dt><dd>The subject, the comparators, up to two categories, the lens's standing question and wanted keys, and the layers' existing facts.</dd>
+<dt>Step 0: reuse <span class="tag det">code</span></dt><dd>For each entity (the category leaves, the subject, the comparators), <code>layers.facts(layer, entity, key_prefix=lens ns, market)</code> is checked. If <b>any</b> active row was retrieved within <code>NAPKIN_REUSE_DAYS</code> (30), the unit is served from the layer and makes no research or model call (<code>research.py:157-167</code>). One fresh row is enough to skip new research for the whole unit.</dd>
+<dt>Step 1: research</dt><dd><code>caps.research.search(query, lens, market, entity, category=cats[0])</code> (<code>:175-181</code>). Only the first category is sent as the parameter, though the query text names both. The port (<code>research.py:36-78</code>) keeps http(s) sources that have non-empty excerpts. It raises <code>ResearchError</code> on a non-200, a timeout or a malformed body.</dd>
+<dt>Step 2: tier <span class="tag det">code</span></dt><dd><code>tier_for(url)</code> (<code>rules/tiering.py:75-86</code>) works from the URL alone. Primary means government or statistics domains or filing paths; secondary means a trade-press list; everything else is tertiary. Each source is recorded in the layer (<code>add_source</code>).</dd>
+<dt>Step 3: model call</dt><dd><span class="tag llm">model</span> <code>extract_facts</code>, <code>SYSTEM</code> (<code>research.py:60-71</code>), <code>facts_schema</code> (<code>:78-95</code>; enums for about, category, competitor and unit), max_tokens 8000. The payload holds the sources with verbatim excerpts. Each fact returns <code>evidence[{source_id, quote}]</code> and <code>not_found[]</code>.</dd>
+<dt>Checked in code</dt><dd><code>_check</code> (<code>:239-307</code>):
+  <ul class="tight">
+  <li>The entity must be one this run may write about. The key is <code>&lt;lens namespace&gt;.&lt;suffix&gt;</code> and must match the key pattern.</li>
+  <li>A proportion must be between 0 and 1. A numeric unit needs a number.</li>
+  <li><b>Verbatim:</b> the evidence quote is found in one of that source's excerpts (<code>verbatim</code>).</li>
+  <li><b>Figure rule:</b> <code>quote_supports</code> (<code>rules/figures.py:72-92</code>). "A numeric fact must have its number in the quote it came from (to 1%, after percentages and k/m/bn multipliers); a date its year."</li>
+  <li>Evidence that fails is skipped. A fact with no surviving evidence is dropped.</li>
+  <li><code>as_of</code> falls back to the earliest <code>published_at</code>, then to <code>retrieved_at</code>. A fact dated after it was learned is dropped.</li>
+  </ul>
+  Wanted keys the model says it did not find become gaps. A unit whose model call or research call failed becomes a gap carrying the error (<code>:178-181</code>, <code>:212-216</code>).</dd>
+<dt>Writes</dt><dd>Candidates only. Nothing is pinned per unit; see the merge.</dd>
+<dt>Decisions</dt><dd>One <code>edit</code> research_run per unit (<code>:398-406</code>). Its reasoning is <b>written whole by code</b> (<code>run_reasoning</code>, <code>:543-589</code>). Certainty comes from coverage: filled is high, thin is medium, empty is low. A failure gets attention.</dd>
+</dl>
+
+<h3>2.5 The merge (deterministic)</h3>
+<dl class="agent">
+<dt>Rule</dt><dd><span class="tag det">code</span> <code>merge_rules.merge</code> (<code>rules/merge.py:39-80</code>, <code>campaign-clan §8</code>). The identity of a fact is entity + key + market.
+  <ul class="tight">
+  <li>Same identity, same value: one pin, with sources unioned (that is the corroboration).</li>
+  <li>Same entity and key in another market: two facts, not a conflict.</li>
+  <li>Same identity, different values: a <b>contest</b>, open, with nothing picked.</li>
+  <li>A value that differs from a pin the document already holds: a contest against that pin.</li>
+  <li>Keys with an open contest are skipped.</li>
+  </ul></dd>
+<dt>Writes (D1)</dt><dd>Each merged pin is <b>appended to the layer first</b>, with the merge decision, and is then pinned from the row the layer returns (<code>research.py:345-355</code>). Contest values are appended with status <code>contested</code>. A frozen <code>pin</code> for each value is carried in the contest so that <code>/resolve</code> needs no layer call (<code>:356-383</code>). The <code>selection.*</code> patch covers runs, coverage per market and merged (<code>merge_coverage</code>, <code>rules/confidence.py:48-55</code>), gaps, contests, and lenses_skipped entries that a later run removes. <code>sources_append</code> holds the records for every src id a new pin or contest value cites (<code>_source_records</code>, <code>:459-483</code>).</dd>
+<dt>Derived confidence</dt><dd><code>fact_confidence</code> (<code>rules/confidence.py:21-30</code>):
+  <ul class="tight">
+  <li>Start from the best source's tier: primary gives medium; secondary or tertiary gives low; reviewer-verified gives high.</li>
+  <li>Add one level per independent registrable domain beyond the first, at most two, capped at high.</li>
+  <li>A fact resting only on tertiary sources is capped at medium.</li>
+  </ul></dd>
+<dt>Decisions</dt><dd>One <code>pin</code> research_merge. Its certainty is the lowest pin confidence (<code>merge_reasoning</code>, <code>:592-621</code>). Each contest gets a <code>contest</code> open_contest decision with certainty high ("which is right is what is open") and attention.</dd>
+<dt>Person afterwards</dt><dd>Resolve each contest with <code>/resolve</code> and a reason; the lock waits for it. Low-confidence pins are listed in the merge's attention.</dd>
+</dl>
+
+<h3>2.6 Synthesis</h3>
+<dl class="agent">
+<dt>Reads</dt><dd>Pins only, never the raw layer: <code>usable_pins</code>, i.e. <code>f_</code> ids that are not excluded and carry a valid confidence.</dd>
+<dt>Model call</dt><dd><span class="tag llm">model</span> <code>synthesise</code> (<code>synthesise.py:86</code> at HEAD), max_tokens 6000. The schema restricts <code>cites</code> to the pin ids. The model proposes at most one finding per lens, and optionally an audience whose statements hold no figures.</dd>
+<dt>Checked in code</dt><dd><span class="tag det">code</span>
+  <ul class="tight">
+  <li><b>Cite rule:</b> <code>clean_claim</code> (<code>rules/cite.py:14-25</code>). The claim must cite at least one real pin and state "no figure absent from what it cites". The allowed forms are <code>repr(v)</code> and <code>f"{v:g}"</code>, and for a proportion <code>v*100:g</code> and <code>round(v*100)</code> (<code>figures.py:19-28</code>).</li>
+  <li>The lens is corrected to one of the cited pins' lenses.</li>
+  <li>A cite set that is already written up is skipped.</li>
+  <li>The audience may contain no digits at all (<code>_no_figures</code>).</li>
+  <li>Confidence is derived by <code>finding_confidence</code> (<code>confidence.py:33-37</code>): the lowest cited pin, one level lower for a single or stale citation.</li>
+  </ul></dd>
+<dt>Writes</dt><dd>Findings with <code>status: proposed</code> and <code>method: synthesis</code>. <code>campaign.audience</code>, <code>origin: proposed</code>, only when no person owns it and it is empty.</dd>
+<dt>Decisions</dt><dd>A <code>finding</code> synthesise_finding per finding, and an <code>edit</code> propose_audience. The reasoning is the model's grounds, cite-checked, with certainty equal to the derived confidence.</dd>
+<dt>Person afterwards</dt><dd>Verify or reject every finding (lock blocker 3). Confirm the audience.</dd>
+</dl>
+
+<h3>2.7 Drafter (report)</h3>
+<dl class="agent">
+<dt>Reads</dt><dd><code>latest_clan</code>: the document as the host holds it, once every earlier decision has landed (<code>campaign.py:235-239</code>, <code>middleware-api §8.4</code>). Pins must match <code>f_[0-9A-Z]{6,}</code>. Findings must be proposed or verified.</dd>
+<dt>Model call</dt><dd><span class="tag llm">model</span> <code>report</code> (<code>report.py:112-113</code>), max_tokens 6000, with the cite ids as an enum. It runs only if some lens has pins or findings. A failure is caught, and the prose then falls back to lines built in code (<code>:114-117</code>).</dd>
+<dt>Checked in code</dt><dd><span class="tag det">code</span> <code>clean_claim</code> is applied to the headline, each summary line and each section claim (<code>:118-132</code>). A claim that fails is <b>dropped</b>. A missing headline or summary is replaced by a figure-free line built in code (<code>:173-188</code>). The structure is built in code, not by the model: the sections per lens, the pins, finding, contest and gap blocks, <code>confirm</code>, <code>not_researched</code> and <code>based_on</code> (<code>:137-192</code>).</dd>
+<dt>Writes</dt><dd><code>report</code>, replaced whole.</dd>
+<dt>Decisions</dt><dd>One <code>edit</code> report. In <code>report_reasoning</code> (<code>:209-247</code>), certainty is the lowest confidence of what the headline and summary cite, <b>one lower when the cite rule dropped any claim</b>. Attention covers open contests, lenses not researched, and dropped claims. The dropped claims themselves appear only in the middleware log (<code>:203-204</code>), not in the document.</dd>
+</dl>
+
+<h3>2.8 Layout</h3>
+<dl class="agent">
+<dt>Reads</dt><dd>The structured report just built, plus the pins (label, value, unit, market, as_of, has_quote), the non-rejected findings, the open contests and the gaps (<code>layout.py:62-80</code>).</dd>
+<dt>Model call</dt><dd><span class="tag llm">model</span> <code>layout</code>, <code>SYSTEM</code> (<code>layout.py:22-46</code>), schema <code>{html: string}</code>, max_tokens 8000 (<code>:83</code>). It is the <b>longest call</b> in a run: 160–180 s on the mock.</dd>
+<dt>Checked in code</dt><dd><span class="tag det">code</span> <code>rules/layout.check</code> (<code>rules/layout.py:138-194</code>):
+  <ul class="tight">
+  <li><b>Vocabulary:</b> only the allowed tags and attributes survive. <code>class</code> keeps only <code>cl-*</code> and <code>compact</code>. A disallowed element is dropped with everything inside it.</li>
+  <li><b>Refs:</b> each <code>ref</code> or <code>refs</code> must name a pin, a live finding, a contest or a gap. A chart may name only pins with a number (<code>_check_clan</code>, <code>:197-223</code>).</li>
+  <li><b>Evidence:</b> each <code>p</code>, <code>li</code>, <code>blockquote</code> and <code>figcaption</code> must contain a <code>clan-*</code> element.</li>
+  <li><b>Figures:</b> a block's own text may state no figure outside what its refs hold. Years are exempt (<code>YEAR</code>). Headings and cells are held to the same figure rule.</li>
+  </ul>
+  Acceptance (<code>layout.py:87</code>) requires <code>fields + charts &gt;= 3 and blocks &gt;= 1</code>. Otherwise, or on any model exception, the layout is <code>built()</code> from the structured report (<code>:94</code>, <code>:98-139</code>) and <code>layout_by: built</code>. Prompt rules that the code does <b>not</b> check: "say each thing once", "a figure at most twice", and "end with <code>&lt;clan-sources&gt;</code>".</dd>
+<dt>Render side</dt><dd>The view sanitises again in <code>ClanFields.layout</code> (<code>clan-fields.html:652-673</code>). An unresolved ref renders as <code>&lt;span class="clf-missing"&gt;</code>.</dd>
+<dt>Person afterwards</dt><dd>Nothing specific. The tray lists what needs a person whatever the layout shows (<code>clan-fields.md §1</code>).</dd>
+</dl>
+
+<h3>2.9 Verify (after review)</h3>
+<p><code>verify_finding</code> (<code>handlers/verify_finding.py:28-87</code>) is a short task that only the host's <code>/verify</code> calls. It checks that the finding is <code>proposed</code> and that its cites are pinned. It then adds a <code>human:&lt;id&gt;</code> source at tier <code>reviewer-verified</code> and appends the finding's statement as a fact, <code>method: synthesis</code>. The fact takes the strictest licence of the pins it rests on and goes to the brand layer if any cited pin is there. The decision id is the host's. The reply's <code>change</code> is <code>null</code>, and <code>result.pin</code> and <code>result.source</code> go back to the host.</p>
+
+<!-- ================================================================== -->
+<h2 id="cost">3. Cost and time</h2>
+
+<h3>3.1 Calls per campaign</h3>
+<p>Let <b>M</b> be the markets and <b>P</b> the lens×market pairs select keeps (P ≤ 8M). Let <b>R</b> be the pairs not served from the layer, <b>S</b> the pairs that got at least one source, and <b>k</b> the number of typed category answers that matched no leaf.</p>
+<div class="wrap"><table>
+<tr><th>Port</th><th>Logical calls</th><th>Notes</th></tr>
+<tr><td>Model</td><td><b>6 + S + k</b>: extract 1, identify 1, select 1, extract_facts S, synthesise 1, report 1, layout 1</td><td>Synthesise is skipped with no pins. Report prose is skipped when no lens has pins or findings; layout still runs, via <code>built()</code> if needed. Each logical call has up to 2 schema attempts (<code>model.py:328-371</code>). On the Anthropic wire each attempt allows the SDK <code>max_retries=1</code> (<code>model.py:136</code>). So one logical call is <b>up to 4 HTTP requests</b>.</td></tr>
+<tr><td>Research</td><td><b>R ≤ P ≤ 8M</b></td><td>No retry at the port (<code>research.py:36-78</code>). A failure is a gap.</td></tr>
+<tr><td>Layers</td><td>About <code>P × |entities|</code> reads, plus one <code>add_source</code> per source (≤ 6 per unit, <code>capabilities.py:73</code>), plus one <code>append</code> per new pin or contest value, plus identify's handful</td><td>Retried once on connection error, 429, 502, 503 and 504 (<code>layers/http.py:73-107</code>). Writes carry a deterministic Idempotency-Key.</td></tr>
+<tr><td>Web quota</td><td><b>1 + answers (+ Refresh report)</b></td><td>Only task submissions are charged; <code>job_status</code> is free (<code>meter.rs:75-86</code>, <code>middleware-api §9</code>). <code>/verify</code> reaches the middleware without being metered.</td></tr>
+</table></div>
+<p>Worked example: 3 markets with all 8 lenses and nothing reused gives up to 24 research calls and 30 logical model calls. The real 3-market run (the IBM job, <a href="#appendix">appendix</a>) kept 7 lenses, so 21 research calls. Only 5 units got sources, so there were 5 extract_facts calls and 11 logical model calls in all.</p>
+
+<h3>3.2 Which calls are long</h3>
+<p>Observed durations, from <code>../stack/mock.log</code> (IST, which is UTC+1) and the part of <code>mw.log</code> read before the middleware was restarted at 22:18 IST, which truncated it:</p>
+<div class="wrap"><table>
+<tr><th>Call</th><th>Job 1 (15:41–15:54 UTC, 1 market, 2 units)</th><th>IBM job (16:26–16:39 UTC, 3 markets, 21 units)</th></tr>
+<tr><td>extract</td><td>24.3 s</td><td>20.2 s</td></tr>
+<tr><td>identify</td><td>19.6 s</td><td>24.0 s</td></tr>
+<tr><td>select</td><td>68.3 s</td><td>41.9 s</td></tr>
+<tr><td>research (per unit)</td><td>96.8 s, 131.2 s</td><td>14–104 s. Zero-source answers took 14–40 s; sourced ones 49–104 s.</td></tr>
+<tr><td>extract_facts (per unit)</td><td>52.5 s, 87.2 s</td><td>13.6–94.4 s</td></tr>
+<tr><td>research stage, wall</td><td>≈ 3 min 05 s</td><td>≈ 5 min 11 s</td></tr>
+<tr><td>synthesise</td><td>88.7 s</td><td>78.1 s</td></tr>
+<tr><td>report</td><td>50.4 s</td><td>65.7 s</td></tr>
+<tr><td><b>layout</b></td><td><b>180.1 s → 504 (mock timeout), SDK retry 160.5 s → 200: 340.6 s in all</b></td><td>168.0 s</td></tr>
+<tr><td>whole job</td><td>≈ 13 min 13 s (layout ≈ 43%)</td><td>≈ 13 min</td></tr>
+</table></div>
+<p class="small">Correction to the brief: in the 15:41–15:54 UTC run, "research ~13 min" was the whole job. The research stage itself took about 3 minutes. The research costs the mock reports (<code>claude -p</code> cost, Sonnet): job 1 spent $1.05 on 2 units; the IBM job spent about $3.77 on 21 units. Model-call cost is not in the lines I read.</p>
+
+<h3>3.3 Timeouts and retries</h3>
+<div class="wrap"><table>
+<tr><th>Layer</th><th>Timeout</th><th>Retry</th><th>Where</th></tr>
+<tr><td>Model port (middleware)</td><td><code>NAPKIN_MODEL_TIMEOUT</code> 600 s per HTTP attempt</td><td>Anthropic: SDK <code>max_retries=1</code>, plus one schema retry with the error fed back. OpenAI wire: one retry on 429 (honours Retry-After, up to 30 s), 503, 5xx and connection errors, but never on a timeout. Truncation and refusal are never retried.</td><td><code>config.py:55</code>, <code>model.py:136</code>, <code>:230-251</code>, <code>:340-345</code></td></tr>
+<tr><td>Research port</td><td><code>NAPKIN_RESEARCH_TIMEOUT</code> 900 s</td><td>none</td><td><code>config.py:59</code>, <code>research.py:48-54</code></td></tr>
+<tr><td>Layers</td><td><code>NAPKIN_LAYERS_TIMEOUT</code> 30 s</td><td>once, same key</td><td><code>layers/http.py:73-107</code></td></tr>
+<tr><td>Mock model</td><td><code>MOCK_TIMEOUT_MODEL</code> 180 s, then 504</td><td>none (the SDK retries)</td><td><code>mock-backend/common.py:72-76</code>, <code>model_port.py:556-563</code></td></tr>
+<tr><td>Mock research</td><td><code>MOCK_TIMEOUT_RESEARCH</code> 420 s</td><td>none. The response is cached on disk, <b>including empty 200s</b>.</td><td><code>research_port.py:11-14</code>, <code>:313-330</code></td></tr>
+<tr><td>Mock concurrency</td><td><code>MOCK_CONCURRENCY</code> 4 claude processes <b>shared by model and research</b>; queue wait = the family timeout</td><td></td><td><code>common.py:71</code>, <code>:200-215</code></td></tr>
+<tr><td>Host proxy</td><td><b>none</b> (<code>reqwest::Client::new()</code>)</td><td>none</td><td><code>proxy.rs:32</code></td></tr>
+<tr><td>App polling</td><td>none; unbounded</td><td>backoff 1 s ×1.4, cap 6 s</td><td><code>index.html:2333-2337</code></td></tr>
+</table></div>
+<div class="box warn"><b>The budget is mismatched.</b> The middleware allows 600 s per model attempt; the mock gives up at 180 s. So the mock turns every long layout into a 504 and a full retry: 3 extra minutes in job 1. Worst case for one logical call on the Anthropic wire is 2 schema attempts × 2 SDK attempts × 600 s = 40 min, and nothing above the middleware would cut that short.</div>
+
+<h3>3.4 The job and poll model</h3>
+<ul>
+<li><code>start_campaign</code> returns right away with <code>queued</code> or <code>running</code> (<code>app.py:153-163</code>). Only one unfinished campaign may exist per document; a second gets 409 <code>job_state</code>. <code>compose_report</code> is refused the same way while one is unfinished (<code>app.py:178-180</code>).</li>
+<li>Polls are <code>job_status</code>, served by <code>reply_change(clan)</code>. Each poll also moves the job's <code>latest_clan</code> forward, which is what releases the report stage. <b>So the report stage runs only if the view keeps polling.</b> Close the tab before report and the job waits in <code>running</code> until the document is opened again (<code>resumeJob</code> polls once).</li>
+<li>Concurrency is bounded by process-wide semaphores: research 4 and model 6 (<code>app.py:68-69</code>). The research fan-out also uses a pool of <code>research_concurrency</code> threads (<code>research.py:320-329</code>). Units finish in submission order, so progress is reported in order.</li>
+<li><code>progress</code> counts stages (<code>total: 6</code>). The research fan-out is narrated in messages, not counted in <code>progress</code>.</li>
+</ul>
+
+<h3>3.5 The agent quota (web layer)</h3>
+<p><code>crates/napkin-web/src/meter.rs</code>:</p>
+<ul class="tight">
+<li>It is per tenant: an anonymous session cookie.</li>
+<li>It counts <b>calls</b>, not tokens.</li>
+<li>It lives in memory and resets on restart. There is no time window.</li>
+<li>The cap is <code>NAPKIN_AGENT_CAP</code>, default 40 (<code>main.rs:63-65</code>). The dev stack sets 400.</li>
+<li><code>charged()</code> exempts only middleware <code>job_status</code>; malformed bodies are charged.</li>
+<li>It is enforced before dispatch on <code>/api-proxy</code> (<code>sandbox.rs:67-80</code>). Over the cap the reply is HTTP 429, "agent quota reached for this session (used/cap)".</li>
+</ul>
+<p>The quota is a count of submissions, not a cost control. A 3-market campaign costs the same one unit as a 1-market one. The module notes "a draft is roughly $0.30–0.40" (<code>meter.rs:7</code>), which is far below the observed $3.77 in research calls alone for the IBM job.</p>
+
+<!-- ================================================================== -->
+<h2 id="fail">4. Failure modes</h2>
+
+<h3>4.1 How each surfaces</h3>
+<div class="wrap"><table>
+<tr><th>Failure</th><th>Where</th><th>How it surfaces</th><th>Seen?</th></tr>
+<tr><td>Model error in extract, identify, select or synthesise (timeout, 5xx, invalid output after the retry, refusal, truncation)</td><td><code>campaign.py:242-248</code></td><td>Job <code>failed</code>, <code>error {type: internal, message: "the &lt;stage&gt; stage failed (ModelError: …)"}</code>. A <code>stage_failed</code> decision with attention, and an agent message. Stages that already landed stay.</td><td>no</td></tr>
+<tr><td>Research port 5xx, timeout, malformed body, or no service configured</td><td><code>research.py:175-181</code></td><td>The unit becomes a gap with <code>note: "research failed: …"</code>. The research_run decision has attention and certainty low. Coverage is <code>empty</code>.</td><td>no</td></tr>
+<tr><td>Research returns 0 sources (an honest 200)</td><td><code>research.py:197-200</code></td><td>Gaps for the first two wanted keys. Coverage is <code>empty</code>. The mock <b>caches</b> this answer, so it repeats on every rerun until the cache is cleared.</td><td><b>yes</b>: 16 of 21 units in the IBM job</td></tr>
+<tr><td>extract_facts fails</td><td><code>research.py:209-216</code></td><td>A gap, with <code>note: "fact extraction failed: …"</code></td><td>no</td></tr>
+<tr><td>Every model fact fails the quote or figure check</td><td><code>research.py:227-229</code></td><td>A gap: "the sources held nothing that passed the quote check". Individual dropped facts are <b>not recorded</b>; only the count that passed appears.</td><td>unknown</td></tr>
+<tr><td>Layers error (timeout, 5xx after the retry, 409)</td><td><code>research.py:160</code>, <code>:190</code>, <code>:490</code>; <code>campaign.py:532</code> and others</td><td>These calls are <b>not</b> in a try block, so the exception fails the whole stage and the job (<code>internal</code>).</td><td>no</td></tr>
+<tr><td>Claims dropped by the cite rule</td><td><code>report.py:118-132</code>, <code>synthesise.py:91</code></td><td>The claim is silently absent. Report certainty drops one level and attention says "The cite rule dropped N claim(s)". The text is in the log only.</td><td><b>yes</b>: 4 claims in the IBM job, including one stating 2033</td></tr>
+<tr><td>Layout blocks dropped, or a fallback layout</td><td><code>layout.py:83-94</code></td><td><code>report.layout_by: built</code>. The drop reasons are in the log only.</td><td><b>yes</b>: one figcaption dropped in the IBM job; layout 504 plus retry in job 1</td></tr>
+<tr><td>Stale base and no read-set; the same id with different content</td><td>host <code>ops/middleware.rs:224-226</code>, <code>:978-986</code></td><td>The reply is <code>change: {applied: false, reason}</code>. The job's decisions never land. <b>If this happens before report, the job waits at report forever</b> (see 4.3).</td><td>no</td></tr>
+<tr><td>Stale field a person changed meanwhile</td><td>host <code>ops/middleware.rs:545-555</code></td><td>A host contest: nothing is written and the job's value is held. A lock blocker.</td><td>tested only</td></tr>
+<tr><td>Idempotency conflict at the layers (same key, different body)</td><td>mock <code>layers_port.py:601-606</code></td><td>409 <code>idempotency_conflict</code> becomes <code>LayersError</code>, which fails the job. The key is <code>(decision id, identity, value)</code> (<code>layers/http.py:129-138</code>), but the body includes the decision's <code>timestamp</code>. A rerun that recomputes the same decision id sends a different body. <code>research_lens</code> seeds its merge id with <code>base</code> (<code>research.py:134</code>, <code>:342</code>), so two runs on the same document version with the same lenses and markets would conflict. That only matters when a fact was not served by reuse.</td><td>no (reasoned from the code)</td></tr>
+<tr><td>Middleware restart</td><td><code>jobs.py:58</code></td><td>All jobs are lost. Polls get 404 <code>unknown_job</code>, and <code>hostErr</code> shows it. What landed stays, but a question that was waiting is gone.</td><td>the stack was restarted 22:18 IST</td></tr>
+<tr><td>A person never answers</td><td><code>campaign.py:230-232</code></td><td>The job stays in <code>needs_input</code> indefinitely (by contract). The document can start no other campaign and cannot Refresh report until the middleware restarts.</td><td></td></tr>
+<tr><td>Quota exhausted</td><td><code>meter.rs:38</code></td><td>HTTP 429 from the web layer. Polls still work.</td><td></td></tr>
+<tr><td>Sandboxed forms</td><td><code>AppRuntime.tsx:186</code></td><td>The frame has no <code>allow-forms</code>, so a native <code>&lt;form&gt;</code> submit never fires. The app and the drawer work around it with click and Enter handlers that raise the event themselves (<code>index.html:1424-1460</code>, <code>clan-fields.html:621-624</code>). If a handler is missed, the button does nothing and nothing is logged. The workaround may also fire twice (4.3).</td><td>workarounds in code</td></tr>
+</table></div>
+
+<h3 id="bugs">4.2 Contract drift noticed</h3>
+<ul class="tight">
+<li><code>middleware-api §8.4</code> says: "If an earlier stage was refused, the job stays there; <b>Refresh report</b> composes from what landed." But <code>app.py:178-180</code> refuses <code>compose_report</code> while any campaign on the document is unfinished, and the waiting job is unfinished.</li>
+<li><code>middleware-api §8.1</code> says synthesise writes <code>campaign.in_market</code>. It does not.</li>
+<li><code>schema.json:2095</code> describes the report as "Structured blocks, never HTML", yet <code>layout</code> (<code>:2261</code>) is HTML.</li>
+<li>The gap shape differs by component:
+  <ul class="tight">
+  <li>the schema requires <code>searched</code> and has no <code>wanted</code> (<code>schema.json:1793-1835</code>);</li>
+  <li>the layout payload sends <code>g.get("wanted") or g.get("key")</code> (<code>layout.py:79</code>), so the model always sees the raw key;</li>
+  <li><code>clan-gap</code> renders <code>g.wanted || g.key</code> (<code>clan-fields.html:417-422</code>);</li>
+  <li>the harness fixture uses <code>wanted</code>.</li>
+  </ul></li>
+<li><code>/acknowledge</code> is implemented and used, but not listed in <code>os-layer §8</code>.</li>
+</ul>
+
+<h3>4.3 Bugs found</h3>
+<div class="box ok"><b>Fixed since this review</b>, in commit <code>950f645</code> on <code>task/clan-fields</code>, each with a test:
+<ul class="tight">
+<li><b>1</b>: merge and contest decisions now reach the layer with a rationale that is true when they are sent.</li>
+<li><b>4</b>: the layout rule refuses a <code>&lt;clan-field&gt;</code> naming a gap (and a <code>&lt;clan-gap&gt;</code> naming anything else). The renderer shows one failing element as missing and carries on.</li>
+<li><b>5</b>: <code>/verify</code> records the person as a source in <code>shared/sources.yaml</code>.</li>
+<li><b>7</b>: confirmed and fixed. A second submit handler had been added on top of <code>freshForm</code>'s; it is removed.</li>
+</ul>
+Still open: 2, 3, 6, 8–12.</div>
+<div class="box bad">
+<ol>
+<li><span class="tag bug">confirmed</span> <b>The layer stores the merge and contest decisions with an empty rationale and no reasoning.</b>
+  <ul class="tight">
+  <li><code>merge_dec</code> is created with <code>rationale=""</code> and <code>targets=[]</code> (<code>research.py:343</code>). It is sent with every <code>append</code> (<code>:348</code>), and its rationale and reasoning are filled only afterwards (<code>:430-443</code>). Contest decisions do the same (<code>:360</code>, <code>:368</code>, <code>:378-382</code>).</li>
+  <li>The mock inserts decisions with <code>INSERT OR IGNORE</code>, so the first, empty version sticks.</li>
+  <li>A read-only query of <code>../stack/mock/layers.sqlite</code> finds all 3 <code>research_merge</code> and all 4 <code>open_contest</code> decisions with <code>rationale = ''</code>.</li>
+  <li>The document's copy is complete; the layer's provenance is not.</li>
+  </ul></li>
+<li><span class="tag bug">confirmed</span> <b>The cite rule drops legitimate claims.</b> <code>unsourced_figures</code> treats every digit run as a figure (<code>figures.py:16</code>, <code>:43-45</code>), and a pin allows only <code>repr</code> and <code>:g</code> forms. I ran the rule in-process:
+  <ul class="tight">
+  <li>"worth €1.5m" (pin 1500000) was dropped: <code>1.5</code> is not allowed, and <code>:g</code> gives <code>1.5e+06</code>.</li>
+  <li>"€1,500,000" was dropped as <code>1,500</code> and <code>000</code>.</li>
+  <li>"continues to 2030" was dropped: years are figures here, though the layout rule exempts them (<code>rules/layout.py:38</code>).</li>
+  </ul>
+  In the IBM run the report lost 4 claims this way. One stated <code>2033</code>.</li>
+<li><span class="tag bug">likely</span> <b>A refused stage deadlocks the document.</b> The report stage loops on <code>cond.wait(30)</code> until the host's chain holds every earlier chunk's decisions (<code>campaign.py:235-239</code>). A change the host refuses never gets there. This includes a missing reasoning, a stale base without a read-set, and an id with different content. The job then stays <code>running</code> for ever, so <code>start_campaign</code> and <code>compose_report</code> on that document are both 409 until the middleware restarts (<code>app.py:154-156</code>, <code>:178-180</code>). This contradicts §8.4 (4.2).</li>
+<li><span class="tag bug">likely</span> <b>The layout rule accepts refs the renderer crashes on.</b>
+  <ul class="tight">
+  <li><code>_check_clan</code> accepts <code>&lt;clan-field ref="gap_…"&gt;</code>, because <code>known()</code> includes gaps (<code>rules/layout.py:149-150</code>, <code>:216-218</code>).</li>
+  <li>In the view, <code>stateOf</code> returns <code>'sourced'</code> for a gap or <code>src_</code> ref (<code>clan-fields.html:295</code>). <code>renderField</code> then reads <code>pins()[ref]</code>, which is undefined, and throws (<code>:343-345</code>).</li>
+  <li>The throw escapes <code>refresh()</code>'s loop, so every element after it on the page is left unrendered.</li>
+  </ul></li>
+<li><span class="tag bug">confirmed</span> <b>The reviewer source is missing from <code>shared/sources.yaml</code>.</b> <code>verify_finding</code> returns <code>result.source</code>, a new <code>src_</code> id, and the pin cites it (<code>verify_finding.py:59</code>, <code>:76</code>). The host pins the fact but does not add a source record. In the example document, the verified pin cites one <code>src_</code> id that is absent from the sources member, so the drawer shows "pinned before sources travelled" for a pin made today.</li>
+<li><span class="tag bug">likely</span> <b>A host stale-write contest can never be cleared.</b> The host opens chain-only <code>contest</code> decisions on <code>doc#campaign.X</code> (<code>ops/middleware.rs:678-719</code>). The decision view clears them only on a later <code>resolve</code> naming the target (<code>decisions.rs:662-694</code>). <code>/resolve</code> accepts only <code>selection.contested[id]</code> (<code>review.rs:444-453</code>). So <code>/approve</code> is 409 for ever.</li>
+<li><span class="tag risk">likely, not run</span> <b>Dialogs may submit twice.</b> <code>openDialog</code> adds a click handler on each submit button that calls <code>form.onsubmit</code> (<code>index.html:1457-1460</code>). <code>freshForm</code> adds a form-level click listener that dispatches a synthetic <code>submit</code> (<code>:1436-1443</code>). Neither stops propagation. One click would therefore make two <code>/verdict</code>, <code>/classify</code>, <code>/approve</code> or <code>patchData</code> calls. Confirm it by counting host calls in a browser.</li>
+<li><span class="tag risk">risk</span> <b>The lock is enforced only by the review routes.</b> <code>middleware::apply</code> and <code>patch_data</code> do not check it, so a job still polling after lock can write into a locked version.</li>
+<li><span class="tag risk">risk</span> <b>Repeated appends after review are refused.</b> After <code>done</code>, any poll (for example <code>resumeJob</code> on open) resends the last change. If that change still carries a finding the person has since verified or rejected, the host refuses it as "different content". This is harmless but noisy: the jobs card shows "not applied". It becomes harmful only if a new chunk is ever bundled with a stale repeat.</li>
+<li><span class="tag risk">minor</span> <b>Layer writes happen before the checks that may discard them.</b> <code>_write</code> appends each merged pin before checking <code>excluded</code>, <code>already pinned</code> and <code>superseded</code> (<code>research.py:348-353</code>). It also appends contested rows before discarding a contest whose values collapse to one (<code>:368-376</code>). This can leave contested rows in the layer with a decision the document never records.</li>
+<li><span class="tag risk">minor</span> <b>Unit-level reuse is all or nothing.</b> A single fresh row for any entity skips new research for the whole unit (<code>research.py:161-167</code>).</li>
+<li><span class="tag risk">minor</span> <b>The dev stack may not run this worktree.</b> <code>../stack/start.sh</code> defaults <code>W</code> to the <code>characters</code> worktree, and the web log shows the shell served from <code>clan-fields/app/dist</code>. Check <code>W</code> before trusting a run as evidence for this branch.</li>
+</ol>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="tested">5. What is tested today</h2>
+
+<h3>5.1 Inventory</h3>
+<div class="wrap"><table>
+<tr><th>Suite</th><th>How it runs</th><th>What it covers</th></tr>
+<tr><td><b>Middleware unit and flow tests</b> (<code>server/tests/</code>, 126 tests, about 10 s)</td><td><code>cd server &amp;&amp; uv run pytest -q</code>. Uses <code>FakeModel</code> (a Messages-API-shaped client whose responders are chosen by purpose, <code>fakes.py:33-199</code>), <code>FakeResearch</code> (deterministic CSO/SIMI/blog sources, <code>:221-248</code>) and <code>FakeLayersService</code> over an in-process transport (<code>conftest.py:28-34</code>).</td><td>
+  <ul class="tight">
+  <li><code>test_rules.py</code>: tiering, confidence, coverage, merge, quotes, the figure rule, <code>clean_claim</code>, budget, markets, identify.</li>
+  <li><code>test_pipeline.py</code>: layers first, reuse, gaps, quote rejection, the model retry, extract drops, synthesis and report cite rules, verify, layout rule and fallback.</li>
+  <li><code>test_reasoning.py</code>, <code>test_model.py</code>: both wires, retries, kinds, images.</li>
+  <li><code>test_layers_client.py</code>: idempotency, scope headers, retries.</li>
+  <li><code>test_layout_rule.py</code>, <code>test_registry.py</code>.</li>
+  <li><code>test_bmw_flow.py</code>: the owner's prompt end to end, through the contract suite's Host and Run.</li>
+  </ul></td></tr>
+<tr><td><b>Contract suite</b> <code>mock-middleware/contract_test.py</code> (1694 lines)</td><td>Run by <code>test_contract.py</code> against the real middleware with fakes. It can also run against any URL: <code>--base-url --schema-dir --job-timeout</code>.</td><td>
+  <ul class="tight">
+  <li>Envelopes, errors and auth.</li>
+  <li>Every change validated against the three schemas.</li>
+  <li>A Python <code>Host</code> that applies changes and a <code>Run</code> that drives a job as the view would (<code>:1036-1190</code>).</li>
+  <li>Staged-change checks: <code>base_version</code> and <code>read</code> were really read; no write to person-owned fields.</li>
+  <li><code>intake_invariants</code> (<code>:1196</code>) and <code>report_errors</code> (<code>:1311</code>).</li>
+  <li>The ambiguous-brand, free-text and compose_report cases (<code>:1440-1530</code>).</li>
+  </ul>
+  It does <b>not</b> look at <code>layout</code>, <code>sources_append</code> or quotes.</td></tr>
+<tr><td><b>Peripheral contract suites</b> <code>mock-backend/contract/*.py</code></td><td><code>run_all.py --base-url … [--no-live]</code></td><td>The model, research, retrieval and layers ports against the mock or a real service. The live mode spends money.</td></tr>
+<tr><td><b>Host Rust tests</b></td><td><code>cargo test -p napkin-host</code>, <code>cargo test -p napkin-web</code></td><td>
+  <ul class="tight">
+  <li><code>tests/middleware.rs</code>: apply, stale base, contests, reasoning rule R1, sources, repeats (about 35 tests).</li>
+  <li><code>tests/review.rs</code>: each route, the lock, only a person decides.</li>
+  <li><code>ops/decisions/tests.rs</code>: the blockers and attention.</li>
+  <li><code>proxy.rs</code> and <code>meter.rs</code> unit tests; <code>napkin-web/tests/api.rs</code> for quota on both paths.</li>
+  </ul></td></tr>
+<tr><td><b>Browser harness</b> <code>../docs-flow/clan-fields/harness/</code></td><td>Open <code>harness.html</code> or <code>real.html</code> by hand. The Playwright scripts that drove it are gone.</td><td>
+  <ul class="tight">
+  <li>The OS fields layer only, not the app.</li>
+  <li><code>fake-host.js</code> patches <code>fetch</code> for <code>clan://localhost</code>: <code>/decisions</code>, <code>/verdict</code>, <code>/classify</code>, <code>/verify</code> (<code>HARNESS.failVerify</code> makes it 502), <code>/resolve</code>, <code>/approve</code>. Once locked, every route returns 409. It logs <code>HARNESS.calls</code>.</li>
+  <li><code>record.js</code> is a fixture, despite the name: one open contest, one gap, 6 pins (one confidential, one whose source is missing) and 2 proposed findings.</li>
+  <li><code>real.html</code> mounts a real exported document (<code>record-real.js</code>: 21 pins, 8 sources, 1 verified and 1 rejected finding, an agent layout; no contests or gaps).</li>
+  <li>The layout carries XSS probes (<code>window.PWNED</code>).</li>
+  </ul></td></tr>
+</table></div>
+
+<h3>5.2 Gaps</h3>
+<div class="wrap"><table>
+<tr><th>Gap</th><th>Why it matters</th></tr>
+<tr><td><b>No evaluation of research quality.</b> Nothing measures whether facts are relevant, correct, well sourced, or corroborated.</td><td>In the example document all 20 research facts rest on a single domain each, so every pin is <b>low</b> confidence and coverage is thin everywhere. In the IBM run, 16 of 21 units found nothing. No test would notice either.</td></tr>
+<tr><td><b>The fake responders are hand-written regex parsers</b> of the fixture prompts (for example <code>r_identify</code> matching <code>"Brand:"</code>, <code>fakes.py:95-123</code>).</td><td>They exercise the code's checks, which is their purpose. But their outputs look nothing like a real model's: prose, quotes that almost match, near-miss numbers, skipped keys. So the retry path, quote folding and figure matching are tested only on contrived inputs.</td></tr>
+<tr><td><b>No fixed recorded corpus</b> of real model or research outputs.</td><td>Nothing reproduces yesterday's run. A prompt change cannot be regression-tested offline. The mock's research cache is the only store, and it keeps empty answers too.</td></tr>
+<tr><td><b>No regression test of layout quality.</b></td><td><code>test_pipeline.py:215-252</code> checks only what the sanitiser removes and the fallback. Nothing checks readability, duplication (the "say it once" rule), use of the figures, or that the view renders the layout without throwing (bug 4).</td></tr>
+<tr><td><b>No timing or budget tests.</b></td><td>The 180 s against 600 s mismatch, the unbounded polling, and the absence of a proxy timeout are all invisible. Nothing asserts a campaign stays under N calls or M minutes.</td></tr>
+<tr><td><b>Almost no multi-market cases.</b> Fakes are mostly IE, or IE+GB for the contest. Nothing covers 3+ markets, a per-market skip with a real select, or cross-market contests at scale.</td><td>Merge, coverage and <code>not_researched</code> across markets are where the combinatorics sit.</td></tr>
+<tr><td><b>No fault injection across the whole flow.</b> <code>FakeResearch(fail_on=…)</code> exists, but there is no layers 409 or 5xx, no model timeout mid-job, no host refusal, and no middleware restart.</td><td>Bugs 3 and 6, and the layers error path, are untested.</td></tr>
+<tr><td><b>No cross-component invariant check</b> of the final document: members, projection, layout refs and sources, together.</td><td>Bug 5 (a missing source) and bug 4 (a crashing ref) are cross-component. Each side's tests pass.</td></tr>
+<tr><td><b>No browser end-to-end of the real app in its sandboxed frame.</b></td><td>The harness has no iframe and no sandbox, so it cannot catch allow-forms regressions or the double-submit (bug 7). Its copy of clan-fields is stale: it lacks the <code>clan:open</code> listener (<code>clan-fields.html:696-705</code>).</td></tr>
+<tr><td><b>No end-to-end run of the host plus middleware.</b></td><td>The contract suite's Python <code>Host</code> is a model of the Rust host, not the Rust host. Differences in apply semantics show up only in manual runs.</td></tr>
+</table></div>
+
+<!-- ================================================================== -->
+<h2 id="harness">6. A better harness</h2>
+<p>The goal: every change to a prompt, a rule, the merge, the host's apply, or the view can be run against the same fixed set of real campaigns, offline, in minutes, with pass or fail on invariants and a scored diff on quality. The parts are listed in priority order.</p>
+
+<h3>6.1 Architecture</h3>
+<pre class="mermaid">
+flowchart LR
+  subgraph Record["Record (live, costs money)"]
+    S1[scenario prompt + attachments] --> Stack1[mock-backend or real ports]
+    Stack1 --> Tap[recording tap at ModelPort / ResearchPort]
+    Tap --> Cas[(cassettes/scenario/*.json)]
+  end
+  subgraph Replay["Replay (CI, free, deterministic)"]
+    Cas --> RM[CassetteModel client]
+    Cas --> RR[CassetteResearch port]
+    RM --> MW[middleware, real code]
+    RR --> MW
+    FL[FakeLayersService, frozen clock] --> MW
+    MW --> HostSim[Rust host via napkin-host test binary, or contract Host]
+    HostSim --> Doc[(result .clan / members)]
+  end
+  Doc --> Inv[invariant checker]
+  Doc --> Gold[golden diff]
+  Doc --> Q[quality evals: LLM judge + human sheet]
+  Doc --> UI[browser e2e: real app in sandboxed frame]
+</pre>
+
+<h3>6.2 P0: invariants on every run</h3>
+<p>Write one pure function, <code>check_research_doc(members, layer_db=None) -&gt; [violation]</code>, over <code>shared/data.yaml</code>, <code>facts.yaml</code>, <code>findings.yaml</code>, <code>sources.yaml</code> and <code>agent/decision-chain.yaml</code>. Run it:</p>
+<ul class="tight">
+<li>after every test that produces a document;</li>
+<li>on every replayed cassette;</li>
+<li>as a CLI over a real <code>.clan</code>, read-only with <code>unzip -p</code>.</li>
+</ul>
+<p>The contract suite's <code>intake_invariants</code> and <code>report_errors</code> already cover part of this and should be absorbed into it.</p>
+<div class="wrap"><table>
+<tr><th>#</th><th>Invariant</th><th>How to compute</th><th>Would catch</th></tr>
+<tr><td>I1</td><td>Every pin quote is verbatim in its source record's excerpt</td><td>For each fact and each <code>(src, q)</code> in <code>quotes</code>: <code>find_quote(excerpt, q)</code> succeeds against the recorded research response. This needs the cassette, because the document does not hold excerpts. Offline, also check that <code>q</code> is non-empty and that <code>src</code> is in <code>fact.sources</code>.</td><td>A regression in quote folding or in <code>_check</code></td></tr>
+<tr><td>I2</td><td>Every numeric pin's value is in its quote</td><td><code>quote_supports(value, unit, quote)</code> for at least one quote</td><td>Figure-rule regressions</td></tr>
+<tr><td>I3</td><td>Every figure in prose is cited</td><td>For the headline, summary, claims, findings and each layout block, apply <code>unsourced_figures</code> with the <b>view's</b> rules (years exempt, as the layout rule does). Report both the rule's verdict and a "would a person call this unsourced" verdict, so the rule's false drops (bug 2) are measured, not just enforced.</td><td>Unsourced figures, and over-dropping</td></tr>
+<tr><td>I4</td><td>No unresolved ref in the layout, and each element's ref kind is one it can render</td><td>Parse <code>report.layout</code>. Every <code>ref</code> and <code>refs</code> must be in the projection pins, findings, contests or gaps. <code>clan-field</code> refs must be <code>f_</code>, <code>fi_</code> or <code>ct_</code> only. <code>clan-quote</code> refs must be pins that have quotes. Chart refs must be numeric pins.</td><td>Bug 4</td></tr>
+<tr><td>I5</td><td>The sources member covers every cited src id</td><td>The set of <code>src_</code> ids across fact sources, contest values and layout <code>source=</code> must be a subset of the ids in <code>sources.yaml</code>.</td><td>Bug 5</td></tr>
+<tr><td>I6</td><td>The projection is consistent with the members</td><td><code>built_from.*_sha256</code> equals the sha256 of the member bytes. Each pin and finding in the projection equals its member entry. <code>report.based_on</code> hashes equal <code>built_from</code>, or the report is flagged stale.</td><td>Host assemble drift</td></tr>
+<tr><td>I7</td><td>Decisions are complete</td><td>Every <code>decision</code>, <code>opened_by</code> and <code>decided_by</code> id is in the chain. Every chain decision of kind pin, contest, finding or verdict, and every <code>edit</code> under campaign, selection or report, has reasoning that passes <code>reasoning.problems</code>. Every data path the job wrote is named by a decision target.</td><td>R1 regressions</td></tr>
+<tr><td>I8</td><td>Confidence is derived</td><td>Recompute <code>fact_confidence</code> from the source records and <code>finding_confidence</code> from the cited pins, and compare with the stored values.</td><td>Silent confidence edits</td></tr>
+<tr><td>I9</td><td>Selection is closed</td><td>Every (lens, market) is in exactly one of <code>lenses_run</code>, <code>lenses_skipped</code> or <code>report.not_researched</code>. Coverage per lens equals <code>merge_coverage</code> of the per-market values. Every open contest has at least 2 distinct values, each with a frozen <code>pin</code>.</td><td>Merge and select regressions</td></tr>
+<tr><td>I10</td><td>Attention and lock are consistent</td><td><code>lock.can_lock</code> from the host's decision view is true exactly when the app's <code>blockers()</code> list is empty, minus the documented app-only gate items. After <code>approve</code>, the chain has no later non-person write. Every host contest is resolvable by some route.</td><td>Bugs 6 and 8, and the app/host divergence</td></tr>
+<tr><td>I11</td><td>Human-owned fields stay human</td><td>No agent decision targets a field whose origin was <code>confirmed</code> or <code>stated</code> at the time.</td><td><code>human_owned</code> regressions</td></tr>
+<tr><td>I12</td><td>The layer agrees with the document (when the layer DB is given)</td><td>Each pin's <code>origin</code> URI resolves to a row with the same value. Each decision id cited by a layer row exists with a non-empty rationale.</td><td>Bug 1, bug 10</td></tr>
+</table></div>
+
+<h3>6.3 P0: recorded and replayable fixtures (cassettes)</h3>
+<ul>
+<li><b>Where to tap.</b> At the port boundary, which already takes test doubles:
+  <ul class="tight">
+  <li>the model client (<code>Middleware(model_client=…)</code>, <code>app.py:44-53</code>; anything with <code>messages.create</code>, like <code>FakeModel</code>);</li>
+  <li>the research port (<code>research_port=</code>, with the <code>search(...)</code> signature <code>FakeResearch</code> has).</li>
+  </ul>
+  Add <code>CassetteModel(mode=record|replay|strict)</code> and <code>CassetteResearch</code>. The Rust host and the view need no change.</li>
+<li><b>Key.</b> <code>purpose</code> + sha256 of the canonical payload + sha256 of the schema + model id.
+  <ul class="tight">
+  <li>Payloads carry volatile ids: layer-minted <code>f_</code> and <code>src_</code> ids, job-seeded decision ids, and <code>as_of</code> falling back to today.</li>
+  <li><b>Canonicalise before hashing</b>: replace each id by <code>&lt;kind&gt;#&lt;order of first appearance&gt;</code>, and freeze <code>today()</code> and <code>iso()</code> (patch <code>napkin.util</code>).</li>
+  <li>Store the mapping, so the replayed output's ids are rewritten back into the current run's ids.</li>
+  <li>For <code>extract_facts</code>, also key on <code>(lens, market)</code> as a human-readable secondary key.</li>
+  </ul></li>
+<li><b>Contents.</b> The request (payload, schema hash, model), every wire attempt (text, stop reason, usage, latency) including the failed ones, and the final object. For research: the request body and the response, including empty ones, with their latency.</li>
+<li><b>Replay modes.</b>
+  <ul class="tight">
+  <li><code>strict</code>, for CI: a miss is a test failure naming the purpose and the diff of the canonical payload.</li>
+  <li><code>lenient</code>, for prompt work: a miss falls through to a live call and is recorded.</li>
+  <li><code>timed</code>: sleep the recorded latency, scaled, for timing tests.</li>
+  </ul></li>
+<li><b>Recording source.</b> Run each scenario through the dev stack with <code>MOCK_NO_CACHE=1</code>, or against the real ports. The mock's research cache (<code>&lt;MOCK_DATA&gt;/cache/research</code>) can seed research cassettes, but drop its empty entries or tag them as such.</li>
+<li><b>Confidentiality.</b> Cassettes hold prompts and attachment text. Build the scenario corpus from synthetic or owner-approved briefs only. Never record client documents. Keep the store out of the repo if in doubt. The mock already refuses to dump bodies unless <code>MOCK_DUMP_REQUEST_BODIES_TO</code> is set (<code>common.py:92-94</code>).</li>
+<li><b>Layers.</b> Use <code>FakeLayersService</code> (<code>tests/fake_layers.py</code>), seeded per scenario (roster rows, pre-existing facts for reuse cases). Check that its ids are deterministic under a frozen clock. If they are not, the canonicalisation above covers them.</li>
+</ul>
+
+<h3>6.4 P0: golden documents</h3>
+<p>Build about 8 scenarios, each a folder: <code>prompt.txt</code>, <code>attachments/</code>, <code>layers-seed.json</code>, <code>answers.json</code> (the scripted question answers), <code>cassettes/</code>, <code>golden/</code>.</p>
+<div class="wrap"><table>
+<tr><th>Scenario</th><th>Exercises</th></tr>
+<tr><td>S1 unambiguous, 1 market, all lenses</td><td>the happy path, and the layout built by the agent</td></tr>
+<tr><td>S2 two brands, neither the client's</td><td>needs_input, an option answer</td></tr>
+<tr><td>S3 free-text brand, then a pick</td><td>text resolution, the second question</td></tr>
+<tr><td>S4 no roster, typed category not in the tree</td><td>classify_category, the category question</td></tr>
+<tr><td>S5 3 markets, prompt limits a lens to one market</td><td>per-market skip, merge across markets, not_researched</td></tr>
+<tr><td>S6 two sources disagree on a value</td><td>a contest, <code>/resolve</code></td></tr>
+<tr><td>S7 fresh layer facts exist</td><td>the reuse path, no research call</td></tr>
+<tr><td>S8 research returns nothing for most units</td><td>gaps, empty coverage, report with little to cite</td></tr>
+</table></div>
+<p>Compare the <b>structure</b>, not the prose, against golden: field origins, the set of pin identities (entity, key, market) with value and confidence, contest keys, gap keys, lenses run and skipped, decision kinds and actions with certainty levels, report section ids and block kinds, <code>layout_by</code>, and the counts of layout elements by tag. Store it as a normalised JSON "shape" file. Review a golden diff like a snapshot test, and approve it deliberately.</p>
+
+<h3>6.5 P1: fault injection</h3>
+<div class="wrap"><table>
+<tr><th>Fault</th><th>Inject at</th><th>Expect</th></tr>
+<tr><td>Research 502 or timeout for one unit</td><td><code>CassetteResearch</code> fault table</td><td>A gap with a note, coverage empty for that unit, the job <code>done</code>, I9 holds</td></tr>
+<tr><td>Model timeout in extract, identify, select or synthesise</td><td><code>CassetteModel</code> raising <code>APITimeoutError</code> twice</td><td>The job <code>failed</code> at that stage, earlier stages landed, a <code>stage_failed</code> decision</td></tr>
+<tr><td>Model timeout in report or layout</td><td>same</td><td><code>done</code>, built prose or <code>layout_by: built</code>, I4 holds</td></tr>
+<tr><td>Invalid JSON, then valid</td><td>a first-attempt override</td><td>A second attempt with the error turn, and success</td></tr>
+<tr><td>Layers 409 <code>idempotency_conflict</code> or 503 on <code>append</code></td><td>the <code>FakeLayersService</code> fault hook</td><td>Today: the job fails. Decide whether that is wanted, then assert it.</td></tr>
+<tr><td>Host refuses a stage (reasoning removed, stale base without read)</td><td>a Rust host test binary, or the contract <code>Host</code></td><td>Today: the job hangs at report (bug 3). Assert a bounded outcome after the fix.</td></tr>
+<tr><td>Middleware restart mid-job</td><td>kill and restart the server fixture</td><td>The view shows <code>unknown_job</code>, the document stays valid (I1–I9), and a new campaign can start</td></tr>
+<tr><td>Person edits a field while research runs</td><td>a patch between polls</td><td>A host contest, and I10: it is resolvable</td></tr>
+<tr><td>Quota at the cap</td><td>napkin-web with <code>NAPKIN_AGENT_CAP=1</code></td><td><code>answer_question</code> gets 429 and polls still work</td></tr>
+</table></div>
+
+<h3>6.6 P1: quality evals</h3>
+<ul>
+<li><b>Research, per pin (LLM as judge, run on the replayed output).</b> Give the judge the pin (entity, key, value, unit, market, as_of) and the source excerpts from the cassette. Score 0–2 on each of:
+  <ul class="tight">
+  <li><i>supported</i>: the excerpt states it;</li>
+  <li><i>key fits the lens</i>;</li>
+  <li><i>market-correct</i>;</li>
+  <li><i>entity-correct</i>: category, subject or comparator;</li>
+  <li><i>period-correct</i>: as_of.</li>
+  </ul>
+  Aggregate per lens. Also report the corroboration rate (the share of pins with 2 or more domains; 0% in the example document), the tier mix, and gaps per unit.</li>
+<li><b>Findings.</b> Score each: follows from the cited pins; states nothing beyond them; useful to a planner; compares markets when it could.</li>
+<li><b>Report and layout.</b> Score:
+  <ul class="tight">
+  <li>the headline is specific and supported;</li>
+  <li>nothing is said twice;</li>
+  <li>big numbers are the right ones;</li>
+  <li>the charts compare like with like;</li>
+  <li>open items are visible.</li>
+  </ul>
+  Also compute in code: duplicate sentences, figures shown more than twice, the fraction of pins shown, the count of dropped claims, and <code>layout_by</code>.</li>
+<li><b>Judge hygiene.</b> Use a fixed rubric prompt and a pinned model. Run it on replayed documents so scores are comparable across commits. Calibrate it against the human sheet on 30–50 items before trusting it, and report the agreement.</li>
+<li><b>Human spot-check sheet.</b> Each week, sample 20 pins, 5 findings and 1 layout per scenario. For each pin, show the value, the quote with the figure highlighted, and the source link. The reviewer marks correct, wrong or unsure and a reason code. The results feed the judge's calibration and the golden updates. The OS drawer already shows this view, so the sheet can be a filtered list of drawer links.</li>
+</ul>
+
+<h3>6.7 P1: timing and load</h3>
+<ul class="tight">
+<li><b>A budget test per scenario.</b> Replay with <code>timed</code> cassettes at 0.1× latency. Assert the wall time stays under a budget derived from the recorded run, and the logical model calls stay at or under 6 + S + k. Fail when the layout call or its retry dominates.</li>
+<li><b>An aligned-timeouts test.</b> Assert <code>MOCK_TIMEOUT_MODEL</code> is at least the middleware's per-attempt timeout for the layout purpose, or give layout its own shorter budget and a single attempt.</li>
+<li><b>Load.</b> Run 5 campaigns at once against the stack with timed cassettes. Watch the model semaphore (6), the research semaphore (4) and the mock's shared 4 slots. Record the queue waits: attribution is already logged per call (<code>capabilities.py:76-82</code>, <code>model.py:338-339</code>).</li>
+<li><b>Poll behaviour.</b> Count <code>job_status</code> requests per campaign in the view's e2e. The truncated <code>mw.log</code> held 357 <code>job_status</code> lines for about an hour spanning three jobs.</li>
+</ul>
+
+<h3>6.8 P1: browser e2e for the review flow</h3>
+<p>Run the <b>real</b> app in the <b>real</b> shell frame (<code>sandbox="allow-scripts allow-popups"</code>), against napkin-web and a middleware on cassettes. The harness's unsandboxed page cannot catch sandbox bugs. Outline (Playwright):</p>
+<ol class="tight">
+<li>Start the stack: mock layers only (<code>MOCK_FAKES=layers</code>), the middleware with cassette model and research, and napkin-web with a temp data dir. Create a Research Tool document from the seeded template.</li>
+<li>In the app frame (<code>page.frameLocator('iframe')</code>), type the S2 prompt and press Send. Assert <code>body.working</code>, and that the stepper advances.</li>
+<li>When the question card appears, click an option. Assert exactly <b>one</b> <code>answer_question</code> request and one human <code>patchData</code>, by intercepting <code>/api-proxy</code> and patch routes.</li>
+<li>Wait for <code>body.done</code>. Assert <code>#rep-layout</code> is mounted, no element has <code>clf-missing</code>, and nothing on <code>console.error</code> (a TypeError from bug 4 would show here).</li>
+<li>Open a pin and click "Looks right". Assert one <code>/verdict</code>; <b>two would be bug 7</b>.</li>
+<li>Open a finding and click Verify. Assert <code>/verify</code>, then the pin appears. Assert its source card is not "pinned before sources travelled"; that would be bug 5.</li>
+<li>Reject the other finding with a reason. Open the S6 contest, pick a value, give a reason, and resolve it.</li>
+<li>Assert the tray is empty, then click Lock report. Assert <code>/approve</code> returns 200 and the drawer offers no actions afterwards.</li>
+<li>In every dialog, press Enter in an input and assert the handler runs once. This tests the no-allow-forms workaround. Assert no "Blocked form submission" console message.</li>
+<li>Export the <code>.clan</code> and run the invariant checker on it.</li>
+</ol>
+<p>Update the harness's inlined copy of clan-fields from <code>app/templates/shared/clan-fields.html</code> as part of its build, so it cannot drift again.</p>
+
+<h3>6.9 Priorities</h3>
+<div class="wrap"><table>
+<tr><th>Priority</th><th>Item</th><th>Effort</th><th>Why first</th></tr>
+<tr><td>P0</td><td>Invariant checker (I1–I12) as a library and a CLI, run in pytest and on real <code>.clan</code> files</td><td>2–3 days</td><td>Catches bugs 1, 4, 5 and 6 today with no new fixtures. Cheapest signal.</td></tr>
+<tr><td>P0</td><td>Model and research cassettes with id canonicalisation and a frozen clock; record S1–S3</td><td>3–4 days</td><td>Makes real outputs replayable. Everything below depends on it.</td></tr>
+<tr><td>P0</td><td>Golden shapes for S1–S8</td><td>2 days after cassettes</td><td>Regression net for prompts, the merge and select.</td></tr>
+<tr><td>P1</td><td>Fault-injection matrix</td><td>2 days</td><td>The failure paths (bug 3, layers errors, restart) have no tests now.</td></tr>
+<tr><td>P1</td><td>Browser e2e in the sandboxed frame</td><td>3 days</td><td>The only way to catch sandbox and double-submit issues and render crashes.</td></tr>
+<tr><td>P1</td><td>Timing budgets and aligned timeouts</td><td>1 day</td><td>Layout was 43% of the observed run.</td></tr>
+<tr><td>P2</td><td>LLM-judge rubric and the human sheet, with calibration</td><td>3–5 days plus ongoing</td><td>Quality needs the replay base first to be comparable.</td></tr>
+<tr><td>P2</td><td>Multi-campaign load</td><td>1–2 days</td><td>Matters once real users share the semaphores.</td></tr>
+</table></div>
+
+<!-- ================================================================== -->
+<h2 id="appendix">7. Appendix</h2>
+
+<h3>7.1 The example document</h3>
+<p><code>../stack/data/bc0fd4cb-…/documents/ie-napkin-campaign-research-139f43e9.clan</code>, read with <code>unzip -p</code>. Only structure and counts are given here; no client content.</p>
+<div class="wrap"><table>
+<tr><th>Member</th><th>What it holds</th></tr>
+<tr><td>manifest</td><td>Created 15:41:17Z and updated 15:58:21Z, 2026-09-28. Last delta: "a finding rejected".</td></tr>
+<tr><td><code>shared/facts.yaml</code></td><td>21 pins, all IE and all in the category layer. 20 are research pins (11 consumer, 9 market), all <b>low</b> confidence and each resting on 1 domain. 1 is the synthesis pin from <code>/verify</code>.</td></tr>
+<tr><td><code>shared/findings.yaml</code></td><td>2: one verified, one rejected. Both low.</td></tr>
+<tr><td><code>shared/sources.yaml</code></td><td>8 sources (5 secondary, 3 tertiary). One cited <code>src_</code> id, the reviewer source, is missing (bug 5).</td></tr>
+<tr><td><code>data.selection</code></td><td>2 lenses run (market_structure/IE, consumer_culture/IE), 6 skipped, 0 gaps, 0 contests. Coverage thin for both.</td></tr>
+<tr><td><code>data.report</code></td><td>2 sections (3 claims, pins and a finding each), 4 summary lines, 3 confirm items, 6 not_researched. <code>layout_by: agent</code>, 5016 characters: 34 <code>clan-field</code>, 2 <code>clan-chart</code>, 1 <code>clan-quote</code>, 1 <code>clan-sources</code>. All 40 refs resolve.</td></tr>
+<tr><td><code>intake.messages</code></td><td>9: 2 from the person, 7 from the agent. 1 question, 1 answer.</td></tr>
+<tr><td><code>agent/decision-chain.yaml</code></td><td>16 decisions. 11 carry attention. The 4 without reasoning are all person decisions, which is allowed.</td></tr>
+</table></div>
+
+<h3>7.2 Job 1 timeline (mock.log, IST; UTC is one hour earlier)</h3>
+<pre><code>16:41:21  start_campaign accepted
+16:41:46  model 24.3 s   (extract)
+16:42:05  model 19.6 s   (identify) -> question
+16:42:09  identify re-run after the answer; roster written (person confirmed categories)
+16:43:18  model 68.3 s   (select)
+16:44:55  research market_structure/IE  96.8 s, 4 sources, $0.58
+16:45:29  research consumer_culture/IE 131.2 s, 6 sources, $0.47
+16:46:22  model 87.2 s + 52.5 s (extract_facts x2); 20 layer appends
+16:47:52  model 88.7 s   (synthesise)
+16:48:53  model 50.4 s   (report)
+16:51:53  model 504 after 180.1 s (layout, MOCK_TIMEOUT_MODEL)
+16:54:34  model 200 after 160.5 s (layout, SDK retry) -> done
+16:58:14  verify_finding: layer source + fact</code></pre>
+
+<h3>7.3 Commands</h3>
+<pre><code># middleware tests (126 pass, ~10 s)
+cd server &amp;&amp; uv run pytest -q
+# the contract suite against a running middleware
+python3 mock-middleware/contract_test.py --base-url http://127.0.0.1:8798 \
+  --schema-dir app/templates/campaign-research --job-timeout 900
+# peripheral contracts against the mock, no spend
+python3 mock-backend/contract/run_all.py --base-url http://127.0.0.1:8797 --no-live
+# host
+cargo test -p napkin-host &amp;&amp; cargo test -p napkin-web
+# read a document's structure without writing it
+unzip -p &lt;doc&gt;.clan shared/facts.yaml | head</code></pre>
+
+<p class="meta">Written from the code at the stated commit. Where a claim rests on reading rather than running, it is marked "likely" or "risk". The two reported delegated reads (host Rust; app and harness) were spot-checked where they mattered: the dialog handlers, the field renderer, the review routes as the app uses them.</p>
+</main>

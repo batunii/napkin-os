@@ -1,0 +1,645 @@
+<title>Decisions Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --ink:#14161B; --ink2:#4A4F5C; --ink3:#737987;
+  --paper:#FFFFFF; --soft:#F5F6F8; --line:#D6DAE2; --line-soft:#E7E9EE;
+  --create:#FF4F2E; --create-soft:#FFF1EE; --create-ink:#B8321A;
+  --green:#22C55E; --green-soft:#DCFCE7; --green-ink:#146C35;
+  --amber:#F5A524; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
+  --iris:#7D52F4; --iris-soft:#F1ECFE; --iris-ink:#5A33C9;
+  --cobalt:#2F64F5; --hl:#FFE9A8;
+  --plan:#14161B; --plan-fg:#FFFFFF; --plan-eye:#FFFFFF;
+  --shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --f:"Geist","Helvetica Neue",Arial,system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ink:#F2F3F5; --ink2:#B6BBC6; --ink3:#8E94A1;
+    --paper:#0E1014; --soft:#171A20; --line:#2D323C; --line-soft:#22262E;
+    --create:#FF5A3A; --create-soft:#2A1612; --create-ink:#FF8A70;
+    --green-soft:#10281A; --green-ink:#6EE7A0;
+    --amber-soft:#2A2110; --amber-ink:#F7C361;
+    --iris:#9B7BF7; --iris-soft:#1E1830; --iris-ink:#C4B0FB; --hl:#4A3B12;
+    --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ink:#F2F3F5; --ink2:#B6BBC6; --ink3:#8E94A1;
+  --paper:#0E1014; --soft:#171A20; --line:#2D323C; --line-soft:#22262E;
+  --create:#FF5A3A; --create-soft:#2A1612; --create-ink:#FF8A70;
+  --green-soft:#10281A; --green-ink:#6EE7A0;
+  --amber-soft:#2A2110; --amber-ink:#F7C361;
+  --iris:#9B7BF7; --iris-soft:#1E1830; --iris-ink:#C4B0FB; --hl:#4A3B12;
+  --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--soft);color:var(--ink);font-family:var(--f);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--create);outline-offset:2px;border-radius:4px}
+
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 16px;background:var(--iris-soft);color:var(--iris-ink);font-size:12.5px;border-bottom:1px solid var(--line);flex:none}
+.proto b{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+.proto .note{flex:1 1 280px;min-width:0}
+.seg{display:inline-flex;border:1px solid color-mix(in srgb,var(--iris) 40%,transparent);border-radius:999px;padding:2px;background:var(--paper)}
+.seg button{border:0;background:none;padding:3px 11px;border-radius:999px;cursor:pointer;font-size:12.5px;color:var(--ink2)}
+.seg button[aria-pressed="true"]{background:var(--iris);color:#fff}
+
+.app{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 460px}
+/* ── the document, sketched ─────────────────────────────────────────── */
+.doc{overflow:auto;padding:28px clamp(16px,4vw,48px) 80px}
+.sheet{max-width:760px;margin:0 auto;background:var(--paper);border-radius:18px;box-shadow:var(--shadow);padding:36px clamp(20px,4vw,48px);display:grid;gap:26px}
+.sheet .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.sheet h1{margin:0;font-size:clamp(24px,3.2vw,34px);font-weight:800;letter-spacing:-.03em;line-height:1.1;text-wrap:balance}
+.sheet h2{margin:0 0 8px;font-size:15px;font-weight:700}
+.dsec{border-radius:12px;padding:12px 14px;margin:-12px -14px;transition:background .6s var(--ease),box-shadow .6s var(--ease)}
+.dsec.flash{background:var(--hl);box-shadow:0 0 0 2px color-mix(in srgb,var(--amber) 60%,transparent)}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 14px;font-size:14px}
+.kv dt{color:var(--ink3)}
+.kv dd{margin:0}
+.claim{font-size:15px;line-height:1.55}
+.claim.check{background:var(--create-soft);border-bottom:1.5px dashed var(--create);padding:1px 2px}
+.claim.rejected{text-decoration:line-through;color:var(--ink3)}
+.tagx{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:1px 7px;vertical-align:2px;margin-left:4px}
+.tagx.c{background:var(--create);color:#fff}
+.tagx.ok{background:var(--green-soft);color:var(--green-ink)}
+.tagx.r{background:var(--create-soft);color:var(--create-ink)}
+.muted{color:var(--ink3)}
+.clk{cursor:pointer;border-radius:6px;transition:background .15s}
+.clk:hover{background:color-mix(in srgb,var(--ink) 5%,transparent)}
+
+/* ── the panel ──────────────────────────────────────────────────────── */
+.panel{border-left:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;min-height:0}
+.ph{padding:16px 18px 12px;border-bottom:1px solid var(--line-soft);display:grid;gap:10px}
+.ph .row{display:flex;align-items:baseline;gap:10px}
+.ph h2{margin:0;font-size:17px;font-weight:800;letter-spacing:-.01em}
+.ph .sum{font-size:13px;color:var(--ink2)}
+.lockline{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2)}
+.lockline .dot{width:8px;height:8px;border-radius:50%;background:var(--create)}
+.lockline.ok .dot{background:var(--green)}
+.pb{overflow:auto;padding:14px 18px 40px;display:grid;gap:22px;align-content:start}
+.sec-t{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin:0 0 8px}
+.sec-t .n{font-family:var(--f);letter-spacing:0;text-transform:none;font-size:12px;background:var(--create);color:#fff;border-radius:999px;padding:0 7px;font-weight:600}
+.sec-t .n.q{background:var(--soft);color:var(--ink2)}
+
+/* needs-you cards */
+.card{border:1px solid color-mix(in srgb,var(--create) 35%,var(--line));background:var(--paper);border-radius:14px;padding:14px;display:grid;gap:10px;box-shadow:0 1px 0 color-mix(in srgb,var(--create) 12%,transparent)}
+.card + .card{margin-top:10px}
+.card .top{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+.card .agent-figure{width:26px;height:35px}
+.card .what{font-weight:650;font-size:14.5px;line-height:1.35}
+.card .who{font-size:12.5px;color:var(--ink3);margin-top:2px}
+.card .stmt{font-size:13.5px;line-height:1.45;color:var(--ink);background:var(--soft);border-radius:10px;padding:9px 11px}
+.card .why{font-size:13px;color:var(--ink2)}
+.card .why b{color:var(--ink);font-weight:600}
+.acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 13px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--ink3)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.btn.danger{color:var(--create-ink);border-color:color-mix(in srgb,var(--create) 45%,var(--line))}
+.link{border:0;background:none;padding:6px 4px;font-size:13px;font-weight:500;color:var(--cobalt);cursor:pointer;margin-left:auto;white-space:nowrap}
+.link:hover{text-decoration:underline}
+.src{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink2);border:1px solid var(--line-soft);border-radius:999px;padding:1px 9px;white-space:nowrap}
+.src::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--ink3)}
+.src.weak{border-color:color-mix(in srgb,var(--amber) 50%,var(--line));color:var(--amber-ink)}
+.srcs{display:flex;flex-wrap:wrap;gap:5px}
+.why-form{display:grid;gap:8px}
+.why-form textarea{font:inherit;font-size:13.5px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:58px;resize:vertical}
+.why-form label{font-size:12.5px;color:var(--ink2);display:grid;gap:4px}
+.done-card{border:1px solid var(--line-soft);border-radius:14px;padding:12px 14px;font-size:13.5px;color:var(--ink2);display:flex;gap:8px;align-items:center}
+.done-card svg{color:var(--green-ink);flex:none}
+
+/* worth a look */
+.quiet{border:1px solid var(--line-soft);border-radius:14px}
+.quiet > summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;align-items:center;gap:8px;font-size:13.5px}
+.quiet > summary::-webkit-details-marker{display:none}
+.quiet > summary .chev{margin-left:auto;color:var(--ink3);transition:transform .2s var(--ease)}
+.quiet[open] > summary .chev{transform:rotate(180deg)}
+.qi{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:10px 14px;border-top:1px solid var(--line-soft)}
+.qi .agent-figure{width:20px;height:27px}
+.qi .t{font-size:13.5px;line-height:1.4}
+.qi .acts{margin-top:6px}
+.qi .btn{padding:4px 11px;font-size:12.5px}
+.qi.cleared{opacity:.55}
+
+/* history */
+.hist-h{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.hist-h .sec-t{margin:0}
+.run{border-radius:14px;background:var(--soft);padding:4px 0 6px}
+.run + .run{margin-top:12px}
+.run-h{display:flex;align-items:baseline;gap:8px;padding:9px 14px 6px;flex-wrap:wrap}
+.run-h b{font-size:13.5px}
+.run-h span{font-size:12px;color:var(--ink3)}
+.ev{display:block}
+.ev > summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;padding:8px 14px;border-radius:10px}
+.ev > summary::-webkit-details-marker{display:none}
+.ev > summary:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.ev .agent-figure{width:20px;height:27px;margin-top:1px}
+.ev .av{width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-size:10px;font-weight:700;margin-top:3px}
+.ev .line{font-size:13.5px;line-height:1.4}
+.ev .line .who{font-weight:650}
+.ev .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;align-items:center}
+.where{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--cobalt);background:none;border:0;padding:0;cursor:pointer}
+.where:hover{text-decoration:underline}
+.where svg{flex:none}
+.unsure{font-size:11px;font-weight:600;color:var(--amber-ink);background:var(--amber-soft);border-radius:999px;padding:0 7px}
+.more{display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-top:4px;font-size:11.5px;color:var(--cobalt)}
+.ev[open] .more .chev{transform:rotate(180deg)}
+.time{font-size:11.5px;color:var(--ink3);white-space:nowrap;font-variant-numeric:tabular-nums;padding-top:2px}
+.ex{margin:0 14px 10px 44px;padding:12px 14px;background:var(--paper);border:1px solid var(--line-soft);border-radius:12px;display:grid;gap:12px}
+.ex h4{margin:0 0 4px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:500}
+.ex ul{margin:0;padding-left:16px;display:grid;gap:4px;font-size:13px}
+.ex p{margin:0;font-size:13px}
+.ex .tech > summary{cursor:pointer;font-size:12px;color:var(--ink3)}
+.ex .tech dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.ex .tech dd{margin:0;overflow-wrap:anywhere}
+.roll{font-size:12.5px;color:var(--ink2);display:grid;gap:3px}
+.roll div{display:grid;grid-template-columns:1fr auto;gap:10px}
+.roll b{font-weight:600;font-variant-numeric:tabular-nums}
+.bysec .run-h b{font-size:13px}
+
+/* the figure's evidence panel (the OS drawer the report already has) */
+.app{position:relative}
+.ev-scrim{position:absolute;top:0;left:0;bottom:0;right:460px;background:rgba(10,12,16,.22);opacity:0;pointer-events:none;transition:opacity .2s var(--ease);z-index:5}
+.ev-scrim.on{opacity:1;pointer-events:auto}
+.evd{position:absolute;top:0;bottom:0;right:460px;width:min(420px,60%);background:var(--paper);box-shadow:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.18);z-index:6;display:none;flex-direction:column}
+.evd.on{display:flex}
+.evd-h{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line-soft)}
+.evd-h .crumb{flex:1;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.evd-h .note{font-family:var(--f);letter-spacing:0;text-transform:none;font-size:11.5px;color:var(--iris-ink);background:var(--iris-soft);border-radius:999px;padding:1px 8px;margin-left:6px}
+.x{border:1px solid var(--line);background:var(--paper);border-radius:999px;width:28px;height:28px;display:grid;place-items:center;cursor:pointer}
+.evd-b{overflow:auto;padding:18px;display:grid;gap:16px;align-content:start}
+.evd .stmt2{font-size:17px;font-weight:700;line-height:1.35;letter-spacing:-.01em}
+.evd .big{font-size:36px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.evd h4{margin:0 0 6px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:500}
+.q{margin:0;padding:12px 14px;background:var(--soft);border-radius:12px;font-size:14px;line-height:1.5}
+.q mark{background:color-mix(in srgb,var(--amber) 40%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+.frow{display:grid;grid-template-columns:1fr auto;gap:10px;padding:8px 12px;border:1px solid var(--line-soft);border-radius:10px;font-size:13.5px;cursor:pointer;background:var(--paper);text-align:left;width:100%}
+.frow:hover{border-color:var(--ink3)}
+.frow small{display:block;color:var(--ink3);font-size:12px}
+.frows{display:grid;gap:6px}
+.flist > summary{list-style:none}
+.flist > summary::-webkit-details-marker{display:none}
+.flist[open] .fl-t{font-size:0}
+.flist[open] .fl-t::after{content:"Hide";font-size:13.5px}
+.fl-t{color:var(--cobalt);font-weight:500}
+.cchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.cchip{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:0 8px;background:var(--paper);cursor:pointer;color:var(--ink2)}
+.cchip:hover{border-color:var(--ink3);color:var(--ink)}
+.scard{border:1px solid var(--line-soft);border-radius:12px;padding:12px;display:grid;gap:4px;font-size:13px}
+.scard b{font-size:14px}
+.scard a{color:var(--cobalt);text-decoration:none;font-weight:500}
+.pillx{display:inline-flex;font-size:12px;border-radius:999px;padding:2px 10px;background:var(--create-soft);color:var(--create-ink);width:max-content}
+.pillx.ok{background:var(--green-soft);color:var(--green-ink)}
+.pillx.warn{background:var(--amber-soft);color:var(--amber-ink)}
+.needs .who2{font-size:12.5px;color:var(--ink3)}
+.clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;font-size:13.5px;opacity:0;pointer-events:none;transition:all .25s var(--ease);z-index:60}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:900px){
+  .ev-scrim{right:0}
+  .evd{right:0;width:100%;top:auto;height:70%;position:fixed;bottom:0;border-radius:16px 16px 0 0}
+  .app{grid-template-columns:1fr;grid-template-rows:auto auto}
+  .doc{max-height:45vh}
+  .panel{border-left:0;border-top:1px solid var(--line)}
+  body{height:auto}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<!-- Generated by app/scripts/agent-figures.mjs from app/src/studio/AgentFigure.tsx
+     and AgentFigure.css. Do not edit here: change the figures there and run
+     `npm run figures` in app/. -->
+<style id="agent-figures-css">
+/* Agent figures. States come in as data attributes on the <svg>:
+   data-state = idle | working | needs-you, data-walking when moving.
+   --af-phase (0–1, per agent) offsets every loop so figures don't sync. */
+
+/* The character sheet's colours. Ink bodies use the studio's --plan pair and
+   follow the theme; these five stay put in light and dark, with a dark face.
+   Coral is the sheet's own, redder than --create, which is only for needs-you. */
+.agent-figure,
+.agent-avatar {
+  --af-cobalt: #2F64F5;
+  --af-coral: #FF6A55;
+  --af-marigold: #FFC023;
+  --af-iris: #7D52F4;
+  --af-mint: #6CD3A2;
+  --af-mark: #16181D;
+}
+
+.agent-figure {
+  display: block;
+  overflow: visible;
+  flex-shrink: 0;
+  --af-bob: 2.8s;
+}
+
+.agent-figure .af-shadow { fill: var(--ink); opacity: 0.08; }
+.agent-figure .af-leg line { stroke: var(--ink); stroke-width: 2.1; stroke-linecap: round; }
+.agent-figure .af-leg rect { fill: var(--ink); }
+.agent-avatar .aa-tile { fill: var(--soft, #F2F3F6); }
+
+/* Legs swing from the hip: the top of each leg's own box. The body leans from
+   its base, so a working figure tips forward over its feet. */
+.agent-figure .af-leg { transform-box: fill-box; transform-origin: 50% 0; }
+.agent-figure .af-body { transform-box: fill-box; transform-origin: 50% 100%; }
+.agent-figure .af-eyes,
+.agent-figure .af-badge-ring { transform-box: fill-box; transform-origin: 50% 50%; }
+
+/* idle — a slow bob and the odd blink. */
+.agent-figure .af-body {
+  animation: af-bob var(--af-bob) ease-in-out infinite alternate;
+  animation-delay: calc(var(--af-phase, 0) * -2.8s);
+}
+.agent-figure .af-eyes {
+  animation: af-blink 5.2s linear infinite;
+  animation-delay: calc(var(--af-phase, 0) * -5.2s);
+}
+
+/* working — leans in, small steps in place, motion lines off its shoulder. */
+.agent-figure .af-motion { display: none; stroke: var(--ink); stroke-width: 1.3; stroke-linecap: round; fill: none; }
+.agent-figure[data-state='working'] .af-motion { display: inline; animation: af-flicker 0.55s steps(2, jump-none) infinite; }
+.agent-figure[data-state='working'] .af-leg-l,
+.agent-figure[data-state='working'] .af-leg-r {
+  animation: af-step 0.55s ease-in-out infinite alternate;
+  animation-delay: calc(var(--af-phase, 0) * -1.1s);
+}
+.agent-figure[data-state='working'] .af-leg-r { animation-name: af-step-r; }
+.agent-figure[data-state='working'] .af-body { animation: af-lean 0.275s ease-in-out infinite alternate; }
+
+/* walking — a full stride; wins over whatever the state says about legs. */
+.agent-figure[data-walking] .af-leg-l,
+.agent-figure[data-walking] .af-leg-r {
+  animation: af-stride 0.45s ease-in-out infinite alternate;
+  animation-delay: calc(var(--af-phase, 0) * -0.9s);
+}
+.agent-figure[data-walking] .af-leg-r { animation-name: af-stride-r; }
+.agent-figure[data-walking] .af-body { animation: af-bob-quick 0.225s ease-in-out infinite alternate; }
+
+/* needs-you — the sheet's speech bubble with a "!", in the accent: orange is
+   still the one colour that means a person is needed. */
+.agent-figure .af-badge-bubble { fill: var(--paper); stroke: var(--create); stroke-width: 1.4; stroke-linejoin: round; }
+.agent-figure .af-badge-mark { stroke: var(--create); stroke-width: 1.7; stroke-linecap: round; }
+.agent-figure .af-badge-dot { fill: var(--create); }
+.agent-figure .af-badge-ring { fill: none; stroke: var(--create); stroke-width: 1.4; animation: af-ping 1.8s var(--ease, ease-out) infinite; }
+
+@keyframes af-bob { from { transform: translateY(0); } to { transform: translateY(-1.6px); } }
+@keyframes af-bob-quick { from { transform: translateY(0); } to { transform: translateY(-1.2px); } }
+@keyframes af-lean { from { transform: rotate(8deg) translateY(0); } to { transform: rotate(8deg) translateY(-1.2px); } }
+@keyframes af-step { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@keyframes af-step-r { from { transform: rotate(9deg); } to { transform: rotate(-9deg); } }
+@keyframes af-stride { from { transform: rotate(-20deg); } to { transform: rotate(20deg); } }
+@keyframes af-stride-r { from { transform: rotate(20deg); } to { transform: rotate(-20deg); } }
+@keyframes af-blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes af-flicker { from { opacity: 1; } to { opacity: 0.35; } }
+@keyframes af-ping { 0% { transform: scale(1); opacity: 0.5; } 80%, 100% { transform: scale(1.8); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-figure *, .agent-figure { animation: none !important; }
+  .agent-figure .af-badge-ring { display: none; }
+  /* Still reads as working without motion. */
+  .agent-figure[data-state='working'] .af-body { transform: rotate(8deg); }
+}
+</style>
+<script>
+var AGENT_FIGURES={svg:{extract:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Extract, Reads the prompt and attachments and proposes the ask.\" style=\"--af-phase:0.697\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 8 L41.5 40 L6.5 40Z\" fill=\"var(--plan)\"><\/path><g class=\"af-emblem\"><g><rect x=\"19.4\" y=\"29.3\" width=\"9.2\" height=\"6.4\" rx=\"0.8\" fill=\"var(--plan-eye)\" opacity=\"0.88\"><\/rect><path d=\"M21.2 31.4 h5.6 M21.2 33.6 h4\" stroke=\"var(--plan)\" stroke-width=\"0.9\" stroke-linecap=\"round\"><\/path><\/g><\/g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+market_structure:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Market structure, Sizes the category: value, volume, share and growth.\" style=\"--af-phase:0.496\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"36\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"36\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M14 8.5 H34 V38 H14Z\" fill=\"var(--af-cobalt)\"><\/path><g class=\"af-emblem\"><g fill=\"var(--af-mark)\"><rect x=\"19.2\" y=\"29.3\" width=\"2.3\" height=\"3.2\" rx=\"0.4\"><\/rect><rect x=\"22.7\" y=\"26.9\" width=\"2.3\" height=\"5.6\" rx=\"0.4\"><\/rect><rect x=\"26.2\" y=\"24.5\" width=\"2.3\" height=\"8\" rx=\"0.4\"><\/rect><\/g><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+positioning:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Brands and positioning, Maps the brand and its comparators: awareness, claims, prices.\" style=\"--af-phase:0.841\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 4 L38.5 23 L24 42 L9.5 23Z\" fill=\"var(--af-iris)\"><\/path><g class=\"af-emblem\"><g><circle cx=\"24\" cy=\"27.5\" r=\"3.6\" stroke=\"var(--af-mark)\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/circle><circle cx=\"24\" cy=\"27.5\" r=\"1.2\" fill=\"var(--af-mark)\"><\/circle><\/g><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"20.099999999999998\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.7\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+culture:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Consumer and culture, Finds who buys, when and why, and what is shifting.\" style=\"--af-phase:0.966\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M9.5 40 V26.5 A14.5 14.5 0 0 1 38.5 26.5 V40Z\" fill=\"var(--af-coral)\"><\/path><g class=\"af-emblem\"><g fill=\"var(--af-mark)\"><circle cx=\"20.4\" cy=\"30\" r=\"1.3\"><\/circle><circle cx=\"24\" cy=\"30\" r=\"1.3\"><\/circle><circle cx=\"27.6\" cy=\"30\" r=\"1.3\"><\/circle><\/g><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.7\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+codes:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Category codes, Reads the category’s visual and verbal conventions.\" style=\"--af-phase:0.726\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M40 26 L32 39.86 L16 39.86 L8 26 L16 12.14 L32 12.14Z\" fill=\"var(--af-mint)\"><\/path><g class=\"af-emblem\"><path d=\"M19.5 30 h9\" stroke=\"var(--af-mark)\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.7\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+rhythm:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Rhythm and moments, Charts the seasons, peaks and moments that matter.\" style=\"--af-phase:0.918\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"36\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"36\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 7.5 L32.5 16 L24 24.5 L15.5 16Z\" fill=\"var(--af-iris)\"><\/path><path d=\"M24 22.5 L33.5 32 L24 41.5 L14.5 32Z\" fill=\"var(--af-iris)\"><\/path><path d=\"M32.5 19.4 L37.1 24 L32.5 28.6 L27.9 24Z\" fill=\"var(--af-coral)\"><\/path><g class=\"af-emblem\"><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"20.099999999999998\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.7\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+media:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Media and spend, Tracks who spends what, where.\" style=\"--af-phase:0.132\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 8 L41.5 40 L6.5 40Z\" fill=\"var(--af-cobalt)\"><\/path><g class=\"af-emblem\"><path d=\"M18 32.5 q1.5 -2.4 3 0 t3 0 t3 0 t3 0\" stroke=\"var(--af-mark)\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+regulation:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Regulation, Lists what may and may not be said, and where.\" style=\"--af-phase:0.578\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M31.66 19.57 A10 10 0 1 0 31.66 32.43\" fill=\"none\" stroke=\"var(--af-mint)\" stroke-width=\"10\" stroke-linecap=\"round\"><\/path><g class=\"af-emblem\"><path d=\"M25 22 Q25.6 25.4 29 26 Q25.6 26.6 25 30 Q24.4 26.6 21 26 Q24.4 25.4 25 22Z\" fill=\"var(--af-mark)\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+effectiveness:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Effectiveness, Finds work in the category that is proven to have worked.\" style=\"--af-phase:0.83\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"36\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"36\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 10 L19.77 21.18 L7.83 21.75 L17.15 29.22 L14.01 40.75 L24 34.2 L33.99 40.75 L30.85 29.22 L40.17 21.75 L28.23 21.18Z\" fill=\"var(--af-marigold)\"><\/path><g class=\"af-emblem\"><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"23.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"23.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+synthesis:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Synthesis, Turns pinned facts into findings, derived by the agent until a person verifies them.\" style=\"--af-phase:0.572\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 4 L38.5 23 L24 42 L9.5 23Z\" fill=\"var(--af-iris)\"><\/path><g class=\"af-emblem\"><path d=\"M24 23.5 Q24.6 26.9 28 27.5 Q24.6 28.1 24 31.5 Q23.4 28.1 20 27.5 Q23.4 26.9 24 23.5Z\" fill=\"#FFFFFF\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"20.099999999999998\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.7\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+drafter:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Drafter, Drafts one brief field from the campaign’s evidence.\" style=\"--af-phase:0.038\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M31.66 19.57 A10 10 0 1 0 31.66 32.43\" fill=\"none\" stroke=\"var(--af-marigold)\" stroke-width=\"10\" stroke-linecap=\"round\"><\/path><g class=\"af-emblem\"><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+judge:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Judge, Reads the whole brief after the drafts and checks it holds together.\" style=\"--af-phase:0.167\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"34\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"34\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g transform=\"rotate(-5 24 23.5)\"><path d=\"M11.5 11 H36.5 V36 H11.5Z\" fill=\"var(--plan)\"><\/path><g class=\"af-emblem\"><path d=\"M20.2 27.5 l2.6 2.6 l5 -5\" stroke=\"var(--plan-eye)\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.7\" y=\"17.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"17.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>"},
+name:{extract:"Extract",market_structure:"Market structure",positioning:"Brands and positioning",culture:"Consumer and culture",codes:"Category codes",rhythm:"Rhythm and moments",media:"Media and spend",regulation:"Regulation",effectiveness:"Effectiveness",synthesis:"Synthesis",drafter:"Drafter",judge:"Judge"},
+role:{extract:"Reads the prompt and attachments and proposes the ask.",market_structure:"Sizes the category: value, volume, share and growth.",positioning:"Maps the brand and its comparators: awareness, claims, prices.",culture:"Finds who buys, when and why, and what is shifting.",codes:"Reads the category’s visual and verbal conventions.",rhythm:"Charts the seasons, peaks and moments that matter.",media:"Tracks who spends what, where.",regulation:"Lists what may and may not be said, and where.",effectiveness:"Finds work in the category that is proven to have worked.",synthesis:"Turns pinned facts into findings, derived by the agent until a person verifies them.",drafter:"Drafts one brief field from the campaign’s evidence.",judge:"Reads the whole brief after the drafts and checks it holds together."},
+badge:"<g class=\"af-badge\"><circle class=\"af-badge-ring\" cx=\"40\" cy=\"8\" r=\"6\"><\/circle><path class=\"af-badge-bubble\" d=\"M40 2 a6 6 0 1 1 -3.9 10.55 l-2.6 1.95 l1.3 -3.5 A6 6 0 0 1 40 2Z\"><\/path><path class=\"af-badge-mark\" d=\"M40 5 v3.6\"><\/path><circle class=\"af-badge-dot\" cx=\"40\" cy=\"11\" r=\"0.95\"><\/circle><\/g>"};
+function agentFigure(key,o){
+  var F=AGENT_FIGURES, s=F.svg[key]; if(!s) return ''; o=o||{};
+  var st=o.state==='working'||o.state==='needs-you'?o.state:'idle';
+  s=s.replace('data-state="idle"','data-state="'+st+'"'+(o.walking?' data-walking="true"':''));
+  if(o.cls) s=s.replace('class="agent-figure"','class="agent-figure '+o.cls+'"');
+  if(st==='needs-you') s=s.replace(/<\/svg>$/,F.badge+'<\/svg>');
+  if(o.decorative) s=s.replace(/ role="img" aria-label="[^"]*"/,' aria-hidden="true" focusable="false"');
+  else {
+    var l=o.label||F.name[key]+', '+F.role[key];
+    l+=st==='needs-you'?' \u2014 needs you':st==='working'?' \u2014 working':'';
+    l=String(l).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});
+    s=s.replace(/aria-label="[^"]*"/,'aria-label="'+l+'"');
+  }
+  return s;
+}
+var NapkinAgents=(function(T){
+  function last(s){ return String(s).split('/').pop().replace(/@.*$/,'').toLowerCase(); }
+  function forWork(w,lens){
+    if(w==='research') return T.lens[lens]||'market_structure';
+    return T.work[w]||'';
+  }
+  function ofDecision(d){
+    d=d||{}; var who=String(d.agent||''), act=String(d.action||'');
+    if(!who||who==='human'||/^human:/.test(who)) return null;
+    if(d.kind==='verdict'||d.polarity) return 'judge';
+    if(d.kind==='finding') return 'synthesis';
+    var w=T.step[last(who)]||T.step[act.toLowerCase()]
+      ||(/judge|critic/i.test(who)?'judge':/extract|capture/i.test(who+' '+act)?'read':/draft/i.test(who)?'draft':'');
+    if(!w) return null;
+    if(w!=='research') return T.work[w];
+    var hay=[d.lens||'',act].concat(d.targets||[]);
+    for(var i=0;i<T.lenses.length;i++) for(var j=0;j<hay.length;j++)
+      if(String(hay[j]).indexOf(T.lenses[i])!==-1) return T.lens[T.lenses[i]];
+    return null;
+  }
+  return {
+    keys:T.keys, lenses:T.lenses, name:AGENT_FIGURES.name, role:AGENT_FIGURES.role,
+    forWork:forWork, ofDecision:ofDecision,
+    // A figure by the work it stands for: figure('judge'), figure('research', o, 'media_spend').
+    figure:function(w,o,lens){ return agentFigure(forWork(w,lens),o); }
+  };
+})({"keys":["extract","market_structure","positioning","culture","codes","rhythm","media","regulation","effectiveness","synthesis","drafter","judge"],"work":{"read":"extract","synthesise":"synthesis","draft":"drafter","judge":"judge"},"lens":{"market_structure":"market_structure","brands_positioning":"positioning","consumer_culture":"culture","category_codes":"codes","rhythm_moments":"rhythm","media_spend":"media","regulation_clearance":"regulation","effectiveness_evidence":"effectiveness"},"lenses":["market_structure","brands_positioning","consumer_culture","category_codes","rhythm_moments","media_spend","regulation_clearance","effectiveness_evidence"],"step":{"extract":"read","extract_ask":"read","capture":"read","identify":"read","lookup":"read","transcribe":"read","research":"research","research_lens":"research","synthesise":"synthesise","synthesise_findings":"synthesise","draft":"draft","draft_brief":"draft","regenerate_field":"draft","report":"draft","compose_report":"draft","drafter":"draft","judge":"judge","select":"judge","verdict":"judge","golden_critic":"judge"}});
+</script>
+
+
+<div class="proto" role="region" aria-label="Prototype controls">
+  <b>Prototype</b>
+  <span class="note">This document's real decisions, from today's test run. Only this strip is not product. Judging a value happens in its evidence panel, on the document; the decision panel says who did what and why, and settles the choices that have no figure. Try “Open it”, then Verify or Reject.</span>
+  <span class="seg" role="group" aria-label="Moment"><button type="button" id="st-before" aria-pressed="true">Before your review</button><button type="button" id="st-after" aria-pressed="false">After</button></span>
+</div>
+
+<div class="app">
+  <div class="ev-scrim" id="ev-scrim"></div>
+  <aside class="evd" id="evd" role="dialog" aria-label="Evidence"><div class="evd-h"><span class="crumb" id="evd-crumb"></span><button class="x" id="evd-x" aria-label="Close">✕</button></div><div class="evd-b" id="evd-b"></div></aside>
+  <main class="doc" aria-label="The document" id="doc">
+    <div class="sheet">
+      <div class="dsec" id="d-ask">
+        <span class="eyebrow">The ask</span>
+        <dl class="kv" style="margin-top:10px">
+          <dt>Brand</dt><dd id="d-brand" data-doc="brand" class="clk">Harbour Kitchen</dd>
+          <dt>Markets</dt><dd id="d-markets" data-doc="markets" class="clk">Ireland</dd>
+          <dt>Categories</dt><dd id="d-cats">Ready meals and frozen <span class="tagx ok">you said</span></dd>
+          <dt>Audience</dt><dd id="d-aud" data-doc="aud" class="clk">Value-seeking, time-poor Irish households who plan frozen meals deliberately <span class="tagx c">proposed</span></dd>
+        </dl>
+      </div>
+      <div class="dsec" id="d-report">
+        <span class="eyebrow">Report · Harbour Kitchen · Ireland</span>
+        <h1 style="margin-top:8px">Irish frozen ready meals: a growing category now led by private label, bought deliberately by value-seeking shoppers</h1>
+      </div>
+      <div class="dsec" id="d-f1"><h2>The market</h2><p class="claim clk" id="c-f1" data-doc="f1">Ireland's frozen ready meals category is growing strongly in value, but private label now holds the majority share over branded manufacturers overall.</p></div>
+      <div class="dsec" id="d-f2"><h2>Who it is for</h2><p class="claim clk" id="c-f2" data-doc="f2">Value-seeking and promotion-hunting now define the Irish frozen ready meal shopper amid ongoing price inflation.</p></div>
+      <div class="dsec" id="d-sel"><span class="eyebrow">What research covered</span><p class="muted" style="margin:6px 0 0;font-size:13.5px">Market structure and consumer culture in Ireland · 6 lenses not researched</p></div>
+    </div>
+  </main>
+
+  <aside class="panel" aria-label="Decisions">
+    <div class="ph">
+      <div class="row"><h2>Decisions</h2><span class="sum" id="sum"></span></div>
+      <div class="lockline" id="lockline"></div>
+    </div>
+    <div class="pb" id="pb"></div>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+var STATE='before', VIEW='run', OPEN={}, CLEARED={}, FORM=null;
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function fig(w,lens,st){ return typeof NapkinAgents==='object'?NapkinAgents.figure(w,{state:st||'idle',decorative:true},lens):''; }
+function toast(t){ var e=$('toast'); e.textContent=t; e.classList.add('on'); clearTimeout(toast.h); toast.h=setTimeout(function(){ e.classList.remove('on'); },2400); }
+var PIN='<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6h7M6.5 3 9.5 6l-3 3"/></svg>';
+var TICK='<svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg>';
+var CHEV='<svg class="chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 4.5 3 3 3-3"/></svg>';
+function where(label,target){ return '<button type="button" class="where" data-go="'+target+'">'+PIN+esc(label)+'</button>'; }
+
+// ── the record, as a person would say it ──────────────────────────────
+var F1={ref:'f1', text:"Ireland's frozen ready meals category is growing strongly in value, but private label now holds the majority share over branded manufacturers overall, even as branded players still lead specific sub-categories such as frozen fish (Donegal Catch) and frozen potato (McCain).",
+  facts:['Private label value share · 52.8%','Branded value share · 47.2%','Category value growth · 10.4%'], sources:[{n:'ShelfLife Magazine',weak:true}], go:'d-f1'};
+var F2={ref:'f2', text:"Value-seeking and promotion-hunting now define the Irish frozen ready meal shopper amid ongoing price inflation, yet convenience for busy, time-poor households remains a core purchase driver.",
+  facts:['Cautious with spending, seeking promotions','81% are cash-savvy value seekers','Price inflation · 5.3%'], sources:[{n:'Kantar'},{n:'Bord Bia survey',weak:false},{n:'FDBusiness · 2015',weak:true}], go:'d-f2'};
+
+function needs(){
+  var out=[];
+  if(STATE==='before'){
+    [F1,F2].forEach(function(f,i){ out.push({kind:'finding', f:f, i:i}); });
+  } else {
+    out.push({kind:'flagged'});
+  }
+  return out;
+}
+var QUIET=[
+  {id:'q1', w:'judge', t:'<b>Judge</b> researched 2 of 8 lenses and skipped 6 your request doesn’t ask about: brands, category codes, timing, media, clearance and effectiveness.', a:['Looks right','Research one too…'], go:'d-sel'},
+  {id:'q2', w:'research', lens:'market_structure', t:'<b>The researchers</b> pinned 20 facts that each rest on a single source.', a:['Looks right'], open:'fact', go:'d-f1'},
+  {id:'q3', w:'synthesise', t:'<b>Synthesis</b> used consumer facts dated 2015 for the audience.', a:['Looks right'], open:'aud', go:'d-aud'},
+  {id:'q4', w:'read', t:'<b>Extract</b> set the brand to Harbour Kitchen. It is the only brand named, but nothing says it is the client’s.', a:[], open:'brand', go:'d-brand'}
+];
+
+// History: one run, then your review. Every line: who · did what · where · why.
+function history(){
+  var run1={h:'Research run', s:'today 15:41 → 15:54 · 13 min · started by you', ev:[
+    {id:'e0', who:'You', av:true, line:'asked for research on Irish frozen ready meals', where:['Your request','d-ask'], t:'15:41'},
+    {id:'e1', decided:'Markets: Ireland.', from:[{req:'…wants to enter the Irish market.'}], ev:'markets', who:'Extract', w:'read', line:'read your request and filled in the market: Ireland', where:['The ask › Markets','d-markets'], t:'15:41',
+      why:['Ireland is the only market the request names.'], alt:['Call it a launch because the brand is “new” (the request doesn’t say so)'], sure:'Confident', tech:{step:'extract',model:'claude-sonnet-5',decision:'d_01M3MAVT…'}},
+    {id:'e2', decided:'Brand: Harbour Kitchen. Client not confirmed.', from:[{req:'Harbour Kitchen is a new frozen ready-meal brand…'}], ev:'brand', who:'Extract', w:'read', line:'set the brand to Harbour Kitchen', where:['The ask › Brand','d-brand'], t:'15:42', flag:true,
+      why:['It is the only brand in the request.'], sure:'Fairly sure', sureWhy:'nothing says it is the client’s', tech:{step:'identify',model:'claude-sonnet-5',decision:'d_01M3MAW…'}},
+    {id:'e3', decided:'Asked you: “Which category is it?” Offered: Ready meals and frozen.', from:[{req:'Research the frozen ready meals category in Ireland…'},{n:'Brand roster',d:'no row for Harbour Kitchen'}], who:'Extract', w:'read', line:'couldn’t tell the category, so asked you instead of guessing', where:['The ask › Categories','d-cats'], t:'15:42',
+      why:['Harbour Kitchen isn’t in the brand roster yet.','Your request points at ready meals and frozen.'], sure:'Unsure', tech:{step:'identify',decision:'d_01M3MAWD…'}},
+    {id:'e4', who:'You', av:true, line:'answered: Ready meals and frozen', where:['The ask › Categories','d-cats'], t:'15:42'},
+    {id:'e5', decided:'Research 2 lenses in Ireland and skip 6.', picked:[['Market structure','your request asks how big the category is, how fast it grows, which channels sell it, and how own-label and brands split it'],['Consumer culture','your request asks what shoppers think of frozen']], skipped:[['Brands and positioning','the own-label split is a share question, not what each brand claims'],['Category codes','nothing about advertising conventions in the category'],['Rhythm and moments','no mention of seasons, cycles or launch windows'],['Media and spend','“which channels sell it” means shops, not media'],['Regulation','the category is not regulated and nothing is asked about claims'],['Effectiveness','no ask for award cases or share-of-voice data']], from:[{req:'how big it is and how fast it grows, which channels sell it, how own-label and the big brands split it, and what shoppers think of frozen.'}], who:'Judge', w:'judge', line:'picked 2 of 8 lenses: market structure and consumer culture', where:['What research covered','d-sel'], t:'15:43',
+      why:['Your request asks exactly four things: size and growth, channels, own-label vs brands, and what shoppers think.','Those map to market structure and consumer culture.'], alt:['Research all eight lenses','Skip consumer culture too'], sure:'Fairly sure', act:'Research a skipped lens…', tech:{step:'select',model:'claude-sonnet-5',decision:'d_01M3MAX…'}},
+    {id:'e6', decided:'Coverage thin: 9 facts kept from 4 sources.', from:[{n:'ShelfLife Magazine',d:'Cool sales, hot demand · 4 facts'},{n:'ShelfLife Magazine',d:'Chill factor · 4 facts'},{n:'ShelfLife Magazine',d:'Fabulously frozen · 1 fact'},{n:'Kantar (Worldpanel)',d:'Early Summer spending boosts Irish grocery · read, nothing kept'}], who:'Market researcher', w:'research', lens:'market_structure', line:'read 4 sources; 9 facts passed the quote check', where:['What research covered','d-sel'], t:'15:46', thin:true,
+      why:['Each kept fact’s quote is word-for-word in its source, and the figure is in the quote.'], alt:['Keep what the model read but the source doesn’t say'], sure:'Fairly sure', sureWhy:'coverage is thin', tech:{step:'research_run · market_structure/IE',decision:'d_01M3MB4…'}},
+    {id:'e7', decided:'Coverage thin: 11 facts kept from 6 sources.', from:[{n:'Kantar (Worldpanel)',d:'Early Summer spending boosts Irish grocery · 3 facts'},{n:'Bord Bia survey (FDBusiness)',d:'Attitudes to food, shopping and cooking · 3 facts, 2015',weak:true},{n:'Bord Bia survey (HorticultureConnected)',d:'Irish attitudes to food · 3 facts'},{n:'Kantar (Worldpanel)',d:'Shoppers share the love to drive grocery sales · 1 fact'},{n:'Irish Examiner',d:'Chilled ready meals more popular · 1 fact'}], who:'Culture researcher', w:'research', lens:'consumer_culture', line:'read 6 sources; 11 facts passed the quote check', where:['What research covered','d-sel'], t:'15:46', thin:true,
+      why:['Each kept fact’s quote is word-for-word in its source.'], sure:'Fairly sure', sureWhy:'some facts rest on one source', tech:{step:'research_run · consumer_culture/IE',decision:'d_01M3MB4…'}},
+    {id:'e8', decided:'20 facts pinned; each rests on one source.', from:[{n:'20 facts',d:'from 8 sources',sources:true}], ev:'fact', who:'The researchers', w:'research', lens:'market_structure', line:'pinned 20 facts from 8 sources', where:['Facts','d-f1'], t:'15:46', roll:[['ShelfLife Magazine','8'],['Kantar (Worldpanel)','4'],['Bord Bia survey (via FDBusiness)','3'],['Bord Bia survey (via HorticultureConnected)','3'],['Irish Examiner','1'],['4 more','1']], sure:'Unsure', sureWhy:'each rests on one source', tech:{step:'research_merge',decision:'d_01M3MB4…'}},
+    {id:'e9', decided:'Two findings, both waiting for your check.', from:[{n:'Private label value share',d:'52.8% · ShelfLife Magazine',open:'fact'},{n:'Category value growth',d:'10.4% · ShelfLife Magazine',open:'fact'},{n:'Cash-savvy value seekers',d:'81% · Bord Bia survey'}], ev:'f1', who:'Synthesis', w:'synthesise', line:'proposed 2 findings for you to check', where:['The report','d-f1'], t:'15:47',
+      why:['Private label’s share is above branded share.','Category value grew year on year.','Shoppers describe themselves as cautious and promotion-seeking.'], alt:['Lead with family dinners','Lead with the frozen chips segment'], sure:'Unsure', sureWhy:'the facts behind them are thin', tech:{step:'synthesise',model:'claude-sonnet-5',decision:'2 decisions'}},
+    {id:'e10', decided:'Audience: value-seeking, time-poor Irish households who plan frozen meals deliberately.', from:[{n:'Cash-savvy value seekers',d:'81% · Bord Bia survey'},{n:'Too busy to cook',d:'38% · FDBusiness · 2015',weak:true},{n:'Finding: value-seeking shoppers',d:'proposed',open:'f2'}], ev:'aud', who:'Synthesis', w:'synthesise', line:'proposed the audience: value-seeking, time-poor households', where:['The ask › Audience','d-aud'], t:'15:47',
+      why:['Most shoppers are classed as cash-savvy value seekers.','Being too busy to cook is a stated driver.'], alt:['Scratch-cooking traditionalists'], sure:'Unsure', sureWhy:'some of its facts date from 2015', tech:{step:'propose_audience',decision:'d_01M3MB6…'}},
+    {id:'e11', decided:'Headline: a growing category now led by private label, bought deliberately by value-seeking shoppers.', from:[{n:'20 facts and 2 findings',d:'from 8 sources',sources:true}], because:[['Private label leads overall, so the headline says so.',[['52.8% · ShelfLife','fact'],['47.2% · ShelfLife','fact']]],['Branded leaders survive in fish and chips.',[['Donegal Catch · ShelfLife','s2'],['McCain · ShelfLife','s3']]],['Shoppers are value-seeking and plan frozen meals.',[['81% · Bord Bia survey','s7'],['Finding (rejected)','f2']]]], who:'Drafter', w:'draft', line:'wrote the report: 2 sections, 3 things for you to confirm', where:['The report','d-report'], t:'15:54',
+      why:['Private label leads overall, so the headline says so.','Branded leaders survive in fish and chips.'], alt:['A “branded leadership” headline','An “impulse-driven convenience” headline'], sure:'Unsure', sureWhy:'every fact behind it is low confidence', tech:{step:'compose_report',model:'claude-sonnet-5',decision:'d_01M3MBK…'}}
+  ]};
+  var runs=[run1];
+  if(STATE==='after') runs.push({h:'Your review', s:'today 15:58', ev:[
+    {id:'r1', who:'You', av:true, line:'verified the market finding. It is now in the agency’s knowledge.', where:['The market','d-f1'], t:'15:58', note:'“Checked against the cited panel data”'},
+    {id:'r2', who:'You', av:true, line:'rejected the shopper finding', where:['Who it is for','d-f2'], t:'15:58', note:'“Promotion-hunting is from one survey; not enough to call it a shift”'}
+  ]});
+  runs.forEach(function(r){ r.ev.reverse(); });
+  return runs.reverse();
+}
+var SECTIONS=[
+  ['The ask › Markets','d-markets',['e1']],['The ask › Brand','d-brand',['e2']],['The ask › Categories','d-cats',['e3','e4']],['The ask › Audience','d-aud',['e10']],
+  ['The market','d-f1',['e9','r1']],['Who it is for','d-f2',['e9','r2']],['What research covered','d-sel',['e5','e6','e7','e8']],['The report','d-report',['e11']]
+];
+
+// ── drawing ───────────────────────────────────────────────────────────
+function draw(){
+  var n=needs(), open=QUIET.filter(function(q){ return !CLEARED[q.id]; }).length;
+  $('sum').textContent=n.length?n.length+' need'+(n.length===1?'s':'')+' you':'nothing needs you';
+  $('lockline').className='lockline'+(n.length?'':' ok');
+  $('lockline').innerHTML='<span class="dot"></span>'+(n.length?'The report can be locked once '+(n.length===1?'this is':'these are')+' settled.':'Ready to lock.')+(n.length?'':' <button class="btn primary" style="margin-left:auto;padding:4px 12px" data-act="lock">Lock report</button>');
+  var h='<section><h3 class="sec-t">Needs you <span class="n">'+n.length+'</span></h3>';
+  if(!n.length) h+='<div class="done-card">'+TICK+'Nothing is waiting on you.</div>';
+  n.forEach(function(x){ h+=needCard(x); });
+  h+='</section>';
+  h+='<section><details class="quiet"'+(OPEN.quiet?' open':'')+' id="quiet"><summary><span class="sec-t" style="margin:0">Worth a look <span class="n q">'+open+'</span></span><span class="muted" style="font-size:12.5px">agents flagged these; nothing is blocked</span>'+CHEV+'</summary>'
+    +QUIET.map(function(q){ var c=CLEARED[q.id];
+      return '<div class="qi'+(c?' cleared':'')+'">'+fig(q.w,q.lens)+'<div><div class="t">'+q.t+'</div>'+(c?'<div class="muted" style="font-size:12px;margin-top:4px">'+esc(c)+'</div>':'<div class="acts">'+q.a.map(function(x,i){ return '<button class="btn" data-q="'+q.id+'" data-qa="'+i+'">'+esc(x)+'</button>'; }).join('')+(q.open?'<button class="btn" data-open="'+q.open+'">Open it</button>':'<button class="link" data-go="'+q.go+'">Show in document</button>')+'</div>')+'</div></div>'; }).join('')
+    +'</details></section>';
+  h+='<section><div class="hist-h"><h3 class="sec-t">What happened</h3><span class="seg" role="group" aria-label="Group history" style="margin-left:auto"><button type="button" data-view="run" aria-pressed="'+(VIEW==='run')+'">By run</button><button type="button" data-view="sec" aria-pressed="'+(VIEW==='sec')+'">By section</button></span></div>';
+  var runs=history(), all={}; runs.forEach(function(r){ r.ev.forEach(function(e){ all[e.id]=e; }); });
+  if(VIEW==='run') runs.forEach(function(r){ h+='<div class="run"><div class="run-h"><b>'+esc(r.h)+'</b><span>'+esc(r.s)+'</span></div>'+r.ev.map(evHtml).join('')+'</div>'; });
+  else SECTIONS.forEach(function(s){ var evs=s[2].map(function(id){ return all[id]; }).filter(Boolean); if(!evs.length) return;
+    h+='<div class="run bysec"><div class="run-h"><b>'+esc(s[0])+'</b><span>'+evs.length+' decision'+(evs.length===1?'':'s')+'</span><button class="link" style="padding:0" data-go="'+s[1]+'">Show</button></div>'+evs.map(function(e){ return evHtml(e,true); }).join('')+'</div>'; });
+  h+='</section>';
+  $('pb').innerHTML=h;
+  // the document follows the record
+  $('c-f1').className='claim clk'+(STATE==='before'&&!DONE.f1?' check':'');
+  $('c-f2').className='claim clk'+(STATE==='before'&&!DONE.f2?' check':DONE.f2==='v'?'':' rejected');
+  function tagOf(f){ var d=DONE[f]||(STATE==='after'?(f==='f1'?'v':'r'):''); return d==='v'?'<span class="tagx ok">verified</span>':d==='r'?'<span class="tagx r">rejected</span>':'<span class="tagx c">check</span>'; }
+  $('c-f1').innerHTML=esc(F1.text.split(', even as')[0])+'.'+tagOf('f1');
+  $('c-f2').innerHTML=esc(F2.text.split(', yet')[0])+'.'+tagOf('f2');
+  $('d-aud').innerHTML='Value-seeking, time-poor Irish households who plan frozen meals deliberately <span class="tagx '+(STATE==='before'?'c">proposed':'r">cites a rejected finding')+'</span>';
+}
+function needCard(x){
+  if(x.kind==='finding'){
+    var f=x.f;
+    return '<div class="card needs"><div class="top">'+fig('synthesise','','needs-you')+'<div><div class="what">A finding is waiting for your check</div><div class="who2">Synthesis proposed it, unsure: the facts behind it are thin</div></div></div>'
+      +'<div class="stmt"><span class="clip">'+esc(f.text)+'</span></div>'
+      +'<div class="acts"><button class="btn primary" data-open="'+f.ref+'">Open it</button><span class="muted" style="font-size:12px">you’ll check it against its sources</span></div></div>';
+  }
+  return '<div class="card needs"><div class="top">'+fig('synthesise','','needs-you')+'<div><div class="what">The audience relies on a finding you rejected</div><div class="who2">Synthesis wrote it from that finding · you rejected it at 15:58</div></div></div>'
+    +'<div class="stmt"><span class="clip">Value-seeking, time-poor Irish households who plan frozen meals deliberately</span></div>'
+    +'<div class="acts"><button class="btn primary" data-open="aud">Open it</button><span class="muted" style="font-size:12px">redo it or keep it, on the field</span></div></div>';
+}
+function evHtml(e){
+  var open=!!OPEN[e.id], face=e.av?'<span class="av" aria-hidden="true">Y</span>':fig(e.w,e.lens);
+  var meta='<div class="meta">'+where(e.where[0],e.where[1])+(e.sure==='Unsure'?'<span class="unsure">unsure</span>':'')+(e.flag?'<span class="unsure">worth a look</span>':'')+'</div>';
+  var x='';
+  if(!e.av){
+    x+='<div class="ex">';
+    if(e.decided) x+='<p style="font-size:14px;font-weight:650">'+esc(e.decided)+'</p>';
+    if(e.picked) x+='<div><h4>Researched</h4><ul>'+e.picked.map(function(p){ return '<li><b>'+esc(p[0])+'</b>: '+esc(p[1])+'</li>'; }).join('')+'</ul></div>';
+    if(e.skipped) x+='<div><h4>Skipped</h4><ul>'+e.skipped.map(function(p){ return '<li><b>'+esc(p[0])+'</b>: '+esc(p[1])+'</li>'; }).join('')+'</ul></div>';
+    if(e.because) x+='<div><h4>Why</h4><ul>'+e.because.map(function(w){ return '<li>'+esc(w[0])+'<div class="cchips">'+w[1].map(function(c){ return '<button class="cchip" data-open="'+c[1]+'">'+esc(c[0])+'</button>'; }).join('')+'</div></li>'; }).join('')+'</ul></div>';
+    else if(e.why) x+='<div><h4>Why</h4><ul>'+e.why.map(function(w){ return '<li>'+esc(w)+'</li>'; }).join('')+'</ul></div>';
+    if(e.from) x+='<div><h4>From</h4><div class="frows">'+e.from.map(function(f){
+        if(f.req) return '<blockquote class="q" style="font-size:13px"><span class="muted" style="display:block;font-size:11px;margin-bottom:3px">Your request</span>“'+esc(f.req)+'”</blockquote>';
+        if(f.sources) return '<details class="flist"><summary class="frow"><span>'+esc(f.n)+'<small>'+esc(f.d||'')+'</small></span><b class="fl-t">Show</b></summary><div class="frows" style="margin-top:6px">'
+          +SRC.map(function(so){ return '<button class="frow" data-open="'+so.id+'"><span>'+esc(so.t)+'<small'+(so.weak?' style="color:var(--amber-ink)"':'')+'>'+esc(so.n)+' · '+so.k+' fact'+(so.k===1?'':'s')+(so.weak?' · '+esc(so.weak):'')+'</small></span><b>›</b></button>'; }).join('')+'</div></details>';
+        return '<button class="frow"'+(f.open?' data-open="'+f.open+'"':'')+'><span>'+esc(f.n)+'<small'+(f.weak?' style="color:var(--amber-ink)"':'')+'>'+esc(f.d||'')+'</small></span><b>'+(f.open?'›':'')+'</b></button>'; }).join('')+'</div></div>';
+    if(e.alt) x+='<div><h4>Considered and set aside</h4><ul>'+e.alt.map(function(w){ return '<li>'+esc(w)+'</li>'; }).join('')+'</ul></div>';
+    if(e.sure) x+='<p><b>'+esc(e.sure)+'</b>'+(e.sureWhy?' · '+esc(e.sureWhy):'')+'</p>';
+    x+='<div class="acts">'+(e.ev?'<button class="btn" data-open="'+e.ev+'">See the evidence</button>':'')+(e.act?'<button class="btn" data-act="noop">'+esc(e.act)+'</button>':'')+(e.ev?'':'<button class="btn" data-act="redo-step">Ask to redo</button>')+'<button class="link" style="margin-left:0" data-go="'+e.where[1]+'">Show in document</button></div>';
+    x+='<details class="tech"><summary>Technical details</summary><dl>'+Object.keys(e.tech||{}).map(function(k){ return '<dt>'+esc(k)+'</dt><dd>'+esc(e.tech[k])+'</dd>'; }).join('')+'<dt>time</dt><dd>2026-09-28 '+esc(e.t)+' UTC</dd></dl></details></div>';
+  }
+  if(e.av&&e.note) x+='<div class="ex"><p>'+esc(e.note)+'</p></div>';
+  var more=!e.av||e.note;
+  return '<details class="ev" data-ev="'+e.id+'"'+(open?' open':'')+'><summary>'+face+'<div><div class="line"><span class="who">'+esc(e.who)+'</span> '+esc(e.line)+'</div>'+meta+'</div><span class="time">'+esc(e.t)+(more?'<span class="more">'+(open?'Less':'Why')+CHEV+'</span>':'')+'</span></summary>'+x+'</details>';
+}
+var SRC=[
+  {id:'s1',n:'ShelfLife Magazine',t:'Cool sales, hot demand',tier:'secondary',k:4,f:['Private label value share · 52.8%','Branded value share · 47.2%','Category value growth · 10.4%','Frozen ready meals · €2.4m']},
+  {id:'s2',n:'ShelfLife Magazine',t:'Chill factor',tier:'secondary',k:4,f:['Big bag chips · 6.1m units','Leading brand share · 32%','Ecommerce · $21m','Frozen fish leader · Donegal Catch']},
+  {id:'s3',n:'ShelfLife Magazine',t:'Fabulously frozen',tier:'secondary',k:1,f:['Frozen potato leader · McCain']},
+  {id:'s4',n:'Kantar (Worldpanel)',t:'Early Summer spending boosts Irish grocery market by an extra €29 million',tier:'secondary',k:3,f:['Price inflation · 5.3%','Cautious with spending, seeking promotions','Value-seeking a key consumer focus']},
+  {id:'s5',n:'Kantar (Worldpanel)',t:'Ireland’s shoppers share the love to drive grocery sales',tier:'secondary',k:1,f:['Staying in to eat · rising']},
+  {id:'s6',n:'Bord Bia survey, via FDBusiness.com',t:'New Bord Bia research highlights attitudes towards food, grocery shopping and cooking',tier:'tertiary',k:3,weak:'published 2015',f:['Want quicker meals · 66%','Too busy to cook · 38%','Still cook from scratch · 68%']},
+  {id:'s7',n:'Bord Bia survey, via HorticultureConnected.ie',t:'Bord Bia survey highlights Irish attitudes towards food, grocery shopping and cooking',tier:'tertiary',k:3,f:['Cash-savvy value seekers · 81%','Rate dinner a top priority · 85%','Use convenience regularly · 48%']},
+  {id:'s8',n:'Irish Examiner',t:'Chilled ready meals more popular as consumers opt to stay in',tier:'tertiary',k:1,f:['Demand from young professionals']}
+];
+var EVI={
+  f1:{crumb:'Finding · derived by the agent', kind:'finding', f:'f1'},
+  f2:{crumb:'Finding · derived by the agent', kind:'finding', f:'f2'},
+  aud:{crumb:'The ask · Audience', kind:'aud'},
+  fact:{crumb:'Fact · market structure', kind:'fact'},
+  s1:{crumb:'Source',kind:'source'},s2:{crumb:'Source',kind:'source'},s3:{crumb:'Source',kind:'source'},s4:{crumb:'Source',kind:'source'},
+  s5:{crumb:'Source',kind:'source'},s6:{crumb:'Source',kind:'source'},s7:{crumb:'Source',kind:'source'},s8:{crumb:'Source',kind:'source'},
+  markets:{crumb:'The ask · Markets', kind:'simple', v:'Ireland', how:'Read from your request', q:'…wants to enter the <mark>Irish market</mark>.', by:'Extract'},
+  brand:{crumb:'The ask · Brand', kind:'simple', v:'Harbour Kitchen', how:'Read from your request; nothing says it is the client’s', q:'<mark>Harbour Kitchen</mark> is a new frozen ready-meal brand…', by:'Extract'}
+};
+var EVSTACK=[], EVNOTE='', EVFORM=false;
+function openEv(ref,fromPanel,push){ if(!push) EVSTACK=[]; EVSTACK.push(ref); EVNOTE=fromPanel?'opened from Decisions':''; EVFORM=false; var t={f1:'d-f1',f2:'d-f2',aud:'d-aud',fact:'d-f1',markets:'d-markets',brand:'d-brand'}[ref]; if(t) go(t); drawEv(); $('evd').classList.add('on'); $('ev-scrim').classList.add('on'); $('doc').scrollTop=Math.max(0,$('doc').scrollTop); }
+function closeEv(){ $('evd').classList.remove('on'); $('ev-scrim').classList.remove('on'); EVSTACK=[]; }
+function drawEv(){
+  var ref=EVSTACK[EVSTACK.length-1], d=EVI[ref], h='';
+  $('evd-crumb').innerHTML=esc(d.crumb)+(EVNOTE?'<span class="note">'+esc(EVNOTE)+'</span>':'');
+  if(d.kind==='finding'){
+    var f=d.f==='f1'?F1:F2, st=DONE[d.f];
+    h+='<div class="stmt2">'+esc(f.text)+'</div>';
+    h+=st==='v'?'<span class="pillx ok">✓ Verified by you · in the agency’s knowledge</span>':st==='r'?'<span class="pillx">Rejected by you</span>':'<span class="pillx">Derived by Synthesis · needs your check</span>';
+    h+='<div><h4>It rests on</h4><div class="frows">'+f.facts.map(function(x){ var p=x.split(' · '); return '<button class="frow" data-evopen="fact"><span>'+esc(p[0])+'<small>'+esc(f.sources[0].n)+'</small></span><b>'+esc(p[1]||'')+'</b></button>'; }).join('')+'</div></div>';
+    h+='<div class="srcs">'+f.sources.map(function(s2){ return '<span class="src'+(s2.weak?' weak':'')+'">'+esc(s2.n)+(s2.weak?' · only source':'')+'</span>'; }).join('')+'</div>';
+    if(!st){
+      h+='<div class="why-form"><label>Note <span class="muted">(required to reject)</span><textarea id="ev-why" placeholder="What you checked, or what is wrong"></textarea></label>'
+        +'<div class="acts"><button class="btn primary" data-evact="verify" data-f="'+d.f+'">Verify</button><button class="btn danger" data-evact="reject" data-f="'+d.f+'">Reject</button><button class="btn">Confidential…</button></div>'
+        +'<p class="muted" style="margin:0;font-size:12px">Verifying writes it to the agency’s knowledge as reviewed by you.</p></div>';
+    }
+    h+='<p style="margin:0"><button class="link" style="margin:0;padding:0" data-act="why-in-panel">Why did Synthesis propose this? → Decisions</button></p>';
+  } else if(d.kind==='aud'){
+    h+='<div class="stmt2">Value-seeking, time-poor Irish households who plan frozen meals deliberately</div>';
+    h+=STATE==='after'?'<span class="pillx">Cites a finding you rejected</span>':'<span class="pillx warn">Proposed by Synthesis · unsure</span>';
+    h+='<div><h4>Written from</h4><div class="frows"><button class="frow" data-evopen="f2"><span>Value-seeking and promotion-hunting now define the Irish frozen ready meal shopper…<small>a finding</small></span><b>'+(STATE==='after'?'rejected':'to check')+'</b></button><button class="frow" data-evopen="fact"><span>Too busy to cook<small>FDBusiness · 2015 · only source</small></span><b>38%</b></button></div></div>';
+    if(STATE==='after') h+='<div class="acts"><button class="btn primary" data-act="redo">Ask Synthesis to redo it</button><button class="btn" data-act="keep">Keep it, with a reason…</button><button class="btn">Edit it myself</button></div>';
+    else h+='<div class="acts"><button class="btn primary" data-act="confirm">Confirm</button><button class="btn">Edit it myself</button></div>';
+  } else if(d.kind==='source'){
+    var so=SRC.filter(function(x){ return x.id===ref; })[0];
+    h+='<div class="scard"><b>'+esc(so.t)+'</b><span class="muted">'+esc(so.n)+' · '+esc(so.tier)+(so.weak?' · <span style="color:var(--amber-ink)">'+esc(so.weak)+'</span>':'')+' · read 28 Sep 2026</span><a href="https://example.com" target="_blank" rel="noopener">Open source ↗</a></div>';
+    h+='<div><h4>Taken from it ('+so.f.length+')</h4><div class="frows">'+so.f.map(function(x){ var q=x.split(' · '); return '<button class="frow" data-evopen="fact"><span>'+esc(q[0])+'</span><b>'+esc(q[1]||'')+'</b></button>'; }).join('')+'</div></div>';
+    h+='<p class="muted" style="margin:0;font-size:12px">Every fact’s quote is word-for-word in this source.</p>';
+  } else if(d.kind==='fact'){
+    h+='<div><span class="big">52.8%</span><div class="muted" style="margin-top:4px">Private label value share · Ireland · 2026</div></div><span class="pillx warn">Sourced · one source only</span>';
+    h+='<div><h4>What the source says</h4><blockquote class="q">Private label now holds <mark>52.8%</mark> of the frozen value share, ahead of branded manufacturers.</blockquote></div>';
+    h+='<div class="scard"><b>Cool sales, hot demand</b><span class="muted">ShelfLife Magazine · trade press · read 28 Sep 2026</span><a href="https://example.com" target="_blank" rel="noopener">Open source ↗</a></div>';
+    h+='<div class="acts"><button class="btn">Looks right</button><button class="btn">It’s wrong…</button><button class="btn">Confidential…</button></div>';
+  } else {
+    h+='<div><span class="big" style="font-size:28px">'+esc(d.v)+'</span><div class="muted" style="margin-top:4px">'+esc(d.how)+'</div></div><div><h4>From your request</h4><blockquote class="q">'+d.q+'</blockquote></div><div class="acts"><button class="btn primary" data-act="confirm">Confirm</button><button class="btn">Change…</button></div>';
+  }
+  if(EVSTACK.length>1) h='<p style="margin:0"><button class="link" style="margin:0;padding:0" data-evback>← Back</button></p>'+h;
+  $('evd-b').innerHTML=h;
+}
+function go(id){ var el=$(id); if(!el) return; var s=el.closest('.dsec')||el; s.scrollIntoView({block:'center',behavior:'smooth'}); s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash'); setTimeout(function(){ s.classList.remove('flash'); },1600); }
+
+document.addEventListener('click',function(e){
+  var dd=e.target.closest('#doc [data-doc]'); if(dd){ openEv(dd.getAttribute('data-doc'), false); return; }
+  var o=e.target.closest('[data-open]'); if(o){ e.preventDefault(); openEv(o.getAttribute('data-open'), !!o.closest('.panel')); return; }
+  var eo=e.target.closest('[data-evopen]'); if(eo){ openEv(eo.getAttribute('data-evopen'), false, true); return; }
+  if(e.target.closest('[data-evback]')){ EVSTACK.pop(); drawEv(); return; }
+  var ea=e.target.closest('[data-evact]'); if(ea){ var ff=ea.getAttribute('data-f'), why=($('ev-why')||{}).value||'';
+    if(ea.getAttribute('data-evact')==='reject'&&!why.trim()){ $('ev-why').focus(); toast('Say what’s wrong, so the agent can fix it'); return; }
+    toast(ea.getAttribute('data-evact')==='verify'?'Verified and written to the agency’s knowledge':'Rejected'); maybeAfter(ff, ea.getAttribute('data-evact')==='verify'?'v':'r'); drawEv(); return; }
+  if(e.target.closest('#evd-x')||e.target.id==='ev-scrim'){ closeEv(); return; }
+  var g=e.target.closest('[data-go]'); if(g){ e.preventDefault(); go(g.getAttribute('data-go')); return; }
+  var v=e.target.closest('[data-view]'); if(v){ VIEW=v.getAttribute('data-view'); draw(); return; }
+  var q=e.target.closest('[data-q]'); if(q){ var it=QUIET.filter(function(x){ return x.id===q.getAttribute('data-q'); })[0], a=+q.getAttribute('data-qa');
+    if(a===0){ CLEARED[it.id]='You marked this as fine · recorded'; OPEN.quiet=true; draw(); toast('Recorded as fine'); } else { go(it.go); toast('Opens where you can act on it'); } return; }
+  var a2=e.target.closest('[data-act]'); if(!a2) return; var act=a2.getAttribute('data-act'), f=a2.getAttribute('data-f');
+  if(act==='why-in-panel'){ closeEv(); OPEN.e9=true; VIEW='run'; draw(); var el=document.querySelector('[data-ev="e9"]'); if(el) el.scrollIntoView({block:'center',behavior:'smooth'}); }
+  else if(act==='confirm') toast('Confirmed: it is yours now');
+  else if(act==='redo') toast('Synthesis would redraft the audience without the rejected finding');
+  else if(act==='keep') toast('Would ask for your reason, then clear it');
+  else if(act==='redo-step') toast('Would ask this agent to run the step again');
+  else if(act==='lock') toast('Locked: this version is accepted');
+  else if(act==='noop') toast('Would open the lenses to pick one');
+});
+var DONE={};
+function maybeAfter(f,how){ DONE[f]=how; if(DONE.f1&&DONE.f2){ setState('after'); } else draw(); }
+document.addEventListener('toggle',function(e){ var d=e.target; if(d.matches&&d.matches('details.ev')){ OPEN[d.getAttribute('data-ev')]=d.open; var m=d.querySelector('.more'); if(m) m.firstChild.textContent=d.open?'Less':'Why'; } if(d.id==='quiet') OPEN.quiet=d.open; },true);
+function setState(s){ STATE=s; $('st-before').setAttribute('aria-pressed',s==='before'); $('st-after').setAttribute('aria-pressed',s==='after'); FORM=null; if(s==='before') DONE={}; draw(); }
+$('st-before').onclick=function(){ setState('before'); };
+$('st-after').onclick=function(){ setState('after'); };
+// open one line by default so the expanded shape is visible
+OPEN.e5=false;
+draw();
+</script>
