@@ -57,3 +57,16 @@ Three things made checkpoint results hard to read:
   behaviour-neutral commit's checkpoint with `repeat_of`).
 - The grounding count is jev's judgement, unmeasured against people; it is a flag beside
   health, not a gate. The CD/planner labels would calibrate it.
+
+## Addendum 2026-09-29 — tokens and cost in every report (Sai)
+
+Every checkpoint report and the Brief Eval Tracker now show, per brief: Claude tokens in and
+out (plus cache written and read), Claude cost, jev cost, total cost, jev and embedding calls,
+the time and cost of each stage (reading, retrieval, strategy notes, insight + SMP, proof
+points; spans overlap), and the grading's own time and cost kept apart from the brief's. The
+tracer (`e2e_eval.trace_one`) records each call's route and every jev request with its billed
+input tokens (relevance checks and in-brief checks); jev is priced at $0.04 per million input
+tokens. Runs before this change get tokens, Claude cost and stages from their saved traces;
+their jev cost and total are blank, not zero. Costs are list prices: the Claude Code login does
+not bill per call.
+

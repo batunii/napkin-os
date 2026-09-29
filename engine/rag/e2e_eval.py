@@ -151,6 +151,35 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     t0 = time.time()
     orig_json, orig_usage, orig_call = pb._json_call, pb._stats_usage, pb._stats_call
     orig_embed, orig_req, orig_judge = rag._nim_embed, q._req, judge.Chain.judge
+    # Every jev request with its billed input tokens (2026-09-29): the relevance checks
+    # (JevBackend.score) and the in-brief checks (JevBackend.ask: figures, scorecard,
+    # category, synthesis support, conflicts, the capture fallback), for jev cost per brief.
+    import judge_jev
+    orig_jscore, orig_jask = judge_jev.JevBackend.score, judge_jev.JevBackend.ask
+
+    def jev_score(self, query, passages, *, deadline_s):
+        """Time one relevance request and record the tokens jev billed (None if it failed)."""
+        t = time.time(); ok = False
+        try:
+            res = orig_jscore(self, query, passages, deadline_s=deadline_s); ok = True
+            return res
+        finally:
+            with lock:
+                events.append({"kind": "jev", "what": "relevance", "start": round(t - t0, 2),
+                               "secs": round(time.time() - t, 2),
+                               "tokens": (getattr(self, "last_call", None) or {}).get("input_tokens") if ok else None})
+
+    def jev_ask(self, state, questions, *, deadline_s=None):
+        """Time one in-brief jev request and record its billed tokens (None if it failed)."""
+        t = time.time(); res = None
+        try:
+            res = orig_jask(self, state, questions, deadline_s=deadline_s)
+            return res
+        finally:
+            with lock:
+                events.append({"kind": "jev", "what": "check", "start": round(t - t0, 2),
+                               "secs": round(time.time() - t, 2),
+                               "tokens": getattr(getattr(res, "usage", None), "input_tokens", None)})
     skip = {"traced_json", "_json_call", "wrapper", "<lambda>"}
 
     def step_name():
@@ -185,7 +214,7 @@ def trace_one(stem: str, path: str = "mix") -> dict:
         finally:
             with lock:
                 events.append({"kind": "llm", "step": st, "model": getattr(tl, "label", "?"),
-                               "answered_by": info.get("link"),
+                               "answered_by": info.get("link"), "route": k.get("route"),
                                "start": round(t - t0, 2), "secs": round(time.time() - t, 2),
                                "in": tl.tin, "out": tl.tout, "cache_read": tl.cr, "cache_creation": tl.cc})
 
@@ -214,6 +243,7 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     pb._json_call, pb._stats_usage, pb._stats_call = traced_json, stats_usage, stats_call
     rag._nim_embed, q._req = timed("embed", orig_embed), timed("qdrant", orig_req)
     judge.Chain.judge = lambda self, *a, **k: timed("validator", orig_judge, validator_info)(self, *a, **k)
+    judge_jev.JevBackend.score, judge_jev.JevBackend.ask = jev_score, jev_ask
     try:
         text = pb.ingest({f.stem: f for f in BRIEFS.iterdir()}[stem])[0].strip()   # the production reader (audit D5)
         brief = pb.run(None, loops37=True, golden=True, raw_text=text, source_name=stem)
@@ -242,6 +272,7 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     finally:
         pb._json_call, pb._stats_usage, pb._stats_call = orig_json, orig_usage, orig_call
         rag._nim_embed, q._req, judge.Chain.judge = orig_embed, orig_req, orig_judge
+        judge_jev.JevBackend.score, judge_jev.JevBackend.ask = orig_jscore, orig_jask
         if prev_path is None:
             os.environ.pop("RAG_PATH", None)
         else:

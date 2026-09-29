@@ -151,3 +151,61 @@ def test_preflight_stops_without_claude(monkeypatch):
     with pytest.raises(pb.NoClaudeAvailable):
         cr.preflight("claude-fable-5-1x3")
     cr.preflight("trace")                                           # no critic, nothing to check
+
+
+# ---- cost and speed per brief (2026-09-29) --------------------------------------------
+EVENTS = [
+    {"kind": "llm", "step": "capture_toon", "start": 0.5, "secs": 40.0, "usd": 0.07},
+    {"kind": "llm", "step": "extract_golden_brief", "start": 0.5, "secs": 35.0, "usd": 0.08},
+    {"kind": "embed", "start": 36.0, "secs": 0.3},
+    {"kind": "validator", "start": 36.4, "secs": 0.6}, {"kind": "validator", "start": 37.0, "secs": 0.5},
+    {"kind": "llm", "step": "one", "start": 40.0, "secs": 12.0, "usd": 0.01},
+    {"kind": "llm", "step": "_one", "start": 40.0, "secs": 20.0, "usd": 0.02},          # insight drafts
+    {"kind": "llm", "step": "_judge_and_gate", "start": 60.0, "secs": 9.0, "usd": 0.02},
+    {"kind": "llm", "step": "_one", "start": 69.0, "secs": 20.0, "usd": 0.03},          # SMP drafts
+    {"kind": "llm", "step": "_refine_field", "start": 89.0, "secs": 7.0, "usd": 0.01},
+    {"kind": "llm", "step": "_one", "start": 96.0, "secs": 7.0, "usd": 0.01},           # RTB
+    {"kind": "llm", "step": "_one", "start": 96.0, "secs": 8.0, "usd": 0.01},           # desired response
+    {"kind": "llm", "step": "_judge_and_gate", "start": 104.0, "secs": 3.0, "usd": 0.005},
+    {"kind": "llm", "step": "_pinned_judge", "start": 110.0, "secs": 40.0, "usd": 0.05},  # the grader, left out
+]
+
+
+def test_stage_breakdown_by_step_and_order():
+    st = cr.stage_breakdown(EVENTS, brief_secs=108.0)
+    assert st["reading"] == {"span_s": 40.0, "calls": 2, "usd": 0.15}
+    assert st["retrieval"]["calls"] == 3 and st["strategy notes"]["calls"] == 1
+    assert st["insight + SMP"]["calls"] == 4 and st["insight + SMP"]["span_s"] == 56.0     # 40 -> 96
+    assert st["proof points"]["calls"] == 3 and st["proof points"]["span_s"] == 11.0       # 96 -> 107
+    assert "other" not in st
+
+
+def test_routes_win_over_the_order_heuristic_when_recorded():
+    ev = [{"kind": "llm", "step": "_one", "route": "grounded_writer", "start": 1.0, "secs": 2.0, "usd": 0.01}]
+    assert "proof points" in cr.stage_breakdown(ev)
+
+
+def test_trace_numbers_count_jev_and_embeddings():
+    n = cr.trace_numbers({"events": EVENTS, "brief_secs": 108.0})
+    assert (n["jev_calls"], n["embed_calls"]) == (2, 1)
+
+
+def test_costs_claude_jev_and_total():
+    ev = EVENTS + [{"kind": "jev", "start": 36.4, "secs": 0.6, "tokens": 25000},
+                   {"kind": "jev", "start": 97.0, "secs": 0.4, "tokens": 5000}]
+    n = cr.trace_numbers({"events": ev, "brief_secs": 108.0})
+    assert n["claude_usd"] == 0.265 and n["jev_tokens"] == 30000 and n["jev_calls"] == 2
+    assert n["jev_usd"] == 0.0012 and n["total_usd"] == 0.2662
+    old = cr.trace_numbers({"events": EVENTS, "brief_secs": 108.0})          # a trace from before jev was logged
+    assert old["jev_usd"] is None and old["total_usd"] is None and old["jev_calls"] == 2
+
+
+def test_reports_show_tokens_and_the_three_costs():
+    rows = {"before": {"m": {"health": 70, "claude_usd": 0.5, "jev_usd": 0.001, "total_usd": 0.501,
+                             "tokens": {"in": 12000, "out": 9000}}},
+            "after": {"m": {"health": 72, "claude_usd": 0.4, "jev_usd": None, "total_usd": None,
+                            "tokens": {"in": 10000, "out": 8000}}}}
+    out = cr.render("t", {"before": None, "after": None}, rows, {"brief": 16, "sd": 7.8, "pairs": 6, "from": []})
+    assert "| tokens in / out | Claude $ | jev $ | total $ |" in out
+    assert "12,000 / 9,000 | 0.500 | 0.0010 | 0.501 |" in out
+    assert "10,000 / 8,000 | 0.400 |  |  |" in out          # jev cost not logged for this run: blank, not 0

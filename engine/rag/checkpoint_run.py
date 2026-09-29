@@ -137,6 +137,91 @@ def preflight(critic: str) -> None:
     pb._require_claude("anthropic")
 
 
+# Which stage each routed job belongs to (brief_llm.ROUTES). Traces written before the route
+# was recorded fall back to step names and call order (_stage_of).
+ROUTE_STAGE = {"extract": "reading", "mechanical": "reading", "synth": "strategy notes",
+               "hero": "insight + SMP", "hero_judge": "insight + SMP",
+               "grounded_writer": "proof points", "judge": "proof points"}
+READING_STEPS = {"capture_toon", "extract_golden_brief", "how_to_win_toon", "score_betterbriefs"}
+
+
+def _stage_of(llm_events: list) -> list:
+    """The stage of each model call, in order. By route when the trace has it; otherwise by
+    step: the reading calls, the loop syntheses ('one'), and for the fill the first two
+    '_one' calls are the insight and SMP writers and the later ones the RTB and desired
+    response, so a judge or sharpen before the first proof writer belongs to insight + SMP."""
+    ones = [e["start"] for e in llm_events if e.get("step") == "_one"]
+    proof_from = ones[2] if len(ones) > 2 else float("inf")
+    out = []
+    for e in llm_events:
+        st = e.get("step")
+        if e.get("route") in ROUTE_STAGE and st not in READING_STEPS:
+            out.append(ROUTE_STAGE[e["route"]])
+        elif st in READING_STEPS:
+            out.append("reading")
+        elif st == "one":
+            out.append("strategy notes")
+        elif st in ("_one", "_judge_and_gate", "_refine_field", "_smp_territory"):
+            out.append("proof points" if e.get("start", 0) >= proof_from else "insight + SMP")
+        else:
+            out.append("other")
+    return out
+
+
+def stage_breakdown(events: list, brief_secs: "float | None" = None) -> dict:
+    """{stage: {"span_s", "calls", "usd"}} for one brief's trace: the stage's first start to
+    last end (stages overlap, so spans do not add up to the brief time), its model calls and
+    their list-price cost; "retrieval" counts the embedding and jev checks. The grader's call
+    (_pinned_judge, after the brief) is left out."""
+    llm = sorted([e for e in events if e.get("kind") == "llm" and e.get("step") != "_pinned_judge"
+                  and (brief_secs is None or e.get("start", 0) < brief_secs)], key=lambda e: e.get("start", 0))
+    rows = list(zip(_stage_of(llm), llm)) + [("retrieval", e) for e in events if e.get("kind") in ("embed", "validator")]
+    out = {}
+    for stage, e in rows:
+        d = out.setdefault(stage, {"t0": e.get("start", 0), "t1": 0.0, "calls": 0, "usd": 0.0})
+        d["t0"] = min(d["t0"], e.get("start", 0)); d["t1"] = max(d["t1"], e.get("start", 0) + e.get("secs", 0))
+        d["calls"] += 1; d["usd"] += e.get("usd") or 0
+    return {k: {"span_s": round(v["t1"] - v["t0"], 1), "calls": v["calls"], "usd": round(v["usd"], 3)}
+            for k, v in out.items()}
+
+
+JEV_USD_PER_M = 0.04        # jev list price per million input tokens (jev_checks docstring)
+
+
+def trace_numbers(trace: dict) -> dict:
+    """The per-brief cost and speed numbers from a trace (2026-09-29): the Claude calls' tokens
+    and list-price cost, the jev requests (every relevance check and in-brief check) with their
+    billed tokens and cost, embedding calls, a total, and the stage breakdown. The grader's
+    call after the brief is left out. Traces from before the tracer recorded jev requests
+    (kind "jev") have no jev tokens: jev_usd and total_usd are then None, jev_calls counts the
+    relevance checks only."""
+    ev = trace.get("events") or []
+    end = trace.get("brief_secs")
+    llm = [e for e in ev if e.get("kind") == "llm" and e.get("step") != "_pinned_judge"
+           and (end is None or e.get("start", 0) < end)]
+    jev = [e for e in ev if e.get("kind") == "jev"]
+    tok = {"in": sum(e.get("in") or 0 for e in llm), "out": sum(e.get("out") or 0 for e in llm),
+           "cache_read": sum(e.get("cache_read") or 0 for e in llm),
+           "cache_write": sum(e.get("cache_creation") or 0 for e in llm)}
+    claude_usd = round(sum(e.get("usd") or 0 for e in llm), 4)
+    jev_tokens = sum(e.get("tokens") or 0 for e in jev) if jev else None
+    jev_usd = round(jev_tokens / 1e6 * JEV_USD_PER_M, 5) if jev_tokens is not None else None
+    return {"jev_calls": len(jev) if jev else sum(1 for e in ev if e.get("kind") == "validator"),
+            "embed_calls": sum(1 for e in ev if e.get("kind") == "embed"),
+            "tokens": tok, "jev_tokens": jev_tokens,
+            "claude_usd": claude_usd, "jev_usd": jev_usd,
+            "total_usd": round(claude_usd + jev_usd, 4) if jev_usd is not None else None,
+            "stages": stage_breakdown(ev, end)}
+
+
+def add_trace_numbers(out_dir: Path, stem: str, row: dict) -> dict:
+    """Backfill trace_numbers on a row (a reused arm, an older checkpoint) from its saved trace."""
+    f = out_dir / f"trace_mix_{stem}.json"
+    if "claude_usd" in row or not f.exists():
+        return row
+    return {**row, **trace_numbers(json.loads(f.read_text()))}
+
+
 def run_one(tree: Path, stem: str, env_extra: dict, out_dir: Path) -> dict:
     """One brief through one tree's e2e_eval --trace; returns the trace's headline numbers."""
     env = {**os.environ, "RAG_STORE": "local", "RAG_INDEX": "_index_v4",
@@ -164,7 +249,7 @@ def run_one(tree: Path, stem: str, env_extra: dict, out_dir: Path) -> dict:
                     "judged": s.get("judged_checks"), "judge_model": s.get("judge_model"),
                     "failed_checks": s.get("failed_checks"), "signoff_fails": s.get("signoff_fails"),
                     "fallback_links": t.get("fallback_links"), "retrieval_fallback": t.get("retrieval_fallback"),
-                    "validation_degraded": t.get("validation_degraded")})
+                    "validation_degraded": t.get("validation_degraded"), **trace_numbers(t)})
     else:
         row["error"] = "no trace written (see log)"
     return row
@@ -186,15 +271,23 @@ def score_row(out_dir: Path, stem: str, row: dict, critic: str) -> dict:
     model, _, n = critic.partition("x")
     schema = json.loads(gc.SCHEMA_PATH.read_text())
     gb = gc.from_brief_object(json.loads(bo.read_text()))
-    v, judged = gc.run_critic_sampled(schema, gb, gc.validate(schema, gb), model=model, samples=int(n or 1))
+    import parse_brief as _pb
+    t_grade = time.time()
+    with _pb._stats_scope() as led:          # the grading's own calls, apart from the brief's
+        v, judged = gc.run_critic_sampled(schema, gb, gc.validate(schema, gb), model=model, samples=int(n or 1))
     if not judged:                     # no sample answered (a rate limit): once more after a pause
         print(f"[critic] {stem}: no answer, retrying in {CRITIC_RETRY_WAIT_S} s", file=sys.stderr, flush=True)
         time.sleep(CRITIC_RETRY_WAIT_S)
-        v, judged = gc.run_critic_sampled(schema, gb, gc.validate(schema, gb), model=model, samples=int(n or 1))
+        with _pb._stats_scope() as led:
+            v, judged = gc.run_critic_sampled(schema, gb, gc.validate(schema, gb), model=model, samples=int(n or 1))
     q = gc.quality_split(schema, gb, v)
+    import e2e_eval
+    grading = {"secs": round(time.time() - t_grade, 1), "calls": led.get("calls", 0),
+               "usd": e2e_eval._usd(f"anthropic:{model}", led.get("prompt_tokens", 0), led.get("completion_tokens", 0),
+                                   led.get("cache_read_tokens", 0), led.get("cache_creation_tokens", 0))}
     row = {**row, "health_trace": row.get("health_trace", row.get("health")),
            "quality_trace": row.get("quality_trace", row.get("quality")),
-           "critic": critic if judged else None, "critic_samples": v.get("critic_samples"), "judged": judged,
+           "critic": critic if judged else None, "grading": grading, "critic_samples": v.get("critic_samples"), "judged": judged,
            "judge_model": v.get("judge_model"),
            "health": v["health"] if judged else None, "quality": q["quality"] if judged else None,
            "failed_checks": [f"{fr['id']}.{c['id']}" for fr in v["fields"] for c in fr["checks"] if c["status"] == "fail"],
@@ -283,29 +376,40 @@ def render(label: str, arms: dict, rows: dict, noise: "dict | None" = None) -> s
     for stem in rows[base_arm]:
         base = rows[base_arm].get(stem, {}).get("health")
         L += [f"## {stem}", f"| arm | health | Δ vs {base_arm} | grader spread | invented proof points (RTB) | quality | judged | "
-              "brief s | calls | $ list | failed checks | sign-off fails |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              "brief s | calls | tokens in / out | Claude $ | jev $ | total $ | failed checks | sign-off fails |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for arm in arms:
             r = rows[arm].get(stem, {})
             if "error" in r:
                 L.append(f"| {arm} | ERROR | | | | | | | | | {r['error']} | |")
                 continue
             spread = (r.get("critic_samples") or {}).get("spread")
+            tk = r.get("tokens") or {}
+            tokens = f"{tk.get('in', 0):,} / {tk.get('out', 0):,}" if tk else ""
+            money = lambda v, d=3: "" if v is None else f"{v:.{d}f}"
             L.append(f"| {arm} | {_score(r.get('health'))} | {'' if arm == base_arm else _delta(r.get('health'), base, line)} | "
                      f"{'' if spread is None else spread} | {_grounding_cell(r.get('grounding'))} | {_score(r.get('quality'))} | "
-                     f"{r.get('judged')} | {r.get('brief_secs')} | {r.get('calls')} | {r.get('usd')} | "
+                     f"{r.get('judged')} | {r.get('brief_secs')} | {r.get('calls')} | "
+                     f"{tokens} | "
+                     f"{money(r.get('claude_usd', r.get('usd')))} | {money(r.get('jev_usd'), 4)} | {money(r.get('total_usd'))} | "
                      f"{', '.join(r.get('failed_checks') or [])} | {', '.join(r.get('signoff_fails') or [])} |")
         L.append("")
     stems = [s for s in rows[base_arm] if all(rows[a].get(s, {}).get("health") is not None for a in arms)]
     sum_line = f" A difference in the health sum under {round(noise['brief'] * len(stems) ** 0.5)} is noise." if noise and stems else ""
     L += ["## Totals", f"Over the {len(stems)} of {len(rows[base_arm])} briefs every arm scored.{sum_line}", "",
-          "| arm | health sum | quality sum | invented proof points | brief s sum | $ sum |", "|---|---|---|---|---|---|"]
+          "| arm | health sum | quality sum | invented proof points | brief s sum | tokens in / out | Claude $ | jev $ | total $ |",
+          "|---|---|---|---|---|---|---|---|---|"]
     for arm in arms:
         ok = [rows[arm][s] for s in stems]
         inv = [(r.get("grounding") or {}).get("invented") for r in rows[arm].values()]
         L.append(f"| {arm} | {sum(r['health'] for r in ok) if ok else 'not scored'} | "
                  f"{sum(r.get('quality') or 0 for r in ok) if ok else 'not scored'} | "
                  f"{sum(i for i in inv if i is not None) if any(i is not None for i in inv) else ''} | "
-                 f"{round(sum(r.get('brief_secs') or 0 for r in ok), 1)} | {round(sum(r.get('usd') or 0 for r in ok), 3)} |")
+                 f"{round(sum(r.get('brief_secs') or 0 for r in ok), 1)} | "
+                 f"{sum((r.get('tokens') or {}).get('in', 0) for r in ok):,} / {sum((r.get('tokens') or {}).get('out', 0) for r in ok):,} | "
+                 f"{round(sum(r.get('claude_usd', r.get('usd')) or 0 for r in ok), 3)} | "
+                 f"{'' if any(r.get('jev_usd') is None for r in ok) else round(sum(r['jev_usd'] for r in ok), 4)} | "
+                 f"{'' if any(r.get('total_usd') is None for r in ok) else round(sum(r['total_usd'] for r in ok), 3)} |")
     return "\n".join(L) + "\n"
 
 
@@ -361,6 +465,7 @@ def main() -> None:
                 # reused checkpoint's own records are never changed (Sai: leave the past as is)
                 rows[arm] = {stem: score_row(out / arm, stem, r, a.critic) for stem, r in rows[arm].items()}
             rows[arm] = {stem: ground_row(out / arm, stem, r) for stem, r in rows[arm].items()}
+            rows[arm] = {stem: add_trace_numbers(out / arm, stem, r) for stem, r in rows[arm].items()}
     for arm, (tree, env_extra) in arms.items():
         if rows.get(arm):
             continue                                       # reused
@@ -374,6 +479,8 @@ def main() -> None:
             print(f"[{arm}] {stem}: {rows[arm][stem]}", file=sys.stderr, flush=True)
             (out / "rows.json").write_text(json.dumps(rows, indent=1))
     out.mkdir(parents=True, exist_ok=True)
+    for arm in rows:                                                  # tokens and costs on every row, reused or new
+        rows[arm] = {stem: add_trace_numbers(out / arm, stem, r) for stem, r in rows[arm].items()}
     (out / "rows.json").write_text(json.dumps(rows, indent=1))      # also when every arm was reused
     report = render(label, arms, rows, noise_estimate())
     if a.pairwise:
