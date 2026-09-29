@@ -536,7 +536,7 @@ Only `nemotron` and `local` take a Platt fit (`PLATT_BACKENDS`): jev is vendor-c
 | `RAG_EMBED_FALLBACK` | `local,keyword` | Query-embedding fallback order when the hosted endpoint fails: `local` = the same model on this machine (weights fetched once with `embed_local.py --download`, never at run time), `keyword` = BM25 only |
 | `QDRANT_URL` | — | Alias for `QDRANT_CLUSTER_ENDPOINT` |
 
-The brief generator's own switches (`BRIEF_CAPTURE`, `BRIEF_PARALLEL`, `BRIEF_BATCH_GATES`, model chain, clipping) are in `engine/README.md` → Keys & config.
+The brief generator's own switches (`BRIEF_PARALLEL`, model chain, routes, clipping) are in `engine/README.md` → Keys & config.
 
 `rag.py` loads `engine/.env` itself.
 

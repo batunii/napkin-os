@@ -36,7 +36,7 @@ retrieval only 3.4 s of it. Three causes:
 - **Waves from `depends_on`**: the SMP territory map runs alongside the insight;
   reasons_to_believe and desired_response run together.
 
-Each is switchable: `BRIEF_CAPTURE=json`, `BRIEF_PARALLEL=0`, `BRIEF_BATCH_GATES=0`.
+Each is switchable: `BRIEF_CAPTURE=json`, `BRIEF_PARALLEL=0`, `BRIEF_BATCH_GATES=0`. (`BRIEF_BATCH_GATES` went in batch 1; `BRIEF_CAPTURE` was removed 2026-09-29, audit C9: the JSON capture remains the automatic fallback when TOON fails.)
 
 ## Evidence (3 real client briefs, old vs new, same day)
 

@@ -79,7 +79,6 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `BRIEF_ROUTE_<JOB>` | override one job's models, `model[,fallback]`; jobs: `EXTRACT`, `HERO`, `GROUNDED_WRITER`, `HERO_JUDGE`, `JUDGE`, `MECHANICAL`, `SYNTH` |
 | `BRIEF_JEV_CHECKS` | `1` (default; needs `TYPESAFE_API_KEY`): jev checks RTB and desired-response figures (a figure not in the brief fails the draft), the scorecard's verdicts (disputes flagged), picks the retrieval category when no upstream category is given, and marks synthesis sentences their cited sources do not support. `0` turns all four off. See `rag/jev_checks.py`, ADR 0011 |
 | `BRIEF_LOOPS37` / `BRIEF_RERANK` / `BRIEF_HERO_CANDIDATES` | stage toggles |
-| `BRIEF_CAPTURE` | `toon` (default): Loop 1 capture in TOON citing sentence numbers, how_to_win in its own call; `json`: the one-call JSON capture |
 | `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |
 | `BRIEF_SHARPEN` | `0` (off since 2026-09-29, Sai): `1` adds, after the judge picks the best insight and SMP, one sharpen call each plus a re-judge. The A/B on the three test briefs showed no quality gain (234 vs 236, noise) for 15% more time and 17% more Claude cost |
 | `BRIEF_JUDGE_FORMAT` | `full`: one `{"pass": bool, "why"}` object per test. `compact` (phase C change 2, tested 2026-09-29, off by default): each judge answers a draft with the numbers of the tests it passes and a reason of at most 12 words per failed test. It halved the hero judges' output (about 8 s and $0.02 a brief) but judged "ownable" harder. The reader accepts either shape, and a test with no clear verdict leaves the draft unjudged in both. |
@@ -90,13 +89,11 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `BRIEF_CLAUDE_TRANSPORT` | how Claude links are sent: `api` (default, the key above), `cli` (your Claude Code login via `claude -p`, no API credit used), `auto` (the key, switching to the Claude Code login if it has no credit or is rejected). Also `serve.py --claude-code / --api / --auto` and `e2e_eval.py --transport`. See [ADR 0005](rag/docs/adr/0005-claude-transport.md) |
 | `BRIEF_PROVIDER` | pin one provider as the lead link (the rest stay as fallback) |
 | `BRIEF_SMP_CANDIDATES` / `BRIEF_GOLDEN` | SMP draft count (default 4, one per angle seed, since 2026-09-29; was 6) / run the golden-brief pass |
-| `BRIEF_MAX_TOKENS` | override every call's output ceiling |
 | (temperature) | not sent | Claude calls never send it: Opus 5.5 and Sonnet 5 reject it with a 400 (ADR 0011, 2026-09-29). Only the non-Claude fallback path sends 0.2. |
 | `BRIEF_CLIP_CHARS` / `BRIEF_CLIP_EXTRACT_CHARS` | brief clip for judge calls (6500) / for the capture (12000) |
 | `BRIEF_BASE_URL` / `BRIEF_LINK_COOLDOWN` | custom OpenAI-compatible endpoint / seconds a rate-limited link rests |
 | `BRIEF_VISION_MODEL` / `BRIEF_VISION_BASE` / `BRIEF_VISION_API_KEY` | image and scanned-PDF transcription: model (`nvidia/llama-3.1-nemotron-nano-vl-8b-v1`), OpenAI-compatible endpoint (NVIDIA NIM; a local Ollama works keyless), key (falls back to `NVIDIA_API_KEY`) |
 | `GEMINI_API_KEY` / `OPENAI_API_KEY` | optional further chat links, auto-detected |
-| `BRIEF_RETRIEVE_FROM` | `golden` (default): retrieval starts from the golden extraction, 16–26 s earlier, with the capture as fallback; `capture`: retrieval waits for the Loop 1 capture. A/B on 3 briefs: health 216 = 216, faster on every brief |
 | `BRIEF_THINKING_HEADROOM` / `BRIEF_LINK_TIMEOUT` | extra output tokens for Claude models that think by default (2500) / per-request timeout for OpenAI-compatible links (90 s) |
 | `CRITIC_MODEL` / `CRITIC_SAMPLES` | the independent critic: model (default `claude-sonnet-5`) and samples per brief (default `1`); with more than one, each check keeps the majority verdict and an even split is REVIEW (`golden_critic.run_critic_sampled`). On mamaliga, three Fable 5.1 samples spread 2 health points against Sonnet's 5. `checkpoint_run.py --critic claude-fable-5-1x3` sets both for a run |
 | `BRIEF_CLI_TIMEOUT` / `BRIEF_CLI_EFFORT` | Claude Code login transport: seconds per `claude -p` call (240) / force one `--effort` for every thinking-model call (default: the job's effort, else the model's API default) |

@@ -122,7 +122,6 @@ def test_run_starts_capture_how_to_win_and_golden_together(monkeypatch):
     monkeypatch.setattr(pb, "extract_golden_brief", gold)
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields: {"score": 1})
     monkeypatch.delenv("BRIEF_PARALLEL", raising=False)
-    monkeypatch.delenv("BRIEF_CAPTURE", raising=False)
     out = pb.run(None, golden=True, raw_text="Acme Bank is relaunching its app. Under-30s ignore it.")
     assert out["meta"]["capture_format"] == "toon"
     assert out["loop1_capture"]["how_to_win"]["winning_themes"][0]["point"] == "w"
@@ -483,7 +482,7 @@ def test_spaced_table_header_is_its_own_table_not_a_wrapped_row():
 
 
 def test_retrieval_from_golden_starts_before_the_capture_finishes(monkeypatch):
-    """BRIEF_RETRIEVE_FROM=golden: loops_3_7 runs on the golden fields while the capture is
+    """loops_3_7 runs on the golden fields while the capture is
     still in flight (the capture waits for it — sequential order would time out)."""
     started = threading.Event()
     def cap(segs):
@@ -502,7 +501,6 @@ def test_retrieval_from_golden_starts_before_the_capture_finishes(monkeypatch):
     monkeypatch.setattr(pb, "loops_3_7", l37)
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields: {})
     monkeypatch.setattr(pb, "fill_derivable_fields", lambda *a, **k: ({}, []))
-    monkeypatch.setenv("BRIEF_RETRIEVE_FROM", "golden")
     monkeypatch.delenv("BRIEF_PARALLEL", raising=False)
     out = pb.run(None, loops37=True, golden=True, raw_text="Acme Bank. Under-30s ignore it.")
     assert out["loops3_7"]["retrieved_from"] == "golden"
@@ -518,7 +516,6 @@ def test_retrieval_falls_back_to_capture_when_golden_fails(monkeypatch):
     monkeypatch.setattr(pb, "extract_golden_brief", lambda text: None)
     monkeypatch.setattr(pb, "loops_3_7", lambda loop2, fields, **kw: seen.append(fields) or {"enabled": False})
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields: {})
-    monkeypatch.setenv("BRIEF_RETRIEVE_FROM", "golden")
     out = pb.run(None, loops37=True, golden=True, raw_text="Acme Bank. Under-30s ignore it.")
     assert out["loops3_7"]["retrieved_from"] == "capture" and "business_problem" in seen[-1]
 

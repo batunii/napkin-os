@@ -234,7 +234,8 @@ class _Refused(RuntimeError):
 
 # Right-sized output budgets per call class. max_tokens counts against free-tier
 # TPM budgets (Groq bills the CAP, not actual output), so a global 4000 was ~60%
-# waste — judges return ~100-token verdicts. BRIEF_MAX_TOKENS overrides everything.
+# waste — judges return ~100-token verdicts. (BRIEF_MAX_TOKENS, which overrode every cap on
+# the OpenAI-compatible links, was removed 2026-09-29, audit C9.)
 MAXTOK_JUDGE = 500       # rubric gates / judges / territory gate / rerank: tiny JSON verdicts
 MAXTOK_GEN = 1200        # candidate generation / refine: one field's worth of text
 MAXTOK_SYNTH_ONE = 700    # one loop's synthesis paragraph (was 2500 for all five in one call)
@@ -261,7 +262,7 @@ def _chat_openai_compatible(base_url, key, model, user, provider_label="llm",
                 {"role": "user", "content": user}]
     payload = {
         "model": model, "temperature": 0.2,
-        "max_tokens": int(os.environ.get("BRIEF_MAX_TOKENS") or max_tokens or MAXTOK_EXTRACT),
+        "max_tokens": int(max_tokens or MAXTOK_EXTRACT),
         "messages": messages,
     }
     # Structured-output mode: cuts the unclean-JSON retries that multiply calls through

@@ -770,7 +770,6 @@ def test_fill_starts_before_the_capture_returns(monkeypatch):
                                                                         "synthesis_mode": "none"})
     monkeypatch.setattr(pb, "score_betterbriefs", score)
     monkeypatch.setattr(pb, "fill_derivable_fields", fill)
-    monkeypatch.setenv("BRIEF_RETRIEVE_FROM", "golden")
     monkeypatch.delenv("BRIEF_PARALLEL", raising=False)
     out = pb.run(None, loops37=True, golden=True, raw_text=BRIEF)
     assert out["loop2_golden"]["generation_open_questions"][0]["blocks_field"] == "smp"

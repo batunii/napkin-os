@@ -62,7 +62,7 @@ def _vision_transcribe(image_bytes: bytes, mime: str, label: str = "image") -> s
         headers["Authorization"] = f"Bearer {key}"
     payload = {
         "model": model, "temperature": 0.0,
-        "max_tokens": int(os.environ.get("BRIEF_MAX_TOKENS", "4000")),
+        "max_tokens": 4000,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": _VISION_PROMPT},
             {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}"}},

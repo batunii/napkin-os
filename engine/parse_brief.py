@@ -1668,8 +1668,8 @@ def extract_llm(text, schema):
 #   * writes TOON, the format CLAN uses: list fields are one header + one row per item;
 #   * moves how_to_win to its own call, run alongside (run() starts both at once).
 # The output shape is unchanged (fields with value/status/source_quote/confidence, plus
-# `source_refs`), so everything downstream reads it as before. BRIEF_CAPTURE=json restores
-# the one-call JSON capture; a TOON reply that fails to parse falls back to it too.
+# `source_refs`), so everything downstream reads it as before. A TOON reply that fails to
+# parse falls back to the one-call JSON capture (extract_llm).
 
 CAPTURE_ARRAY_FIELDS = ("objective", "deliverables", "mandatories", "timeline", "success_metrics",
                         "proof_points", "evaluation_criteria", "decision_makers", "constraints")
@@ -3172,7 +3172,6 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
       Generation open questions are appended to loop2_brief.open_questions.
 
     Env switches:
-      BRIEF_CAPTURE=json   skip the TOON capture calls and use extract_llm's JSON capture.
       BRIEF_PARALLEL=0     run the same steps one at a time (_Inline); the fill reads it too.
       BRIEF_ALLOW_NONCLAUDE=1  let non-Claude links stay in a Claude-led chain (off by
                            default: without it, and with no route to Claude, run() raises
@@ -3221,13 +3220,12 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
     # alongside. BRIEF_PARALLEL=0 runs the same steps one at a time.
     from concurrent.futures import ThreadPoolExecutor
     parallel = os.environ.get("BRIEF_PARALLEL", "1").lower() not in ("0", "false", "no")
-    toon = os.environ.get("BRIEF_CAPTURE", "toon").lower() != "json"
-    # BRIEF_RETRIEVE_FROM=golden (default since 2026-09-24): retrieval reads the golden
-    # extraction and starts as soon as it lands, alongside the capture; "capture" waits for
-    # the capture. A/B on 3 real briefs, Sonnet-judged: health 216 vs 216 in total (per
-    # brief 64/76/76 vs 75/63/78 — within run-to-run swing), 16-26 s faster per brief.
-    from_golden = (os.environ.get("BRIEF_RETRIEVE_FROM", "golden").lower() == "golden"
-                   and loops37 and golden)
+    # Retrieval reads the golden extraction and starts as soon as it lands, alongside the
+    # capture (since 2026-09-24; A/B on 3 real briefs, Sonnet-judged: health 216 vs 216 in
+    # total, 16-26 s faster per brief); with no golden extraction it reads the capture. The
+    # BRIEF_RETRIEVE_FROM and BRIEF_CAPTURE switches were removed 2026-09-29 (audit C9):
+    # both fallbacks stay automatic.
+    from_golden = loops37 and golden
     golden_schema = (json.loads((HERE / "golden-brief" / "golden_brief.schema.json").read_text())
                      if loops37 else None)
     with _stats_scope(), (ThreadPoolExecutor(max_workers=10) if parallel else _Inline()) as ex:
@@ -3252,8 +3250,8 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 return f_facets.result(timeout=20) if f_facets else None
             except Exception:  # noqa: BLE001 — no facets = retrieval unfiltered, as before
                 return None
-        f_cap = ex.submit(_scoped(capture_toon), segs) if toon else None
-        f_htw = ex.submit(_scoped(how_to_win_toon), segs) if toon else None
+        f_cap = ex.submit(_scoped(capture_toon), segs)
+        f_htw = ex.submit(_scoped(how_to_win_toon), segs)
         f_gold = ex.submit(_scoped(extract_golden_brief), text) if golden else None
         f_l37 = f_fill = None
         if from_golden:
@@ -3286,7 +3284,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         cap_fallback = None
         if llm:
             how_to_win = f_htw.result()
-        else:                                          # BRIEF_CAPTURE=json, or TOON failed
+        else:                                          # the TOON capture failed
             llm = extract_llm(text, schema)
             how_to_win = (llm or {}).get("how_to_win", {})
         if llm:
