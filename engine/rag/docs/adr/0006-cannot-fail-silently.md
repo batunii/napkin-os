@@ -164,3 +164,15 @@ is unchanged and not called a failure. Tests: `test_brief_speedups.py`. How good
 rule-based reader is, and how to improve it, is measured separately (project_plan.clan,
 heuristic_capture_research_2026_09_29).
 
+Follow-up the same day (Sai: "use jev over this but have this if jev fails"; deterministic, no
+trained sorter): `capture_fallback.py` replaces the keyword rules. With a model configured, the
+jev sentence sorter reads the brief first (one choice question per sentence, section heading as
+a hint); when jev cannot answer, the deterministic reader does (headings set sections, labels go
+to their field, per-field regex cues add a sentence to further fields). The keyless demo uses the
+deterministic reader only. Measured against the model capture on 7 saved briefs: keyword rules
+9%, deterministic reader 37%, jev 45% of the model's fields (2 wrong each); on one unseen brief
+(an internal tender note) 0, 2 and 5 of 16. Reading the Word file's own structure (bold lines,
+heading styles, table rows) was tried and lost ground: bold is used for emphasis as well as for
+headings. `meta.capture_fallback.reader` and `meta.capture_format` (`fallback:jev` or
+`fallback:rules`) say which ran. Tests: `test_capture_fallback.py`, `test_brief_speedups.py`.
+

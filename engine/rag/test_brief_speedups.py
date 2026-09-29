@@ -498,10 +498,12 @@ def test_a_failed_model_capture_says_it_fell_back_to_rules(monkeypatch):
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
     monkeypatch.setattr(pb, "resolve_provider", lambda: "anthropic")
     monkeypatch.setenv("BRIEF_ALLOW_NONCLAUDE", "1")          # no transport check in an offline test
+    monkeypatch.setenv("BRIEF_JEV_CHECKS", "0")               # jev off: the deterministic rules stand in
     out = pb.run(None, raw_text="Budget: 50k EUR. The audience is under-30s. Deadline: June.")
+    assert out["meta"]["capture_fallback"]["reader"] == "rules" and out["meta"]["capture_format"] == "fallback:rules"
     assert out["meta"]["extraction_mode"] == "heuristic"
     assert "model capture failed" in out["meta"]["capture_fallback"]["reason"]
-    assert any("rule-based fallback" in q["question"] for q in out["loop2_brief"]["open_questions"]
+    assert any("rule-based reader" in q["question"] for q in out["loop2_brief"]["open_questions"]
                if isinstance(q, dict))
     assert "fell back to the rule-based reader" in brief_render.render_markdown(out)
     assert mapping.build_rationale(out).startswith("Capture fell back to the rule-based reader")
@@ -513,3 +515,20 @@ def test_the_keyless_capture_is_not_called_a_failure(monkeypatch):
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
     out = pb.run(None, raw_text="Budget: 50k EUR. The audience is under-30s.")
     assert out["meta"]["extraction_mode"] == "heuristic" and "capture_fallback" not in out["meta"]
+
+
+
+def test_a_failed_model_capture_tries_jev_first(monkeypatch):
+    """With jev answering, the jev sentence sorter stands in and the brief names it."""
+    import capture_fallback
+    monkeypatch.setattr(pb, "capture_toon", lambda segs: None)
+    monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})
+    monkeypatch.setattr(pb, "extract_llm", lambda text, schema: None)
+    monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
+    monkeypatch.setattr(pb, "resolve_provider", lambda: "anthropic")
+    monkeypatch.setenv("BRIEF_ALLOW_NONCLAUDE", "1")
+    monkeypatch.setattr(capture_fallback, "jev_capture",
+                        lambda segs, text: ({"budget": {"value": segs[0], "status": "fact"}}, {0}))
+    out = pb.run(None, raw_text="Budget: 50k EUR. The audience is under-30s.")
+    assert out["meta"]["capture_fallback"]["reader"] == "jev" and "jev sentence sorter" in out["meta"]["capture_fallback"]["reason"]
+    assert out["loop1_capture"]["fields"]["budget"]["value"].startswith("Budget")

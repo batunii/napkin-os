@@ -22,6 +22,9 @@ Four uses, each measured in the 2026-09-24 jev lab (engine/outputs/audit_2026_09
                       passages. Unmeasured against sources (against the brief the lab
                       measured AUC 0.73), so it only marks sentences in the review file.
 
+  sort_segments       the Loop 1 capture fallback (capture_fallback.py, 2026-09-29): which
+                      part of a brief each sentence is, when the model capture failed.
+                      46% of the model's fields on 7 saved briefs, 2 wrong.
   claims_supported    evaluation only (grounding.py, 2026-09-28): each claim of a finished
                       brief as supported / contradicted / not_in_brief against the client
                       brief. On the 2026-09-28 trial it separated the briefs that invent proof
@@ -188,6 +191,26 @@ def claims_supported(brief_text: str, claims: list) -> "list | None":
     out = []
     for i in range(len(claims)):
         choice, probs = got[f"c{i:03d}"]
+        out.append((choice, round(float(probs.get(choice, 0.0)), 2)))
+    return out
+
+
+def sort_segments(brief_text: str, segments: list, labels: dict, hints: list) -> "list | None":
+    """(label, p) per segment: which of `labels` ({name: description}) each brief sentence
+    belongs to, with its section heading as a hint (capture_fallback's jev reader,
+    2026-09-29). None when jev cannot answer."""
+    asked = {f"s{i:03d}": {"type": "choice",
+                           "instructions": {"question": "Which part of an advertising brief is SENTENCE?",
+                                            "sentence": str(s)[:600], "section_heading_hint": str(h or "none")},
+                           "criteria": labels} for i, (s, h) in enumerate(zip(segments, hints))}
+    if not asked:
+        return []
+    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "capture fallback")
+    if got is None:
+        return None
+    out = []
+    for i in range(len(segments)):
+        choice, probs = got[f"s{i:03d}"]
         out.append((choice, round(float(probs.get(choice, 0.0)), 2)))
     return out
 

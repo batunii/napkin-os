@@ -158,79 +158,22 @@ HERE = Path(__file__).resolve().parent
 # 3a. EXTRACT (heuristic) — Loop 1 faithful capture, no API needed
 # ---------------------------------------------------------------------------
 
-LABEL_MAP = {
-    "background": "background_context", "context": "background_context",
-    "problem": "business_problem", "challenge": "business_problem",
-    "objective": "objective", "goal": "objective",
-    "audience": "target_audience", "target": "target_audience",
-    "budget": "budget", "timeline": "timeline", "timing": "timeline",
-    "deadline": "timeline", "deliverable": "deliverables",
-    "mandator": "mandatories", "must": "mandatories",
-    "kpi": "success_metrics", "success": "success_metrics", "metric": "success_metrics",
-    "competitor": "competitors_market", "tone": "tone_and_brand",
-    "brand guideline": "tone_and_brand",
-}
-
-LIST_FIELDS = {"deliverables", "mandatories", "timeline", "success_metrics",
-               "decision_makers", "constraints", "objective", "proof_points",
-               "evaluation_criteria"}
-
-KEYWORD_CUES = {
-    "business_problem": ["stalled", "perception", "problem", "struggl", "down vs"],
-    "target_audience":  ["audience", "switcher", "family", "suburban", "demographic"],
-    "budget":           ["£", "$", "€", "budget", "working media"],
-    "timeline":         ["week of", "deadline", "pitch presentations", "by july"],
-    "mandatories":      ["mandatory", "must ", "can't", "cannot", "asa", "logo",
-                         "ci/", "ci ", "claim", "naming", "lockup"],
-    "success_metrics":  ["kpi", "consideration", "success =", "test drive", "ipa-style"],
-    "decision_makers":  ["cmo", "brand director", "the one to win", "decision-maker"],
-    "competitors_market": ["tesla", "polestar", "kia", "hyundai", "competitor", "own \""],
-    "tone_and_brand":   ["slogan", "heritage", "unmistakably", "tone of voice"],
-}
+import capture_fallback  # noqa: E402  (the fallback readers: jev, then deterministic rules)
 
 
 def _cap(value, status="fact", quote=None, conf=0.6):
-    """Build one Captured entry {value, status, source_quote, confidence} as the heuristic
-    extractor records it (status 'fact', confidence 0.6 unless given)."""
+    """Build one Captured entry {value, status, source_quote, confidence} (status 'fact',
+    confidence 0.6 unless given)."""
     return {"value": value, "status": status, "source_quote": quote, "confidence": conf}
 
 
 def extract_heuristic(segments):
-    """Keyless Loop 1 capture: map each segment to at most one field by rule.
-    A `Label: text` segment whose label contains a LABEL_MAP key goes to that field; any
-    other segment goes to the first KEYWORD_CUES field with a matching cue (case-insensitive
-    substring). The whole segment is stored as both value and source_quote. A LIST_FIELDS
-    field collects every match; a single-value field keeps only its first match, and later
-    matches are not stored but still count as used.
+    """Keyless Loop 1 capture: the deterministic reader (capture_fallback.rules_capture,
+    2026-09-29), sections from headings plus per-field sentence cues, regex only. Replaced
+    the keyword rules (9% of the model capture's fields on 7 saved briefs; this reader 37%).
     Returns (fields, used): field id -> Captured entry (a list for list fields), and the set
-    of segment indexes that were mapped, which build_ledger takes as the ledger's mapping."""
-    fields, used = {}, set()
-
-    def add(field, idx, seg):
-        """Record `seg` under `field` (appended for a list field, first match
-        wins for a single-value field) and mark segment `idx` as used either way."""
-        if field in LIST_FIELDS:
-            fields.setdefault(field, []).append(_cap(seg, quote=seg))
-        elif field not in fields:
-            fields[field] = _cap(seg, quote=seg)
-        used.add(idx)
-
-    for idx, seg in enumerate(segments):
-        low = seg.lower()
-        m = re.match(r"^([A-Za-z /]{3,30}?)\s*[:=]\s*(.+)$", seg)
-        if m:
-            label = m.group(1).strip().lower()
-            for key, field in LABEL_MAP.items():
-                if key in label:
-                    add(field, idx, seg); break
-            else:
-                pass
-            if idx in used:
-                continue
-        for field, cues in KEYWORD_CUES.items():
-            if any(c in low for c in cues):
-                add(field, idx, seg); break
-    return fields, used
+    of segment indexes mapped, which build_ledger takes as the ledger's mapping."""
+    return capture_fallback.rules_capture(segments)
 
 
 # ---------------------------------------------------------------------------
@@ -3146,7 +3089,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
 
         llm = f_cap.result() if f_cap else None
         capture_format = "toon" if llm else "json"
-        capture_fallback = None
+        cap_fallback = None
         if llm:
             how_to_win = f_htw.result()
         else:                                          # BRIEF_CAPTURE=json, or TOON failed
@@ -3157,20 +3100,22 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             llm_oqs = llm.get("open_questions", []); used = None
             mode = f"{provider}:{model_for(provider)}"
         else:
-            fields, used = extract_heuristic(segs); how_to_win = {}; llm_oqs = []
-            mode = "heuristic"; capture_format = "heuristic"
-            # Say so everywhere a person looks (audit C13, Sai 2026-09-29). With a model
-            # configured this is a failure, not the keyless demo: the TOON capture and the
-            # JSON capture both came back empty, and the rule-based reader stood in.
+            # The model capture failed, or there is no model (the keyless demo). With a model
+            # configured, jev sorts the sentences first and the deterministic rules stand in
+            # when jev cannot answer (Sai, 2026-09-29); the keyless demo uses the rules only.
+            fields, used, reader = capture_fallback.capture(segs, text, allow_jev=bool(provider))
+            how_to_win = {}; llm_oqs = []
+            mode = "heuristic"; capture_format = f"fallback:{reader}"
+            # Say so everywhere a person looks (audit C13, Sai 2026-09-29).
             if provider:
-                capture_fallback = {"reader": "rules", "reason": "the model capture failed (TOON and "
-                                    "JSON both returned nothing usable); the rule-based reader stood in"}
-                print(f"[!] Loop 1 capture fell back to the rule-based reader: {capture_fallback['reason']}.",
-                      file=sys.stderr)
-                llm_oqs = [{"question": "Check the captured facts: the brief was read by the rule-based "
-                                        "fallback because the model capture failed.",
-                            "why_it_matters": "the rule-based reader fills far fewer fields than the model; "
-                                              "facts it missed are not in the Loop 1 record",
+                name = "jev sentence sorter" if reader == "jev" else "rule-based reader"
+                cap_fallback = {"reader": reader, "reason": "the model capture failed (TOON and JSON both "
+                                f"returned nothing usable); the {name} stood in"}
+                print(f"[!] Loop 1 capture fell back to the {name}: {cap_fallback['reason']}.", file=sys.stderr)
+                llm_oqs = [{"question": f"Check the captured facts: the brief was read by the {name} "
+                                        "because the model capture failed.",
+                            "why_it_matters": "the fallback places whole sentences and fills fewer fields than "
+                                              "the model; facts it missed are not in the Loop 1 record",
                             "priority": "high"}]
 
         loop2 = shape_loop2(fields, llm_oqs)
@@ -3185,7 +3130,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                      "parsed_at": dt.datetime.now().isoformat(timespec="seconds"),
                      "parser_version": PARSER_VERSION, "extraction_mode": mode,
                      "capture_format": capture_format, "prompt_version": PROMPT_VERSION,
-                     **({"capture_fallback": capture_fallback} if capture_fallback else {})},
+                     **({"capture_fallback": cap_fallback} if cap_fallback else {})},
             "loop1_capture": loop1, "loop2_brief": loop2,
             "betterbriefs_scorecard": None,            # filled when its call returns
         }

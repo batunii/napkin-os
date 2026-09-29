@@ -188,7 +188,8 @@ def build_rationale(brief: dict) -> str:
 
     if mode.startswith("heuristic") and meta.get("capture_fallback"):
         # A model was configured and its capture failed: say that, not "no API keys" (C13).
-        return (f"Capture fell back to the rule-based reader ({meta['capture_fallback'].get('reason')}): "
+        who = "jev sentence sorter" if meta["capture_fallback"].get("reader") == "jev" else "rule-based reader"
+        return (f"Capture fell back to the {who} ({meta['capture_fallback'].get('reason')}): "
                 "check the captured facts; the rest of the brief used the models as normal.")
     if mode.startswith("heuristic"):
         return ("Heuristic extraction (no API keys): captured facts only — "
