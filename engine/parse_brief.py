@@ -1300,6 +1300,15 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             return None, qs  # never overwrite a client fact
 
         deps = list(field.get("depends_on", []))
+        # SMP and RTB depend on each other in the schema (audit N9): the SMP read the RTB as
+        # extracted, often the extractor's guess, and the RTB was then written from that SMP.
+        # BRIEF_ACYCLIC_FILL=1 (off by default until the A/B): a field reads a field written
+        # AFTER it only when the client stated that field, since a stated field is never
+        # rewritten, so no guess feeds a line it will later be written to support.
+        if os.environ.get("BRIEF_ACYCLIC_FILL", "0").lower() in ("1", "true", "yes"):
+            later = GEN_ZONE3_ORDER[GEN_ZONE3_ORDER.index(fid) + 1:] if fid in GEN_ZONE3_ORDER else []
+            deps = [d for d in deps if d not in later
+                    or (golden_fields.get(d) or {}).get("source") == "client_stated"]
         # The sharpest captured thinking (the white space vs the competitor) must reach
         # the insight/SMP generator, not sit in a fact field it never reads.
         if fid in ("insight", "smp") and "competitor_context" not in deps:

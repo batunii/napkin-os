@@ -863,6 +863,47 @@ def test_the_tournament_record_keeps_every_other_draft_with_its_checks(monkeypat
     assert "runner-up" not in md and "other draft 1 — failed ownable" in md and "other draft 3 — passed" in md
 
 
+PROOF = "2 million customers already use the app every week"
+
+
+def _smp_prompt(monkeypatch, rtb_source):
+    """The SMP writer's prompt when the extracted RTB has `rtb_source` (a client-stated one
+    carries its verbatim quote, so the fill's F4b guard keeps it as the client's)."""
+    calls = []
+    _fake_models(monkeypatch, calls=calls)
+    rtb = {"value": [PROOF], "source": rtb_source}
+    if rtb_source == "client_stated":
+        rtb["source_quote"] = PROOF
+    _fill(monkeypatch, {"reasons_to_believe": rtb})
+    return next(u for kind, u, _s in calls if kind == "gen_batch" and "PROPOSITION RULEBOOK" in u)
+
+
+def test_acyclic_fill_keeps_a_guessed_rtb_out_of_the_smp(monkeypatch):
+    """N9: with BRIEF_ACYCLIC_FILL=1 the SMP writer no longer reads an extracted RTB the tool
+    inferred (it is rewritten from the SMP afterwards); a client-stated RTB still reaches it.
+    Off (the default), the SMP reads it as before."""
+    monkeypatch.setenv("BRIEF_ACYCLIC_FILL", "1")
+    def rtb_line(prompt):
+        """The SMP context's reasons-to-believe line, or None."""
+        return next((ln for ln in prompt.splitlines() if ln.startswith("reasons_to_believe")), None)
+    assert rtb_line(_smp_prompt(monkeypatch, "inferred")) is None
+    stated = rtb_line(_smp_prompt(monkeypatch, "client_stated"))
+    assert stated and PROOF in stated and "(assumption)" not in stated
+    monkeypatch.setenv("BRIEF_ACYCLIC_FILL", "0")
+    old = rtb_line(_smp_prompt(monkeypatch, "inferred"))
+    assert old and PROOF in old and "(assumption)" in old
+
+
+def test_with_acyclic_fill_the_strategy_fields_read_no_later_guess():
+    """The dependency graph the fill uses, with back edges to later fields dropped, orders
+    cleanly: every field depends only on fields before it (audit N9's acyclic check)."""
+    order = pb.GEN_ZONE3_ORDER
+    for fid in order:
+        deps = [d for d in FIELD[fid].get("depends_on", []) if d in order]
+        later = [d for d in deps if order.index(d) > order.index(fid)]
+        assert later in ([], ["reasons_to_believe"]), (fid, later)   # the one known back edge (SMP -> RTB)
+
+
 def test_failed_drafts_that_invent_a_figure_still_leave_the_field_open(monkeypatch):
     """Every RTB draft states a figure the brief never gave: nothing is kept (no invented
     fact reaches the page), the field stays open as before."""
