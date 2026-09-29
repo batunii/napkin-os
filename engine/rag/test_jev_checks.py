@@ -152,3 +152,14 @@ def test_everything_is_off_without_jev(monkeypatch):
     monkeypatch.setattr(jc, "_backend", None)
     assert jc.figures_supported(BRIEF, ["73%"]) is None and jc.choose_category(BRIEF) is None
     assert pb._jev_scorecard(BRIEF, [{"dimension": "language", "verdict": "pass"}]) is None
+
+
+def test_open_questions_answered_asks_one_noul_per_question(jev):
+    """JL-13: each open question goes to jev with the brief as the state; a down jev is None."""
+    f = jev(FakeJev(noul=lambda n, q: 0.95 if "packs" in q["instructions"]["open_question"] else 0.1))
+    assert jc.questions_answered(BRIEF, ["How many packs a year?", "What is the budget?"]) == [0.95, 0.1]
+    q = f.calls[0][1]["q000"]
+    assert q["type"] == "noul" and "OPEN_QUESTION" in q["instructions"]["question"]
+    assert jc.questions_answered(BRIEF, []) == []
+    jev(FakeJev(fail=True))
+    assert jc.questions_answered(BRIEF, ["x?"]) is None

@@ -23,7 +23,8 @@ between two runs of code whose behaviour did not change, measured from the regis
 repeat pairs (eval_checkpoints.json `repeat_of`), and marks each difference from the
 first arm as real or noise against twice that spread. It also carries each brief's
 grounding count (grounding.py: reasons to believe jev finds not in the client's document),
-because health alone rewards a filled field even when its facts are invented.
+because health alone rewards a filled field even when its facts are invented, and beside it
+how many open questions the document already answers (JL-13; should read 0).
 
 Before any brief runs, the runner checks that this process can reach Claude for the critic
 (the arms get the CLI transport; so does the critic now), so a missing login stops the run
@@ -123,6 +124,9 @@ def ground_row(out_dir: Path, stem: str, row: dict) -> dict:
     used = (((json.loads(bo.read_text()).get("meta") or {}).get("research_facts") or {}).get("used") or []) if bo.exists() else []
     research = [u["line"] for u in used if isinstance(u, dict) and u.get("line")]
     g = grounding.check(brief_text(stem), md.read_text(), research=research)
+    if g is not None:
+        oq = grounding.open_questions(brief_text(stem), md.read_text())     # JL-13
+        g["open_questions"] = oq if oq is not None else {"error": "jev did not answer"}
     return {**row, "grounding": g if g is not None else {"error": "jev did not answer"}}
 
 
@@ -352,6 +356,9 @@ def _grounding_cell(g) -> str:
         return g["error"]
     extra = [f"+{g['to_confirm']} to confirm"] if g.get("to_confirm") else []
     extra += [f"{g['from_research']} from research"] if g.get("from_research") else []
+    oq = g.get("open_questions") or {}
+    if "answered" in oq:                       # JL-13: open questions the brief already answers
+        extra += [f"{oq['answered']} of {oq['of']} questions already answered"]
     return f"{g['invented']} of {g['of']}" + (f" ({', '.join(extra)})" if extra else "")
 
 

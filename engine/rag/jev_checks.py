@@ -232,6 +232,24 @@ def fact_conflicts(brief_text: str, fact_lines: list) -> "list | None":
     return [got.get(f"k{i:03d}") for i in range(len(fact_lines))]
 
 
+ANSWERED_Q = "Does the client brief in the state already answer OPEN_QUESTION?"
+ANSWERED_T = "The brief states the answer: a reader of the brief would not need to ask this."
+ANSWERED_F = "The brief does not give the answer, or gives only part of it."
+
+
+def questions_answered(brief_text: str, questions: list) -> "list | None":
+    """p(the client brief already answers the question) per open question, in order (audit
+    JL-13, evaluation only). None when jev cannot answer."""
+    asked = {f"q{i:03d}": _noul(ANSWERED_Q, ANSWERED_T, ANSWERED_F, open_question=str(q)[:600])
+             for i, q in enumerate(questions)}
+    if not asked:
+        return []
+    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "open questions answered")
+    if got is None:
+        return None
+    return [got.get(f"q{i:03d}") for i in range(len(questions))]
+
+
 def sort_segments(brief_text: str, segments: list, labels: dict, hints: list) -> "list | None":
     """(label, p) per segment: which of `labels` ({name: description}) each brief sentence
     belongs to, with its section heading as a hint (capture_fallback's jev reader,

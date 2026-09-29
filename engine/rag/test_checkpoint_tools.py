@@ -68,6 +68,29 @@ def test_grounding_none_when_jev_silent(monkeypatch):
     assert grounding.check("brief", MD) is None
 
 
+OQ_MD = ("## Open questions to resolve before research\n- **[important]** What is the budget?\n"
+         "- Who approves the work?\n\n## Other\n- not a question\n")
+
+
+def test_open_questions_are_read_from_the_client_brief():
+    assert grounding.questions_from_md(OQ_MD) == ["What is the budget?", "Who approves the work?"]
+
+
+def test_open_questions_already_answered_are_counted(monkeypatch):
+    """JL-13: a question the brief already answers at p >= 0.9 is counted; below is not."""
+    import jev_checks
+    monkeypatch.setattr(jev_checks, "questions_answered", lambda t, qs: [0.95, 0.4])
+    g = grounding.open_questions("brief", OQ_MD)
+    assert (g["answered"], g["of"]) == (1, 2)
+    monkeypatch.setattr(jev_checks, "questions_answered", lambda t, qs: None)
+    assert grounding.open_questions("brief", OQ_MD) is None
+
+
+def test_the_report_cell_shows_answered_questions():
+    cell = cr._grounding_cell({"invented": 0, "of": 3, "open_questions": {"answered": 0, "of": 7}})
+    assert cell == "0 of 3 (0 of 7 questions already answered)"
+
+
 def test_resolve_briefs(tmp_path):
     sets = {"test-three": ["a", "b", "c"]}
     assert cr.resolve_briefs("test-three", "x,y", sets) == ["a", "b", "c"]      # a set overrides --briefs

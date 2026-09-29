@@ -23,6 +23,11 @@ betfair on the current code, plus-auto on ragAdded), while the one SMP that did 
 (bord-gais on ragAdded) rested on reasons to believe that were caught anyway.
 Placeholders ("To be agreed") are skipped. Costs one jev request per brief (~1-2 s, no
 Claude calls); returns None when jev cannot answer.
+
+open_questions() is the second count (audit JL-13, 2026-09-29): the brief's open questions
+that the client's document already answers (jev p >= INVENTED_P), a regression guard against
+a brief asking the client what the brief already says. On 82 recorded questions none was
+answered at p >= 0.9 (median 0.075), so it should read 0; one more jev request per brief.
 """
 from __future__ import annotations
 
@@ -90,3 +95,35 @@ def check(brief_text: str, client_brief_md: str, research: "list | None" = None)
         return None
     answers = iter(got)
     return summarise(claims, [("request", 1.0) if is_request(c) else next(answers) for _f, c in claims])
+
+
+OPEN_Q_HEADING = "## Open questions"
+PRIORITY_TAG = re.compile(r"^\*\*\[[^\]]*\]\*\*\s*")
+
+
+def questions_from_md(md: str) -> list:
+    """The open questions listed in a client_brief.md, in order, priority tags removed."""
+    out, on = [], False
+    for line in (md or "").splitlines():
+        if line.startswith("## "):
+            on = line.startswith(OPEN_Q_HEADING)
+            continue
+        t = line.strip()
+        if on and t.startswith(("- ", "* ")):
+            q = PRIORITY_TAG.sub("", t[2:].strip())
+            if q:
+                out.append(q)
+    return out
+
+
+def open_questions(brief_text: str, client_brief_md: str) -> "dict | None":
+    """{"answered", "of", "rows"}: how many of the brief's open questions the client's
+    document already answers (p >= INVENTED_P). None when jev cannot answer; zeros when the
+    brief lists no questions."""
+    import jev_checks
+    qs = questions_from_md(client_brief_md)
+    got = jev_checks.questions_answered(brief_text, qs)
+    if got is None:
+        return None
+    rows = [{"question": q, "p": (round(p, 2) if isinstance(p, float) else None)} for q, p in zip(qs, got)]
+    return {"answered": sum(1 for r in rows if (r["p"] or 0) >= INVENTED_P), "of": len(rows), "rows": rows}
