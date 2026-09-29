@@ -846,6 +846,23 @@ def test_failed_drafts_keep_the_best_one_marked_for_review(monkeypatch):
                for q in qs)
 
 
+def test_the_tournament_record_keeps_every_other_draft_with_its_checks(monkeypatch):
+    """Every losing hero draft is recorded in judge rank with the checks it failed, and
+    review.md lists them as other drafts, not as a 'runner-up' (audit critic-G13)."""
+    import brief_render
+    _fake_models(monkeypatch)
+    monkeypatch.setenv("BRIEF_SMP_CANDIDATES", "6"); monkeypatch.setenv("BRIEF_HERO_CANDIDATES", "6")
+    gf, _fills, _qs = _fill(monkeypatch)
+    ins = gf["insight"]
+    assert len(ins["alternatives"]) == 3                 # the fake writer returns 4 drafts: all kept
+    assert ins["alternatives_failed"] == [[], [], []] and ins["value"] not in ins["alternatives"]
+    L = []
+    brief_render.render_golden_provenance(L, {"loop2_golden": {"fields": {"insight": {
+        **ins, "alternatives_failed": [["ownable"], [], []]}}}})
+    md = "\n".join(L)
+    assert "runner-up" not in md and "other draft 1 — failed ownable" in md and "other draft 3 — passed" in md
+
+
 def test_failed_drafts_that_invent_a_figure_still_leave_the_field_open(monkeypatch):
     """Every RTB draft states a figure the brief never gave: nothing is kept (no invented
     fact reaches the page), the field stays open as before."""

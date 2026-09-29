@@ -1530,9 +1530,15 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             entry["flags"] = flags
         if use_ipa and f_ev:
             entry["evidence_ids"] = f_ev[:5]
-        alts = [c["value"] for c in candidates if c.get("value") != chosen["value"]]
-        if alts:
-            entry["alternatives"] = alts[:3]
+        # Every other draft, in the judge's rank order, with the checks each failed (audit
+        # critic-G13, 2026-09-29): the record kept the first three unlabelled, so two of six
+        # SMP drafts were never seen and review.md called them 'runner-up' although the
+        # nearest one is often the winner's own pre-sharpen draft.
+        fails_of = {id(c): f for c, _ok, f in judged}
+        others = [c for c in candidates if c.get("value") != chosen["value"]]
+        if others:
+            entry["alternatives"] = [c["value"] for c in others]
+            entry["alternatives_failed"] = [_check_ids(fails_of.get(id(c))) for c in others]
         golden_fields[fid] = _with_refs(entry)  # downstream deps see the generated value
         return entry, qs
 

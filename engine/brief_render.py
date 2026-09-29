@@ -359,7 +359,12 @@ def render_golden_provenance(L, brief):
         if isinstance(f.get("review"), dict):
             L.append(f"  \n  ↳ **DRAFT TO REVIEW**: every draft failed; kept the best. {f['review'].get('why', '')}")
         if f.get("alternatives"):
-            L.append(f"  \n  ↳ runner-up: {json.dumps(f['alternatives'])[:200]}")
+            # Every other draft in judge rank, each with the checks it failed (critic-G13).
+            failed = f.get("alternatives_failed") or []
+            for i, alt in enumerate(f["alternatives"]):
+                ids = failed[i] if i < len(failed) else None
+                why = (f" — failed {', '.join(ids)}" if ids else " — passed") if ids is not None else ""
+                L.append(f"  \n  ↳ other draft {i + 1}{why}: {json.dumps(alt, ensure_ascii=False)[:160]}")
         L.append("")
     for fid, f in miss:
         L.append(f"**{fid.replace('_', ' ')}** — _missing_: {f.get('reason')}")
