@@ -141,6 +141,19 @@
 }
 .ch-bar-sep { width: 1px; height: 18px; background: var(--line-soft); margin: 0 2px; }
 
+/* "Saved": a quiet status, not a button. The green dot is the design's ok. */
+.ch-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--ink3);
+  white-space: nowrap;
+  cursor: default;
+}
+.ch-saved::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--status-green); }
+
 /* A document's thin accent strip, recoloured by the app's theme (shown only
    when there is one — see "the accent strip" below). */
 .ch-strip { flex-shrink: 0; background: var(--accent); }
@@ -230,18 +243,20 @@
   top: 38px;
   right: 0;
   z-index: 41;
-  min-width: 240px;
+  min-width: 260px;
+  max-width: calc(100vw - 24px);
   padding: 6px;
   border-radius: var(--r-card);
   border: 1px solid var(--line-soft);
-  background: var(--frost);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
+  /* Opaque: inside the bar's own backdrop filter a second one cannot blur the
+     frame underneath, so frost would let the app show through the menu. */
+  background: var(--card);
   box-shadow: var(--shadow-soft);
 }
 .ch-menu-item {
   display: block;
   width: 100%;
+  min-height: 44px;
   padding: 8px 10px;
   border: 0;
   border-radius: 8px;
@@ -252,8 +267,12 @@
   font-weight: 500;
   cursor: pointer;
 }
-.ch-menu-item:hover { background: var(--soft); }
+.ch-menu-item:hover,
+.ch-menu-item:focus-visible { background: var(--soft); }
+.ch-menu-item:focus-visible { outline: 2px solid var(--create); outline-offset: -2px; }
 .ch-menu-item small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; color: var(--ink2); }
+/* A group of items that belong apart (continue in another app; the file's details). */
+.ch-menu-apart { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line-soft); }
 
 /* ── dialogs and drawers ─────────────────────────────────────────────────── */
 
@@ -433,9 +452,9 @@
 
 /* ── narrow ──────────────────────────────────────────────────────────────── */
 
-/* The document bar wraps instead of clipping: the separator becomes the line
-   break, so the title and its status keep the first row and the actions flow
-   onto the next. */
+/* The document bar wraps instead of clipping. With only Saved, Share and More
+   on it there is usually room for one row; a long title or a badge pushes the
+   actions onto the next. */
 @media (max-width: 760px) {
   .ch-bar {
     height: auto;
@@ -445,9 +464,14 @@
     column-gap: 6px;
     padding: 9px 12px;
   }
-  .ch-bar-sep { flex-basis: 100%; height: 0; margin: 0; }
+  .ch-bar-sep { display: none; }
+  .ch-bar-title { flex: 1 1 120px; }
   .ch-bar .ch-btn { height: 28px; padding: 0 11px; font-size: 12px; }
   .ch-bar .ch-btn-icon { width: 28px; padding: 0; }
+  /* More may wrap to the left of the second row: hang its menu from the bar,
+     full width, so it never opens off the screen. */
+  .ch-bar .ch-menu-anchor { position: static; }
+  .ch-bar .ch-menu { top: calc(100% + 4px); left: 12px; right: 12px; min-width: 0; max-width: none; }
   .ch-side-left, .ch-side-right { position: absolute; top: 0; bottom: 0; z-index: 20; box-shadow: var(--shadow-soft); }
   .ch-side-left { left: 0; width: min(300px, 86vw); }
   .ch-side-right { right: 0; width: min(360px, 92vw); }

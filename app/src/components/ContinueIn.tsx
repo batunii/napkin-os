@@ -6,73 +6,29 @@ import { useEffect, useState } from 'react'
 
 import { host } from '../host'
 import type { SpinoffTarget } from '../host'
-import './chrome.css'
-
-interface Props {
-  /**
-   * The open document. Targets depend on its app, so the toolbar mounts this
-   * keyed by it — a different document gets a fresh fetch and a closed menu
-   * without any of that having to be synchronised by hand.
-   */
-  docPath: string
-  onSpinoff: (appId: string) => void
-}
 
 /**
- * "Continue in…" — the apps that have declared they will take this document as
- * a spin-off source, carrying its data and its decisions across.
+ * "Continue in…": the apps that have declared they will take the open document
+ * as a spin-off source, carrying its data and its decisions across. The bar
+ * lists them in its More menu.
  *
- * Renders nothing when no installed app accepts it. An empty list is a normal
- * state (nothing downstream is installed), not a failure worth a disabled
- * button in the chrome.
+ * Targets depend on the document's app, so they are held against the path they
+ * were asked for: a different document shows none until its own answer comes.
+ * An empty list is a normal state (nothing downstream is installed), not a
+ * failure worth a disabled item in the chrome.
  */
-export default function ContinueIn({ docPath, onSpinoff }: Props) {
-  const [targets, setTargets] = useState<SpinoffTarget[]>([])
-  const [open, setOpen] = useState(false)
+export function useSpinoffTargets(docPath: string): SpinoffTarget[] {
+  const [got, setGot] = useState<{ docPath: string; targets: SpinoffTarget[] } | null>(null)
 
   useEffect(() => {
     let live = true
     host.spinoffTargets()
-      .then(t => { if (live) setTargets(t) })
+      .then(targets => { if (live) setGot({ docPath, targets }) })
       // A host that cannot answer simply offers nothing; this is chrome, not
       // the document, and must never take the app down with it.
-      .catch(() => { if (live) setTargets([]) })
+      .catch(() => { if (live) setGot({ docPath, targets: [] }) })
     return () => { live = false }
   }, [docPath])
 
-  if (targets.length === 0) return null
-
-  return (
-    <div className="ch-menu-anchor">
-      <button
-        className="ch-btn"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-        title="Branch this document into another app, keeping its data and decisions"
-      >
-        Continue in <span aria-hidden>↗</span>
-      </button>
-      {open && (
-        <>
-          <div className="ch-menu-backdrop" onClick={() => setOpen(false)} />
-          <div className="ch-menu" role="menu">
-            {targets.map(t => (
-              <button
-                key={t.app_id}
-                className="ch-menu-item"
-                role="menuitem"
-                onClick={() => { setOpen(false); onSpinoff(t.app_id) }}
-              >
-                {t.name}
-                <small>
-                  {t.map ? `this document lands at ${t.map}` : 'carries data and decisions'}
-                </small>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
+  return got?.docPath === docPath ? got.targets : []
 }

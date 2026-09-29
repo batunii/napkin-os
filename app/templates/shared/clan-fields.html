@@ -223,8 +223,9 @@ clan-tray{display:block}
 .cl-list > li{display:grid;grid-template-columns:22px 1fr;gap:6px;font-size:15px}
 .cl-list > li::before{counter-increment:m;content:counter(m);font-family:var(--clf-mono);font-size:12px;color:var(--clf-ink3);padding-top:2px}
 .cl-foot{padding:32px clamp(20px,5vw,64px) 40px;border-top:1px solid var(--clf-line2);background:var(--clf-soft)}
-@media (max-width:860px){.cl-cols,.cl-split,.cl-grid{grid-template-columns:1fr}.cl-grid > * + *{border-left:0;border-top:1px solid var(--clf-line2)}}
-@media (max-width:620px){.clf-drawer{top:auto;height:88%;width:100%;border-radius:18px 18px 0 0;transform:translateY(104%)}.clf-titem .x{max-width:170px}}
+@media (max-width:860px){.cl-cols,.cl-split,.cl-grid{grid-template-columns:minmax(0,1fr)}.cl-grid > * + *{border-left:0;border-top:1px solid var(--clf-line2)}}
+/* On a phone a long publisher breaks rather than push the column past the card. */
+@media (max-width:620px){.clf-drawer{top:auto;height:88%;width:100%;border-radius:18px 18px 0 0;transform:translateY(104%)}.clf-titem .x{max-width:170px}.clf-src{white-space:normal;overflow-wrap:anywhere}}
 @media (prefers-reduced-motion:reduce){.clf-drawer,.clf-scrim,.clf-toast,.clf{transition:none}}
 </style>
 <script>
@@ -381,9 +382,12 @@ var ClanFields=(function(){
       });
   }
   function errorOf(res){ if(!res) return 'No answer from the host.'; if(typeof res.error==='string') return res.error; if(res.error&&res.error.message) return res.error.message; if(res.ok===false) return 'The host refused.'; return ''; }
+  // Each read says so (`clan:viewloaded`), for an app that shows what needs a
+  // person its own way.
   function loadView(){
     return fetch(SCHEME+'/decisions').then(function(r){ return r.ok?r.json():null; })
-      .then(function(v){ VIEW=v; }).catch(function(){ VIEW=null; });
+      .then(function(v){ VIEW=v; }).catch(function(){ VIEW=null; })
+      .then(function(){ window.dispatchEvent(new CustomEvent('clan:viewloaded')); });
   }
 
   // ── rendering ───────────────────────────────────────────────────────
@@ -950,6 +954,8 @@ var ClanFields=(function(){
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
 
   return {refresh:refresh, reload:function(){ return loadView().then(refresh); }, open:open, layout:layout, mount:mount,
-          format:fmt, label:label, kindOf:kindOf, stateOf:stateOf};
+          format:fmt, label:label, kindOf:kindOf, stateOf:stateOf,
+          // The host's decision view as last read (null until it is), and the lock.
+          view:function(){ return VIEW; }, locked:lockDecision};
 })();
 </script>

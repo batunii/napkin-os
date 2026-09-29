@@ -15,7 +15,6 @@ import { applyUpdate, onLaunchFiles, useUpdateReady } from './pwa/pwa'
 import { askAppToExport } from './shell/appExport'
 import Launcher from './shell/Launcher'
 import AppHost from './shell/AppHost'
-import AppRuntime from './shell/AppRuntime'
 import InstallPrompt from './shell/InstallPrompt'
 import type { RunningApp, Screen } from './shell/types'
 import StudioShell from './studio/StudioShell'
@@ -47,8 +46,6 @@ function resetTheme() {
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [running, setRunning] = useState<RunningApp | null>(null)
-  // The home CLAN app, shown under the Apps tab.
-  const [home, setHome] = useState<{ open: OpenResult; html: string } | null>(null)
   const [installed, setInstalled] = useState<InstalledApp[]>([])
   const [pendingLaunch, setPendingLaunch] = useState<OpenResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -86,7 +83,11 @@ export default function App() {
     try { setInstalled(await host.listApps()) } catch (e) { console.error(e) }
   }, [])
 
-  // Open the home CLAN app as the current document and render it.
+  // Go home. The host still opens its home document, so its session stands
+  // where it always has between documents, but the shell draws the home itself
+  // (Launcher): the crew stands on it in React, from the same figures the apps
+  // use. The host's own home app (napkin-host assets/home_app.html) is no longer
+  // shown here.
   const openHome = useCallback(async () => {
     const n = nextOpen()
     resetTheme() // home and other apps use the default Napkin theme
@@ -96,15 +97,12 @@ export default function App() {
       return
     }
     try {
-      const open = await host.openHome()
-      const html = open.has_human_view ? await host.getHumanHtml() : ''
+      await host.openHome()
       if (!isLatest(n)) return
-      setHome({ open, html })
-      refreshApps() // views other than Apps may offer installed apps too
+      refreshApps()
     } catch (e) {
       if (!isLatest(n)) return
       console.error('open_home failed', e)
-      setHome(null)
       if (hasServer && (e instanceof TypeError || !navigator.onLine)) {
         // The studio is out of reach, not broken: carry on as the viewer, so
         // offline copies and files on this device still open.
@@ -112,7 +110,7 @@ export default function App() {
         setDevice(true)
         setUnreachable(true)
       } else {
-        refreshApps() // fall back to the native launcher
+        refreshApps() // the home still lists what is installed
       }
     }
     setBooted(true)
@@ -334,8 +332,8 @@ export default function App() {
     await runArtifact(nextOpen(), result)
   }, [pendingLaunch, runArtifact])
 
-  // Apps: the home CLAN app when the host has one (as home always was), the
-  // native launcher when it couldn't load.
+  // Home: the device's own on the device; elsewhere the launcher, once the
+  // first open has settled.
   const apps = device && !serverless ? (
     <DeviceHome
       onChooseFile={chooseDeviceFile}
@@ -345,16 +343,14 @@ export default function App() {
     />
   ) : !booted ? (
     <LogoSpinnerFill label="Opening the studio…" />
-  ) : home ? (
-    <AppRuntime
-      htmlContent={home.html}
-      hasHumanView={home.open.has_human_view}
-      manifest={home.open.manifest}
-      renderModel="authored"
-      editMode={false}
-    />
   ) : (
-    <Launcher installed={installed} loading={loading} onLaunchApp={launchApp} onOpenFile={handleOpenFile} />
+    <Launcher
+      installed={installed}
+      loading={loading}
+      onLaunchApp={launchApp}
+      onOpenFile={handleOpenFile}
+      onOpenDocument={openPath}
+    />
   )
 
   return (
@@ -382,6 +378,9 @@ export default function App() {
           ) : undefined}
           onExport={exportCurrent}
           onSpinoff={spinOff}
+          // In the studio (or the desktop's files) each change is kept as it
+          // is made; on the device it stays in the tab (DeviceBanner says so).
+          saved={!device && !running.open.is_template}
         />
       ) : (
         <StudioShell

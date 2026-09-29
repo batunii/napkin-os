@@ -368,9 +368,107 @@ footer.doc-foot{margin-top:80px;padding-top:18px;border-top:1px solid var(--line
 .ident svg{width:22px;height:22px;flex:none;display:block}
 .ident .kind{font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin-left:3px}
 
-/* ---------- the start of a campaign: a form, filled in step by step ---------- */
 section.start{margin-top:40px}
-.flow{display:grid;gap:14px;max-width:820px}
+/* ---------- the crew does the talking (owner, 2026-09-29) ----------
+   Every screen asks one question, with one big box and one orange action.
+   The agents stand on it and speak in first person, signed with the name
+   they introduce themselves by in every app (NapkinAgents.who). */
+.say{position:relative;display:block;background:var(--paper);color:var(--ink);border:1.5px solid var(--ink);border-radius:16px;padding:10px 14px;font-size:15px;line-height:1.45;box-shadow:3px 3px 0 var(--ink);max-width:340px;text-align:left}
+.say::after{content:"";position:absolute;left:22px;bottom:-8.5px;width:14px;height:14px;background:var(--paper);border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);transform:rotate(45deg)}
+.say.left::after{left:-8.5px;bottom:auto;top:20px;transform:rotate(135deg)}
+.say .who,.rs-who{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-bottom:2px}
+.say b{font-weight:700}
+.linkbtn{border:0;background:none;padding:4px 2px;color:var(--ink2);font-size:13.5px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;border-radius:4px}
+.linkbtn:hover{color:var(--ink)}
+/* answers are buttons: big, and never a field unless you want one */
+.answers{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.ans{display:grid;gap:2px;justify-items:start;text-align:left;border:1.5px solid var(--ink);background:var(--paper);color:var(--ink);border-radius:14px;padding:11px 18px;min-height:48px;font-size:16px;cursor:pointer;transition:box-shadow .15s var(--ease),transform .15s var(--ease)}
+.ans:hover{box-shadow:3px 3px 0 var(--ink)}
+.ans:active{transform:translateY(1px)}
+.ans.primary{background:var(--ink);color:var(--paper)}
+.ans.escape{border-style:dashed}
+.ans small{font-size:12.5px;color:var(--ink2);font-weight:400;line-height:1.35}
+.ans.primary small{color:inherit;opacity:.75}
+.ans[disabled]{opacity:.55;cursor:wait;box-shadow:none}
+.answers.sm .ans{padding:8px 14px;min-height:44px;font-size:14.5px;border-radius:12px}
+
+/* the start: one question, one box, the crew standing on it */
+.rs-start{min-height:calc(100vh - 110px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:12px 0 40px;text-align:center}
+.rs-hello{display:grid;gap:8px;justify-items:center}
+.rs-hello h1{margin:0;font-size:clamp(30px,4.6vw,48px);font-weight:800;letter-spacing:-.035em;line-height:1.05;text-wrap:balance}
+.rs-hello p{margin:0;color:var(--ink2);font-size:17px;max-width:560px}
+.rs-stage{width:min(760px,100%);display:flex;flex-direction:column}
+.rs-hi{order:-2;align-self:flex-start;margin:0 0 12px 12px}
+.rs-crew{order:-1;display:flex;justify-content:space-between;align-items:flex-end;padding:0 28px;position:relative;z-index:2}
+.rs-m{position:relative;display:flex;flex-direction:column;align-items:center;border-radius:10px}
+.rs-m .agent-figure{width:52px;height:69px;margin-bottom:-7px}
+.rs-m.big .agent-figure{width:64px;height:85px}
+.rs-m:focus-visible{outline:3px solid var(--create);outline-offset:3px}
+.rs-tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);opacity:0;pointer-events:none;transition:opacity .15s var(--ease);z-index:5}
+.rs-tip .say{width:max-content;max-width:min(260px,70vw);font-size:14px}
+.rs-tip .say::after{left:calc(50% - 7px)}
+.rs-m.tl .rs-tip{left:-6px;transform:none}
+.rs-m.tl .rs-tip .say::after{left:16px}
+.rs-m.tr .rs-tip{left:auto;right:-6px;transform:none}
+.rs-m.tr .rs-tip .say::after{left:auto;right:16px}
+.rs-m:hover .rs-tip,.rs-m:focus-visible .rs-tip{opacity:1}
+.rs-box{position:relative;background:var(--paper);border:2px solid var(--ink);border-radius:32px;display:flex;align-items:flex-end;gap:8px;padding:8px 8px 8px 22px;box-shadow:0 14px 40px -18px rgba(20,22,27,.45);text-align:left;transition:box-shadow .2s var(--ease)}
+.rs-box:focus-within{box-shadow:0 0 0 4px var(--create-soft),0 14px 40px -18px rgba(20,22,27,.45)}
+.rs-box.drag{border-style:dashed;border-color:var(--create)}
+.rs-box textarea{flex:1;min-width:0;width:auto;min-height:0;max-height:220px;border:0;border-radius:0;background:transparent;padding:11px 0;font-size:18px;line-height:1.45;resize:none;outline:none}
+.rs-box textarea::placeholder{color:var(--ink3)}
+.rs-clip{width:48px;height:48px;border-radius:50%;border:0;background:var(--soft);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none}
+.rs-clip svg{width:20px;height:20px}
+.rs-clip:hover{background:var(--line-soft)}
+.rs-go{border:0;background:var(--create);color:#fff;font-size:16px;font-weight:600;border-radius:999px;padding:12px 24px;min-height:48px;cursor:pointer;white-space:nowrap;flex:none;transition:box-shadow .2s var(--ease)}
+.rs-go:hover{box-shadow:0 8px 20px -8px var(--create)}
+.rs-go[disabled],.rs-clip[disabled]{opacity:.6;cursor:wait;box-shadow:none}
+.rs-files{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:14px}
+.rs-name{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:14px;font-size:14px;color:var(--ink2)}
+.rs-name input{width:min(320px,80vw);border-radius:999px;padding:8px 14px;font-size:15px}
+.rs-under{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:18px}
+.rs-try{border:1px dashed var(--line);background:transparent;color:var(--ink2);border-radius:999px;padding:8px 14px;min-height:40px;font-size:14px;cursor:pointer}
+.rs-try:hover{border-color:var(--ink3);color:var(--ink)}
+.rs-drop{margin:14px 0 0;font-size:14.5px;color:var(--ink3)}
+.rs-drop b{color:var(--ink2);font-weight:500}
+.rs-more{display:flex;flex-wrap:wrap;justify-content:center;align-items:baseline;gap:4px 18px;margin-top:10px;font-size:13.5px;color:var(--ink3)}
+.rs-err{margin:14px auto 0;max-width:560px;text-align:left}
+body.dragging::after{content:"Drop it here to add it";position:fixed;inset:10px;z-index:80;display:grid;place-items:center;border:2px dashed var(--create);border-radius:22px;background:color-mix(in srgb,var(--paper) 82%,transparent);color:var(--create-ink);font-size:20px;font-weight:700;pointer-events:none}
+
+/* working: who does each stage, what they are doing, and what they ask */
+.rs-work{display:grid;gap:22px;max-width:900px;margin:8px auto 0}
+.rs-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;align-items:start;margin:0;padding:0;list-style:none}
+.rs-stp{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;font-size:13px;line-height:1.3;color:var(--ink3)}
+.rs-stp .agent-figure{width:44px;height:59px}
+.rs-lane{display:block;width:100%;height:6px;border-radius:6px;background:var(--line-soft)}
+.rs-stp .tick{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}
+.rs-stp.done{color:var(--ink2)}
+.rs-stp.done .rs-lane{background:var(--ink)}
+.rs-stp.now,.rs-stp.wait{color:var(--ink);font-weight:600}
+.rs-stp.now .rs-lane,.rs-stp.wait .rs-lane{background:linear-gradient(90deg,var(--create) 55%,var(--line-soft) 55%)}
+.rs-stp.wait .tick,.rs-stp.fail{color:var(--create-ink)}
+.rs-stp.fail .rs-lane{background:repeating-linear-gradient(135deg,var(--create) 0 4px,var(--create-soft) 4px 8px)}
+.rs-now{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:center;border:1px solid var(--line);border-radius:20px;padding:22px;background:var(--paper)}
+.rs-now > .agent-figure{width:56px;height:75px}
+.rs-now .say{max-width:none}
+.rs-lensrow{display:flex;flex-wrap:wrap;gap:2px 4px;align-items:flex-end;max-width:380px}
+.rs-lensrow .nm{display:flex;flex-direction:column;align-items:center;gap:2px}
+.rs-lensrow .agent-figure{width:40px;height:53px}
+.rs-lensrow small{font-size:12px;color:var(--ink2);font-weight:500}
+.rs-lensrow .nm.off{opacity:.4}
+.rs-lines{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:14.5px;color:var(--ink2)}
+.rs-lines li{display:flex;gap:8px;align-items:baseline}
+.rs-lines li i{font-style:normal;width:18px;text-align:center;flex:none;color:var(--ink3)}
+.rs-lines li.ok i{color:var(--green-ink)}
+.rs-lines li.off{color:var(--ink3)}
+.rs-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.rs-later{margin:0;text-align:center;color:var(--ink2);font-size:14.5px}
+details.rs-asked{border-top:1px solid var(--line-soft);padding-top:8px}
+details.rs-asked > summary{cursor:pointer;display:inline-flex;gap:6px;align-items:center;list-style:none;font-size:14px;color:var(--ink2);padding:6px 2px;border-radius:8px}
+details.rs-asked > summary::-webkit-details-marker{display:none}
+details.rs-asked > summary .chev{transition:transform .2s var(--ease)}
+details.rs-asked[open] > summary .chev{transform:rotate(180deg)}
+details.rs-asked .fcard{margin-top:10px}
 .fcard{border:1px solid var(--line-soft);border-radius:20px;background:var(--paper);box-shadow:var(--shadow);padding:18px 22px}
 .fc-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
 .fc-h .sp{flex:1}
@@ -390,42 +488,16 @@ section.start{margin-top:40px}
 .srow.open > dt{color:var(--create-ink)}
 @keyframes rowin{from{background:var(--green-soft)}to{background:transparent}}
 .atts{display:flex;flex-wrap:wrap;gap:6px}
-.att{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px 4px 8px;border-radius:10px;background:var(--paper);border:1px solid var(--line);text-decoration:none;max-width:100%}
+.att{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:5px 10px 5px 8px;border-radius:10px;background:var(--paper);border:1px solid var(--line);text-decoration:none;max-width:100%}
 .att svg{width:13px;height:13px;flex:none;color:var(--ink3)}
 .att .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:28ch}
 .att small{font-family:var(--mono);font-size:10px;color:var(--ink3)}
-.att button{border:0;background:transparent;cursor:pointer;padding:0 0 0 2px;color:var(--ink3);font-size:15px;line-height:1}
+.att button{border:0;background:transparent;cursor:pointer;padding:0 2px 0 4px;color:var(--ink3);font-size:18px;line-height:1;min-width:24px;min-height:24px}
 .att button:hover{color:var(--create-ink)}
-/* progress */
-.stepper{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:0;list-style:none}
-.step{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink3);padding:3px 10px 3px 6px;border-radius:999px}
-.step i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);display:inline-grid;place-items:center;flex:none;font-style:normal;font-family:var(--mono);font-size:9px}
-.step.done{color:var(--ink2)}
-.step.done i{background:var(--ink);border-color:var(--ink);color:var(--paper)}
-.step.now{color:var(--ink);background:var(--soft);font-weight:600}
-.step.now i{border-color:var(--ink);background:var(--ink);box-shadow:0 0 0 3px var(--line-soft)}
-.step.wait{color:var(--create-ink);background:var(--create-soft);font-weight:600}
-.step.wait i{border-color:var(--create);background:var(--create)}
-.step.fail{color:var(--create-ink)}
-.step.fail i{border-color:var(--create)}
-@keyframes spin{to{transform:rotate(360deg)}}
 .pct{font-family:var(--mono);font-size:11px;color:var(--ink3)}
-.nowline{display:flex;gap:14px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--soft)}
-.nowline .agent-figure{width:30px;height:40px}
-.nowline .t{display:grid;gap:2px;min-width:0}
-.nowline .t b{font-size:15px;font-weight:600;letter-spacing:-.01em}
-.nowline .t span{font-size:13px;color:var(--ink2);overflow-wrap:anywhere}
-.nowline.working{background:var(--zone-bg);color:var(--zone-fg);--ink:var(--zone-fg);--plan:var(--zone-fg);--plan-eye:var(--zone-bg)}
-.nowline.working .t span{color:var(--zone-2)}
-.nowline.working .agent-figure .af-shadow{opacity:.18}
-.nowline.wait{background:var(--create-soft);--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
-.nowline.wait .t b{color:var(--create-ink)}
-.nowline.err{background:var(--create-soft);color:var(--create-ink);--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
-.nowline.err .t span{color:var(--create-ink)}
-.nowline + .flag,.nowline + .notice{margin-top:10px}
-.fcard .flag{margin-top:10px}
-details.activity{margin-top:12px}
-details.activity > summary{cursor:pointer;font-size:12.5px;color:var(--ink2);display:inline-flex;gap:6px;align-items:center;list-style:none;border-radius:8px;padding:2px 4px;margin-left:-4px}
+.flag + .flag{margin-top:8px}
+details.activity{margin-top:4px}
+details.activity > summary{cursor:pointer;font-size:14px;color:var(--ink2);display:inline-flex;gap:6px;align-items:center;list-style:none;border-radius:8px;padding:6px 2px}
 details.activity > summary::-webkit-details-marker{display:none}
 details.activity > summary .chev{transition:transform .2s var(--ease)}
 details.activity[open] > summary .chev{transform:rotate(180deg)}
@@ -434,77 +506,34 @@ ol.act li{font-size:13px;line-height:1.5;color:var(--ink2);overflow-wrap:anywher
 ol.act li b{color:var(--ink);font-weight:600;margin-right:6px}
 ol.act li time{font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-right:6px}
 ol.act li .pill{margin-left:6px}
-/* the agent asks */
-.qcard{border:1.5px solid var(--ink);box-shadow:var(--shadow-lg);padding:20px 22px 18px;display:grid;gap:12px;animation:qin .35s var(--ease);scroll-margin-top:110px}
-.qcard:focus{outline:none}
-.qcard:focus-visible{outline:3px solid var(--create);outline-offset:3px}
+/* the agent asks: orange-bordered, signed by whoever asks */
+.rs-ask{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:start;border:2px solid var(--create);border-radius:20px;padding:22px;background:var(--paper);animation:qin .35s var(--ease);scroll-margin-top:110px}
+.rs-ask:focus{outline:none}
+.rs-ask:focus-visible{outline:3px solid var(--create);outline-offset:3px}
+.rs-ask > .agent-figure{width:56px;height:75px}
+.rs-ask h3{margin:2px 0 6px;font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.rs-ask .qtext{margin:0;font-size:17px;line-height:1.45;color:var(--ink);text-wrap:pretty}
+.rs-ask .qc-ctx{margin:6px 0 0;color:var(--ink2);font-size:14.5px;line-height:1.55;max-width:70ch}
 @keyframes qin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.qc-who{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink2)}
-.qc-who .agent-figure{width:27px;height:36px}
-.qc-who b{color:var(--ink);font-weight:600}
-.qc-h{margin:0;font-size:clamp(20px,2.4vw,26px);line-height:1.2;letter-spacing:-.03em;font-weight:800;text-wrap:balance}
-.qc-ctx{margin:0;color:var(--ink2);font-size:14px;line-height:1.55;max-width:70ch}
-.q-opts{display:grid;gap:8px}
-.q-opt{display:grid;gap:4px;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:14px;padding:11px 14px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease);width:100%}
-button.q-opt{cursor:pointer}
-button.q-opt:hover{border-color:var(--ink);box-shadow:var(--shadow)}
-button.q-opt:active{transform:translateY(1px)}
-.q-opt .l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;font-size:14.5px}
-.q-opt .src{font-size:12px;color:var(--ink2);white-space:normal}
-.q-opt .src q{font-style:italic}
-.q-opt.escape{border-style:dashed}
-.q-opt.picked{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft)}
-button.q-opt[disabled]{cursor:wait;opacity:.6}
-.q-text{display:grid;gap:6px}
-.q-text label{font-size:12.5px;color:var(--ink2)}
+.q-text{display:grid;gap:6px;margin-top:14px}
+.q-text label{font-size:14px;color:var(--ink2)}
 .q-text .r{display:flex;gap:8px}
-.q-text input{flex:1;min-width:0;padding:9px 12px;border-radius:12px;font-size:14px}
-.q-note{font-size:12px;color:var(--ink3)}
-
-/* composer */
-.composer{position:relative;margin:0;border:1px solid var(--line);border-radius:22px;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);box-shadow:var(--shadow-lg);padding:14px 14px 10px;display:grid;gap:10px;transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
-.composer:focus-within{border-color:var(--ink3)}
-.composer.drag{border-color:var(--create);border-style:dashed;box-shadow:0 0 0 4px var(--create-soft),var(--shadow-lg)}
-.composer textarea{border:0;background:transparent;min-height:96px;padding:6px 8px;font-size:16px;line-height:1.5;resize:none;outline:none}
-.composer textarea::placeholder{color:var(--ink3)}
-.composer .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.composer .row .sp{flex:1}
-.composer .name{display:flex;gap:8px;align-items:center;padding:0 8px;font-size:12.5px;color:var(--ink2)}
-.composer .name input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;background:transparent;padding:4px 2px;font-size:13px}
-.composer .name input:focus{outline:none;border-bottom-color:var(--ink)}
-.btn.icon svg{width:15px;height:15px}
-.drop-hint{position:absolute;inset:0;display:none;place-items:center;border-radius:22px;background:color-mix(in srgb,var(--paper) 80%,transparent);font-weight:600;color:var(--create-ink);pointer-events:none}
-.composer.drag .drop-hint{display:grid}
-/* who is signing: rarely needed, so out of the form */
-.signas{font-size:12px;color:var(--ink3);margin-top:-8px}
-.signas > summary{cursor:pointer;display:inline-block;border-radius:6px;padding:1px 2px}
+.q-text input{flex:1;min-width:0;padding:11px 14px;border-radius:12px;font-size:16px}
+.q-text .btn{border-radius:12px;padding:10px 18px;font-size:15px}
+.q-note{margin:8px 0 0;font-size:13px;color:var(--ink3)}
+/* who is signing: rarely needed, so out of the way */
+.signas{font-size:13px;color:var(--ink3)}
+.signas > summary{cursor:pointer;display:inline-block;border-radius:6px;padding:4px 2px;text-decoration:underline;text-underline-offset:3px}
 .signas > summary b{color:var(--ink2);font-weight:500}
-.signas .in{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
-.signas input{width:18ch;padding:4px 9px;font-size:12px;border-radius:999px}
-.signas p{margin:6px 0 0;max-width:60ch}
+.signas .in{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.signas input{width:18ch;padding:6px 10px;font-size:13px;border-radius:999px}
+.signas p{margin:6px auto 0;max-width:60ch}
 
-/* the empty document: the same intake pattern as Brief Maker — who does the
-   work on the Plan band, the ask beside it, one primary action. The top bar
-   is hidden until there is something in it: then the OS toolbar shows the
-   app's name as the document title, and the band carries the identity. */
+/* the empty document: the start page alone; the top bar waits until there
+   is something in it (then the OS toolbar names the document). */
 body.fresh .top,body.fresh #hero,body.fresh #gates,body.fresh #jobs,body.fresh section.region,body.fresh #docfoot{display:none!important}
 body.fresh section.start{margin-top:0}
 body.fresh main{padding-top:24px}
-.intake{min-height:calc(100vh - 110px);display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:28px;align-items:stretch;width:100%}
-.intake .intro{border-radius:18px;padding:32px 30px 26px;display:flex;flex-direction:column;gap:20px}
-.intake .h1{font-size:clamp(32px,4.4vw,50px);font-weight:800;letter-spacing:-.045em;line-height:1.03;margin:0;text-wrap:balance}
-.intake .lede{margin:0;color:var(--zone-2);font-size:15.5px;line-height:1.6;max-width:48ch}
-.intake .intro .ident{color:var(--zone-fg)}
-.intake .ask{display:flex;flex-direction:column;justify-content:center;gap:18px;padding:12px 0}
-.crew{display:grid;gap:6px;margin-top:auto}
-.crew .who{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--zone-2);padding:4px 10px 4px 6px;border-radius:12px;background:var(--zone-tint)}
-.crew .who b{color:var(--zone-fg);font-weight:600;font-size:13px;min-width:7.5em}
-.crew .agent-figure{width:22px;height:30px}
-.crew .who.many{flex-wrap:wrap;row-gap:4px;padding-top:8px}
-.crew .lensrow{display:flex;gap:2px;flex:none;flex-basis:100%}
-.crew .lensrow .agent-figure{width:15px;height:20px}
-@media (max-width:860px){.intake{grid-template-columns:1fr;min-height:0;gap:16px}.intake .intro{padding:22px 20px 18px;gap:14px}.crew{grid-template-columns:1fr 1fr}}
-@media (max-width:520px){.crew{grid-template-columns:1fr}.crew .who span{display:none}}
 /* the campaign's own header: on the Plan band */
 .hero.band{border-radius:18px;padding:22px 26px 24px;margin:18px 0 8px}
 .hero.band h1{color:var(--zone-fg)}
@@ -514,17 +543,27 @@ body.fresh main{padding-top:24px}
 .hero.band .muted{color:var(--zone-3)}
 .hero.band .pill{background:transparent;border-color:var(--zone-line);color:var(--zone-fg)}
 @media (max-width:640px){.hero.band{padding:18px 16px 18px}}
-.btn.go{padding:10px 18px;font-size:14px;font-weight:600;border-radius:12px}
-.btn.go .arrow{transition:transform .2s var(--ease)}
-.btn.go:hover .arrow{transform:translateX(3px)}
-.composer .btn.icon{border-radius:12px;padding:9px 13px}
+@media (max-width:720px){
+  .rs-crew{padding:0 10px}
+  .rs-m .agent-figure{width:34px;height:45px;margin-bottom:-5px}
+  .rs-m.big .agent-figure{width:44px;height:59px}
+  .rs-box{flex-wrap:wrap;border-radius:24px;padding:8px 8px 8px 16px}
+  .rs-box textarea{flex-basis:100%;font-size:17px}
+  .rs-go{flex:1}
+  .rs-steps{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:18px}
+  .rs-now,.rs-ask{grid-template-columns:1fr;padding:18px 16px}
+  .rs-now .say.left::after{left:22px;top:-8.5px;transform:rotate(225deg)}
+  .rs-lensrow .agent-figure{width:32px;height:43px}
+  .rs-lensrow small{font-size:11px}
+}
+@media (max-width:440px){
+  .rs-m .agent-figure{width:27px;height:36px;margin-bottom:-4px}
+  .rs-m.big .agent-figure{width:36px;height:48px}
+  .rs-hi{margin-left:0}
+}
 @media (max-width:640px){
   .fcard{padding:16px 14px;border-radius:16px}
-  .qcard{padding:16px 14px}
   .srow{grid-template-columns:1fr;gap:4px}
-  .step{padding:2px 6px 2px 4px}
-  .step > span:not(.sr){display:none}
-  .step.now > span,.step.wait > span,.step.fail > span{display:inline}
   .q-text .r{flex-wrap:wrap}
   .q-text .r .btn{flex:none}
 }
@@ -533,14 +572,56 @@ section.report{margin-top:36px}
 /* Two modes (owner, 2026-09-28). Working: the crew, the stages and the
    question; no half-built document. Done: the report the agent laid out, what
    needs you at the top, and everything recorded behind one disclosure. */
-body.working #report,body.working #records,body.working #hero,body.working #gates,body.working #jobs,body.working #tray,body.working #docfoot,
+body.working #report,body.working #records,body.working #hero,body.working #gates,body.working #jobs,body.working #judge,body.working #docfoot,
 body.working .nav,body.working #extractBtn,body.working #researchBtn,body.working #synthBtn,body.working #lockBtn{display:none!important}
-body.fresh #tray,body.fresh #records{display:none!important}
+body.fresh #judge,body.fresh #records{display:none!important}
 body.done #hero,body.done #gates,body.done #lockBtn{display:none!important}
 body.done:not(.records-open) .nav,body.done:not(.records-open) #extractBtn,body.done:not(.records-open) #researchBtn,body.done:not(.records-open) #synthBtn{display:none!important}
-body.done #start{display:none}
-body.done.show-run #start{display:block}
-clan-tray .clf-tray{top:var(--top-h,53px)}
+/* With no report yet (a job that stopped, or never started) the run is what
+   there is to show, so it stays. */
+body.done:not(.show-run):not(.no-report) #start{display:none}
+/* ---------- the report's checks: Jude's bar, each check under its sentence ---------- */
+.judgebar{position:sticky;top:var(--top-h,0px);z-index:30;background:var(--paper);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.jb-in{max-width:1180px;margin:0 auto;padding:10px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.jb-in > .agent-figure{width:34px;height:45px;flex:none}
+.jb-text{flex:1;min-width:min(240px,100%);margin:0;font-size:15px;line-height:1.45}
+.jb-count{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:14px;color:var(--ink2)}
+.jb-count b{color:var(--ink);font-variant-numeric:tabular-nums}
+.jb-btn{border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);border-radius:999px;padding:9px 16px;min-height:42px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.jb-btn.go{background:var(--create);border-color:var(--create);color:#fff}
+.jb-done{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green-ink)}
+/* A layout that asks for the OS tray gets Jude's bar instead. */
+#report clan-tray{display:none}
+.rc-checks{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin:4px 0 12px}
+#rep-layout > .rc-checks{padding:0 clamp(20px,5vw,64px);margin:14px 0}
+.rc-checks.in-cols{grid-column:1/-1;padding:0;border:0;margin:0}
+.cl-cols:has(> .rc-checks.in-cols),.cl-split:has(> .rc-checks.in-cols),.cl-grid:has(> .rc-checks.in-cols){grid-auto-flow:row dense}
+.rc-chk{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start;border:2px solid var(--create);border-radius:16px;padding:14px 16px;background:var(--paper);color:var(--ink);text-align:left;font-size:15px;line-height:1.5;scroll-margin-top:calc(var(--top-h,0px) + 90px)}
+.rc-chk::before{content:"";position:absolute;top:-9px;left:36px;width:14px;height:14px;background:var(--paper);border-left:2px solid var(--create);border-top:2px solid var(--create);transform:rotate(45deg)}
+.rc-chk:focus{outline:none}
+.rc-chk:focus-visible{outline:3px solid var(--create);outline-offset:3px}
+.rc-chk > .agent-figure{width:36px;height:48px}
+.rc-chk .q{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--create-ink)}
+.rc-chk .t{margin:2px 0 0;font-weight:500;font-size:15.5px}
+.rc-chk .claim{margin:6px 0 0;padding-left:12px;border-left:3px solid var(--create);font-size:15.5px}
+.rc-chk .from{margin:4px 0 0;font-size:14px;color:var(--ink2)}
+.rc-why{display:grid;gap:8px;margin-top:12px}
+.rc-why label{font-size:14px;color:var(--ink2)}
+.rc-why .r{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rc-why input{flex:1 1 220px;min-width:0;padding:10px 12px;border-radius:12px;font-size:15px}
+.rc-chk.flash{animation:rcflash 1.2s var(--ease)}
+@keyframes rcflash{0%{box-shadow:0 0 0 7px color-mix(in srgb,var(--create) 35%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+.rc-ok{display:inline-flex;align-items:center;gap:6px;justify-self:start;width:max-content;max-width:100%;font-size:13.5px;font-weight:600;color:var(--green-ink);background:var(--green-soft);border-radius:999px;padding:3px 12px}
+.rc-ok.out{color:var(--create-ink);background:var(--create-soft)}
+.rc-rest{margin-top:22px;border-top:1px solid var(--line);padding-top:18px;display:grid;gap:12px}
+.rc-rest h3{margin:0;font-size:19px;font-weight:700;letter-spacing:-.02em}
+.rc-rest > p{margin:0;color:var(--ink2);font-size:14.5px}
+.rc-rest .rc-chk::before{display:none}
+/* In the report's dark band the figures are drawn for the band. */
+.cl-band .rc-chk{--plan:var(--ink);--plan-eye:var(--paper)}
+/* What a person agreed to turns green; what waits is marked. */
+#rep-layout .clf.claim.s-verified{background:var(--green-soft);box-shadow:inset 0 -2px 0 var(--green);border-radius:3px}
+@media (max-width:640px){.jb-in{padding:8px 16px}.jb-text{font-size:14.5px}.rc-chk{grid-template-columns:1fr;padding:14px}.rc-chk > .agent-figure{width:30px;height:40px}}
 .rep-layout{margin-top:14px}
 .rep-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--ink3)}
 .rep-bar .sp{flex:1}
@@ -624,7 +705,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   .rep,.fcard,.blk-card{box-shadow:none!important;break-inside:avoid-page}
   details.activity > summary .chev{display:none}
   .srow .ptext{max-height:none;overflow:visible}
-  body.fresh .intake{display:none}
+  body.fresh .rs-start{display:none}
   a{text-decoration:none}
   @page{margin:16mm}
 }
@@ -655,7 +736,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   </div>
 </header>
 
-<clan-tray id="tray"></clan-tray>
+<div class="judgebar no-print" id="judge" role="region" aria-label="What needs you" hidden></div>
 <main id="doc">
   <div id="notices"></div>
   <div class="hero band" id="hero"></div>
@@ -1396,12 +1477,15 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     // close it yourself, it stays as you left it.
     if(rec&&!rec.dataset.touched&&rec.open!==!hasLayout){ rec.dataset.auto=String(!hasLayout); rec.open=!hasLayout; }
     document.body.classList.toggle('records-open', !!(rec&&rec.open));
-    var top=document.querySelector('.top'); if(top) document.documentElement.style.setProperty('--top-h', top.offsetHeight+'px');
+    document.body.classList.toggle('no-report', !isObj(D().report));
+    var top=document.querySelector('.top'), pos=top?getComputedStyle(top).position:'';
+    if(top) document.documentElement.style.setProperty('--top-h', (pos==='sticky'||pos==='fixed'?top.offsetHeight:0)+'px');
   }
   function render(){
     try{
       renderNotices(); renderHero(); renderReport(); renderChat(); renderGates(); renderJobs(); renderAsk(); renderFacts(); renderFindings(); renderSelection(); renderHistory(); renderTop(); syncTitle(); mode();
       if(window.ClanFields) ClanFields.refresh();
+      renderChecks();
     }catch(e){
       console.error(e);
       $('notices').innerHTML='<div class="notice" role="alert"><b>The view could not render this document.</b> '+esc(e&&e.message)+'</div>';
@@ -1805,16 +1889,37 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   var STAGE_WORK={extract:'read', identify:'read', select:'judge', research:'research', synthesise:'synthesise', report:'draft'};
   var CREW_OK=typeof NapkinAgents==='object';
   function stageAgent(k,lens){ return CREW_OK?NapkinAgents.forWork(STAGE_WORK[k]||'read',lens):''; }
-  if(CREW_OK) STAGES.forEach(function(S){ S.who=S.k==='research'?'The researchers':(NapkinAgents.name[stageAgent(S.k)]||S.who); });
-  var IDENT_MARK='<svg viewBox="0 0 44 44" aria-hidden="true"><circle fill="currentColor" cx="22" cy="12" r="5"/><circle fill="currentColor" cx="12" cy="32" r="5"/><circle fill="currentColor" cx="32" cy="32" r="5"/><rect fill="currentColor" x="20.7" y="15" width="2.6" height="8"/><rect fill="currentColor" x="10.7" y="21.5" width="22.6" height="2.6"/><rect fill="currentColor" x="10.7" y="21.5" width="2.6" height="7"/><rect fill="currentColor" x="30.7" y="21.5" width="2.6" height="7"/></svg>';
-  function fig(stage, state, lens){ return CREW_OK?agentFigure(stageAgent(stage,lens)||'extract', {state:state, decorative:true}):''; }
+  // A stage is signed by the name its agent introduces itself by, the same in
+  // every app (Ellis reads, Jude picks, Sam finds the points, Dara writes).
+  if(CREW_OK) STAGES.forEach(function(S){ S.who=S.k==='research'?'The researchers':(NapkinAgents.given[stageAgent(S.k)]||S.who); });
+  function given(k){ return CREW_OK&&NapkinAgents.given[k]||''; }
+  function whoOf(k){ return CREW_OK?NapkinAgents.who(k):''; }
+  function figK(k, state){ return CREW_OK&&k?agentFigure(k, {state:state, decorative:true}):''; }
+  function fig(stage, state, lens){ return figK(stageAgent(stage,lens)||'extract', state); }
+  // The researcher for each lens, in the taxonomy's order.
+  function lensAgent(l){ return CREW_OK?NapkinAgents.forWork('research', l):''; }
+  function lensOf(from){ var m=/^([a-z_]+)(\/|$)/.exec(String(from||'')); return m&&LENS[m[1]]?m[1]:''; }
+  // What each agent says it will do, and what a researcher looks into, in
+  // plain words. The names come from the crew; only the lines are the app's.
+  var SAYS={
+    market_structure:['I\u2019ll size the market.', 'how big the market is, and who leads it'],
+    positioning:['I\u2019ll see what each brand claims.', 'what the brands say about themselves'],
+    culture:['I\u2019ll find who buys, and why.', 'who buys, and why'],
+    codes:['I\u2019ll see what the ads look like.', 'what the ads in this category usually look like'],
+    rhythm:['I\u2019ll find when people buy.', 'when people buy most'],
+    media:['I\u2019ll track who spends where.', 'who spends what on ads, and where'],
+    regulation:['I\u2019ll list what you can\u2019t say.', 'what the rules let you say'],
+    effectiveness:['I\u2019ll find ads that worked.', 'which ads in this category worked'],
+    synthesis:['I\u2019ll turn the facts into points.'],
+    drafter:['I\u2019ll write it up. Every line says where it came from.']
+  };
   ICON.clip='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M10.5 4.5 5.8 9.2a1.6 1.6 0 0 0 2.3 2.3l4.9-4.9a3 3 0 0 0-4.3-4.3L3.8 7.2a4.4 4.4 0 0 0 6.2 6.2l3.5-3.5"/></svg>';
   ICON.send='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg>';
   ICON.doc='<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M4 1.8h5.2L12.5 5v9.2H4Z M9 1.8V5h3.5"/></svg>';
   ICON.chev='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="m4 6 4 4 4-4"/></svg>';
 
   var CHAT={files:[], draft:'', name:'', who:'', askWho:false, sending:false, sendStep:'', sendErr:'',
-            job:null, live:{}, answering:null, qdraft:{}, open:false, focusedQ:null,
+            job:null, live:{}, answering:null, qdraft:{}, open:false, sheetOpen:false, showName:false, focusedQ:null,
             reportBusy:false, reportErr:''};
   var POLL={t:null, delay:1000};
   var TITLE={done:'', hadName:null};
@@ -1942,31 +2047,10 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(!j && isObj(D().report)) st.report='done';
     return st;
   }
-  function stepperHtml(){
-    var st=stageStates(), j=CHAT.job;
-    var pg=j&&j.progress&&j.progress.total?j.progress:null;
-    return '<ol class="stepper" aria-label="Stages">'+STAGES.map(function(S){
-      var s=st[S.k], t={done:'done',now:'working',wait:'waiting for you',fail:'failed',todo:'not started'}[s];
-      return '<li class="step '+s+'" title="'+esc(S.l+': '+t)+'"'+(s==='now'||s==='wait'?' aria-current="step"':'')+'><i aria-hidden="true">'+(s==='done'?'✓':s==='fail'?'!':'')+'</i><span>'+esc(S.l)+'</span><span class="sr"> — '+esc(t)+'</span></li>';
-    }).join('')+(pg?'<li class="pct" aria-hidden="true">'+esc(pg.done)+' of '+esc(pg.total)+'</li>':'')+'</ol>';
-  }
   function attChip(mid){
     var m=material(mid), href=assetHref(m), name=m?(m.name||mid):mid;
     var inner=ICON.doc+'<span class="nm">'+esc(name)+'</span><small>'+esc(m?(m.kind||''):'not indexed')+'</small>';
     return href?'<a class="att" href="'+esc(href)+'" target="_blank" rel="noopener" title="'+esc(mid)+'">'+inner+'</a>':'<span class="att" title="'+esc(mid)+'">'+inner+'</span>';
-  }
-  function optOrigin(o){
-    if(o.origin==='extracted') return '<span class="ob extracted" title="Read from the material you supplied">'+ICON.quote+'You said this</span>';
-    if(o.origin==='proposed') return '<span class="ob proposed" title="Derived from pinned layer facts">'+ICON.infer+'We inferred this</span>';
-    if(o.origin==='stated') return '<span class="ob stated" title="From your own words, in an earlier answer">'+ICON.person+'You typed this</span>';
-    return '';
-  }
-  function optEvidence(o){
-    var h='';
-    if(isObj(o.source)){ var m=material(o.source.material_id);
-      h+='<span class="src">'+(o.source.quote?'<q>'+esc(o.source.quote)+'</q> — ':'')+esc(m?(m.name||o.source.material_id):o.source.material_id)+(o.source.locator?' · '+esc(o.source.locator):'')+'</span>'; }
-    if(arr(o.fact_ids).length) h+=pinChips(o.fact_ids);
-    return h;
   }
   function qField(q){ return (/#campaign\.([a-z_]+)$/.exec(String(q&&q.address||''))||[])[1]||''; }
   // Every question asked so far, in order (the agent messages that carry one),
@@ -2031,134 +2115,208 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     return h+'</dl></div>';
   }
 
-  // ── progress: the six stages, the agent at work, one live line ───────────
-  var DOING={extract:'is reading the ask', identify:'is working out the brand and the category', select:'is picking the lenses',
-             research:'is researching', synthesise:'is reading the facts together', report:'is writing the report'};
+  // ── working: the six stages as the agents who do them, and the one at work ─
   var MARKET={IE:'Ireland', GB:'Great Britain', UK:'the UK', US:'the US', FR:'France', DE:'Germany', ES:'Spain', IT:'Italy', NL:'the Netherlands'};
   function listJoin(a){ return a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
-  function liveLine(j){
-    if(j.state==='sending') return 'Sending your request to the research agent…';
-    if(j.state==='checking') return 'Checking on the research job…';
-    var S=STAGE[j.stage]||STAGE.extract, t=S.who+' '+DOING[S.k];
-    if(S.k==='research'){ var mk=arr(camp().markets&&camp().markets.value).map(function(m){ return MARKET[m]||m; }); if(mk.length) t+=' '+listJoin(mk); }
-    return t+'…';
-  }
+  function marketNames(){ return arr(camp().markets&&camp().markets.value).map(function(m){ return MARKET[m]||m; }); }
   function lastNarration(T, stage){
     for(var i=T.length-1;i>=0;i--){ var m=T[i].m; if(m.role==='agent'&&m.text&&!isObj(m.question)&&(!stage||m.stage===stage)) return m; }
     return null;
   }
-  function progressHtml(T){
+  // Each stage, signed by the agent who does it.
+  function stageLabel(k){
+    return {extract:given('extract')+' reads what you sent', identify:given('extract')+' finds the brand', select:given('judge')+' picks what to look into',
+      research:'The researchers look it up', synthesise:given('synthesis')+' finds the points', report:given('drafter')+' writes the report'}[k]
+      ||(STAGE[k]||{}).l||k;
+  }
+  function stepsHtml(){
+    var st=stageStates();
+    return '<ol class="rs-steps" aria-label="How far we are">'+STAGES.map(function(S){
+      var s=st[S.k], tick={done:'Done', now:'Now', wait:'Needs you', fail:'Stopped', todo:'Next'}[s];
+      return '<li class="rs-stp '+(s==='todo'?'':s)+'"'+(s==='now'||s==='wait'?' aria-current="step"':'')+'>'
+        +fig(S.k, s==='now'?'working':s==='wait'?'needs-you':'idle')+'<span class="rs-lane" aria-hidden="true"></span>'
+        +'<span>'+esc(stageLabel(S.k))+'</span><span class="tick">'+esc(tick)+'</span></li>';
+    }).join('')+'</ol>';
+  }
+  // Each researcher's lens, from the record: skipped by the select stage,
+  // run (selection.lenses_run), or still to come.
+  function lensPlan(){
+    var ms=arr(camp().markets&&camp().markets.value), S=sel(), skip=arr(S.lenses_skipped), runs=arr(S.lenses_run);
+    return LENSES.map(function(L){
+      var sk=skip.filter(function(x){ return x&&x.lens===L.k; });
+      var off=sk.some(function(x){ return !x.market; })||(ms.length>0&&ms.every(function(m){ return sk.some(function(x){ return x.market===m; }); }));
+      var need=ms.length?ms.filter(function(m){ return !sk.some(function(x){ return x.market===m; }); }).length:1;
+      var ran=runs.filter(function(r){ return r&&r.lens===L.k; }).length;
+      return {lens:L.k, k:lensAgent(L.k), off:off, done:!off&&ran>0&&ran>=need};
+    });
+  }
+  // What the agent at work says, in first person, from the job as it stands.
+  function speech(T){
     var j=CHAT.job, lq=liveQuestion(), active=jobActive(), rep=isObj(D().report);
+    var stage=(j&&STAGE[j.stage])?j.stage:'extract', k=stageAgent(stage)||'extract';
     var started=!!firstPrompt(), anyAgent=T.some(function(x){ return x.m.role==='agent'; });
-    var pill=j?(j.state==='needs_input'?'<span class="pill alert"><span class="d"></span>waiting for you</span>':active?'<span class="pill warn"><span class="d"></span>working</span>':j.state==='failed'?'<span class="pill alert"><span class="d"></span>failed</span>':j.state==='done'?'<span class="pill ok"><span class="d"></span>done</span>':''):(rep?'<span class="pill ok"><span class="d"></span>done</span>':'');
-    var h='<div class="fcard progress" id="progress"><div class="fc-h"><span class="eyebrow">Progress</span>'+pill+'</div>'+stepperHtml();
-    var stage=(j&&j.stage)||'', line, sub='', cls='';
+    var sp={stage:stage, k:k, mood:'working', hello:'Hi, I’m '+given(k)+'.', text:'', err:'', acts:''};
+    if(j&&j.state==='sending'){ sp.stage='extract'; sp.k='extract'; sp.hello='Hi, I’m '+given('extract')+'.'; sp.text='I’ve got your request. I’m passing it to the crew now.'; return sp; }
+    if(j&&j.state==='checking'){ sp.text='Let me see where we got to.'; return sp; }
     if(j&&active){
-      cls=' working'; line=liveLine(j);
-      var n=lastNarration(T, stage)||lastNarration(T); if(n) sub=n.text;
-    } else if(lq){
-      cls=' wait'; line=stageWho(stage)+' needs an answer from you to go on.'; sub='The question is below.';
-    } else if(j&&(j.state==='failed'||j.error)){
-      cls=' err'; line=j.state==='failed'?stageWho(stage)+' stopped: the job failed.':'The research agent could not be reached.';
-      sub=(j.error||'')+(j.state==='failed'?' What already landed stays in the document.':'');
-    } else if(rep||(j&&j.state==='done')){
-      stage='report'; line='Done. The report is above.'; var nr=lastNarration(T, 'report'); sub=nr?nr.text:'';
-    } else if(started&&!anyAgent&&!CHAT.sending){
-      stage='extract'; line='Your request is saved, but no research job is running for it.';
-    } else {
-      var ln=lastNarration(T); stage=ln?ln.stage:'extract'; line='The job is not running here.'; sub=ln?ln.text:'';
+      if(stage==='research'){ sp.k='research'; return sp; }
+      var fp=firstPrompt(), n=fp?arr(fp.attachments).length:0, b=camp().brand, np=Object.keys(pins()).length;
+      sp.text={
+        extract:'I’m reading what you sent'+(n?': your note and '+n+' file'+(n===1?'':'s')+'.':'.'),
+        identify:'I’m working out which brand this is about, and its category.'+(isObj(b)&&b.value&&b.value.name?' So far: '+b.value.name+'.':''),
+        select:'I’m picking which of our '+LENSES.length+' researchers this ask needs.',
+        synthesise:'I’m reading '+(np?'the '+np+' facts':'what')+' the researchers found, to find the points that matter.',
+        report:'I’m writing the report. Every line will say where it came from.'
+      }[stage]||'';
+      return sp;
     }
-    h+='<div class="nowline'+cls+'" role="status" aria-live="polite">'+fig(stage, cls===' working'?'working':cls===' wait'?'needs-you':'idle')+'<div class="t"><b>'+esc(line)+'</b>'+(sub?'<span>'+esc(sub)+'</span>':'')+'</div></div>';
-    if(j&&active&&j.applied===false&&j.reason&&j.reason!=='already applied') h+='<div class="flag amber"><div>The host did not apply the last change: '+esc(j.reason)+'</div></div>';
-    if(j&&j.id&&j.error&&j.state!=='failed') h+='<div class="no-print" style="margin-top:10px"><button type="button" class="btn sm" data-act="chat-poll">Check again</button></div>';
-    if(started&&!anyAgent&&!j&&!CHAT.sending) h+='<div class="no-print" style="margin-top:10px"><button type="button" class="btn sm primary" data-act="chat-retry">Start the research</button></div>';
+    if(lq){ sp.mood='needs-you'; sp.text='I need you for a moment. My question is just below.'; return sp; }
+    sp.mood='idle';
+    if(j&&(j.state==='failed'||j.error)){
+      sp.mood='needs-you';
+      sp.text=j.state==='failed'?'I had to stop. What we already found stays in the document.':'I can’t reach the crew right now.';
+      sp.err=j.error||'';
+      if(j.id&&j.error&&j.state!=='failed') sp.acts='<button type="button" class="ans" data-act="chat-poll">Check again</button>';
+      else if(!j.id&&started) sp.acts='<button type="button" class="rs-go" data-act="chat-retry">Try again</button>';
+      return sp;
+    }
+    if(rep||(j&&j.state==='done')){
+      sp.stage='report'; sp.k='drafter'; sp.hello='Hi, I’m '+given('drafter')+'.'; sp.text='We’re done. Your report is ready.';
+      if(document.body.classList.contains('show-run')) sp.acts='<button type="button" class="ans" data-act="show-run">Back to the report</button>';
+      return sp;
+    }
+    if(started&&!anyAgent&&!CHAT.sending&&!j){
+      sp.stage='extract'; sp.k='extract'; sp.hello='Hi, I’m '+given('extract')+'.'; sp.text='Your request is saved, but the research hasn’t started yet.';
+      sp.acts='<button type="button" class="rs-go" data-act="chat-retry">Start the research</button>';
+      return sp;
+    }
+    var ln=lastNarration(T); if(ln&&STAGE[ln.stage]){ sp.stage=ln.stage; sp.k=stageAgent(ln.stage)||'extract'; sp.hello='Hi, I’m '+given(sp.k)+'.'; }
+    sp.text='I’m not working on this right now.';
+    return sp;
+  }
+  function nowCardHtml(T){
+    // The host's narration stays in the log below; the card speaks plainly.
+    var sp=speech(T), j=CHAT.job, h='';
+    if(sp.k==='research'){
+      var plan=lensPlan(), on=plan.filter(function(x){ return !x.off; }), done=on.filter(function(x){ return x.done; }).length;
+      var mk=marketNames(), running=jobActive()&&j&&j.stage==='research';
+      h+='<div class="rs-now" role="status" aria-live="polite"><div class="rs-lensrow" aria-hidden="true">'+plan.map(function(x){
+        return '<span class="nm'+(x.off?' off':'')+'">'+figK(x.k, running&&!x.off&&!x.done?'working':'idle')+'<small>'+esc(given(x.k))+'</small></span>'; }).join('')+'</div>'
+        +'<div><div class="say left"><span class="who">'+esc(listJoin(on.map(function(x){ return given(x.k); })))+' · the researchers</span>'
+        +'<b>Hi, we’re the researchers.</b> Each of us looks into one thing'+(mk.length?' in '+esc(listJoin(mk)):'')+'.'
+        +(on.length<plan.length?' '+(plan.length-on.length)+' of us aren’t needed for this ask.':'')
+        +(done?' '+(done===on.length?'We’re all done.':done+' of us '+(done===1?'is':'are')+' done.'):'')+'</div>'
+        +'<ul class="rs-lines">'+plan.map(function(x){
+          var ic=x.off?'–':x.done?'✓':running?'…':'·';
+          return '<li class="'+(x.off?'off':x.done?'ok':'')+'"><i aria-hidden="true">'+ic+'</i><span>'+esc(given(x.k))+': '+esc(x.off?'not needed this time':(SAYS[x.k]||[])[1]||'')+'</span></li>'; }).join('')+'</ul>'
+        +'</div></div>';
+      return h;
+    }
+    h+='<div class="rs-now" role="status" aria-live="polite">'+figK(sp.k, sp.mood)
+      +'<div><div class="say left"><span class="who">'+esc(whoOf(sp.k))+'</span><b>'+esc(sp.hello)+'</b> '+esc(sp.text)+'</div>'
+      +(sp.err?'<div class="flag" style="margin-top:12px"><div>'+esc(sp.err)+'</div></div>':'')
+      +(j&&jobActive()&&j.applied===false&&j.reason&&j.reason!=='already applied'?'<div class="flag amber" style="margin-top:12px"><div>The host did not apply the last change: '+esc(j.reason)+'</div></div>':'')
+      +(sp.acts?'<div class="rs-acts no-print">'+sp.acts+'</div>':'')
+      +'</div></div>';
+    return h;
+  }
+  // Only true when it is: the job runs on the middleware, outlives this page,
+  // and a job the document itself records is picked up again on open.
+  function laterHtml(T){
+    var j=CHAT.job; if(!(j&&j.id&&(jobActive()||liveQuestion()))) return '';
+    if(!T.some(function(x){ return x.stored&&x.m.job_id===j.id; })) return '';
+    return '<p class="rs-later">'+(liveQuestion()?'You can close this. The question will be here when you come back.':'You can close this. We’ll keep going and it will be here when you come back.')+'</p>';
+  }
+  function activityHtml(T){
     var acts=T.filter(function(x){ return x.m.role==='agent'&&x.m.text; });
-    if(acts.length){
-      h+='<details class="activity" id="activity"'+(CHAT.open?' open':'')+'><summary><span>Activity</span><span class="pct">'+acts.length+'</span><span class="chev" aria-hidden="true">'+ICON.chev+'</span></summary><ol class="act">'
-        +acts.map(function(x){ var m=x.m; return '<li>'+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+'<b>'+esc(stageWho(m.stage))+'</b>'+esc(m.text)+(x.stored?'':'<span class="pill dash" title="From the job’s reply; the host has not written it yet">in flight</span>')+'</li>'; }).join('')
-        +'</ol></details>';
-    }
-    return h+'</div>';
+    if(!acts.length) return '';
+    return '<details class="activity no-print" id="activity"'+(CHAT.open?' open':'')+'><summary><span>What we’ve done so far</span><span class="pct">'+acts.length+'</span><span class="chev" aria-hidden="true">'+ICON.chev+'</span></summary><ol class="act">'
+      +acts.map(function(x){ var m=x.m; return '<li>'+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+'<b>'+esc(stageWho(m.stage))+'</b>'+esc(m.text)+(x.stored?'':'<span class="pill dash" title="From the job’s reply; the host has not written it yet">in flight</span>')+'</li>'; }).join('')
+      +'</ol></details>';
+  }
+  function workHtml(T, Q){
+    return '<div class="rs-work">'+stepsHtml()+nowCardHtml(T)+(Q?questionCard(Q, T):'')+laterHtml(T)+activityHtml(T)
+      +'<details class="rs-asked" id="asked"'+(CHAT.sheetOpen?' open':'')+'><summary><span>What you asked for</span><span class="chev" aria-hidden="true">'+ICON.chev+'</span></summary>'+sheetHtml(T)+'</details></div>';
   }
 
-  // ── the agent asks: one focused card, form controls, attributed ──────────
+  // ── the agent asks: one card, signed by whoever asks, answers as buttons ──
+  function optNote(o){
+    if(isObj(o.source)){ var m=material(o.source.material_id), nm=m?(m.name||o.source.material_id):o.source.material_id;
+      return (o.source.quote?'“'+o.source.quote+'” — ':'From ')+nm; }
+    if(arr(o.fact_ids).length) return 'From what we already know';
+    return '';
+  }
   function questionCard(Q, T){
-    var q=Q.q, ans=answerTo(q.id, T), busy=CHAT.answering===q.id, hid='qh-'+slug(q.id);
+    var q=Q.q, ans=answerTo(q.id, T), busy=CHAT.answering===q.id, hid='qh-'+slug(q.id), k=stageAgent(Q.stage)||'extract';
     var ctx=String(Q.text||'').replace(q.text||'\u0000','').trim();
-    var h='<div class="fcard qcard no-print" id="qcard" tabindex="-1" role="group" aria-labelledby="'+hid+'" data-q="'+esc(q.id)+'">'
-      +'<div class="qc-who">'+fig(Q.stage,'needs-you')+'<span><b>'+esc(stageWho(Q.stage))+'</b> asks</span><span class="pill alert"><span class="d"></span>research waits for your answer</span></div>'
-      +'<h3 class="qc-h" id="'+hid+'">'+esc(q.text)+'</h3>'
-      +(ctx?'<p class="qc-ctx">'+esc(ctx)+'</p>':'');
+    var h='<div class="rs-ask no-print" id="qcard" tabindex="-1" role="group" aria-labelledby="'+hid+'" data-q="'+esc(q.id)+'">'+figK(k,'needs-you')
+      +'<div><span class="rs-who">'+esc(whoOf(k)||stageWho(Q.stage))+'</span><h3>Quick question before I go on</h3>'
+      +'<p class="qtext" id="'+hid+'">'+esc(q.text)+'</p>'+(ctx?'<p class="qc-ctx">'+esc(ctx)+'</p>':'');
     if(ans&&!busy){
-      return h+'<div class="q-note">Your answer — '+esc(ans.m.text)+' — is recorded, but the job is still waiting on this question. <button type="button" class="btn sm" data-act="q-resend" data-q="'+esc(q.id)+'">Send it again</button></div></div>';
+      return h+'<p class="q-note">You answered “'+esc(ans.m.text)+'”, but it hasn’t reached me yet. <button type="button" class="linkbtn" data-act="q-resend" data-q="'+esc(q.id)+'">Send it again</button></p></div></div>';
     }
     var opts=arr(q.options);
     if(opts.length){
-      h+='<div class="q-opts" role="group" aria-labelledby="'+hid+'">'+opts.map(function(o){
-        var esc_=o.value===undefined;
-        return '<button type="button" class="q-opt'+(esc_?' escape':'')+'" data-act="q-opt" data-q="'+esc(q.id)+'" data-opt="'+esc(o.id)+'"'+(busy?' disabled':'')+'>'
-          +'<span class="l">'+esc(o.label)+(esc_?'<span class="pill dash">say it in your words</span>':optOrigin(o))+'</span>'+optEvidence(o)+'</button>';
+      h+='<div class="answers" role="group" aria-labelledby="'+hid+'">'+opts.map(function(o){
+        var own=o.value===undefined, note=own?'Say it in your own words':optNote(o);
+        return '<button type="button" class="ans'+(own?' escape':'')+'" data-act="q-opt" data-q="'+esc(q.id)+'" data-opt="'+esc(o.id)+'"'+(busy?' disabled':'')+'>'
+          +'<span>'+esc(o.label)+'</span>'+(note?'<small>'+esc(note)+'</small>':'')+'</button>';
       }).join('')+'</div>';
     }
     if(q.allow_text||!opts.length){
       var v=CHAT.qdraft[q.id]||'', tid='qtext-'+q.id;
-      h+='<div class="q-text"><label for="'+esc(tid)+'">'+(opts.length?'Or in your own words':'Your answer')+'</label><div class="r"><input type="text" id="'+esc(tid)+'" data-q="'+esc(q.id)+'" value="'+esc(v)+'" autocomplete="off"'+(busy?' disabled':'')+'><button type="button" class="btn primary" data-act="q-send" data-q="'+esc(q.id)+'"'+(busy?' disabled':'')+'>Answer</button></div>'
-        +'<div class="q-note">Your words are not written as the value: the agent turns them into choices and asks you to pick one.</div></div>';
+      h+='<div class="q-text"><label for="'+esc(tid)+'">'+(opts.length?'Or type your answer':'Your answer')+'</label><div class="r"><input type="text" id="'+esc(tid)+'" data-q="'+esc(q.id)+'" value="'+esc(v)+'" autocomplete="off"'+(busy?' disabled':'')+'><button type="button" class="btn primary" data-act="q-send" data-q="'+esc(q.id)+'"'+(busy?' disabled':'')+'>Answer</button></div>'
+        +'<p class="q-note">I’ll turn what you type into choices for you to pick from.</p></div>';
     }
-    if(busy) h+='<div class="q-note" role="status">Recording your answer…</div>';
-    return h+'</div>';
+    if(busy) h+='<p class="q-note" role="status">Saving your answer…</p>';
+    return h+'</div></div>';
   }
 
-  // The empty document opens the way Brief Maker does: a prompt box, attach
-  // any files, one primary action. Files upload on send (middleware §8.1).
-  function composerHtml(){
-    return '<div class="composer no-print" id="composer">'
-      +'<label class="sr" for="cmp-prompt">What does the client need?</label>'
-      +'<textarea id="cmp-prompt" rows="4" placeholder="Paste or describe the ask: the client, the brand, the markets, what they need to know…">'+esc(CHAT.draft)+'</textarea>'
-      +(CHAT.files.length?'<div class="atts">'+CHAT.files.map(function(f,i){ return '<span class="att">'+ICON.doc+'<span class="nm">'+esc(f.name)+'</span><small>'+esc(fmtSize(f.size||0))+'</small><button type="button" data-act="cmp-rm" data-i="'+i+'" aria-label="Remove '+esc(f.name)+'"'+(CHAT.sending?' disabled':'')+'>×</button></span>'; }).join('')+'</div>':'')
-      +'<div class="name"><label for="cmp-name">Working name</label><input type="text" id="cmp-name" value="'+esc(CHAT.name)+'" placeholder="optional" autocomplete="off"></div>'
-      +'<div class="row"><button type="button" class="btn icon" data-act="cmp-attach"'+(CHAT.sending?' disabled':'')+'>'+ICON.clip+'Attach files</button><input type="file" id="cmp-file" multiple hidden>'
-      +'<span class="sp"></span>'
-      +'<button type="button" class="btn primary go" data-act="cmp-send"'+(CHAT.sending?' disabled':'')+'>'+(CHAT.sending?'Starting…':'Start research <span class="arrow" aria-hidden="true">→</span>')+'</button></div>'
-      +(CHAT.sending?'<div class="q-note" role="status">'+esc(CHAT.sendStep)+'</div>':'')
-      +(CHAT.sendErr?'<div class="flag" role="alert"><div>'+esc(CHAT.sendErr)+'</div></div>':'')
-      +'<div class="drop-hint" aria-hidden="true">Drop to attach</div>'
-      +'</div>';
-  }
+  // ── the start: one question, one box, the crew standing on it ─────────────
+  // Two asks to try. They fill the box; nothing is sent until you press go.
+  var TRY=['plant-based yoghurt in the Netherlands and Belgium', 'why young people switch mobile network in Spain'];
   // `by` needs human:<id>. The host does not say who the viewer is, so the id
   // comes from the chain (an upload is attributed to the person) or, failing
   // that, from here: a small field, needed only with no file and no history.
   function signAsHtml(){
     var who=me();
-    if(who) return '<div class="signas no-print">Signing as <b>'+esc(who)+'</b> · <button type="button" class="btn ghost sm" data-act="who">change</button></div>';
-    return '<details class="signas no-print" id="signas"'+(CHAT.askWho?' open':'')+'><summary>Your user id, if the host cannot tell who you are</summary>'
-      +'<div class="in"><label for="cmp-who">Your user id</label><span class="mono">human:</span><input type="text" id="cmp-who" value="'+esc(CHAT.who)+'" placeholder="e.g. u_aoife" autocomplete="username"></div>'
-      +'<p>An attached file tells the host who you are. Without one, the record needs your id.</p></details>';
+    if(who) return '<span class="signas no-print">Signing as <b>'+esc(who)+'</b> · <button type="button" class="linkbtn" data-act="who">change</button></span>';
+    return '<details class="signas no-print" id="signas"'+(CHAT.askWho?' open':'')+'><summary>Tell us who you are (only if we ask)</summary>'
+      +'<div class="in"><label for="cmp-who">Your user id</label><span class="mono">human:</span><input type="text" id="cmp-who" value="'+esc(CHAT.who)+'" placeholder="your user id" autocomplete="username"></div>'
+      +'<p>A file you add tells us who you are. Without one, the record needs your id.</p></details>';
   }
-  // What each stage's agent does, in a line, for the intake band.
-  var STAGE_DOES={extract:'reads your prompt and what you attach', identify:'works out the brand and the category', select:'picks the lenses the ask calls for',
-    research:'researches each lens, market by market', synthesise:'turns pinned facts into findings', report:'writes the report, every claim cited'};
-  // One row per agent, in the order they first work: Extract reads the ask and
-  // works out the brand, so it is one row doing both.
-  function crewRows(){
-    var by={}, rows=[];
-    STAGES.forEach(function(S){
-      var id=S.k==='research'?'research':(stageAgent(S.k)||S.k), does=STAGE_DOES[S.k]||S.l;
-      if(by[id]){ by[id].does.push(does); return; }
-      rows.push(by[id]={k:S.k, who:S.who, does:[does], research:S.k==='research'});
-    });
-    return rows;
+  // Who stands on the box, left to right: Ellis greets; the researchers, Sam
+  // and Dara say what they will do when you point at them.
+  function crewBar(){
+    var keys=['extract'].concat(LENSES.map(function(L){ return lensAgent(L.k); }), ['synthesis','drafter']);
+    return '<div class="rs-crew">'+keys.map(function(k, i){
+      if(i===0) return '<span class="rs-m big">'+figK(k, CHAT.sending?'working':'idle')+'</span>';
+      var line='I’m '+given(k)+'. '+((SAYS[k]||[])[0]||''), who=whoOf(k);
+      return '<span class="rs-m'+(k==='drafter'?' big':'')+(i<3?' tl':i>keys.length-4?' tr':'')+'" tabindex="0" role="img" aria-label="'+esc(who+': '+line)+'">'+figK(k,'idle')
+        +'<span class="rs-tip" aria-hidden="true"><span class="say"><span class="who">'+esc(who)+'</span>'+esc(line)+'</span></span></span>';
+    }).join('')+'</div>';
   }
-  function intakeHtml(){
-    return '<div class="intake">'
-      +'<div class="band intro"><div class="ident">'+IDENT_MARK+'Research Tool<span class="kind">Plan</span></div>'
-      +'<h1 class="h1">Start a campaign.</h1>'
-      +'<p class="lede">Say what the client needs and drop in what they sent: the brief, the email, the deck. The agents work out the brand and the category, ask you when they cannot tell, research the lenses your prompt calls for, and come back with a report in which every claim cites a pinned fact or a finding.</p>'
-      +'<div class="crew" aria-label="Who works on it">'+crewRows().map(function(r){
-        var f=r.research&&CREW_OK?'<span class="lensrow">'+NapkinAgents.lenses.map(function(l){ return fig('research',undefined,l); }).join('')+'</span>':fig(r.k);
-        return '<div class="who'+(r.research?' many':'')+'">'+f+'<b>'+esc(r.who)+'</b><span>'+esc(r.does.join('; '))+'</span></div>'; }).join('')+'</div></div>'
-      +'<div class="ask"><div class="eyebrow">The ask</div>'+composerHtml()+signAsHtml()+'</div>'
-      +'</div>';
+  function startHtml(){
+    var hi=CHAT.sending?CHAT.sendStep:'Hi, I’m '+given('extract')+'! Tell me who the client is and the market. I’ll read anything you add.';
+    var off=CHAT.sending?' disabled':'';
+    return '<div class="rs-start">'
+      +'<div class="rs-hello"><h1>What should we find out?</h1><p>Name the client and the market. Add anything they sent you.</p></div>'
+      +'<div class="rs-stage">'
+      +'<div class="rs-box" id="composer">'
+        +'<label class="sr" for="cmp-prompt">What should we find out?</label>'
+        +'<textarea id="cmp-prompt" rows="1" placeholder="The client, the brand and the market"'+off+'>'+esc(CHAT.draft)+'</textarea>'
+        +'<button type="button" class="rs-clip" data-act="cmp-attach" aria-label="Add the client’s files" title="Add the client’s files"'+off+'>'+ICON.clip+'</button><input type="file" id="cmp-file" multiple hidden>'
+        +'<button type="button" class="rs-go" data-act="cmp-send"'+off+'>'+(CHAT.sending?'Starting…':'Start the research')+'</button>'
+      +'</div>'
+      +'<div class="rs-hi" aria-live="polite"><span class="say"><span class="who">'+esc(whoOf('extract'))+'</span>'+esc(hi)+'</span></div>'
+      +crewBar()
+      +(CHAT.files.length?'<div class="rs-files atts">'+CHAT.files.map(function(f,i){ return '<span class="att">'+ICON.doc+'<span class="nm">'+esc(f.name)+'</span><small>'+esc(fmtSize(f.size||0))+'</small><button type="button" data-act="cmp-rm" data-i="'+i+'" aria-label="Remove '+esc(f.name)+'"'+off+'>×</button></span>'; }).join('')+'</div>':'')
+      +(CHAT.showName||CHAT.name?'<div class="rs-name"><label for="cmp-name">Working name</label><input type="text" id="cmp-name" value="'+esc(CHAT.name)+'" placeholder="optional" autocomplete="off"></div>':'')
+      +(CHAT.sendErr?'<div class="flag rs-err" role="alert"><div>'+esc(CHAT.sendErr)+'</div></div>':'')
+      +'<div class="rs-under">'+TRY.map(function(t){ return '<button type="button" class="rs-try" data-act="cmp-try" data-text="'+esc(t)+'"'+off+'>Try: '+esc(t)+'</button>'; }).join('')+'</div>'
+      +'<p class="rs-drop"><b>Got a brief, an email or a deck?</b> Drop it anywhere on this page.</p>'
+      +'<div class="rs-more">'+(CHAT.showName||CHAT.name?'':'<button type="button" class="linkbtn" data-act="cmp-name">Add a name</button>')+signAsHtml()+'</div>'
+      +'</div></div>';
   }
   function renderChat(){
     var el=$('start'); if(!el) return;
@@ -2171,24 +2329,25 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     el.hidden=false;
     var lq=null;
     if(fresh && !CHAT.job){
-      el.innerHTML=intakeHtml();
+      el.innerHTML=startHtml();
     } else {
       lq=liveQuestion();
       var Q=lq?questions(T).filter(function(x){ return x.q.id===lq.id; })[0]:null;
-      el.innerHTML='<div class="flow">'+sheetHtml(T)+progressHtml(T)+(Q?questionCard(Q, T):'')+'</div>';
+      el.innerHTML=workHtml(T, Q);
     }
     if(keep){ var n=$(keep.id); if(n){ try{ n.focus({preventScroll:true}); if(keep.s!=null) n.setSelectionRange(keep.s, keep.e); }catch(e){} } }
     // A question that has just opened takes the focus, once: the agent is asking.
     if(lq&&CHAT.focusedQ!==lq.id){
       var qc=$('qcard');
       if(qc){ CHAT.focusedQ=lq.id;
-        var calm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         try{ qc.focus({preventScroll:true}); }catch(e){}
-        if(qc.scrollIntoView) qc.scrollIntoView({block:'center', behavior:calm?'auto':'smooth'}); }
+        if(qc.scrollIntoView) qc.scrollIntoView({block:'center', behavior:calm()?'auto':'smooth'}); }
     }
     var ta=$('cmp-prompt'); if(ta) grow(ta);
   }
-  function grow(ta){ ta.style.height='auto'; ta.style.height=Math.min(Math.max(ta.scrollHeight,96),420)+'px'; }
+  function calm(){ return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  // The box reads as one line and grows with a long ask, to a few lines.
+  function grow(ta){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight+2, 220)+'px'; }
 
   // ── composer: attach, upload, index, send ──────────────────────────────────
   function addFiles(list){
@@ -2427,7 +2586,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var f=fnds()[id];
     if(!f) return '<div class="blk-card"><span class="pill dash">'+esc(id)+' · not in the projection</span></div>';
     var st=f.status;
-    return '<div class="blk-card '+esc(st)+'"><div class="h">'
+    return '<div class="blk-card '+esc(st)+'" data-anchor="'+esc(id)+'"><div class="h">'
       +(st==='verified'?'<span class="pill ok"><span class="d"></span>verified by a person</span>':'<span class="derived">'+ICON.agent+'Derived by the agent</span>'+(st==='rejected'?'<span class="pill alert"><span class="d"></span>rejected</span>':'<span class="pill dash">not yet verified</span>'))
       +'<span class="sp"></span><a class="path" href="#finding-'+esc(id)+'">'+esc(id)+'</a></div>'
       +'<div class="st">'+esc(f.statement)+'</div>'+pinChips(f.cites)+'</div>';
@@ -2442,7 +2601,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var c=arr(sel().contested).filter(function(x){ return x.id===cid; })[0];
     if(!c) return '<div class="blk-card"><span class="pill dash">contest '+esc(cid)+' · not in selection</span></div>';
     var open=c.status==='open';
-    return '<div class="blk-card"><div class="h">'+(open?'<span class="pill alert"><span class="d"></span>sources disagree · nothing picked</span>':'<span class="pill ok"><span class="d"></span>disagreement resolved</span>')
+    return '<div class="blk-card" data-anchor="'+esc(c.id)+'"><div class="h">'+(open?'<span class="pill alert"><span class="d"></span>sources disagree · nothing picked</span>':'<span class="pill ok"><span class="d"></span>disagreement resolved</span>')
       +'<span class="mono" style="font-size:12px">'+esc(c.key)+'</span><span class="sp"></span><a class="path" href="#contest-'+esc(c.id)+'">'+esc(c.id)+'</a></div>'
       +'<div class="cvals">'+arr(c.values).map(function(v){ var ch=!open&&c.chosen===v.fact_id;
         return '<div class="cval'+(ch?' chosen':!open?' loser':'')+'"><div class="eyebrow">'+(ch?'chosen':!open?'not chosen':'value')+'</div><div class="v">'+esc(fmtPinValue({value:v.value, unit:v.unit}))+'</div><div class="srcline">from '+esc(v.from)+' · '+esc(v.fact_id)+'</div></div>'; }).join('')+'</div>'
@@ -2552,6 +2711,245 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(b) setTimeout(function(){ try{ b.focus({preventScroll:true}); }catch(e){} }, 350);
   }
 
+  // ── the report's checks: each sits under the sentence it is about ─────────
+  // What needs a person is the host's (clan://decisions, read by the OS's
+  // fields); the findings and contests are the record's. A check is signed by
+  // the agent who made it: Sam for a finding, the lens's researcher for a
+  // contest, Jude for anything else. Answers are the review routes the OS's
+  // drawer uses; "Where did this come from?" opens that drawer.
+  var CHK={ui:{}, busy:{}, at:''};
+  function fview(){ return window.ClanFields&&ClanFields.view?ClanFields.view():null; }
+  function refOfAddress(a){ var p=pathOf(a||''), m=/^(?:findings|facts|materials)\[([^\]]+)\]$/.exec(p)||/^selection\.contested\[([^\]]+)\]$/.exec(p); return m?m[1]:p; }
+  function contestById(id){ return arr(sel().contested).filter(function(c){ return c&&c.id===id; })[0]||null; }
+  function checks(){
+    var out=[], seen={};
+    Object.keys(fnds()).forEach(function(id){ var f=fnds()[id]; seen[id]=1; out.push({ref:id, kind:'finding', open:f.status==='proposed', status:f.status}); });
+    arr(sel().contested).forEach(function(c){ if(!c||!c.id) return; seen[c.id]=1; out.push({ref:c.id, kind:'contest', open:c.status==='open', status:c.status}); });
+    var V=fview();
+    arr(V&&V.attention).forEach(function(a, i){
+      if(!a.blocks_lock) return;
+      var r=a.address?refOfAddress(a.address):'';
+      if(r&&seen[r]) return; seen[r||'#'+i]=1;
+      out.push({ref:r, id:r||'item-'+i, kind:'other', open:true, text:a.text, label:a.label});
+    });
+    return out;
+  }
+  function srcRecs(){ var p=proj(); return p&&isObj(p.sources)?p.sources:{}; }
+  // A person's correction records their id as its publisher: say what it is instead.
+  function srcName(sid){ var s=srcRecs()[sid]; if(!s) return ''; if(s.tier==='reviewer-verified') return 'a correction made here'; return (s.publisher||s.domain||'')+(s.published_at?', '+String(s.published_at).slice(0,4):''); }
+  function pinSource(fid){ var p=pins()[fid], s=arr(p&&p.sources).filter(function(x){ return /^src_/.test(x); })[0]; return s?srcName(s):''; }
+  // The OS's money and counts; this view's own percent units.
+  function fmtAny(v){ return window.ClanFields&&ClanFields.format&&!/^percent/.test(v&&v.unit||'')?ClanFields.format(v):fmtPinValue(v); }
+  // Who a contest value came from, in words: its source, or the researcher.
+  function fromName(v){
+    var s=srcName(arr(v.sources).filter(function(x){ return /^src_/.test(x); })[0]||'');
+    if(s) return s;
+    var l=lensOf(v.from), m=String(v.from||'').split('/')[1];
+    if(l) return given(lensAgent(l))+'’s research'+(m?' ('+(MARKET[m]||m)+')':'');
+    return human(v.from)||'a source';
+  }
+  function contestAgent(c){
+    var vs=arr(c&&c.values);
+    for(var i=0;i<vs.length;i++){ var l=lensOf(vs[i].from)||(pins()[vs[i].fact_id]||{}).lens; if(l&&LENS[l]) return lensAgent(l); }
+    return 'judge';
+  }
+  function contestWhat(c){
+    var v=arr(c.values)[0]||{}, p=pins()[v.fact_id];
+    if(p&&window.ClanFields&&ClanFields.label) return ClanFields.label(p);
+    var k=String(c.key||'').split(':').pop().split('@')[0].split('.').pop().replace(/_/g,' ');
+    return k.charAt(0).toUpperCase()+k.slice(1);
+  }
+  // Who settled it, from the host's decision view: "You", or their name.
+  function decidedBy(path, kinds){
+    var ds=arr((fview()||{}).decisions);
+    for(var i=0;i<ds.length;i++){ var b=ds[i], d=b.decision||{};
+      if(b.superseded||kinds.indexOf(d.kind)===-1) continue;
+      if(arr(b.targets).some(function(t){ return t.path===path; })) return b.who&&b.who.you?'You':(b.who&&b.who.name)||''; }
+    return '';
+  }
+  // The sentence or figure a check is about: the block that holds the field,
+  // climbing out of lists, tables and columns so the card never becomes a
+  // cell, and out of wording a person may rewrite so it is never saved in it.
+  // A block that is itself a column keeps its card in the columns, on a row
+  // of its own under that block's row, and the card quotes what it asks about.
+  var GRIDS='.cl-cols,.cl-split,.cl-grid';
+  var HOLDS='p,li,h1,h2,h3,h4,blockquote,figcaption,td,th,.blk-card,.blk-claim,.blk-pins,clan-field[as="big"],clan-field[as="stat"],clan-chart,clan-quote,clan-gap';
+  var ROWS='.cl-nums,.cl-cols,.cl-split,.cl-grid,.cl-row,.blk-pins,.cvals,.rep-sum,tr,tbody,thead,table,ul,ol';
+  function anchorOf(c){
+    var root=$('report'); if(!root||!c.ref) return null;
+    var refs=[c.ref];
+    if(c.kind==='contest') arr((contestById(c.ref)||{}).values).forEach(function(v){ if(v.fact_id) refs.push(v.fact_id); });
+    var hit=null, exact=false;
+    Array.prototype.some.call(root.querySelectorAll('[data-ref],[data-anchor]'),function(el){
+      if(el.closest('.rc-checks,.rc-rest')) return false;
+      var r=el.getAttribute('data-ref')||el.getAttribute('data-anchor')||'';
+      var list=/^cite:/.test(r)?r.slice(5).split(','):[r];
+      if(!list.some(function(x){ return refs.indexOf(x)!==-1; })) return false;
+      hit=el; exact=r===c.ref; return true;
+    });
+    if(!hit) return null;
+    var b=hit.closest(HOLDS)||hit.closest('clan-field,clan-cite')||hit;
+    if(/^(TD|TH)$/.test(b.tagName)) b=b.closest('table')||b;
+    if(b.tagName==='LI') b=b.parentElement;
+    if(b.tagName==='FIGCAPTION') b=b.closest('figure')||b;
+    var cell=false;
+    for(;;){
+      var p=b.parentElement; if(!p||p===root||p.id==='rep-layout') break;
+      var tx=p.closest('[data-clan-text]'); if(tx&&root.contains(tx)){ b=tx; continue; }
+      if(!p.matches(ROWS)) break;
+      if(p.matches(GRIDS)){ cell=true; break; }
+      b=p;
+    }
+    return {el:b, exact:exact&&!cell, cell:cell};
+  }
+  function chkId(c){ return 'chk-'+slug(c.id||c.ref); }
+  function checkCard(c, shown){
+    var ui=CHK.ui[c.ref]||{}, busy=!!CHK.busy[c.ref], off=busy?' disabled':'', id=chkId(c), ref=esc(c.ref);
+    var locked=!!(window.ClanFields&&ClanFields.locked&&ClanFields.locked());
+    if(c.kind==='finding'){
+      var f=fnds()[c.ref]||{};
+      if(!c.open){
+        var by=decidedBy('findings['+c.ref+']', f.status==='rejected'?['verdict']:['verify']);
+        var st=String(f.statement||''), q=shown||!st?'':': “'+(st.length>60?st.slice(0,58).replace(/\s+\S*$/,'')+'…':st)+'”';
+        return f.status==='rejected'
+          ?'<span class="rc-ok out" id="'+id+'" tabindex="-1">'+esc((by?(by==='You'?'You took this out':by+' took this out'):'Taken out')+q)+'</span>'
+          :'<span class="rc-ok" id="'+id+'" tabindex="-1">✓ '+esc((by?(by==='You'?'You agreed':by+' agreed'):'Agreed')+q)+'</span>';
+      }
+      var cites=arr(f.cites), pubs=[];
+      cites.forEach(function(x){ var s=pinSource(x); if(s&&pubs.indexOf(s)===-1) pubs.push(s); });
+      var from='I worked this out from '+cites.length+' fact'+(cites.length===1?'':'s')
+        +(pubs.length?(pubs.length===1&&cites.length>1?(cites.length===2?', both from ':', all from '):', from ')+listJoin(pubs):'')+'.';
+      var h='<div class="rc-chk open" id="'+id+'" tabindex="-1" role="group" aria-label="'+esc(given('synthesis')+' asks: is this right?')+'">'+figK('synthesis','needs-you')
+        +'<div><span class="q">'+esc(given('synthesis'))+' · is this right?</span>'
+        +(shown?'':'<p class="claim">'+esc(f.statement||c.ref)+'</p>')+'<p class="t">'+esc(from)+'</p>';
+      if(ui.mode==='no'){
+        h+='<div class="rc-why"><label for="chkwhy-'+slug(c.ref)+'">What’s wrong with it? '+esc(given('synthesis'))+' will use this to fix it.</label>'
+          +'<div class="r"><input type="text" id="chkwhy-'+slug(c.ref)+'" data-ref="'+ref+'" value="'+esc(ui.why||'')+'" autocomplete="off"'+off+'>'
+          +'<button type="button" class="ans primary" data-act="chk-reject" data-ref="'+ref+'"'+off+'>'+(busy?'Saving…':'Take it out')+'</button>'
+          +'<button type="button" class="ans" data-act="chk-cancel" data-ref="'+ref+'"'+off+'>Keep it for now</button></div></div>';
+      } else if(!locked){
+        h+='<div class="answers sm"><button type="button" class="ans primary" data-act="chk-yes" data-ref="'+ref+'"'+off+'>'+(busy?'Saving…':'Yes, keep it')+'</button>'
+          +'<button type="button" class="ans" data-act="chk-no" data-ref="'+ref+'"'+off+'>No, take it out</button>'
+          +'<button type="button" class="ans" data-act="chk-why" data-ref="'+ref+'">Where did this come from?</button></div>';
+      }
+      return h+'</div></div>';
+    }
+    if(c.kind==='contest'){
+      var ct=contestById(c.ref)||{}, vs=arr(ct.values), k=contestAgent(ct);
+      if(!c.open){
+        var ch=vs.filter(function(v){ return v.fact_id===ct.chosen; })[0], who=decidedBy('selection.contested['+c.ref+']', ['resolve']);
+        return '<span class="rc-ok" id="'+id+'" tabindex="-1">✓ '+esc((who?(who==='You'?'You picked ':who+' picked '):'Settled: ')+(ch?fmtAny(ch):''))+'</span>';
+      }
+      var h2='<div class="rc-chk open" id="'+id+'" tabindex="-1" role="group" aria-label="'+esc(given(k)+': two sources disagree')+'">'+figK(k,'needs-you')
+        +'<div><span class="q">'+esc(given(k))+' · two sources disagree</span>'
+        +'<p class="t">'+esc(contestWhat(ct))+': which one should the report use?</p>'
+        +'<p class="from">'+esc(vs.map(function(v){ return fromName(v)+' says '+fmtAny(v); }).join('. ')+'.')+'</p>';
+      if(ui.mode==='pick'){
+        var pv=vs.filter(function(v){ return v.fact_id===ui.fid; })[0]||{};
+        h2+='<div class="rc-why"><label for="chkwhy-'+slug(c.ref)+'">Why '+esc(fmtAny(pv))+'? Pick a reason, or say it.</label>'
+          +'<div class="answers sm" style="margin-top:0">'+['It’s newer','The source is more trusted','It fits the market we’re in'].map(function(r){
+            return '<button type="button" class="ans" data-act="chk-reason" data-ref="'+ref+'" data-why="'+esc(r)+'"'+off+'>'+esc(r)+'</button>'; }).join('')+'</div>'
+          +'<div class="r"><input type="text" id="chkwhy-'+slug(c.ref)+'" data-ref="'+ref+'" value="'+esc(ui.why||'')+'" placeholder="Or say why" autocomplete="off"'+off+'>'
+          +'<button type="button" class="ans primary" data-act="chk-use" data-ref="'+ref+'"'+off+'>'+(busy?'Saving…':'Use '+esc(fmtAny(pv)))+'</button>'
+          +'<button type="button" class="ans" data-act="chk-cancel" data-ref="'+ref+'"'+off+'>Back</button></div></div>';
+      } else if(!locked){
+        h2+='<div class="answers sm">'+vs.map(function(v){
+          return '<button type="button" class="ans" data-act="chk-pick" data-ref="'+ref+'" data-fid="'+esc(v.fact_id)+'"><span>'+esc(fmtAny(v))+'</span><small>'+esc(fromName(v))+'</small></button>'; }).join('')
+          +'<button type="button" class="ans" data-act="chk-why" data-ref="'+ref+'">Where did this come from?</button></div>';
+      }
+      return h2+'</div></div>';
+    }
+    return '<div class="rc-chk open" id="'+id+'" tabindex="-1" role="group" aria-label="'+esc(given('judge')+': this needs a look')+'">'+figK('judge','needs-you')
+      +'<div><span class="q">'+esc(given('judge'))+' · this needs a look</span>'+(c.label?'<p class="t">'+esc(c.label)+'</p>':'')+'<p class="from">'+esc(c.text||'')+'</p>'
+      +'<div class="answers sm"><button type="button" class="ans" data-act="chk-open" data-ref="'+ref+'" data-note="'+esc(c.text||'')+'">Show me</button></div></div></div>';
+  }
+  var NUM=['No','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'];
+  function judgeBarHtml(all){
+    var N=all.length, open=all.filter(function(c){ return c.open; }).length, jn=given('judge');
+    var L=window.ClanFields&&ClanFields.locked?ClanFields.locked():null;
+    var lockBtn=window.ClanFields?'<button type="button" class="jb-btn go" data-clf-lock>Lock the report</button>':'<button type="button" class="jb-btn go" data-act="lock">Lock the report</button>';
+    var h='<div class="jb-in">'+figK('judge', !L&&open?'needs-you':'idle');
+    if(L){
+      var by=L.who&&L.who.you?'You':(L.who&&L.who.name)||'A person';
+      return h+'<p class="jb-text"><b>'+esc(jn)+' here: this report is locked.</b> '+esc(by)+' agreed to it'+(L.decision&&L.decision.timestamp?' on '+esc(String(L.decision.timestamp).slice(0,10)):'')+'. A change from here makes a new version.</p><span class="jb-done">✓ Locked</span></div>';
+    }
+    if(!N) return h+'<p class="jb-text"><b>'+esc(jn)+' here: your report is ready.</b> Nothing in it needs a person to check.</p><div class="jb-count">'+lockBtn+'</div></div>';
+    var n=N<NUM.length?NUM[N]:String(N);
+    if(open) return h+'<p class="jb-text"><b>'+esc(jn)+' here: your report is ready.</b> '+esc(n)+' thing'+(N===1?'':'s')+' in it need'+(N===1?'s':'')+' a person to agree before you share it. '+(N===1?'It’s':'They’re')+' marked below.</p>'
+      +'<div class="jb-count"><span role="status"><b>'+(N-open)+' of '+N+'</b> checked</span><button type="button" class="jb-btn" id="jb-next" data-act="chk-next">Next check ↓</button></div></div>';
+    return h+'<p class="jb-text"><b>'+esc(jn)+' here: everything is checked.</b> You can lock the report now, so it can be shared.</p>'
+      +'<div class="jb-count"><span role="status"><b>'+N+' of '+N+'</b> checked</span>'+lockBtn+'</div></div>';
+  }
+  function renderChecks(){
+    var bar=$('judge'), root=$('report'); if(!bar||!root) return;
+    var ae=document.activeElement, keep=null;
+    if(ae&&ae.id&&(bar.contains(ae)||(ae.closest&&ae.closest('.rc-checks,.rc-rest')))) keep={id:ae.id, card:ae.closest('.rc-chk,.rc-ok')&&ae.closest('.rc-chk,.rc-ok').id, s:ae.selectionStart, e:ae.selectionEnd};
+    Array.prototype.forEach.call(root.querySelectorAll('.rc-checks,.rc-rest'),function(n){ n.remove(); });
+    var on=document.body.classList.contains('done')&&isObj(D().report)&&!root.hidden;
+    if(!on){ bar.hidden=true; bar.innerHTML=''; return; }
+    var all=checks(), rest=[], boxes=[];
+    all.forEach(function(c){
+      var a=anchorOf(c);
+      if(!a){ if(c.open) rest.push(c); return; }
+      var box=null; for(var i=0;i<boxes.length;i++) if(boxes[i].el===a.el){ box=boxes[i].box; break; }
+      if(!box){ box=document.createElement('div'); box.className='rc-checks no-print'+(a.cell?' in-cols':''); a.el.insertAdjacentElement('afterend', box); boxes.push({el:a.el, box:box}); }
+      box.insertAdjacentHTML('beforeend', checkCard(c, a.exact));
+    });
+    // Nothing is lost: a check the layout does not show is answered here.
+    if(rest.length){
+      var r=document.createElement('div'); r.className='rc-rest no-print';
+      r.innerHTML='<h3>Also needs you</h3><p>The report above doesn’t show '+(rest.length===1?'this':'these')+', but a person still has to agree before it is shared.</p>'+rest.map(function(c){ return checkCard(c, false); }).join('');
+      root.appendChild(r);
+    }
+    bar.innerHTML=judgeBarHtml(all); bar.hidden=false;
+    if(keep){
+      var n=$(keep.id)||(keep.card&&$(keep.card));
+      if(n){ try{ n.focus({preventScroll:true}); if(keep.s!=null&&n.setSelectionRange) n.setSelectionRange(keep.s, keep.e); }catch(e){} }
+    }
+  }
+  function nextCheck(){
+    // The first open check after the last one visited, which keeps its id
+    // once answered, so answering one never skips the next.
+    var cards=document.querySelectorAll('#report .rc-chk.open'); if(!cards.length) return;
+    var at=CHK.at&&$(CHK.at), el=cards[0];
+    if(at) for(var i=0;i<cards.length;i++) if(cards[i]!==at&&(at.compareDocumentPosition(cards[i])&Node.DOCUMENT_POSITION_FOLLOWING)){ el=cards[i]; break; }
+    CHK.at=el.id;
+    el.scrollIntoView({block:'center', behavior:calm()?'auto':'smooth'});
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    var b=el.querySelector('button:not([disabled])')||el;
+    setTimeout(function(){ try{ b.focus({preventScroll:true}); }catch(e){} }, calm()?0:350);
+  }
+  function chkDecide(ref, route, body, done){
+    if(CHK.busy[ref]) return;
+    CHK.busy[ref]=true; renderChecks();
+    hostDecide(route, body).then(function(res){
+      CHK.busy[ref]=false;
+      if(res&&res.ok){ delete CHK.ui[ref]; toast(done); }
+      else toast('Not saved: '+((res&&(typeof res.error==='string'?res.error:res.error&&res.error.message))||'the host refused'));
+      renderChecks();
+    }).catch(function(e){ CHK.busy[ref]=false; toast('Not saved: '+(e&&e.message||e)); renderChecks(); });
+  }
+  function onCheck(act, b){
+    var ref=b.getAttribute('data-ref')||'', ui=CHK.ui[ref]||(CHK.ui[ref]={});
+    function focusWhy(){ var i=$('chkwhy-'+slug(ref)); if(i) i.focus(); }
+    switch(act){
+      case 'chk-yes': chkDecide(ref, '/verify', {finding:ref, rationale:''}, 'Kept: you agreed.'); break;
+      case 'chk-no': CHK.ui[ref]={mode:'no', why:''}; renderChecks(); focusWhy(); break;
+      case 'chk-reject':
+        if(!String(ui.why||'').trim()){ toast('Say what’s wrong, so it can be fixed.'); focusWhy(); return; }
+        chkDecide(ref, '/verdict', {target:'findings['+ref+']', polarity:'bad', rationale:String(ui.why).trim()}, 'Taken out.'); break;
+      case 'chk-pick': CHK.ui[ref]={mode:'pick', fid:b.getAttribute('data-fid'), why:''}; renderChecks();
+        var first=document.querySelector('#'+chkId({ref:ref})+' [data-act=chk-reason]'); if(first) first.focus(); break;
+      case 'chk-reason': case 'chk-use':
+        var why=act==='chk-reason'?b.getAttribute('data-why'):String(ui.why||'').trim();
+        if(!why){ toast('Pick a reason, or say why.'); focusWhy(); return; }
+        chkDecide(ref, '/resolve', {contest:ref, chosen:ui.fid, rationale:why}, 'Settled: the report uses it.'); break;
+      case 'chk-cancel': delete CHK.ui[ref]; renderChecks(); break;
+      case 'chk-why': if(window.ClanFields) ClanFields.open(ref); break;
+      case 'chk-open': if(window.ClanFields) ClanFields.open(ref, false, ref&&ClanFields.kindOf(ref)?'':b.getAttribute('data-note')); break;
+    }
+  }
+
   // ── title: from campaign.name, once known ──────────────────────────────────
   // Set when the name first appears in this session, or when the document still
   // wears a generic title; a title the person chose later is left alone.
@@ -2574,23 +2972,31 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     else if(id==='cmp-name') CHAT.name=t.value;
     else if(id==='cmp-who') CHAT.who=t.value.trim();
     else if(id&&id.indexOf('qtext-')===0) CHAT.qdraft[t.getAttribute('data-q')]=t.value;
+    else if(id&&id.indexOf('chkwhy-')===0){ var ui=CHK.ui[t.getAttribute('data-ref')]; if(ui) ui.why=t.value; }
   });
   document.addEventListener('keydown', function(e){
     var t=e.target; if(e.key!=='Enter'||e.isComposing||!t||!t.id) return;
-    if(t.id==='cmp-prompt'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); doSend(); }
+    // The box is a search box: Enter starts the research, Shift+Enter is a new line.
+    if(t.id==='cmp-prompt'&&!e.shiftKey){ e.preventDefault(); doSend(); }
     else if(t.id.indexOf('qtext-')===0){ e.preventDefault(); doAnswer(t.getAttribute('data-q'), null, t.value); }
+    else if(t.id.indexOf('chkwhy-')===0){ e.preventDefault(); var cb=t.closest('.rc-chk'), go=cb&&cb.querySelector('[data-act=chk-reject],[data-act=chk-use]'); if(go) go.click(); }
   });
   document.addEventListener('change', function(e){ if(e.target&&e.target.id==='cmp-file'){ addFiles(e.target.files); e.target.value=''; } });
-  document.addEventListener('toggle', function(e){ if(e.target&&e.target.id==='activity') CHAT.open=e.target.open; }, true);
+  document.addEventListener('toggle', function(e){
+    if(e.target&&e.target.id==='activity') CHAT.open=e.target.open;
+    else if(e.target&&e.target.id==='asked') CHAT.sheetOpen=e.target.open; }, true);
+  // Files dropped anywhere on the start page are attached, as the page says.
+  function dragOff(){ document.body.classList.remove('dragging'); var c=$('composer'); if(c) c.classList.remove('drag'); }
+  function hasFiles(e){ var t=e.dataTransfer&&e.dataTransfer.types; return !!t&&Array.prototype.indexOf.call(t,'Files')!==-1; }
   ['dragenter','dragover'].forEach(function(t){ document.addEventListener(t, function(e){
-    var c=$('composer'); if(!c||!e.dataTransfer) return;
-    e.preventDefault(); if(c.contains(e.target)) c.classList.add('drag');
+    var c=$('composer'); if(!c||!hasFiles(e)||CHAT.sending) return;
+    e.preventDefault(); document.body.classList.add('dragging'); c.classList.add('drag');
   }); });
-  document.addEventListener('dragleave', function(e){ var c=$('composer'); if(c&&(!e.relatedTarget||!c.contains(e.relatedTarget))) c.classList.remove('drag'); });
+  document.addEventListener('dragleave', function(e){ if(!e.relatedTarget) dragOff(); });
   document.addEventListener('drop', function(e){
-    var c=$('composer'); if(!c) return;
-    e.preventDefault(); c.classList.remove('drag');
-    if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    var c=$('composer'); dragOff(); if(!c) return;
+    e.preventDefault();
+    if(!CHAT.sending&&e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -2637,6 +3043,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       case 'cmp-attach': var fi=$('cmp-file'); if(fi) fi.click(); break;
       case 'cmp-rm': CHAT.files.splice(+b.getAttribute('data-i'),1); renderChat(); break;
       case 'cmp-send': doSend(); break;
+      case 'cmp-try': var tp=$('cmp-prompt'); CHAT.draft=b.getAttribute('data-text')||''; if(tp){ tp.value=CHAT.draft; grow(tp); tp.focus(); try{ tp.setSelectionRange(tp.value.length, tp.value.length); }catch(x){} } break;
+      case 'cmp-name': CHAT.showName=true; renderChat(); var ni=$('cmp-name'); if(ni) ni.focus(); break;
       case 'chat-retry': doRetry(); break;
       case 'chat-poll': POLL.delay=1000; pollNow(); break;
       case 'q-opt': doAnswer(b.getAttribute('data-q'), b.getAttribute('data-opt')); break;
@@ -2645,6 +3053,10 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       case 'report-refresh': doRefreshReport(); break;
       case 'show-run': document.body.classList.toggle('show-run'); var st=$('start'); if(st&&document.body.classList.contains('show-run')) st.scrollIntoView({block:'start',behavior:'smooth'}); break;
       case 'goto-confirm': gotoConfirm(b.getAttribute('data-field')); break;
+      case 'chk-yes': case 'chk-no': case 'chk-reject': case 'chk-pick': case 'chk-reason': case 'chk-use': case 'chk-cancel': case 'chk-why': case 'chk-open':
+        onCheck(act, b); break;
+      case 'chk-next': nextCheck(); break;
+      case 'lock': doLock(); break;
     }
   });
   $('lockBtn').addEventListener('click', doLock);
@@ -2658,6 +3070,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   $('exportBtn').addEventListener('click', function(){ doExport('pdf'); });
 
   window.addEventListener('clan:dataupdated', render);
+  // The OS's fields have read what needs a person again (clan://decisions).
+  window.addEventListener('clan:viewloaded', renderChecks);
   // The OS's decision panel may ask for a step again. These are the tasks it
   // may ask for; each runs as it does from this view, with its job card.
   var RUNNABLE=['research_lens','synthesise_findings','compose_report'];

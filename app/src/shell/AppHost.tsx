@@ -22,10 +22,12 @@ interface Props {
   banner?: ReactNode
   onExport: (kind: 'html' | 'pdf') => void
   onSpinoff: (appId: string) => void
+  /** Each change is kept as it is made, so the bar may say "Saved" (Toolbar). */
+  saved?: boolean
 }
 
 /** Chrome for one running app: toolbar + (collapsible) sidebar + render surface + panels. */
-export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff }: Props) {
+export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff, saved }: Props) {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false) // collapsed by default
   // Edit mode is the OS's: the app's fields become editable while it is on.
@@ -52,6 +54,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
         onSpinoff={onSpinoff}
         loading={false}
         validation={open.validation}
+        saved={saved}
         editMode={editMode}
         onToggleEdit={open.render_model === 'authored' ? () => setEditMode(e => !e) : undefined}
       />

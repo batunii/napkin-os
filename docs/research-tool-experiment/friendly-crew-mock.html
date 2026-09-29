@@ -1,0 +1,750 @@
+<title>Friendly Crew Mock</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#EEF0F3; --paper:#FFFFFF; --soft:#F2F3F6; --ink:#14161B; --ink2:#4A4F5C; --ink3:#8B919E; --line:#D6DAE2;
+  --plan:#16181D; --plan-eye:#FFFFFF; --create:#FF4F2E; --ok:#22C55E; --ok-soft:#E6F7EC; --warn:#F5A524;
+  --cobalt:#2F64F5; --cobalt-soft:#E7EDFE; --marigold:#FFC023;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --sans:"Geist", system-ui, -apple-system, "Segoe UI", sans-serif; --mono:"Geist Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ color-scheme:dark;
+  --ground:#0E0F12; --paper:#17191E; --soft:#22252C; --ink:#EEF0F3; --ink2:#B4B9C4; --ink3:#7E8492; --line:#2C3038;
+  --plan:#F2F3F6; --plan-eye:#16181D; --ok-soft:#15301F; --cobalt-soft:#1A2547; } }
+:root[data-theme="dark"]{ color-scheme:dark;
+  --ground:#0E0F12; --paper:#17191E; --soft:#22252C; --ink:#EEF0F3; --ink2:#B4B9C4; --ink3:#7E8492; --line:#2C3038;
+  --plan:#F2F3F6; --plan-eye:#16181D; --ok-soft:#15301F; --cobalt-soft:#1A2547; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.5; padding:0 16px}
+.wrap{max-width:1180px; margin:0 auto; padding-block:36px 72px; display:flex; flex-direction:column; gap:28px}
+h1,h2,h3{margin:0; text-wrap:balance}
+p{margin:0}
+.eyebrow{font-family:var(--mono); font-size:.72rem; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3)}
+.intro{display:flex; flex-direction:column; gap:10px; max-width:760px}
+.intro h1{font-size:clamp(1.9rem,4vw,2.6rem); font-weight:800; letter-spacing:-.02em; line-height:1.05}
+.intro p{color:var(--ink2); font-size:1.05rem}
+.rules{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px}
+.rules div{background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px}
+.rules b{font-weight:600}
+.rules span{color:var(--ink2); font-size:.92rem}
+
+/* tabs */
+.tabs{display:flex; flex-wrap:wrap; gap:8px}
+.tabs button{font:inherit; font-size:.92rem; font-weight:500; border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:999px; padding:8px 16px; cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--plan); color:var(--paper); border-color:var(--plan)}
+.tabs button:focus-visible, button:focus-visible, input:focus-visible{outline:2px solid var(--create); outline-offset:2px}
+.note{font-size:.92rem; color:var(--ink2); max-width:780px}
+
+/* window */
+.win{background:var(--paper); border:1px solid var(--line); border-radius:18px; overflow:hidden; box-shadow:0 20px 60px -30px rgba(20,22,27,.35)}
+.bar{display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line); font-size:.9rem}
+.bar .mark{width:22px; height:22px; border-radius:50%; background:conic-gradient(var(--create) 0 35%, #8B919E 35% 60%, #16181D 60%); flex:none}
+.bar b{font-weight:600}
+.bar .sp{flex:1}
+.bar .saved{font-size:.8rem; color:var(--ink3); display:flex; align-items:center; gap:6px}
+.bar .saved::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--ok)}
+.pill{font:inherit; font-size:.86rem; border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:999px; padding:6px 14px; cursor:pointer}
+.pill.dark{background:var(--plan); color:var(--paper); border-color:var(--plan)}
+.screen{min-height:620px; padding:40px 24px 56px; display:flex; flex-direction:column; align-items:center; gap:26px}
+
+/* speech bubble */
+.say{display:block; position:relative; background:var(--paper); border:1.5px solid var(--ink); border-radius:16px; padding:10px 14px; font-size:.95rem; line-height:1.4; max-width:320px; box-shadow:3px 3px 0 var(--ink)}
+.say::after{content:""; position:absolute; left:22px; bottom:-9px; width:14px; height:14px; background:var(--paper); border-right:1.5px solid var(--ink); border-bottom:1.5px solid var(--ink); transform:rotate(45deg) skew(8deg,8deg)}
+.say.up::after{bottom:auto; top:-9px; transform:rotate(225deg)}
+.say .who{display:block; font-family:var(--mono); font-size:.68rem; letter-spacing:.07em; text-transform:uppercase; color:var(--ink3); margin-bottom:2px}
+
+/* crew on the bar */
+.hello{display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center}
+.hello h2{font-size:clamp(1.9rem,4.4vw,3rem); font-weight:800; letter-spacing:-.025em; line-height:1.05}
+.hello p{color:var(--ink2); font-size:1.08rem; max-width:560px}
+.stage{position:relative; width:min(760px,100%); padding-top:150px}
+.crew{position:absolute; left:28px; right:28px; bottom:calc(100% - 150px); display:flex; justify-content:space-between; align-items:flex-end; pointer-events:none}
+.crew .m{position:relative; display:flex; flex-direction:column; align-items:center; pointer-events:auto; cursor:default}
+.crew .m svg{width:52px; height:69px; margin-bottom:-7px}
+.crew .m.big svg{width:64px; height:85px}
+.crew .m .tip{position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); white-space:nowrap; opacity:0; transition:opacity .15s var(--ease); pointer-events:none}
+.crew .m:hover .tip, .crew .m:focus-within .tip{opacity:1}
+.crew .m .tip .say{max-width:none}
+.crew .first{position:absolute; bottom:calc(100% + 6px); left:-6px; white-space:nowrap}
+.crew .first .say, .crew .tip .say{width:max-content; max-width:none}
+.search{position:relative; background:var(--paper); border:2px solid var(--ink); border-radius:999px; display:flex; align-items:center; gap:8px; padding:8px 8px 8px 22px; box-shadow:0 14px 40px -18px rgba(20,22,27,.45)}
+.search input{flex:1; min-width:0; border:0; background:transparent; font:inherit; font-size:1.12rem; color:var(--ink); padding:12px 0}
+.search input::placeholder{color:var(--ink3)}
+.clip{width:44px; height:44px; border-radius:50%; border:0; background:var(--soft); color:var(--ink); display:grid; place-items:center; cursor:pointer; flex:none}
+.go{border:0; background:var(--create); color:#fff; font:inherit; font-weight:600; font-size:1.02rem; border-radius:999px; padding:14px 24px; cursor:pointer; white-space:nowrap; flex:none}
+.under{display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:16px}
+.try{font:inherit; font-size:.9rem; border:1px dashed var(--line); background:transparent; color:var(--ink2); border-radius:999px; padding:7px 14px; cursor:pointer}
+.try:hover{border-color:var(--ink3); color:var(--ink)}
+.drop{margin-top:14px; font-size:.92rem; color:var(--ink3); text-align:center}
+.drop b{color:var(--ink2); font-weight:500}
+
+/* home */
+.apps{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; width:min(900px,100%)}
+.app{border:1px solid var(--line); border-radius:20px; padding:22px; display:flex; flex-direction:column; gap:14px; background:var(--paper); cursor:pointer; text-align:left; font:inherit; color:inherit}
+.app:hover{border-color:var(--ink)}
+.app .row{display:flex; align-items:flex-end; gap:2px; height:70px}
+.app .row svg{width:44px; height:59px}
+.app h3{font-size:1.25rem; font-weight:700}
+.app p{color:var(--ink2); font-size:.96rem}
+.app .cta{font-weight:600; color:var(--ink); display:flex; gap:6px; align-items:center}
+.recent{width:min(900px,100%); display:flex; flex-direction:column; gap:8px}
+.recent .item{display:flex; align-items:center; gap:14px; border:1px solid var(--line); border-radius:14px; padding:12px 16px}
+.recent .item svg{width:30px; height:40px}
+.recent .item div{flex:1; display:flex; flex-direction:column}
+.recent .item small{color:var(--ink3)}
+.recent .item .state{font-size:.82rem; border-radius:999px; padding:3px 10px; background:#FFF1EC; color:#C2371A}
+.recent .item .state.ok{background:var(--ok-soft); color:#177A3C}
+
+/* working */
+.track{width:min(900px,100%); display:flex; flex-direction:column; gap:22px}
+.steps{display:grid; grid-template-columns:repeat(6,1fr); gap:6px; align-items:start}
+.stp{display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; font-size:.84rem; color:var(--ink3)}
+.stp svg{width:44px; height:59px}
+.stp .lane{width:100%; height:6px; border-radius:6px; background:var(--soft)}
+.stp.done .lane{background:var(--ink)} .stp.done{color:var(--ink2)}
+.stp.now .lane{background:linear-gradient(90deg,var(--create) 55%, var(--soft) 55%)} .stp.now{color:var(--ink); font-weight:600}
+.stp .tick{font-size:.78rem}
+.now-card{display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; border:1px solid var(--line); border-radius:20px; padding:22px}
+.now-card .lensrow{display:flex; gap:0; align-items:flex-end}
+.now-card .lensrow svg{width:40px; height:53px}
+.now-card ul{margin:8px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:.95rem; color:var(--ink2)}
+.now-card li{display:flex; gap:8px; align-items:center}
+.now-card li i{font-style:normal; width:18px; text-align:center}
+.ask{display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start; border:2px solid var(--create); border-radius:20px; padding:22px; background:var(--paper)}
+.ask svg{width:56px; height:75px}
+.ask h3{font-size:1.2rem; font-weight:700}
+.ask p{color:var(--ink2)}
+.answers{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px}
+.answers button{font:inherit; font-size:1rem; border:1.5px solid var(--ink); background:var(--paper); color:var(--ink); border-radius:14px; padding:12px 18px; cursor:pointer}
+.answers button.primary{background:var(--ink); color:var(--paper)}
+.answers button:hover{box-shadow:3px 3px 0 var(--ink)}
+
+/* done */
+.ready{width:min(900px,100%); display:grid; grid-template-columns:auto 1fr; gap:22px; align-items:center}
+.ready svg.lead{width:84px; height:112px}
+.ready h2{font-size:clamp(1.6rem,3.4vw,2.3rem); font-weight:800; letter-spacing:-.02em}
+.ready p{color:var(--ink2); font-size:1.02rem}
+.checks{width:min(900px,100%); display:flex; flex-direction:column; gap:12px}
+.chk{display:grid; grid-template-columns:auto 1fr; gap:16px; border:1px solid var(--line); border-radius:18px; padding:18px 20px; align-items:start}
+.chk svg{width:40px; height:53px}
+.chk .q{font-size:.8rem; font-family:var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--ink3)}
+.chk .claim{font-size:1.08rem; font-weight:500; margin:4px 0 8px}
+.chk .from{font-size:.9rem; color:var(--ink2)}
+.chk .answers{margin-top:12px}
+.chk .answers button{padding:9px 16px; font-size:.94rem; border-radius:12px}
+.chk.answered{background:var(--ok-soft); border-color:transparent}
+.later{font-size:.94rem; color:var(--ink2); text-align:center}
+.later a{color:var(--ink); font-weight:600}
+
+/* brief */
+.modes{display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:16px}
+.modes button{font:inherit; border:1.5px solid var(--line); background:var(--paper); color:var(--ink); border-radius:14px; padding:10px 16px; cursor:pointer; text-align:left; display:flex; flex-direction:column}
+.modes button small{color:var(--ink3); font-size:.8rem}
+.modes button[aria-pressed="true"]{border-color:var(--ink)}
+
+
+/* brief look */
+.lookhead{width:min(900px,100%); display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center}
+.lookhead svg{width:64px; height:85px}
+.looks{width:min(900px,100%); display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px}
+.look{font:inherit; color:inherit; text-align:left; background:var(--paper); border:2px solid var(--line); border-radius:20px; padding:14px; display:flex; flex-direction:column; gap:10px; cursor:pointer}
+.look[aria-pressed="true"]{border-color:var(--ink); box-shadow:4px 4px 0 var(--ink)}
+.look b{font-size:1.06rem}
+.look span{color:var(--ink2); font-size:.92rem}
+.pv{height:150px; border-radius:12px; background:var(--soft); padding:14px; display:flex; flex-direction:column; gap:7px; overflow:hidden}
+.pv i{display:block; height:7px; border-radius:4px; background:var(--line)}
+.pv i.h{height:12px; width:60%; background:var(--ink3)}
+.pv .pics{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:auto}
+.pv .pics u{height:44px; border-radius:6px; background:linear-gradient(135deg,#FFC023,#FF6A55)}
+.pv .pics u:nth-child(2){background:linear-gradient(135deg,#6CD3A2,#2F64F5)}
+.pv .pics u:nth-child(3){background:linear-gradient(135deg,#7D52F4,#FF6A55)}
+.pv.brand{background:linear-gradient(135deg,#1a1320,#2a1518)}
+.pv.brand i{background:#5a4650} .pv.brand i.h{background:#ff5c49}
+.lookmore{width:min(900px,100%); display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+.panel{border:1px solid var(--line); border-radius:20px; padding:18px 20px; display:flex; flex-direction:column; gap:12px}
+.panel h3{font-size:1.02rem}
+.panel p{color:var(--ink2); font-size:.92rem}
+.swatches{display:flex; flex-wrap:wrap; gap:10px}
+.swatches button{width:52px; height:52px; border-radius:50%; border:2px solid var(--paper); box-shadow:0 0 0 1.5px var(--line); cursor:pointer}
+.swatches button[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ink)}
+.linkbtn{font:inherit; font-size:.92rem; background:none; border:0; padding:0; color:var(--ink); text-decoration:underline; text-underline-offset:3px; cursor:pointer; align-self:flex-start}
+.thumbs{display:flex; gap:8px; flex-wrap:wrap}
+.thumbs u{width:64px; height:64px; border-radius:10px; background:linear-gradient(135deg,#FFC023,#FF6A55)}
+.thumbs u:nth-child(2){background:linear-gradient(135deg,#6CD3A2,#2F64F5)}
+.thumbs label{width:64px; height:64px; border-radius:10px; border:1.5px dashed var(--line); display:grid; place-items:center; color:var(--ink3); font-size:1.4rem; cursor:pointer}
+
+.bdoc{width:min(940px,100%); display:flex; flex-direction:column; gap:0; --pbg:#FAF6EE; --pbg2:#F5F0E5; --pac:#8B919E; --ptx:#14161B}
+.bhead{background:#16181D; color:#F2F3F6; border-radius:22px; padding:24px 26px; display:flex; flex-direction:column; gap:18px}
+.bh-top{display:flex; flex-wrap:wrap; justify-content:space-between; gap:18px; align-items:flex-start}
+.bt{font-size:clamp(1.6rem,3.4vw,2.3rem); font-weight:800; letter-spacing:-.02em; line-height:1.05; margin-top:4px}
+.bc{color:#B4B9C4}
+.lookpick{display:flex; gap:8px; flex-wrap:wrap}
+.lookpick button{font:inherit; font-size:.84rem; color:#F2F3F6; background:#22252C; border:1.5px solid #2C3038; border-radius:14px; padding:8px; display:flex; flex-direction:column; gap:6px; align-items:flex-start; cursor:pointer; width:122px}
+.lookpick button[aria-pressed="true"]{border-color:#F2F3F6; background:#2C3038}
+.mini{width:100%; height:52px; border-radius:8px; background:#F7F2E8; padding:7px; display:flex; flex-direction:column; gap:4px}
+.mini i{display:block; height:4px; border-radius:2px; background:#D6DAE2} .mini i.h{width:60%; height:6px; background:#8B919E}
+.mini u{display:block; margin-top:auto; height:14px; border-radius:3px; background:linear-gradient(90deg,#FFC023,#FF6A55 50%,#6CD3A2)}
+.mini.dark{background:linear-gradient(135deg,#1a1320,#2a1518)} .mini.dark i{background:#5a4650} .mini.dark i.h{background:#ff5c49}
+.bcrew{--ink:#F2F3F6; --paper:#22252C; --plan:#F2F3F6; --plan-eye:#16181D; display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 12px}
+.bcrew svg{width:40px; height:53px}
+.say.dk{background:#22252C; color:#F2F3F6; border-color:#F2F3F6; box-shadow:3px 3px 0 #000; max-width:360px}
+.say.dk::after{background:#22252C; border-color:#F2F3F6; left:-8px; bottom:14px; transform:rotate(135deg)}
+.say.dk .who{color:#8B919E}
+.say.dk.warn{border-color:#FF4F2E} .say.dk.warn::after{border-color:#FF4F2E}
+.brandrow{display:none; flex-wrap:wrap; align-items:center; gap:12px 16px; border-top:1px solid #2C3038; padding-top:16px; font-size:.92rem; color:#B4B9C4}
+.bdoc[data-look="brand"] .brandrow{display:flex}
+.brandrow .swatches button{width:40px; height:40px; border-color:#16181D; box-shadow:0 0 0 1.5px #2C3038}
+.brandrow .swatches button[aria-pressed="true"]{box-shadow:0 0 0 3px #F2F3F6}
+.linkbtn.lt{color:#F2F3F6}
+.paper{background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .38  0 0 0 0 .25  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"), linear-gradient(180deg,var(--pbg),var(--pbg2)); color:var(--ptx); border:1px solid var(--line); border-radius:6px; margin:-10px 34px 0; padding:44px clamp(20px,6vw,64px) 48px; box-shadow:0 1px 0 var(--line), 0 18px 40px -24px rgba(20,22,27,.4); display:flex; flex-direction:column; gap:14px; font-family:Georgia, "Times New Roman", serif}
+.bdoc[data-look="brand"] .paper{border-color:transparent}
+.paper .sec{font-family:var(--mono); font-size:.72rem; letter-spacing:.09em; text-transform:uppercase; color:var(--pac); margin-top:10px}
+.paper .fld{border-bottom:1px solid color-mix(in srgb, var(--ptx) 14%, transparent); padding-bottom:14px; display:flex; flex-direction:column; gap:4px}
+.paper .fld b{font-family:var(--sans); font-size:.84rem; font-weight:600; opacity:.7}
+.paper .fld p{font-size:1.08rem; line-height:1.55}
+.paper .fld.hero p{font-size:1.5rem; font-weight:700}
+.pics-sec{display:none; flex-direction:column; gap:10px}
+.bdoc[data-look="studio"] .pics-sec, .bdoc[data-look="brand"] .pics-sec{display:flex}
+.pnote{font-family:var(--sans); font-size:.9rem; opacity:.7}
+.bdoc[data-look="brand"] .thumbs u{width:120px; height:120px}.kinds-q{margin-top:26px; text-align:center; font-weight:600; font-size:1.05rem}
+.kinds{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:12px}
+.kind{font:inherit; color:inherit; text-align:left; background:var(--paper); border:2px solid var(--line); border-radius:18px; padding:12px; display:flex; flex-direction:column; gap:6px; cursor:pointer}
+.kind[aria-pressed="true"]{border-color:var(--ink); box-shadow:4px 4px 0 var(--ink)}
+.kind b{font-size:1.02rem}
+.kind > span:last-child{color:var(--ink2); font-size:.88rem; line-height:1.4}
+.kpv{height:96px; border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:5px; overflow:hidden}
+.kpv i{display:block; height:5px; border-radius:3px} .kpv i.h{height:9px; width:60%}
+.kpv em{display:block; height:18px; border-radius:5px; background:#E7EDFE}
+.kpics{display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-top:auto}
+.kpics u{height:26px; border-radius:4px}
+.kp-paper{background:#F7F2E8; border:1px solid #E2DACB} .kp-paper i{background:#4A463D} .kp-paper i.h{background:#16140F}
+.kp-studio{background:#F3F1EC} .kp-studio i{background:#B9BEC8} .kp-studio i.h{background:#4A5A8C}
+.kp-studio u{background:#DCE6FB} .kp-studio u:nth-child(2){background:#DDF1E6} .kp-studio u:nth-child(3){background:#FBEFD2}
+.kp-brand{background:linear-gradient(135deg,#1a1320,#2a1518)} .kp-brand i{background:#5a4650} .kp-brand i.h{background:#ff5c49}
+.kp-brand u{background:linear-gradient(135deg,#FFC023,#FF6A55)} .kp-brand u:nth-child(2){background:linear-gradient(135deg,#6CD3A2,#2F64F5)} .kp-brand u:nth-child(3){background:linear-gradient(135deg,#7D52F4,#FF6A55)}
+.mini.studio{background:#F3F1EC} .mini.studio i.h{background:#4A5A8C} .mini.studio u{background:linear-gradient(90deg,#DCE6FB,#DDF1E6 50%,#FBEFD2)}
+.bdoc[data-look="paper"] .paper{--ptx:#16140F; --pac:#6B6456; border-color:#E2DACB}
+.bdoc[data-look="paper"] .paper .fld b{opacity:1; color:#3A362E}
+.bdoc[data-look="studio"] .paper{--pbg:#F3F1EC; --pbg2:#F3F1EC; --ptx:#1C1F26; --pac:#4A5A8C; border-color:#E4E0D6; font-family:var(--sans)}
+.bdoc[data-look="studio"] .paper .fld{border:0; border-radius:14px; padding:14px 16px; background:#FFFFFF}
+.bdoc[data-look="studio"] .paper .fld:nth-of-type(4n+1){background:#E9EEFB}
+.bdoc[data-look="studio"] .paper .fld:nth-of-type(4n+2){background:#E6F4EC}
+.bdoc[data-look="studio"] .paper .fld:nth-of-type(4n+3){background:#FBF1DA}
+.bdoc[data-look="studio"] .paper .fld:nth-of-type(4n){background:#EFE9F8}
+.bdoc[data-look="studio"] .paper .fld b{opacity:1; color:#4A5A8C}
+.bdoc[data-look="studio"] .thumbs u{width:120px; height:120px; background:#DCE6FB}
+.bdoc[data-look="studio"] .thumbs u:nth-child(2){background:#DDF1E6}
+.judgebar{position:sticky; top:0; z-index:2; width:calc(100% + 48px); margin:0 -24px; background:var(--paper); border-bottom:1px solid var(--line); padding:12px 24px; display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px}
+.judgebar svg{width:40px; height:53px}
+.jb-text{flex:1; min-width:240px; font-size:1rem}
+.jb-count{display:flex; align-items:center; gap:12px; font-size:.9rem; color:var(--ink2)}
+.report{width:min(820px,100%); background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:40px clamp(18px,6vw,64px) 48px; box-shadow:0 18px 40px -26px rgba(20,22,27,.4); display:flex; flex-direction:column; gap:16px; margin-top:8px}
+.rh{font-size:clamp(1.7rem,3.6vw,2.5rem); font-weight:800; letter-spacing:-.02em; line-height:1.08}
+.rh3{font-size:1.25rem; font-weight:700; margin-top:10px}
+.rp{font-size:1.1rem; line-height:1.65; color:var(--ink)}
+.rp.dim{color:var(--ink3); font-size:.95rem}
+.mark{background:#FFF1EC; box-shadow:inset 0 -2px 0 var(--create); border-radius:3px; padding:0 3px}
+.mark sup{font-size:.7em; color:var(--create); font-weight:700; margin-left:2px}
+.mark.ok{background:var(--ok-soft); box-shadow:inset 0 -2px 0 var(--ok)}
+.okay{font-size:.78rem; font-weight:600; color:#177A3C; margin-left:6px; white-space:nowrap}
+.inline-chk{display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:start; border:2px solid var(--create); border-radius:16px; padding:14px 16px; background:var(--paper); margin:-4px 0 4px; position:relative}
+.inline-chk::before{content:""; position:absolute; top:-9px; left:40px; width:14px; height:14px; background:var(--paper); border-left:2px solid var(--create); border-top:2px solid var(--create); transform:rotate(45deg)}
+.inline-chk svg{width:36px; height:48px}
+.inline-chk .q{font-family:var(--mono); font-size:.72rem; letter-spacing:.07em; text-transform:uppercase; color:var(--create)}
+.ic-t{font-weight:500; margin-top:2px}
+.inline-chk .from{font-size:.9rem; color:var(--ink2)}
+.answers.sm{margin-top:10px}
+.answers.sm button{padding:8px 14px; font-size:.92rem; border-radius:12px}
+.inline-chk.flash{animation:flash 1.2s var(--ease)}
+@keyframes flash{0%{box-shadow:0 0 0 6px rgba(255,79,46,.35)}100%{box-shadow:0 0 0 0 rgba(255,79,46,0)}}
+.figrow{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px}
+.figrow div{border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:2px}
+.figrow .big{font-size:2rem; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.figrow .cap{font-size:.86rem; color:var(--ink2)}
+
+/* the first screen takes on the kind you pick */
+.bstart{background:var(--sg, var(--paper)); transition:background .35s var(--ease), color .35s var(--ease); position:relative; overflow:hidden}
+.bstart > *{position:relative}
+.bstart, .bstart .say, .bstart .kind, .bstart .search input{color:var(--ink)}
+.bstart[data-kind="paper"]{--sg:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .38  0 0 0 0 .25  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>") , #F4EFE4; --paper:#FAF6EE; --line:#E2DACB; --soft:#EFE9DD; --ink:#16140F; --ink2:#4A463D; --ink3:#8C8578}
+.bstart[data-kind="studio"]{--sg:#F3F1EC; --paper:#FFFFFF; --line:#E4E0D6; --soft:#ECE8DF; --ink:#1C1F26; --ink2:#4A5A8C; --ink3:#8A8F9C; --create:#4A5A8C}
+.bstart[data-kind="studio"]::before{content:""; position:absolute; inset:0; background:
+  radial-gradient(260px 200px at 12% 22%, #DCE6FB 0, transparent 70%),
+  radial-gradient(240px 190px at 88% 18%, #DDF1E6 0, transparent 70%),
+  radial-gradient(300px 220px at 80% 88%, #FBEFD2 0, transparent 70%),
+  radial-gradient(260px 200px at 14% 86%, #EFE9F8 0, transparent 70%); pointer-events:none}
+.bstart[data-kind="brand"]{--sg:linear-gradient(135deg,#1a1320,#2a1518); --paper:#2a1f27; --line:#4a3a42; --soft:#3a2d35; --ink:#f3e9dd; --ink2:#d6c6bd; --ink3:#9a8c88; --plan:#f3e9dd; --plan-eye:#1a1320; --create:#ff5c49; color-scheme:dark}
+.bstart .hello h2, .bstart .hello p{transition:color .35s var(--ease)}
+.bstart .kind[aria-pressed="true"]{border-color:var(--ink); box-shadow:4px 4px 0 var(--ink)}
+.bstart[data-kind="studio"] .go{background:#4A5A8C}
+.bstart .kindline{display:block; margin-top:8px; font-weight:600; color:var(--create)}
+
+.meet{width:min(980px,100%); display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start}
+.mate{display:flex; flex-direction:column; align-items:flex-start; gap:14px}
+.mfig{height:96px; display:flex; align-items:flex-end; padding-left:12px}
+.mfig svg{width:68px; height:91px}
+.mate .say{max-width:none; width:100%; font-size:.98rem}
+.mate .say.up::after{left:34px}
+.mate .say b{font-weight:700}
+.mate .st{display:flex; flex-direction:column; gap:6px; margin-top:10px; font-size:.86rem; color:var(--ink2)}
+.mate .st.ok{color:#177A3C}
+.mate .bar{display:block; height:6px; border-radius:6px; background:var(--soft); overflow:hidden}
+.mate .bar{flex:none; height:6px!important; padding:0; border:0; box-shadow:none} .mate .bar .fill{display:block; height:6px; background:var(--create)}
+.mate.next{opacity:.75}
+.mate.now .say{border-color:var(--create); box-shadow:3px 3px 0 var(--create)}
+.mate.now .say::after{border-color:var(--create)}
+
+.now-card .lensrow .nm{display:flex; flex-direction:column; align-items:center; gap:2px}
+.now-card .lensrow small{font-size:.74rem; color:var(--ink2); font-weight:500}
+
+/* Ink-bodied agents (Ellis, Jude) turn white in dark mode: an outline in the
+   page's own ink keeps them off any light ground. Coloured bodies need none. */
+.agent-figure .af-body [fill="var(--plan)"]{stroke:var(--af-edge, var(--ink)); stroke-width:2.4; stroke-linejoin:round; paint-order:stroke fill}
+
+@media (max-width:720px){ .paper{margin:-10px 8px 0} .lookpick button{width:calc(33% - 6px)} }
+
+@media (max-width:720px){
+  .steps{grid-template-columns:repeat(3,1fr); row-gap:18px}
+  .search{flex-wrap:wrap; border-radius:26px; padding:8px 8px 8px 16px}
+  .search input{flex-basis:100%}
+  .go{flex:1}
+  .crew{left:8px; right:8px}
+  .crew .m svg{width:34px; height:45px} .crew .m.big svg{width:44px; height:59px}
+  .crew .first{display:none}
+  .now-card, .ask, .chk, .ready, .lookhead, .kinds, .inline-chk, .meet{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<!-- Generated by app/scripts/agent-figures.mjs from app/src/studio/AgentFigure.tsx
+     and AgentFigure.css. Do not edit here: change the figures there and run
+     `npm run figures` in app/. -->
+<style id="agent-figures-css">
+/* Agent figures. States come in as data attributes on the <svg>:
+   data-state = idle | working | needs-you, data-walking when moving.
+   --af-phase (0–1, per agent) offsets every loop so figures don't sync. */
+
+/* The character sheet's colours. Ink bodies use the studio's --plan pair and
+   follow the theme; these five stay put in light and dark, with a dark face.
+   Coral is the sheet's own, redder than --create, which is only for needs-you. */
+.agent-figure,
+.agent-avatar {
+  --af-cobalt: #2F64F5;
+  --af-coral: #FF6A55;
+  --af-marigold: #FFC023;
+  --af-iris: #7D52F4;
+  --af-mint: #6CD3A2;
+  --af-mark: #16181D;
+}
+
+.agent-figure {
+  display: block;
+  overflow: visible;
+  flex-shrink: 0;
+  --af-bob: 2.8s;
+}
+
+.agent-figure .af-shadow { fill: var(--ink); opacity: 0.08; }
+.agent-figure .af-leg line { stroke: var(--ink); stroke-width: 2.1; stroke-linecap: round; }
+.agent-figure .af-leg rect { fill: var(--ink); }
+.agent-avatar .aa-tile { fill: var(--soft, #F2F3F6); }
+
+/* Legs swing from the hip: the top of each leg's own box. The body leans from
+   its base, so a working figure tips forward over its feet. */
+.agent-figure .af-leg { transform-box: fill-box; transform-origin: 50% 0; }
+.agent-figure .af-body { transform-box: fill-box; transform-origin: 50% 100%; }
+.agent-figure .af-eyes,
+.agent-figure .af-badge-ring { transform-box: fill-box; transform-origin: 50% 50%; }
+
+/* idle — a slow bob and the odd blink. */
+.agent-figure .af-body {
+  animation: af-bob var(--af-bob) ease-in-out infinite alternate;
+  animation-delay: calc(var(--af-phase, 0) * -2.8s);
+}
+.agent-figure .af-eyes {
+  animation: af-blink 5.2s linear infinite;
+  animation-delay: calc(var(--af-phase, 0) * -5.2s);
+}
+
+/* working — leans in, small steps in place, motion lines off its shoulder. */
+.agent-figure .af-motion { display: none; stroke: var(--ink); stroke-width: 1.3; stroke-linecap: round; fill: none; }
+.agent-figure[data-state='working'] .af-motion { display: inline; animation: af-flicker 0.55s steps(2, jump-none) infinite; }
+.agent-figure[data-state='working'] .af-leg-l,
+.agent-figure[data-state='working'] .af-leg-r {
+  animation: af-step 0.55s ease-in-out infinite alternate;
+  animation-delay: calc(var(--af-phase, 0) * -1.1s);
+}
+.agent-figure[data-state='working'] .af-leg-r { animation-name: af-step-r; }
+.agent-figure[data-state='working'] .af-body { animation: af-lean 0.275s ease-in-out infinite alternate; }
+
+/* walking — a full stride; wins over whatever the state says about legs. */
+.agent-figure[data-walking] .af-leg-l,
+.agent-figure[data-walking] .af-leg-r {
+  animation: af-stride 0.45s ease-in-out infinite alternate;
+  animation-delay: calc(var(--af-phase, 0) * -0.9s);
+}
+.agent-figure[data-walking] .af-leg-r { animation-name: af-stride-r; }
+.agent-figure[data-walking] .af-body { animation: af-bob-quick 0.225s ease-in-out infinite alternate; }
+
+/* needs-you — the sheet's speech bubble with a "!", in the accent: orange is
+   still the one colour that means a person is needed. */
+.agent-figure .af-badge-bubble { fill: var(--paper); stroke: var(--create); stroke-width: 1.4; stroke-linejoin: round; }
+.agent-figure .af-badge-mark { stroke: var(--create); stroke-width: 1.7; stroke-linecap: round; }
+.agent-figure .af-badge-dot { fill: var(--create); }
+.agent-figure .af-badge-ring { fill: none; stroke: var(--create); stroke-width: 1.4; animation: af-ping 1.8s var(--ease, ease-out) infinite; }
+
+@keyframes af-bob { from { transform: translateY(0); } to { transform: translateY(-1.6px); } }
+@keyframes af-bob-quick { from { transform: translateY(0); } to { transform: translateY(-1.2px); } }
+@keyframes af-lean { from { transform: rotate(8deg) translateY(0); } to { transform: rotate(8deg) translateY(-1.2px); } }
+@keyframes af-step { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@keyframes af-step-r { from { transform: rotate(9deg); } to { transform: rotate(-9deg); } }
+@keyframes af-stride { from { transform: rotate(-20deg); } to { transform: rotate(20deg); } }
+@keyframes af-stride-r { from { transform: rotate(20deg); } to { transform: rotate(-20deg); } }
+@keyframes af-blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes af-flicker { from { opacity: 1; } to { opacity: 0.35; } }
+@keyframes af-ping { 0% { transform: scale(1); opacity: 0.5; } 80%, 100% { transform: scale(1.8); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-figure *, .agent-figure { animation: none !important; }
+  .agent-figure .af-badge-ring { display: none; }
+  /* Still reads as working without motion. */
+  .agent-figure[data-state='working'] .af-body { transform: rotate(8deg); }
+}
+</style>
+<script>
+var AGENT_FIGURES={svg:{extract:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Extract, Reads the prompt and attachments and proposes the ask.\" style=\"--af-phase:0.697\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 8 L41.5 40 L6.5 40Z\" fill=\"var(--plan)\"><\/path><g class=\"af-emblem\"><g><rect x=\"19.4\" y=\"29.3\" width=\"9.2\" height=\"6.4\" rx=\"0.8\" fill=\"var(--plan-eye)\" opacity=\"0.88\"><\/rect><path d=\"M21.2 31.4 h5.6 M21.2 33.6 h4\" stroke=\"var(--plan)\" stroke-width=\"0.9\" stroke-linecap=\"round\"><\/path><\/g><\/g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+market_structure:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Market structure, Sizes the category: value, volume, share and growth.\" style=\"--af-phase:0.496\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"36\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"36\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M14 8.5 H34 V38 H14Z\" fill=\"var(--af-cobalt)\"><\/path><g class=\"af-emblem\"><g fill=\"var(--af-mark)\"><rect x=\"19.2\" y=\"29.3\" width=\"2.3\" height=\"3.2\" rx=\"0.4\"><\/rect><rect x=\"22.7\" y=\"26.9\" width=\"2.3\" height=\"5.6\" rx=\"0.4\"><\/rect><rect x=\"26.2\" y=\"24.5\" width=\"2.3\" height=\"8\" rx=\"0.4\"><\/rect><\/g><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+positioning:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Brands and positioning, Maps the brand and its comparators: awareness, claims, prices.\" style=\"--af-phase:0.841\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 4 L38.5 23 L24 42 L9.5 23Z\" fill=\"var(--af-iris)\"><\/path><g class=\"af-emblem\"><g><circle cx=\"24\" cy=\"27.5\" r=\"3.6\" stroke=\"var(--af-mark)\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/circle><circle cx=\"24\" cy=\"27.5\" r=\"1.2\" fill=\"var(--af-mark)\"><\/circle><\/g><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"20.099999999999998\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.7\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+culture:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Consumer and culture, Finds who buys, when and why, and what is shifting.\" style=\"--af-phase:0.966\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M9.5 40 V26.5 A14.5 14.5 0 0 1 38.5 26.5 V40Z\" fill=\"var(--af-coral)\"><\/path><g class=\"af-emblem\"><g fill=\"var(--af-mark)\"><circle cx=\"20.4\" cy=\"30\" r=\"1.3\"><\/circle><circle cx=\"24\" cy=\"30\" r=\"1.3\"><\/circle><circle cx=\"27.6\" cy=\"30\" r=\"1.3\"><\/circle><\/g><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.7\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+codes:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Category codes, Reads the category’s visual and verbal conventions.\" style=\"--af-phase:0.726\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M40 26 L32 39.86 L16 39.86 L8 26 L16 12.14 L32 12.14Z\" fill=\"var(--af-mint)\"><\/path><g class=\"af-emblem\"><path d=\"M19.5 30 h9\" stroke=\"var(--af-mark)\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.7\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"20.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+rhythm:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Rhythm and moments, Charts the seasons, peaks and moments that matter.\" style=\"--af-phase:0.918\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"36\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"36\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 7.5 L32.5 16 L24 24.5 L15.5 16Z\" fill=\"var(--af-iris)\"><\/path><path d=\"M24 22.5 L33.5 32 L24 41.5 L14.5 32Z\" fill=\"var(--af-iris)\"><\/path><path d=\"M32.5 19.4 L37.1 24 L32.5 28.6 L27.9 24Z\" fill=\"var(--af-coral)\"><\/path><g class=\"af-emblem\"><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"20.099999999999998\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.7\" y=\"13.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+media:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Media and spend, Tracks who spends what, where.\" style=\"--af-phase:0.132\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 8 L41.5 40 L6.5 40Z\" fill=\"var(--af-cobalt)\"><\/path><g class=\"af-emblem\"><path d=\"M18 32.5 q1.5 -2.4 3 0 t3 0 t3 0 t3 0\" stroke=\"var(--af-mark)\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"22.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+regulation:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Regulation, Lists what may and may not be said, and where.\" style=\"--af-phase:0.578\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M31.66 19.57 A10 10 0 1 0 31.66 32.43\" fill=\"none\" stroke=\"var(--af-mint)\" stroke-width=\"10\" stroke-linecap=\"round\"><\/path><g class=\"af-emblem\"><path d=\"M25 22 Q25.6 25.4 29 26 Q25.6 26.6 25 30 Q24.4 26.6 21 26 Q24.4 25.4 25 22Z\" fill=\"var(--af-mark)\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+effectiveness:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Effectiveness, Finds work in the category that is proven to have worked.\" style=\"--af-phase:0.83\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"36\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"36\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 10 L19.77 21.18 L7.83 21.75 L17.15 29.22 L14.01 40.75 L24 34.2 L33.99 40.75 L30.85 29.22 L40.17 21.75 L28.23 21.18Z\" fill=\"var(--af-marigold)\"><\/path><g class=\"af-emblem\"><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"23.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"23.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+synthesis:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Synthesis, Turns pinned facts into findings, derived by the agent until a person verifies them.\" style=\"--af-phase:0.572\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"37\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"37\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M24 4 L38.5 23 L24 42 L9.5 23Z\" fill=\"var(--af-iris)\"><\/path><g class=\"af-emblem\"><path d=\"M24 23.5 Q24.6 26.9 28 27.5 Q24.6 28.1 24 31.5 Q23.4 28.1 20 27.5 Q23.4 26.9 24 23.5Z\" fill=\"#FFFFFF\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"20.099999999999998\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.7\" y=\"16.7\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+drafter:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Drafter, Drafts one brief field from the campaign’s evidence.\" style=\"--af-phase:0.038\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"38\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"38\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g><path d=\"M31.66 19.57 A10 10 0 1 0 31.66 32.43\" fill=\"none\" stroke=\"var(--af-marigold)\" stroke-width=\"10\" stroke-linecap=\"round\"><\/path><g class=\"af-emblem\"><\/g><g class=\"af-eyes\" fill=\"var(--af-mark)\"><rect x=\"19.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"25.9\" y=\"14.399999999999999\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>",
+judge:"<svg class=\"agent-figure\" data-state=\"idle\" viewBox=\"0 0 48 64\" width=\"48\" height=\"64\" role=\"img\" aria-label=\"Judge, Reads the whole brief after the drafts and checks it holds together.\" style=\"--af-phase:0.167\"><ellipse class=\"af-shadow\" cx=\"24\" cy=\"60\" rx=\"10\" ry=\"1.6\"><\/ellipse><g class=\"af-leg af-leg-l\"><line x1=\"19.5\" y1=\"34\" x2=\"19.5\" y2=\"58\"><\/line><rect x=\"18.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-leg af-leg-r\"><line x1=\"28.5\" y1=\"34\" x2=\"28.5\" y2=\"58\"><\/line><rect x=\"27.1\" y=\"57\" width=\"4.6\" height=\"2.2\" rx=\"1.1\"><\/rect><\/g><g class=\"af-body\"><g transform=\"rotate(-5 24 23.5)\"><path d=\"M11.5 11 H36.5 V36 H11.5Z\" fill=\"var(--plan)\"><\/path><g class=\"af-emblem\"><path d=\"M20.2 27.5 l2.6 2.6 l5 -5\" stroke=\"var(--plan-eye)\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"><\/path><\/g><g class=\"af-eyes\" fill=\"var(--plan-eye)\"><rect x=\"19.7\" y=\"17.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><rect x=\"26.099999999999998\" y=\"17.2\" width=\"2.2\" height=\"3.6\" rx=\"1.1\"><\/rect><\/g><\/g><\/g><g class=\"af-motion\"><path d=\"M39.5 9.5 l3.2 -2.6\"><\/path><path d=\"M41 14 l4 -0.9\"><\/path><path d=\"M36.5 6.5 l1 -3.6\"><\/path><\/g><\/svg>"},
+name:{extract:"Extract",market_structure:"Market structure",positioning:"Brands and positioning",culture:"Consumer and culture",codes:"Category codes",rhythm:"Rhythm and moments",media:"Media and spend",regulation:"Regulation",effectiveness:"Effectiveness",synthesis:"Synthesis",drafter:"Drafter",judge:"Judge"},
+role:{extract:"Reads the prompt and attachments and proposes the ask.",market_structure:"Sizes the category: value, volume, share and growth.",positioning:"Maps the brand and its comparators: awareness, claims, prices.",culture:"Finds who buys, when and why, and what is shifting.",codes:"Reads the category’s visual and verbal conventions.",rhythm:"Charts the seasons, peaks and moments that matter.",media:"Tracks who spends what, where.",regulation:"Lists what may and may not be said, and where.",effectiveness:"Finds work in the category that is proven to have worked.",synthesis:"Turns pinned facts into findings, derived by the agent until a person verifies them.",drafter:"Drafts one brief field from the campaign’s evidence.",judge:"Reads the whole brief after the drafts and checks it holds together."},
+badge:"<g class=\"af-badge\"><circle class=\"af-badge-ring\" cx=\"40\" cy=\"8\" r=\"6\"><\/circle><path class=\"af-badge-bubble\" d=\"M40 2 a6 6 0 1 1 -3.9 10.55 l-2.6 1.95 l1.3 -3.5 A6 6 0 0 1 40 2Z\"><\/path><path class=\"af-badge-mark\" d=\"M40 5 v3.6\"><\/path><circle class=\"af-badge-dot\" cx=\"40\" cy=\"11\" r=\"0.95\"><\/circle><\/g>"};
+function agentFigure(key,o){
+  var F=AGENT_FIGURES, s=F.svg[key]; if(!s) return ''; o=o||{};
+  var st=o.state==='working'||o.state==='needs-you'?o.state:'idle';
+  s=s.replace('data-state="idle"','data-state="'+st+'"'+(o.walking?' data-walking="true"':''));
+  if(o.cls) s=s.replace('class="agent-figure"','class="agent-figure '+o.cls+'"');
+  if(st==='needs-you') s=s.replace(/<\/svg>$/,F.badge+'<\/svg>');
+  if(o.decorative) s=s.replace(/ role="img" aria-label="[^"]*"/,' aria-hidden="true" focusable="false"');
+  else {
+    var l=o.label||F.name[key]+', '+F.role[key];
+    l+=st==='needs-you'?' \u2014 needs you':st==='working'?' \u2014 working':'';
+    l=String(l).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});
+    s=s.replace(/aria-label="[^"]*"/,'aria-label="'+l+'"');
+  }
+  return s;
+}
+var NapkinAgents=(function(T){
+  function last(s){ return String(s).split('/').pop().replace(/@.*$/,'').toLowerCase(); }
+  function forWork(w,lens){
+    if(w==='research') return T.lens[lens]||'market_structure';
+    return T.work[w]||'';
+  }
+  function ofDecision(d){
+    d=d||{}; var who=String(d.agent||''), act=String(d.action||'');
+    if(!who||who==='human'||/^human:/.test(who)) return null;
+    if(d.kind==='verdict'||d.polarity) return 'judge';
+    if(d.kind==='finding') return 'synthesis';
+    var w=T.step[last(who)]||T.step[act.toLowerCase()]
+      ||(/judge|critic/i.test(who)?'judge':/extract|capture/i.test(who+' '+act)?'read':/draft/i.test(who)?'draft':'');
+    if(!w) return null;
+    if(w!=='research') return T.work[w];
+    var hay=[d.lens||'',act].concat(d.targets||[]);
+    for(var i=0;i<T.lenses.length;i++) for(var j=0;j<hay.length;j++)
+      if(String(hay[j]).indexOf(T.lenses[i])!==-1) return T.lens[T.lenses[i]];
+    return null;
+  }
+  return {
+    keys:T.keys, lenses:T.lenses, name:AGENT_FIGURES.name, role:AGENT_FIGURES.role,
+    forWork:forWork, ofDecision:ofDecision,
+    // A figure by the work it stands for: figure('judge'), figure('research', o, 'media_spend').
+    figure:function(w,o,lens){ return agentFigure(forWork(w,lens),o); }
+  };
+})({"keys":["extract","market_structure","positioning","culture","codes","rhythm","media","regulation","effectiveness","synthesis","drafter","judge"],"work":{"read":"extract","synthesise":"synthesis","draft":"drafter","judge":"judge"},"lens":{"market_structure":"market_structure","brands_positioning":"positioning","consumer_culture":"culture","category_codes":"codes","rhythm_moments":"rhythm","media_spend":"media","regulation_clearance":"regulation","effectiveness_evidence":"effectiveness"},"lenses":["market_structure","brands_positioning","consumer_culture","category_codes","rhythm_moments","media_spend","regulation_clearance","effectiveness_evidence"],"step":{"extract":"read","extract_ask":"read","capture":"read","identify":"read","lookup":"read","transcribe":"read","research":"research","research_lens":"research","research_run":"research","research_merge":"research","synthesise":"synthesise","synthesise_findings":"synthesise","synthesise_finding":"synthesise","propose_audience":"synthesise","draft":"draft","draft_brief":"draft","regenerate_field":"draft","report":"draft","compose_report":"draft","drafter":"draft","judge":"judge","select":"judge","verdict":"judge","golden_critic":"judge"}});
+</script>
+
+<div class="wrap">
+  <header class="intro">
+    <span class="eyebrow">Mock · for approval · nothing is built yet</span>
+    <h1>The crew does the talking</h1>
+    <p>Every screen opens with one question and one box to answer it, like a search page. The agents stand on that box and speak in plain sentences: what they will do, what they are doing now, and what they need from you.</p>
+  </header>
+
+  <div class="rules">
+    <div><b>One question per screen</b><span>A big box and one orange button. Everything else waits until it's needed.</span></div>
+    <div><b>The agent speaks</b><span>Status, questions and checks come from the agent doing the work, in a speech bubble, in first person.</span></div>
+    <div><b>Plain words</b><span>"Is this right?" not "Verify finding". "Where did this come from?" not "Lineage".</span></div>
+    <div><b>Big targets</b><span>Answers are buttons you can tap, never a field to type into unless you want to.</span></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="false" data-s="home">Home</button>
+    <button role="tab" aria-selected="true" data-s="start">Research: start</button>
+    <button role="tab" aria-selected="false" data-s="work">Research: working</button>
+    <button role="tab" aria-selected="false" data-s="done">Research: ready</button>
+    <button role="tab" aria-selected="false" data-s="brief">Brief Maker: start</button>
+    <button role="tab" aria-selected="false" data-s="bwork">Brief Maker: working</button>
+    <button role="tab" aria-selected="false" data-s="look">Brief Maker: the brief</button>
+  </div>
+  <p class="note" id="note"></p>
+
+  <div class="win">
+    <div class="bar"><span class="mark" aria-hidden="true"></span><b>Napkin</b><span id="where" style="color:var(--ink2)">Research Tool</span><span class="sp"></span>
+      <span class="saved">Saved</span><button class="pill">Share</button><button class="pill" id="more">More ▾</button></div>
+
+    <!-- HOME -->
+    <section class="screen" data-screen="home" hidden>
+      <div class="hello"><h2>Good morning. What shall we work on?</h2><p>Pick a tool. Its crew will ask you what they need.</p></div>
+      <div class="apps">
+        <button class="app"><div class="row" data-crew="extract,market_structure,positioning,culture,synthesis,drafter"></div>
+          <h3>Research a market</h3><p>Tell us the client and the market. The crew finds the facts, checks every one, and writes a report.</p><span class="cta">Start research →</span></button>
+        <button class="app"><div class="row" data-crew="extract,drafter,judge"></div>
+          <h3>Write a brief</h3><p>Drop in the client's notes, email or deck. The crew turns them into a brief you can check line by line.</p><span class="cta">Start a brief →</span></button>
+      </div>
+      <div class="recent"><span class="eyebrow">Pick up where you left off</span>
+        <div class="item"><span data-fig="judge" data-state="needs-you"></span><div><b>Harbour Kitchen · Irish entry</b><small>Research · yesterday</small></div><span class="state">3 things to check</span></div>
+        <div class="item"><span data-fig="drafter"></span><div><b>Lunasa · spring brief</b><small>Brief · Monday</small></div><span class="state ok">Ready</span></div>
+      </div>
+    </section>
+
+    <!-- RESEARCH START -->
+    <section class="screen" data-screen="start">
+      <div class="hello"><h2>What should we find out?</h2><p>Name the client and the market. Add anything they sent you.</p></div>
+      <div class="stage">
+        <div class="crew" id="crew-r"></div>
+        <form class="search" onsubmit="return false">
+          <label for="q" class="eyebrow" style="position:absolute;left:-9999px">What to research</label>
+          <input id="q" placeholder="e.g. Frozen ready meals in Ireland, for Harbour Kitchen">
+          <button type="button" class="clip" title="Add the client's files" aria-label="Add the client's files">📎</button>
+          <button type="button" class="go" data-to="work">Start the research</button>
+        </form>
+        <div class="under">
+          <button class="try" type="button">Try: a new oat drink in Germany and France</button>
+          <button class="try" type="button">Try: electric cars in Ireland, for Lunasa</button>
+        </div>
+        <p class="drop"><b>Got a brief, an email or a deck?</b> Drop it anywhere on this page.</p>
+      </div>
+    </section>
+
+    <!-- RESEARCH WORKING -->
+    <section class="screen" data-screen="work" hidden>
+      <div class="track">
+        <div class="steps" id="steps"></div>
+        <div class="now-card">
+          <div class="lensrow" id="lensrow"></div>
+          <div>
+            <div class="say" style="max-width:none"><span class="who">Max, Bo, Cam, Cody, Remy, Mo, Lex and Eden · the researchers</span><b>Hi, we're the researchers.</b> Each of us looks into one thing about frozen ready meals in Ireland. Three of us are done.</div>
+            <ul>
+              <li><i>✓</i>Max: how big the market is, and who leads it</li>
+              <li><i>✓</i>Bo: what the brands say about themselves</li>
+              <li><i>✓</i>Cam: who buys, and why</li>
+              <li><i>…</i>Cody: what the ads in this category usually look like</li>
+              <li><i>…</i>Remy: when people buy most</li>
+            </ul>
+          </div>
+        </div>
+        <div class="ask">
+          <span data-fig="extract" data-state="needs-you"></span>
+          <div>
+            <span class="who" style="display:block;font-family:var(--mono);font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)">Ellis · reads</span><h3>Quick question before I go on</h3>
+            <p>The brief mentions Harbour Kitchen and Donegal Catch. Which one is your client?</p>
+            <div class="answers"><button class="primary">Harbour Kitchen</button><button>Donegal Catch</button><button>Neither, let me type it</button></div>
+          </div>
+        </div>
+        <p class="later">You can close this. We'll keep going and it will be here when you come back.</p>
+      </div>
+    </section>
+
+    <!-- RESEARCH DONE -->
+    <section class="screen" data-screen="done" hidden style="padding-top:0">
+      <div class="judgebar">
+        <span data-fig="judge" data-state="needs-you"></span>
+        <div class="jb-text"><b>Jude here: your report is ready.</b> Three things in it need a person to agree before you share it. They're marked below.</div>
+        <div class="jb-count"><span id="jb-n">1 of 3 checked</span><button class="pill dark" type="button" id="jb-next">Next check ↓</button></div>
+      </div>
+      <article class="report">
+        <span class="eyebrow">Harbour Kitchen · Ireland</span>
+        <h2 class="rh">Irish frozen ready meals: a growing category, now led by own-label</h2>
+        <p class="rp">Irish frozen ready meals are growing in value, and own-label now holds most of it:
+          <span class="mark contest" id="c3">55% of value share<sup>?</sup></span> goes to supermarkets' own brands.</p>
+        <div class="inline-chk" data-chk="c3"><span data-fig="market_structure" data-state="needs-you"></span>
+          <div><span class="q">Max · two sources disagree</span><p class="ic-t">How much of the market is own-label?</p>
+            <p class="from">Kantar says 55% (March 2025). Bord Bia says 48% (2024).</p>
+            <div class="answers sm"><button>55% · Kantar</button><button>48% · Bord Bia</button><button>Show both</button></div></div></div>
+        <p class="rp">Branded specialists still lead their own corners. <span class="mark ok" id="c2">Donegal Catch has led frozen fish in Ireland for almost 40 years</span><span class="okay">✓ You agreed</span>, and McCain is the number one frozen potato brand.</p>
+        <h3 class="rh3">Who buys</h3>
+        <p class="rp"><span class="mark" id="c1">A large majority of Irish frozen meal shoppers buy on price first<sup>?</sup></span>, but they buy deliberately: a planned weekly shop, not a top-up.</p>
+        <div class="inline-chk" data-chk="c1"><span data-fig="synthesis"></span>
+          <div><span class="q">Sam · is this right?</span><p class="ic-t">I worked this out from 2 facts, both from ShelfLife Magazine, 2025.</p>
+            <div class="answers sm"><button class="primary">Yes, keep it</button><button>No, take it out</button><button>Where did this come from?</button></div></div></div>
+        <div class="figrow"><div><span class="big">€412m</span><span class="cap">Category value, 2024 · Kantar</span></div><div><span class="big">+6.1%</span><span class="cap">Value growth, year on year · Kantar</span></div></div>
+        <p class="rp dim">…the report continues. Facts with a source need no check; only what the crew worked out, and what sources disagree on, is marked.</p>
+      </article>
+    </section>
+
+    <!-- BRIEF START -->
+    <section class="screen bstart" data-screen="brief" data-kind="paper" id="bstart" hidden>
+      <div class="hello"><h2>What's the brief?</h2><p>Paste the client's words, or drop in their notes, deck or voice memo.<span class="kindline" id="kline">A paper brief: black on white, ready to print.</span></p></div>
+      <div class="stage">
+        <div class="crew" id="crew-b"></div>
+        <form class="search" onsubmit="return false">
+          <label for="qb" style="position:absolute;left:-9999px">The brief</label>
+          <input id="qb" placeholder="e.g. Lunasa wants more young drivers to test drive the new EV">
+          <button type="button" class="clip" title="Add the client's files" aria-label="Add the client's files">📎</button>
+          <button type="button" class="go" id="bgo">Write the paper brief</button>
+        </form>
+        <p class="kinds-q">Which kind of brief do you want?</p>
+        <div class="kinds" id="kinds">
+          <button class="kind" data-k="paper" aria-pressed="true"><span class="kpv kp-paper"><i class="h"></i><i></i><i></i><i style="width:70%"></i><i></i></span><b>Paper brief</b><span>Black on white, like a printed page. Quick to read and send.</span></button>
+          <button class="kind" data-k="studio" aria-pressed="false"><span class="kpv kp-studio"><i class="h"></i><i></i><em></em><span class="kpics"><u></u><u></u><u></u></span></span><b>Studio brief</b><span>Soft Napkin colours, with a mood board of your pictures.</span></button>
+          <button class="kind" data-k="brand" aria-pressed="false"><span class="kpv kp-brand"><i class="h"></i><i></i><i></i><span class="kpics"><u></u><u></u><u></u></span></span><b>Brand brief</b><span>In the client's own colours, with the mood board.</span></button>
+        </div>
+        <p class="drop">You can switch at any time. The words stay the same.</p>
+      </div>
+    </section>
+
+    <!-- BRIEF WORKING -->
+    <section class="screen" data-screen="bwork" hidden>
+      <div class="hello"><h2>Meet your crew</h2><p>Three of us are on your brief. We'll tell you what we're doing as we go.</p></div>
+      <div class="meet">
+        <div class="mate done"><div class="mfig"><span data-fig="extract"></span></div>
+          <div class="say up"><span class="who">Ellis · reads</span><b>Hi, I'm Ellis.</b> I read everything you sent: the notes, the PDF and the voice memo.<span class="st ok">✓ Done. I found the client, the problem and the budget.</span></div></div>
+        <div class="mate now"><div class="mfig"><span data-fig="drafter" data-state="working"></span></div>
+          <div class="say up"><span class="who">Dara · writes</span><b>I'm Dara.</b> I'm writing the 15 parts of your brief, each from what Ellis found.<span class="st"><span class="bar"><span class="fill" style="width:60%"></span></span>9 of 15 written</span></div></div>
+        <div class="mate next"><div class="mfig"><span data-fig="judge"></span></div>
+          <div class="say up"><span class="who">Jude · checks</span><b>And I'm Jude.</b> When Dara's done, I check every part, then the whole brief, and tell you what needs you.<span class="st">Waiting for Dara</span></div></div>
+      </div>
+      <p class="later">You'll see these names in every tool. The same crew works everywhere: every part of the brief says who wrote it and who checked it.</p>
+    </section>
+    <!-- BRIEF LOOK -->
+    <section class="screen" data-screen="look" hidden style="padding-top:24px">
+      <div class="bdoc" id="bdoc" data-look="paper">
+        <header class="bhead">
+          <div class="bh-top">
+            <div><span class="eyebrow" style="color:#8B919E">Brief Maker</span><h2 class="bt">Lunasa 0.0 · The Long Table</h2><p class="bc">Lunasa Brewing Co.</p></div>
+            <div class="lookpick" role="group" aria-label="How the brief looks">
+              <button data-l="paper" aria-pressed="true"><span class="mini"><i class="h"></i><i></i><i></i></span>Paper brief</button>
+              <button data-l="studio" aria-pressed="false"><span class="mini studio"><i class="h"></i><i></i><u></u></span>Studio brief</button>
+              <button data-l="brand" aria-pressed="false"><span class="mini dark"><i class="h"></i><i></i><u></u></span>Brand brief</button>
+            </div>
+          </div>
+          <div class="bcrew">
+            <span data-fig="drafter"></span><span class="say dk"><span class="who">Dara · writes</span>Your brief is ready: 15 parts, each from what you sent. Switch the kind of brief up here any time; the words stay the same.</span>
+            <span data-fig="judge" data-state="needs-you"></span><span class="say dk warn"><span class="who">Jude · checks</span>Two parts need you: the background and the budget.</span>
+          </div>
+          <div class="brandrow">
+            <span>The brand's colours</span>
+            <div class="swatches" id="sw">
+              <button aria-label="Dark with orange" aria-pressed="false" data-p="#0F1114,#1B1F25,#FF4F2E,#F2F3F5" style="background:linear-gradient(135deg,#1B1F25,#FF4F2E)"></button>
+              <button aria-label="Plum with coral" aria-pressed="true" data-p="#1a1320,#2a1518,#ff5c49,#f3e9dd" style="background:linear-gradient(135deg,#2a1518,#ff5c49)"></button>
+              <button aria-label="Cream with rust" aria-pressed="false" data-p="#f6f3ec,#ece3d4,#c0492f,#221a14" style="background:linear-gradient(135deg,#ece3d4,#c0492f)"></button>
+              <button aria-label="Forest with mint" aria-pressed="false" data-p="#08130f,#0c241b,#34d399,#e6f5ee" style="background:linear-gradient(135deg,#0c241b,#34d399)"></button>
+            </div>
+            <button class="linkbtn lt" type="button">Choose my own colours and font</button>
+          </div>
+        </header>
+        <article class="paper">
+          <span class="sec">The brief</span>
+          <div class="fld"><b>Background</b><p>Lunasa launched a 0.0% lager in Ireland last spring. Awareness is fine; trial is not. Pubs stock it, but nobody orders it by name.</p></div>
+          <span class="sec">Objectives</span>
+          <div class="fld"><b>Commercial</b><p>Lift on-trade rate of sale of Lunasa 0.0 by 20% across 400 pubs by Q4.</p></div>
+          <span class="sec">Strategy</span>
+          <div class="fld"><b>The insight</b><p>Cutting back isn't the hard part. Standing at the bar feeling like you've left the round is.</p></div>
+          <div class="fld hero"><b>Single-minded proposition</b><p>Lunasa 0.0 keeps you at the table.</p></div>
+          <div class="pics-sec"><span class="sec">Your pictures</span><p class="pnote">From what you sent. Tap + to add more, or tap one to take it out.</p>
+            <div class="thumbs"><u></u><u></u><label>+<input type="file" hidden></label></div></div>
+        </article>
+      </div>
+    </section>
+  </div>
+
+  <p class="note">The bar at the top becomes <b>Saved · Share · More</b>. Edit, Open, Save as, Present offline, Export and Where-it-came-from move into More. The green VALID badge goes: a person doesn't need to know the file checks out, only when it doesn't.</p>
+</div>
+
+<script>
+(function(){
+  function fig(k,o){ return agentFigure(k,o||{}); }
+  function onBar(host, list){
+    host.innerHTML = list.map(function(m){
+      return '<span class="m'+(m.big?' big':'')+'" tabindex="0">'+fig(m.k,{state:m.state})+
+        (m.first?'<span class="first"><span class="say"><span class="who">'+(m.name?m.name+' \u00b7 reads':AGENT_FIGURES.name[m.k])+'</span>'+m.first+'</span></span>':
+        '<span class="tip"><span class="say"><span class="who">'+m.label+'</span>'+m.tip+'</span></span>')+'</span>';
+    }).join('');
+  }
+  onBar(document.getElementById('crew-r'), [
+    {k:'extract', big:true, name:'Ellis', first:'Hi, I’m Ellis! Tell me who the client is. I’ll read anything you add.'},
+    {k:'market_structure', label:'Max \u00b7 the market', tip:'I’m Max. I’ll size the market.'},
+    {k:'positioning', label:'Bo \u00b7 the brands', tip:'I’m Bo. I’ll see what each brand claims.'},
+    {k:'culture', label:'Cam \u00b7 the shoppers', tip:'I’m Cam. I’ll find who buys, and why.'},
+    {k:'codes', label:'Cody \u00b7 the ads', tip:'I’m Cody. I’ll see what the ads look like.'},
+    {k:'rhythm', label:'Remy \u00b7 the timing', tip:'I’m Remy. I’ll find when people buy.'},
+    {k:'media', label:'Mo \u00b7 the spend', tip:'I’m Mo. I’ll track who spends where.'},
+    {k:'regulation', label:'Lex \u00b7 the rules', tip:'I’m Lex. I’ll list what you can’t say.'},
+    {k:'effectiveness', label:'Eden \u00b7 what worked', tip:'I’m Eden. I’ll find ads that worked.'},
+    {k:'synthesis', label:'Sam \u00b7 the points', tip:'I’m Sam. I’ll turn the facts into points.'},
+    {k:'drafter', big:true, label:'Dara \u00b7 writes', tip:'I’m Dara. I’ll write it up. Every line cited.'}
+  ]);
+  onBar(document.getElementById('crew-b'), [
+    {k:'extract', big:true, name:'Ellis', first:'Hi, I\u2019m Ellis! Paste what the client said. I\u2019ll write it up as a clean paper brief.'},
+    {k:'drafter', big:true, label:'Dara \u00b7 writes', tip:'I\u2019m Dara. I\u2019ll write every part of the brief.'},
+    {k:'judge', big:true, label:'Jude \u00b7 checks', tip:'I\u2019m Jude. I\u2019ll check it all holds together.'}
+  ]);
+  document.getElementById('crew-b').style.justifyContent='center';
+  document.getElementById('crew-b').style.gap='64px';
+  var S=[['extract','Ellis reads what you sent','done'],['extract','Ellis finds the brand','done'],['judge','Jude picks what to look into','done'],['market_structure','The researchers look it up','now'],['synthesis','Sam finds the points',''],['drafter','Dara writes the report','']];
+  document.getElementById('steps').innerHTML=S.map(function(s){
+    return '<div class="stp '+s[2]+'">'+fig(s[0],{state:s[2]==='now'?'working':'idle',decorative:true})+'<span class="lane"></span><span>'+s[1]+'</span><span class="tick">'+(s[2]==='done'?'Done':s[2]==='now'?'Now':'Next')+'</span></div>';
+  }).join('');
+  var LN={market_structure:'Max',positioning:'Bo',culture:'Cam',codes:'Cody',rhythm:'Remy',media:'Mo',regulation:'Lex',effectiveness:'Eden'};
+  document.getElementById('lensrow').innerHTML=Object.keys(LN).map(function(k,i){ return '<span class="nm">'+fig(k,{state:i<3?'idle':'working',decorative:true})+'<small>'+LN[k]+'</small></span>'; }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('[data-fig]'),function(el){ el.outerHTML=fig(el.dataset.fig,{state:el.dataset.state,cls:el.dataset.cls}); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-crew]'),function(el){ el.innerHTML=el.dataset.crew.split(',').map(function(k){ return fig(k,{decorative:true}); }).join(''); });
+
+  var notes={home:'The OS home. Each tool shows its crew and says what it does in one sentence. Unfinished work says what it needs from you.',
+    start:'The Research Tool’s first page: one box with the crew standing on it. Extract greets you; hover any agent to hear what it will do. The orange button starts the research.',
+    work:'While it runs, the agents introduce themselves by name, the same names in every tool: Ellis reads, Jude picks and checks, eight researchers (Max, Bo, Cam, Cody, Remy, Mo, Lex, Eden) look things up, Sam finds the points, Dara writes. A question is signed by whoever asks it.',
+    done:'When it\u2019s ready, you see the report itself. The Judge sits in a bar at the top and counts the checks. Each check sits in the report right under the sentence it is about, asked by the agent who made it. What you agreed to turns green. Facts with a source need no check.',
+    brief:'Brief Maker opens the same way, with the choice it has today under the box: Paper, Studio or Brand brief. Picking one changes the page with it: its colours, what Extract says, and the button. Try all three.',
+    bwork:'While the brief is written, each agent introduces itself once by name: Ellis reads, Dara writes, Jude checks. The same names then appear wherever that agent speaks or signs a part of the brief, so people learn them.',
+    look:'The finished brief. The same three kinds can be switched in its header. Paper brief is today\u2019s sheet with darker type. Studio brief uses soft Napkin colours and adds the mood board. Brand brief dresses it in the client\u2019s colours, with four palettes in the header. Try all three.'};
+  var where={home:'Home',start:'Research Tool',work:'Harbour Kitchen · Irish entry',done:'Harbour Kitchen · Irish entry',brief:'Brief Maker',look:'Lunasa \u00b7 spring brief',bwork:'Lunasa \u00b7 spring brief'};
+  function show(s){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-screen]'),function(x){ x.hidden=x.dataset.screen!==s; });
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(b){ b.setAttribute('aria-selected', b.dataset.s===s?'true':'false'); });
+    document.getElementById('note').textContent=notes[s]; document.getElementById('where').textContent=where[s];
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(b){ b.onclick=function(){ show(b.dataset.s); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-to]'),function(b){ b.onclick=function(){ show(b.dataset.to); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('.try'),function(b){ b.onclick=function(){ document.getElementById('q').value=b.textContent.replace(/^Try: /,''); }; });
+  function group(sel){ Array.prototype.forEach.call(document.querySelectorAll(sel),function(b,_,all){ b.onclick=function(){ Array.prototype.forEach.call(document.querySelectorAll(sel),function(x){ x.setAttribute('aria-pressed', x===b?'true':'false'); }); }; }); }
+  group('#kinds .kind');
+  var KIND={paper:{say:'Hi, I\u2019m Ellis! Paste what the client said. I\u2019ll write it up as a clean paper brief.',line:'A paper brief: black on white, ready to print.',go:'Write the paper brief'},
+    studio:{say:'A studio brief! I\u2019m Ellis. Add any pictures, sound or video, and I\u2019ll make a mood board.',line:'A studio brief: soft colours and a mood board.',go:'Write the studio brief'},
+    brand:{say:'A brand brief! I\u2019m Ellis, and I\u2019ll dress it in the client\u2019s colours. Add their logo or deck if you have it.',line:'A brand brief: in the client\u2019s own colours.',go:'Write the brand brief'}};
+  Array.prototype.forEach.call(document.querySelectorAll('#kinds .kind'),function(k){ k.addEventListener('click',function(){
+    var K=KIND[k.dataset.k]; var st=document.getElementById('bstart'); st.dataset.kind=k.dataset.k;
+    document.getElementById('bgo').textContent=K.go; document.getElementById('kline').textContent=K.line;
+    var s=document.querySelector('#crew-b .first .say'); if(s) s.innerHTML='<span class="who">Ellis \u00b7 reads</span>'+K.say; }); });
+  var bd=document.getElementById('bdoc');
+  function pal(btn){ var p=btn.dataset.p.split(','); bd.style.setProperty('--pbg',p[0]); bd.style.setProperty('--pbg2',p[1]); bd.style.setProperty('--pac',p[2]); bd.style.setProperty('--ptx',p[3]); }
+  function plain(){ ['--pbg','--pbg2','--pac','--ptx'].forEach(function(k){ bd.style.removeProperty(k); }); }
+  Array.prototype.forEach.call(document.querySelectorAll('.lookpick button'),function(b){ b.onclick=function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.lookpick button'),function(x){ x.setAttribute('aria-pressed', x===b?'true':'false'); });
+    bd.dataset.look=b.dataset.l; if(b.dataset.l==='brand') pal(document.querySelector('#sw button[aria-pressed="true"]')); else plain(); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('#sw button'),function(b){ b.onclick=function(){
+    Array.prototype.forEach.call(document.querySelectorAll('#sw button'),function(x){ x.setAttribute('aria-pressed', x===b?'true':'false'); }); pal(b); }; });
+  var chks=['c3','c1']; var ci=0;
+  document.getElementById('jb-next').onclick=function(){ var el=document.querySelector('[data-chk="'+chks[ci%chks.length]+'"]'); ci++;
+    el.scrollIntoView({block:'center',behavior:'smooth'}); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); };
+  show('start');
+})();
+</script>
