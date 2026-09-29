@@ -17,7 +17,7 @@ import threading
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import API, backend, registry, set_model_wire
+from . import API, backend, metrics, registry, set_model_wire
 from .capabilities import Capabilities
 from .config import Settings
 from .doc import STAGES
@@ -267,6 +267,7 @@ def main():
     import uvicorn
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     settings = Settings.from_env()
+    metrics.enable_by_default()
     if settings.port in (8080, 8090, 8790, 8791, 8792, 8796):
         raise SystemExit(f"refusing to bind port {settings.port}")
     app = create_app(settings)

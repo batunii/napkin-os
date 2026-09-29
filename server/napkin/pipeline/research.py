@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
+import time as _time
 from concurrent.futures import ThreadPoolExecutor
 
 from ..doc import (CONF, ISO_3166, LENS_NAMESPACE, LENSES, LICENCE_RANK, ctx_data, ctx_facts, decision,
                    field_value, lens_of_key, market_list, read_of)
 from ..layers import origin_uri
+from ..metrics import emit
 from ..rules import merge as merge_rules
 from ..rules.confidence import coverage_of, fact_confidence, merge_coverage
 from ..rules.figures import quote_supports
@@ -151,6 +153,15 @@ class Researcher:
 
     # -- one unit ----------------------------------------------------------------
     def unit(self, lens: str, market: str) -> dict:
+        """One lens x market unit (see `_unit`); its outcome goes to the run ledger."""
+        t0 = _time.monotonic()
+        u = self._unit(lens, market)
+        emit("unit", lens=lens, market=market, secs=round(_time.monotonic() - t0, 2), reused=u["reused"],
+             sources=len(u["sources"]), facts=len(u["cands"]) - u["reused"], gaps=len(u["gaps"]), error=u["error"],
+             job=self.caps.attribution.get("job"))
+        return u
+
+    def _unit(self, lens: str, market: str) -> dict:
         ns = LENS_NAMESPACE[lens]
         u = {"lens": lens, "market": market, "cands": [], "gaps": [], "reused": 0, "sources": [], "error": None,
              "queries": []}

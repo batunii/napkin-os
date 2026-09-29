@@ -29,6 +29,8 @@ import time
 import httpx
 import jsonschema
 
+from .metrics import emit
+
 log = logging.getLogger("napkin.model")
 
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
@@ -337,6 +339,10 @@ class ModelPort:
                 usage.add(*reply.usage)
             log.info("model %s wire=%s attempt=%d stop=%s %.1fs [%s]", purpose, self.wire.api, attempt, reply.stop,
                      time.monotonic() - t0, attribution)
+            emit("model", purpose=purpose, model=model, wire=self.wire.api, attempt=attempt, stop=reply.stop,
+                 secs=round(time.monotonic() - t0, 2), input_tokens=(reply.usage or (None, None))[0],
+                 output_tokens=(reply.usage or (None, None))[1], max_tokens=max_tokens or self.max_tokens,
+                 effort=effort, job=(headers or {}).get("X-Napkin-Job"), handler=(headers or {}).get("X-Napkin-Handler"))
             if reply.stop == "truncated":
                 raise ModelError(f"{purpose}: the response was cut off at max_tokens", "truncated")
             if reply.stop == "refusal":

@@ -8,9 +8,11 @@ peripherals store, search, fetch and generate.
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -239,6 +241,7 @@ class ClaudeCall:
     tools: list = field(default_factory=list)   # [] = no tools
     max_turns: int | None = None
     permission_mode: str | None = None
+    trace_tools: bool = False                    # stream the CLI's events so tool uses can be counted
 
 
 def child_env() -> dict:
@@ -250,12 +253,14 @@ def child_env() -> dict:
 
 
 def claude_argv(cfg: Config, call: ClaudeCall, system_fd: int | None) -> list[str]:
-    stream = bool(call.images)
+    stream = bool(call.images) or call.trace_tools
     cmd = [cfg.claude_bin, "-p", "--model", call.alias]
-    if stream:
+    if call.images:
         # Image blocks only travel through stream-json input, which requires
         # stream-json output (verified against Claude Code 2.1.281).
         cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+    elif stream:
+        cmd += ["--output-format", "stream-json", "--verbose"]  # text stdin, event stdout
     else:
         cmd += ["--output-format", "json"]
     cmd += ["--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
@@ -308,13 +313,87 @@ def _envelope_from(out: str, stream: bool):
     return last
 
 
+def record_cache_hit(cfg: Config, req: dict) -> None:
+    """A research answer served from the disk cache: no subprocess ran, so no cost."""
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(), "family": "research",
+           "lens": req.get("lens"), "market": req.get("market"), "cached": True, "secs": 0, "cost_usd": 0}
+    try:
+        with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass
+
+
+CALL_CTX: contextvars.ContextVar = contextvars.ContextVar("call_ctx", default={})
+_LEDGER_LOCK = threading.Lock()
+
+
+def _tool_uses(out: str) -> dict:
+    """{tool name: count} from a stream-json run's assistant events."""
+    counts: dict[str, int] = {}
+    for line in out.splitlines():
+        if '"tool_use"' not in line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        content = ((ev.get("message") or {}).get("content")) if isinstance(ev, dict) else None
+        for b in content if isinstance(content, list) else []:
+            if isinstance(b, dict) and b.get("type") == "tool_use":
+                counts[b.get("name", "?")] = counts.get(b.get("name", "?"), 0) + 1
+    return counts
+
+
+def record_call(cfg: Config, call: ClaudeCall, secs: float, envelope: dict | None, ok: bool, tools: dict | None,
+                failure: str | None = None) -> None:
+    """One JSON line per `claude -p` subprocess in <MOCK_DATA>/metrics.jsonl:
+    who asked (handler, job, from the request headers), what for (the model
+    purpose, or the research lens and market, read from the prompt), how long,
+    what the CLI reported it cost, its tokens and the tools it used. Metadata
+    only: never a prompt or a reply."""
+    env = envelope or {}
+    u = env.get("usage") if isinstance(env.get("usage"), dict) else {}
+    m = re.match(r"Task: (\S+)", call.prompt)
+    lens, market = re.search(r"^Lens: (\w+)", call.prompt, re.M), re.search(r"^Market: (\w+)", call.prompt, re.M)
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(),
+           "family": "research" if call.tools else "model", "purpose": m.group(1) if m else None,
+           "lens": lens.group(1) if lens else None, "market": market.group(1) if market else None,
+           "alias": call.alias, "secs": round(secs, 2), "ok": ok, "failure": failure,
+           "cost_usd": env.get("total_cost_usd"), "turns": env.get("num_turns"),
+           "in_fresh": u.get("input_tokens"), "cache_write": u.get("cache_creation_input_tokens"),
+           "cache_read": u.get("cache_read_input_tokens"), "out": u.get("output_tokens"),
+           "prompt_chars": len(call.prompt), "system_chars": len(call.system or ""),
+           "web_searches": (tools or {}).get("WebSearch"), "web_fetches": (tools or {}).get("WebFetch"),
+           "server_tool_use": u.get("server_tool_use"),
+           "tools": tools}
+    try:
+        with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | None = None) -> dict:
+    """Runs one call and writes its ledger line (see `record_call`)."""
+    t0 = time.monotonic()
+    try:
+        env = _run_claude(cfg, call, timeout, cwd_root)
+    except ClaudeFailure as f:
+        record_call(cfg, call, time.monotonic() - t0, None, False, None, f.kind)
+        raise
+    ok = not (env.get("_exit") or env.get("is_error"))
+    record_call(cfg, call, time.monotonic() - t0, env, ok, env.pop("_tools", None))
+    return env
+
+
+def _run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | None = None) -> dict:
     """One fresh `claude -p` in an empty temporary directory; the parsed
     envelope. Raises ClaudeFailure. The caller holds a slot."""
     rfd = wfd = None
     if call.system is not None:
         rfd, wfd = os.pipe()
-    stream = bool(call.images)
+    stream = bool(call.images) or call.trace_tools
     try:
         if cwd_root is not None:
             cwd_root.mkdir(parents=True, exist_ok=True)
@@ -370,6 +449,8 @@ def run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | N
     if not isinstance(envelope, dict):
         raise ClaudeFailure("no_envelope", "the claude CLI result is not an object")
     envelope.setdefault("_exit", proc.returncode)
+    if call.trace_tools:
+        envelope["_tools"] = _tool_uses(out)
     return envelope
 
 

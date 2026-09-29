@@ -26,6 +26,7 @@ import logging
 import threading
 import time
 
+from .metrics import emit
 from .model import ModelError, ModelPort, Usage
 from .research import ResearchError, ResearchPort
 from .retrieval import RetrievalError, RetrievalPort
@@ -75,11 +76,19 @@ class ResearchCap:
             raise ResearchError("no research service is configured")
         with self._sem:
             t0 = time.monotonic()
+            got, err = None, None
             try:
-                return self._port.search(query, lens, market, entity=entity, category=category,
-                                         max_sources=max_sources, attribution=dict(self._attr))
+                got = self._port.search(query, lens, market, entity=entity, category=category,
+                                        max_sources=max_sources, attribution=dict(self._attr))
+                return got
+            except Exception as e:
+                err = type(e).__name__
+                raise
             finally:
                 log.info("research %s/%s %.1fs [%s]", lens, market, time.monotonic() - t0, _attr_str(self._attr))
+                emit("research", lens=lens, market=market, secs=round(time.monotonic() - t0, 2),
+                     sources=len((got or {}).get("sources") or []), queries=len(((got or {}).get("trace") or {}).get("queries") or []),
+                     error=err, job=self._attr.get("job"), handler=self._attr.get("handler"))
 
 
 class RetrievalCap:

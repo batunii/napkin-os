@@ -24,7 +24,7 @@ import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
 from common import (ClaudeCall, ClaudeFailure, Config, DiskCache, PeripheralError, Request, Response, Slots,
-                    canon, log, parse_json_object, run_claude, sha256_hex)
+                    canon, log, parse_json_object, record_cache_hit, run_claude, sha256_hex)
 
 API = "napkin.research/1"
 BACKEND = "claude-code-websearch"
@@ -289,7 +289,7 @@ class Research:
     def _run(self, req: dict) -> dict:
         cfg = self.cfg
         call = ClaudeCall(alias=cfg.research_model, prompt=build_prompt(req), json_schema=SOURCES_SCHEMA,
-                          tools=["WebSearch", "WebFetch"], permission_mode="dontAsk")
+                          tools=["WebSearch", "WebFetch"], permission_mode="dontAsk", trace_tools=True)
         if not self.slots.acquire(cfg.queue_timeout_for("research")):
             raise PeripheralError(503, "overloaded", f"all {self.slots.n} claude slots busy (MOCK_CONCURRENCY)")
         try:
@@ -316,6 +316,7 @@ class Research:
                 hit = self.cache.get(key)
                 if hit and isinstance(hit.get("response"), dict):
                     log(f"research cache hit {key[:12]} {req['lens']}/{req['market']}")
+                    record_cache_hit(self.cfg, req)
                     return hit["response"]
             t0 = time.monotonic()
             result = self._run(req)

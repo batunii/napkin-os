@@ -21,12 +21,14 @@ import copy
 import logging
 import re
 import threading
+import time
 import traceback
 
 from ..doc import (CAMPAIGN_FIELDS, GATES, LENS_TITLES, LENSES, STAGES, address, apply_patch, build_materials,
                    ctx_data, ctx_decisions, ctx_facts, ctx_findings, decision, deep_merge, field_paths, get_dotted,
                    human_owned, known_ids, market_list, read_of)
 from ..layers import origin_uri
+from ..metrics import emit
 from ..rules import identify as id_rules
 from ..rules import markets as market_rules
 from ..rules.confidence import fact_confidence
@@ -237,8 +239,10 @@ class CampaignJob:
                     if not earlier <= known_ids(self.latest_clan):
                         self.cond.wait(timeout=30)
                         continue  # composes once the earlier stages have landed (§8.4)
+            t_stage = time.monotonic()
             try:
                 finished = getattr(self, "stage_" + stage)()
+                emit("stage", stage=stage, secs=round(time.monotonic() - t_stage, 2), finished=bool(finished), job=self.id)
             except TaskError as e:
                 self.fail(stage, e.etype, e.message)
                 return

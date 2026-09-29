@@ -47,3 +47,4 @@ app/public/apps/
 
 # Middleware runtime data (default knowledge-layers database)
 server/var/
+runs/metrics/
