@@ -155,3 +155,55 @@ def test_report_cell_shows_research_support():
     import checkpoint_run as cr
     assert cr._grounding_cell({"invented": 0, "of": 5, "to_confirm": 1, "from_research": 2}) == "0 of 5 (+1 to confirm, 2 from research)"
     assert cr._grounding_cell({"invented": 1, "of": 4}) == "1 of 4"
+
+
+# ---------- C1d: the brief and a fact disagree ----------
+
+def test_a_contradicted_fact_is_recorded_not_used(monkeypatch):
+    import jev_checks
+    monkeypatch.setattr(jev_checks, "fact_conflicts", lambda text, lines: [0.97 if "40 shops" in l else 0.05 for l in lines])
+    usable = rf.current(FIXTURE_FACTS)[0]
+    agreed, contested = rf.split_conflicts("We run 35 shops.", usable)
+    assert [f["id"] for f in agreed] == ["f-2"]
+    assert contested == [{"id": "f-1", "version": 2, "line": rf.line(usable[0]), "p": 0.97}]
+    q = rf.conflict_question(contested[0])
+    assert q["priority"] == "high" and "Which is current?" in q["question"]
+
+
+def test_no_jev_means_no_conflicts_claimed(monkeypatch):
+    import jev_checks
+    monkeypatch.setattr(jev_checks, "fact_conflicts", lambda text, lines: None)
+    usable = rf.current(FIXTURE_FACTS)[0]
+    assert rf.split_conflicts("We run 35 shops.", usable) == (usable, [])
+
+
+def test_contested_facts_reach_the_writers_only_as_to_confirm(monkeypatch):
+    calls = _fake_models(monkeypatch)
+    usable = rf.current(FIXTURE_FACTS)[0]
+    contested = [{"id": "f-1", "version": 2, "line": rf.line(usable[0]), "p": 0.97}]
+    from test_cannot_fail_silently import GOLDEN_SCHEMA
+    gf = {"audience": {"value": "under-30s", "source": "client_stated"},
+          "background": {"value": "a bakery", "source": "client_stated"},
+          "competitor_context": {"value": "supermarkets", "source": "client_stated"}}
+    pb.fill_derivable_fields(gf, {"loops": {}}, GOLDEN_SCHEMA, brief_text="We run 35 shops.",
+                             research_facts=[usable[1]], contested=contested)
+    prompts = [u for k, u, s in calls if k in ("gen", "gen_batch")]
+    assert all("CONTESTED" in u and "do NOT state either value as fact" in u for u in prompts)
+    assert all("VERIFIED RESEARCH FACTS" in u and "[F:f-2 v1]" in u.split("CONTESTED")[0] for u in prompts)
+    assert not any("[F:f-1 v2]" in u.split("CONTESTED")[0] for u in prompts)   # usable list excludes it
+
+
+def test_run_records_conflicts_and_asks(monkeypatch):
+    import jev_checks
+    monkeypatch.setattr(jev_checks, "fact_conflicts", lambda text, lines: [0.97 if "40 shops" in l else 0.05 for l in lines])
+    monkeypatch.setattr(pb, "capture_toon", lambda segs: {"fields": {"business_problem": {"value": "p", "status": "fact"}},
+                                                          "how_to_win": {}, "open_questions": []})
+    monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})
+    monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
+    out = pb.run(None, raw_text="A bakery. We run 35 shops.", upstream={"facts": FIXTURE_FACTS})
+    rfm = out["meta"]["research_facts"]
+    assert [c["id"] for c in rfm["conflicts"]] == ["f-1"] and [u["id"] for u in rfm["used"]] == ["f-2"]
+    assert any(q.get("fact_id") == "f-1" for q in out["loop2_brief"]["open_questions"] if isinstance(q, dict))
+    sys.path.insert(0, str(HERE.parent / "agent-server"))
+    import mapping
+    assert mapping.map_brief(out)["fact_conflicts"][0]["id"] == "f-1"

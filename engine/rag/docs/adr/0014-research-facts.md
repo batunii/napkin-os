@@ -59,8 +59,18 @@ comparable. The grader (golden_critic) was left alone: it never sees the client 
 none of its rubric tests compares a field with the brief, so a research-backed claim is not
 marked down there.
 
+## C1d (built)
+
+Where the client brief and a current fact disagree (jev, one yes/no question per fact,
+p >= 0.9), the engine picks no winner (Sai). The fact goes to `meta.research_facts.conflicts`
+({id, version, line, p}), a high-priority open question asks which is current, the app reply
+carries `fact_conflicts` for CLAN's merge report to record the contest, and the writers get
+the fact only under CONTESTED: never to be stated as fact, at most asked as TO CONFIRM
+(option a, Sai "go on" 2026-09-29). With jev unavailable, no conflict is claimed and every
+fact stays usable. Sai notes the research tool may detect such conflicts too; if it emits
+them, the engine can take its records and skip this check (question with Shrey and the
+research team).
+
 ## Next
 
-- C1d: where the brief and a fact differ, both values are kept with their origin for the CLAN
-  merge report (the per-field fact list itself landed with C1b as `fact_refs`).
 - C2: the territory check's rival from the brand's competitor facts.

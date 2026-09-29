@@ -25,6 +25,8 @@ Four uses, each measured in the 2026-09-24 jev lab (engine/outputs/audit_2026_09
   sort_segments       the Loop 1 capture fallback (capture_fallback.py, 2026-09-29): which
                       part of a brief each sentence is, when the model capture failed.
                       46% of the model's fields on 7 saved briefs, 2 wrong.
+  fact_conflicts      research facts (C1d, 2026-09-29): does the client brief conflict with a
+                      verified fact? A conflict is recorded for CLAN to settle, never decided.
   claims_supported    evaluation only (grounding.py, 2026-09-28): each claim of a finished
                       brief as supported / contradicted / not_in_brief against the client
                       brief. On the 2026-09-28 trial it separated the briefs that invent proof
@@ -210,6 +212,24 @@ def claims_supported(brief_text: str, claims: list, research: "list | None" = No
         choice, probs = got[f"c{i:03d}"]
         out.append((choice, round(float(probs.get(choice, 0.0)), 2)))
     return out
+
+
+CONFLICT_Q = "Does the client brief in the state say something that conflicts with FACT?"
+CONFLICT_T = "The brief states a value, figure or claim about the same thing that differs from FACT."
+CONFLICT_F = "The brief says nothing about this, or says the same thing as FACT."
+
+
+def fact_conflicts(brief_text: str, fact_lines: list) -> "list | None":
+    """p(the client brief conflicts with the fact) per verified research fact line, in order
+    (C1d, 2026-09-29). None when jev cannot answer."""
+    asked = {f"k{i:03d}": _noul(CONFLICT_Q, CONFLICT_T, CONFLICT_F, fact=str(f)[:600])
+             for i, f in enumerate(fact_lines)}
+    if not asked:
+        return []
+    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "fact conflicts")
+    if got is None:
+        return None
+    return [got.get(f"k{i:03d}") for i in range(len(fact_lines))]
 
 
 def sort_segments(brief_text: str, segments: list, labels: dict, hints: list) -> "list | None":

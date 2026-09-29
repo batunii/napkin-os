@@ -181,6 +181,9 @@ def map_brief(brief: dict, clan_data: dict | None = None) -> dict:
                 "reasons_to_believe": "reasons_to_believe", "desired_response": "desired_response"}
     put("fact_refs", {app_name[k]: v["fact_refs"] for k, v in gf.items()
                       if k in app_name and isinstance(v, dict) and v.get("fact_refs")})
+    # Where the client brief and a verified fact disagree (C1d): both sides, for CLAN's merge
+    # report to record as a contest; the brief states neither as fact until a person settles it.
+    put("fact_conflicts", ((meta.get("research_facts") or {}).get("conflicts") or []))
     return out
 
 

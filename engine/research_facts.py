@@ -163,3 +163,44 @@ def strip(value, facts: dict) -> tuple:
     else:
         clean = value
     return clean, refs
+
+
+# ---- C1d: the brief and a fact disagree ------------------------------------------------
+
+CONFLICT_P = 0.9     # the pipeline's usual jev confidence line (DISPUTE_P, FIGURE_FAIL_P)
+
+
+def split_conflicts(brief_text: str, facts: list) -> tuple:
+    """(agreed, contested): the facts the client brief does not contradict, and one
+    {"id", "version", "line", "p"} per fact it does (jev at p >= CONFLICT_P). Sai: the engine
+    picks no winner; two sources that disagree are recorded for CLAN's merge report and a
+    person settles it. Until then a contested fact is not given to the writers as usable (a
+    writer may only ask about it as TO CONFIRM). When jev cannot answer, every fact is kept
+    as agreed and nothing is marked contested."""
+    if not facts:
+        return [], []
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "rag"))
+    try:
+        import jev_checks
+    except Exception:            # noqa: BLE001 — retrieval package unavailable: no conflict check
+        return list(facts), []
+    ps = jev_checks.fact_conflicts(brief_text, [line(f) for f in facts])
+    if ps is None:
+        return list(facts), []
+    agreed, contested = [], []
+    for f, p in zip(facts, ps):
+        if isinstance(p, (int, float)) and p >= CONFLICT_P:
+            contested.append({"id": f["id"], "version": f.get("version"), "line": line(f), "p": round(float(p), 2)})
+        else:
+            agreed.append(f)
+    return agreed, contested
+
+
+def conflict_question(c: dict) -> dict:
+    """The open question a contested fact raises."""
+    return {"question": f"The client brief conflicts with verified research ({c['line']}). Which is current?",
+            "why_it_matters": "the brief and the research disagree; the brief does not state either as fact "
+                              "until a person settles it",
+            "priority": "high", "fact_id": c["id"]}
