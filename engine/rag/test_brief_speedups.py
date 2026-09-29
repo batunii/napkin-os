@@ -241,15 +241,28 @@ def _fill(monkeypatch):
 
 
 def test_hero_fields_batched_calls_and_parallel_waves(monkeypatch):
-    """Default: 13 calls (was 17 with every gate passing first time), and reasons_to_believe
-    and desired_response are generated at the same time. Every field, hero or not, goes
+    """Default: 9 calls (13 with the sharpen pass, which is off since 2026-09-29; 17 before
+    2026-09-25 with every gate passing first time), and reasons_to_believe and
+    desired_response are generated at the same time. Every field, hero or not, goes
     through the one batched judge (no separate rubric gate since 2026-09-25)."""
+    calls = []
+    _fake_models(monkeypatch, calls, gate=threading.Barrier(2, timeout=5))
+    for v in ("BRIEF_PARALLEL", "BRIEF_HERO_CANDIDATES", "BRIEF_SMP_CANDIDATES", "BRIEF_SHARPEN"):
+        monkeypatch.delenv(v, raising=False)
+    fills, _qs = _fill(monkeypatch)
+    assert set(fills) == set(pb.GEN_ZONE3_ORDER)
+    assert len(calls) == 9, calls
+    assert set(calls) == {"territory", "gen_batch", "judge_batch", "gen"}
+
+
+def test_with_the_sharpen_pass_on_there_are_13_calls(monkeypatch):
+    """BRIEF_SHARPEN=1: a sharpen and a re-judge for each hero line on top of the default 9."""
     calls = []
     _fake_models(monkeypatch, calls, gate=threading.Barrier(2, timeout=5))
     for v in ("BRIEF_PARALLEL", "BRIEF_HERO_CANDIDATES", "BRIEF_SMP_CANDIDATES"):
         monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("BRIEF_SHARPEN", "1")
     fills, _qs = _fill(monkeypatch)
-    assert set(fills) == set(pb.GEN_ZONE3_ORDER)
     assert fills["insight"]["value"] == "refined line, because it holds"
     assert len(calls) == 13, calls
     assert set(calls) == {"territory", "gen_batch", "judge_batch", "refine", "gen"}

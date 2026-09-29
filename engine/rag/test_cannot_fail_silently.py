@@ -883,12 +883,14 @@ def test_app_rationale_names_the_kept_drafts():
     assert "DRAFTS TO REVIEW (failed their checks): smp" in mapping.build_rationale(brief)
 
 
-def test_brief_sharpen_0_skips_the_sharpen_pass(monkeypatch):
-    """BRIEF_SHARPEN=0 (phase C A/B): no refine call for the hero lines; default keeps it."""
+def test_the_sharpen_pass_is_off_by_default(monkeypatch):
+    """Off since 2026-09-29 (phase C change 1): no refine call for the hero lines by default;
+    BRIEF_SHARPEN=1 turns it back on."""
+    monkeypatch.delenv("BRIEF_SHARPEN", raising=False)
     calls = _fake_models(monkeypatch)
     _fill(monkeypatch)
-    assert any(k == "refine" for k, _u, _s in calls)
+    assert not any(k == "refine" for k, _u, _s in calls)
     calls2 = _fake_models(monkeypatch)
-    monkeypatch.setenv("BRIEF_SHARPEN", "0")
+    monkeypatch.setenv("BRIEF_SHARPEN", "1")
     _fill(monkeypatch)
-    assert not any(k == "refine" for k, _u, _s in calls2)
+    assert any(k == "refine" for k, _u, _s in calls2)
