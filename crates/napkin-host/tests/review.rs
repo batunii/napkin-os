@@ -514,3 +514,274 @@ fn a_person_rewrites_the_wording_and_it_travels_with_the_document() {
     assert_eq!(chain(&f).decisions[0].action, "restore_text");
     assert!(review::parse_edit_text(r#"{"key":"has space","html":"x"}"#).is_err());
 }
+
+// ── A document spun off from another, carrying it (Contract 4 §5, §7, §8.1) ──
+
+/// The id the hand-made child is given.
+const CHILD: &str = "9c1e4b7a-2d3f-4e5a-8b6c-1f0e9d8c7b6a";
+
+/// A brief spun off from `parent` the way Contract 4 §5.2 lays it out, made
+/// by hand so these tests do not wait on the SDK: the parent's data frozen at
+/// `upstream.<parent id>` (without its projection), its members and its whole
+/// chain carried, and nothing at the root but what `root` adds. `frozen` and
+/// `carried` edit the frozen copy and the carried chain first.
+fn child_of(
+    parent: &Fixture,
+    root: Value,
+    frozen: impl FnOnce(&mut Value),
+    carried: impl FnOnce(&mut DecisionChain),
+) -> Fixture {
+    let source = on_disk(parent);
+    let mut copy = yaml(parent, "shared/data.yaml");
+    copy.as_object_mut().unwrap().remove("projection");
+    frozen(&mut copy);
+    let mut data = root;
+    data["upstream"] = json!({ parent.doc.clone(): copy });
+    let mut chain = chain(parent);
+    carried(&mut chain);
+
+    let mut manifest = source.manifest().clone();
+    manifest.id = CHILD.into();
+    manifest.document_id = Some(CHILD.into());
+    manifest.title = "Brief".into();
+    let mut b = clan_sdk::ClanBuilder::new(manifest);
+    for (path, bytes) in source.read_all_entries().unwrap() {
+        if matches!(
+            path.as_str(),
+            clan_sdk::MANIFEST_PATH | "shared/data.yaml" | "agent/decision-chain.yaml" | "human/patches.yaml" | "shared/edits.yaml"
+        ) {
+            continue;
+        }
+        b.add_entry(path, bytes);
+    }
+    b.add_entry("shared/data.yaml", serde_yaml::to_string(&data).unwrap().into_bytes());
+    b.add_entry("agent/decision-chain.yaml", chain.to_yaml().unwrap());
+
+    let dir = tempfile::tempdir().unwrap();
+    let id = DocId::from(dir.path().join("brief.clan"));
+    std::fs::write(id.as_str(), b.build().unwrap()).unwrap();
+    let session = Session::new(Arc::new(FsStore::new(dir.path().to_path_buf())));
+    session.open(id.clone()).unwrap();
+    Fixture {
+        _dir: dir,
+        session,
+        id,
+        doc: CHILD.into(),
+    }
+}
+
+/// A child of the fixture as it stands, nothing added.
+fn child(parent: &Fixture) -> Fixture {
+    child_of(parent, json!({}), |_| {}, |_| {})
+}
+
+fn blockers(f: &Fixture) -> Vec<(String, Option<String>)> {
+    f.session
+        .read(napkin_host::ops::decisions::decisions)
+        .unwrap()
+        .attention
+        .into_iter()
+        .filter(|a| a.blocks_lock)
+        .map(|a| (a.code.to_string(), a.address))
+        .collect()
+}
+
+#[test]
+fn a_child_of_a_locked_parent_is_born_open_and_locks_itself() {
+    let parent = fixture();
+    run(&parent, |c, d| review::verdict(c, d, verdict("findings[fi_01JA0F2B]", "bad", "Wrong base"))).unwrap();
+    let input = Resolve::parse(r#"{"contest":"ct_share","chosen":"f_01JA0B3P4Q","rationale":"Retail value"}"#).unwrap();
+    run(&parent, |c, d| review::resolve(c, d, input)).unwrap();
+    run(&parent, |c, d| review::approve(c, d, "")).unwrap();
+
+    let brief = child(&parent);
+    // The parent's approve travelled; it records that the parent was accepted.
+    assert!(chain(&brief).decisions.iter().any(|d| d.kind.as_deref() == Some("approve")
+        && d.targets == vec![parent.doc.clone()]));
+    // It does not lock the brief: a person still decides here.
+    run(&brief, |c, d| review::verdict(c, d, verdict("facts[f_01JA0B3P4Q]", "good", ""))).unwrap();
+    assert!(blockers(&brief).is_empty(), "{:?}", blockers(&brief));
+    run(&brief, |c, d| review::approve(c, d, "")).unwrap();
+    let lock = &chain(&brief).decisions[0];
+    assert_eq!(lock.kind.as_deref(), Some("approve"));
+    assert_eq!(lock.targets, vec![CHILD.to_string()], "the lock names this document");
+    // Now the brief is locked, by its own approve.
+    assert_eq!(
+        run(&brief, |c, d| review::verdict(c, d, verdict("facts[f_01JA0B3P4Q]", "good", ""))),
+        Err(409)
+    );
+}
+
+#[test]
+fn the_lock_list_counts_every_carried_item() {
+    let parent = fixture();
+    let brief = child(&parent);
+    let b = blockers(&brief);
+    let at = |code: &str, address: &str| b.contains(&(code.to_string(), Some(address.to_string())));
+    // The research's open contest, carried open, at its upstream address.
+    assert!(at("open_contest", &format!("{}#selection.contested[ct_share]", parent.doc)), "{b:?}");
+    // The brief's own copy of the unverified finding.
+    assert!(at("unverified_finding", &format!("{CHILD}#findings[fi_01JA0F2B]")), "{b:?}");
+    assert_eq!(b.len(), 2, "{b:?}");
+    let e = brief
+        .session
+        .perform(brief.session.ctx(), |c, d| review::approve(c, d, ""))
+        .unwrap_err();
+    assert_eq!(e.status, 409);
+    assert!(e.message.contains("carried from upstream"), "{}", e.message);
+}
+
+#[test]
+fn a_carried_contest_is_resolved_in_the_child_and_the_frozen_copy_stays() {
+    let parent = fixture();
+    let parent_before = std::fs::read(parent.id.as_str()).unwrap();
+    let brief = child(&parent);
+    let frozen_before = yaml(&brief, "shared/data.yaml")["upstream"].clone();
+
+    let input = Resolve::parse(r#"{"contest":"ct_share","chosen":"f_01JA0B9Z9Z","rationale":"Retail-only is the market we enter"}"#).unwrap();
+    let reply = run(&brief, |c, d| review::resolve(c, d, input)).unwrap();
+
+    // The pick is pinned in the brief's own facts, from the frozen value; the
+    // pin of the same identity it replaces is kept, marked.
+    let facts = yaml(&brief, "shared/facts.yaml")["facts"].clone();
+    let by = |id: &str| facts.as_array().unwrap().iter().find(|p| p["id"] == id).cloned().unwrap();
+    assert_eq!(by("f_01JA0B9Z9Z")["value"], 0.19);
+    assert_eq!(by("f_01JA0B3P4Q")["replaced_by"]["fact_id"], "f_01JA0B9Z9Z");
+    assert_eq!(by("f_01JA0B3P4Q")["replaced_by"]["decision"], reply["decision"]);
+
+    // The decision targets the upstream contest and the pins it changed here.
+    let d = &chain(&brief).decisions[0];
+    assert_eq!(d.kind.as_deref(), Some("resolve"));
+    assert_eq!(
+        d.targets,
+        vec![
+            format!("{}#selection.contested[ct_share]", parent.doc),
+            format!("{CHILD}#facts[f_01JA0B3P4Q]"),
+            format!("{CHILD}#facts[f_01JA0B9Z9Z]"),
+        ]
+    );
+    assert!(d.cites.contains(&"d_01JA0D03CON".to_string()));
+    // The frozen copy and the parent are exactly as they were.
+    assert_eq!(yaml(&brief, "shared/data.yaml")["upstream"], frozen_before);
+    assert_eq!(std::fs::read(parent.id.as_str()).unwrap(), parent_before);
+    // It is off the lock list, and a second resolve of it is refused.
+    assert!(!blockers(&brief).iter().any(|(c, _)| c == "open_contest"), "{:?}", blockers(&brief));
+    let again = Resolve::parse(&json!({ "contest": format!("{}#selection.contested[ct_share]", parent.doc),
+                                        "chosen": "f_01JA0B3P4Q", "rationale": "x" }).to_string()).unwrap();
+    assert_eq!(run(&brief, |c, d| review::resolve(c, d, again)), Err(409));
+    let report = clan_sdk::validate(&on_disk(&brief));
+    assert!(report.is_valid(), "{}", report.display());
+}
+
+#[test]
+fn a_contest_resolved_before_the_hop_is_not_resolved_again() {
+    let parent = fixture();
+    let input = Resolve::parse(r#"{"contest":"ct_share","chosen":"f_01JA0B3P4Q","rationale":"Retail value"}"#).unwrap();
+    run(&parent, |c, d| review::resolve(c, d, input)).unwrap();
+    let brief = child(&parent);
+    let again = Resolve::parse(r#"{"contest":"ct_share","chosen":"f_01JA0B9Z9Z","rationale":"x"}"#).unwrap();
+    assert_eq!(run(&brief, |c, d| review::resolve(c, d, again)), Err(409));
+    // A document the brief does not carry is not a place to look.
+    let elsewhere = Resolve::parse(r#"{"contest":"0d0d0d0d-0000-4000-8000-000000000000#selection.contested[ct_share]","chosen":"f_01JA0B9Z9Z","rationale":"x"}"#).unwrap();
+    assert_eq!(run(&brief, |c, d| review::resolve(c, d, elsewhere)), Err(400));
+}
+
+#[test]
+fn review_routes_take_ancestor_addresses() {
+    let parent = fixture();
+    let p = parent.doc.clone();
+    let brief = child_of(
+        &parent,
+        json!({}),
+        |data| data["campaign"] = json!({ "problem": { "value": "Frozen is seen as second best", "origin": "stated" } }),
+        |chain| {
+            let bad: clan_sdk::Decision = serde_json::from_value(json!({
+                "id": "d_01JA0D09BAD", "kind": "verdict", "agent": "human:ana", "actor": "human:ana",
+                "action": "mark_bad", "polarity": "bad", "rationale": "Too vague",
+                "targets": [format!("{p}#campaign.problem")], "timestamp": "2026-09-24T10:00:00Z" }))
+            .unwrap();
+            chain.prepend(bad);
+        },
+    );
+    let frozen_before = yaml(&brief, "shared/data.yaml")["upstream"].clone();
+    // The carried bad verdict blocks the brief's lock.
+    let problem = format!("{p}#campaign.problem");
+    assert!(blockers(&brief).contains(&("bad_verdict".into(), Some(problem.clone()))), "{:?}", blockers(&brief));
+
+    // A finding under the parent's prefix is the brief's copy: that is what
+    // changes, so that is what the decision targets.
+    run(&brief, |c, d| review::verdict(c, d, verdict(&format!("{p}#findings[fi_01JA0F2B]"), "bad", "Value, not volume"))).unwrap();
+    assert_eq!(chain(&brief).decisions[0].targets, vec![format!("{CHILD}#findings[fi_01JA0F2B]")]);
+    assert_eq!(finding(&brief)["status"], "rejected");
+    assert_eq!(yaml(&parent, "shared/findings.yaml")["findings"][0]["status"], "proposed", "the parent's is untouched");
+
+    // A frozen field is marked where it is; overriding the carried bad
+    // verdict with a reason answers it. The frozen copy is not written.
+    run(&brief, |c, d| review::verdict(c, d, verdict(&problem, "good", "The client's own words; it stands"))).unwrap();
+    assert_eq!(chain(&brief).decisions[0].targets, vec![problem.clone()]);
+    assert!(!blockers(&brief).iter().any(|(c, _)| c == "bad_verdict"), "{:?}", blockers(&brief));
+    let input = Classify::parse(&json!({ "target": format!("{p}#selection.contested[ct_share]"), "model": false,
+                                         "export": false, "corpus": false, "rationale": "Client panel" }).to_string()).unwrap();
+    run(&brief, |c, d| review::classify(c, d, input)).unwrap();
+    assert_eq!(chain(&brief).decisions[0].targets, vec![format!("{p}#selection.contested[ct_share]")]);
+    assert_eq!(yaml(&brief, "shared/data.yaml")["upstream"], frozen_before);
+
+    // "Looks right" on a carried decision works as on one of its own.
+    run(&brief, |c, d| review::acknowledge(c, d, &("d_01JA0D02PIN".into(), String::new()))).unwrap();
+    assert_eq!(chain(&brief).decisions[0].targets, vec![format!("{CHILD}#decisions[d_01JA0D02PIN]")]);
+
+    // Something the frozen copy does not hold, a document the brief does not
+    // carry, and a path into the frozen block by its own name are refused.
+    assert_eq!(run(&brief, |c, d| review::verdict(c, d, verdict(&format!("{p}#campaign.nope"), "good", ""))), Err(404));
+    assert_eq!(
+        run(&brief, |c, d| review::verdict(c, d, verdict("0d0d0d0d-0000-4000-8000-000000000000#campaign.problem", "good", ""))),
+        Err(400)
+    );
+    assert_eq!(run(&brief, |c, d| review::verdict(c, d, verdict(&format!("upstream.{p}.campaign.problem"), "good", ""))), Err(400));
+}
+
+#[test]
+fn the_frozen_copy_is_read_only() {
+    let parent = fixture();
+    let brief = child(&parent);
+    let before = std::fs::read(brief.id.as_str()).unwrap();
+    let p = parent.doc.clone();
+    let edit = review::parse_edit(&json!({ "path": format!("upstream.{p}.campaign"), "value": "x", "rationale": "tidy" }).to_string()).unwrap();
+    let e = brief.session.perform(brief.session.ctx(), |c, d| review::edit(c, d, edit)).unwrap_err();
+    assert_eq!(e.status, 400);
+    assert!(e.message.contains("read-only"), "{}", e.message);
+    for patch in [json!({ "upstream": { p.clone(): { "campaign": {} } } }), json!({ "upstream": null })] {
+        let e = brief
+            .session
+            .patch_data(&json!({ "patch": patch, "agent": "human" }).to_string())
+            .unwrap_err();
+        assert_eq!(e.status, 400);
+        assert!(e.message.contains(&format!("frozen copy of {p}")), "{}", e.message);
+    }
+    assert_eq!(std::fs::read(brief.id.as_str()).unwrap(), before, "nothing written");
+    // Its own fields are still a person's to edit.
+    let own = review::parse_edit(&json!({ "path": "insight", "value": "Midweek is a habit", "rationale": "Ours" }).to_string()).unwrap();
+    brief.session.perform(brief.session.ctx(), |c, d| review::edit(c, d, own)).unwrap();
+    assert_eq!(yaml(&brief, "shared/data.yaml")["insight"], "Midweek is a habit");
+}
+
+#[test]
+fn a_brief_field_citing_a_rejected_finding_blocks_until_it_is_redrafted() {
+    let parent = fixture();
+    let drafted = |id: &str, cites: &[&str], at: &str| -> clan_sdk::Decision {
+        serde_json::from_value(json!({
+            "id": id, "kind": "edit", "agent": "draft_brief@1/drafter", "actor": "process:middleware",
+            "action": "draft", "rationale": "Drafted.", "targets": [format!("{CHILD}#insight")],
+            "cites": cites, "timestamp": at }))
+        .unwrap()
+    };
+    let brief = child_of(
+        &parent,
+        json!({ "insight": "Frozen is growing fast" }),
+        |_| {},
+        |chain| chain.prepend(drafted("d_01JB0DRAFT1", &["fi_01JA0F2B", "f_01JA0B3P4Q"], "2026-09-29T10:00:00Z")),
+    );
+    run(&brief, |c, d| review::verdict(c, d, verdict("findings[fi_01JA0F2B]", "bad", "Value, not volume"))).unwrap();
+    let b = blockers(&brief);
+    assert!(b.contains(&("flagged_field".into(), Some(format!("{CHILD}#insight")))), "{b:?}");
+}

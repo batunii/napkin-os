@@ -718,6 +718,24 @@ fn the_middleware_cannot_write_the_projection_or_verify_a_finding() {
 }
 
 #[test]
+fn the_middleware_cannot_write_the_frozen_upstream_copy() {
+    let f = fixture();
+    let before = std::fs::read(f.id.as_str()).unwrap();
+    let clan = f.session.clan_context_for_agent();
+    let parent = "3f2a9c1e-7b4d-4e8a-9c6f-0a1b2c3d4e5f";
+    for upstream in [json!({ parent: { "campaign": { "problem": "rewritten" } } }), json!(null)] {
+        let mut r = reply_for(&clan);
+        r["change"]["data_patch"]["upstream"] = upstream;
+        let (out, events) = settle(&f, r);
+        assert_eq!(out["data"]["change"]["applied"], false, "{out}");
+        let reason = out["data"]["change"]["reason"].as_str().unwrap();
+        assert!(reason.contains("upstream is the frozen copy") && reason.contains("read-only"), "{reason}");
+        assert!(events.is_empty());
+    }
+    assert_eq!(std::fs::read(f.id.as_str()).unwrap(), before, "nothing written");
+}
+
+#[test]
 fn a_change_applied_twice_is_refused_the_second_time() {
     let f = fixture();
     let clan = f.session.clan_context_for_agent();

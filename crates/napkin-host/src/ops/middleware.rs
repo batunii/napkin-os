@@ -28,7 +28,7 @@ use crate::document::{Change, Document};
 use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
 
-use super::edit::attributed;
+use super::edit::{attributed, upstream_read_only, UPSTREAM_KEY};
 use super::assemble::{assemble, Members};
 use super::members::{self, Member, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 use super::{json_merge, Outcome};
@@ -175,6 +175,12 @@ fn plan(ctx: &Ctx, doc: &Document, reply: &Value, change: &Value) -> HostResult<
                 return Err(HostError::bad_request(
                     "data_patch writes `projection`, which only the host writes",
                 ));
+            }
+            // The frozen copy of each ancestor is the spin-off's (Contract 4
+            // §8.1, item 4); the middleware reads it, never writes it.
+            if let Some(v) = o.get(UPSTREAM_KEY) {
+                let named = v.as_object().and_then(|u| u.keys().next()).map(String::as_str);
+                return Err(upstream_read_only(clan, named));
             }
             Some(p)
         }
