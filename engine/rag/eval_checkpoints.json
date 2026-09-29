@@ -223,6 +223,18 @@
    "what": "Insight and SMP writers read evidence spans instead of 220/160-char clips (BRIEF_FULLTEXT=1, RAG-5): health 250 vs 247 (noise), $1.06 vs $1.10; blind pairwise prefers today's briefs (mamaliga 0-3, friskies 1-2, employer tie). No precedent echo. Not adopted; the grounding count's 1 invented is the review marker (eval bug)",
    "comparable": true,
    "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "0f05b9e-test5",
+   "order": 18,
+   "dir": "checkpoint_test5_baseline_0f05b9e",
+   "arm": "after",
+   "commit": "0f05b9e",
+   "date": "2026-09-29",
+   "role": "baseline",
+   "what": "First run on the 5-brief set (test three + betfair PDF + omv long; Sai: 7 make it 5), today's defaults incl. the CLI in an empty folder (N7). Test three 80/93/73 = 246 vs 247 at after_smp4 (noise); input tokens 130.6k vs 142.8k (-8.5%, the memory block gone); betfair 84, omv 73. 1 invented (employer: a 38% State target not in the brief). OMV: 2 of 8 open questions answered in the part of the brief the 12,000-char extraction clip cut off",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
   }
  ]
 }
