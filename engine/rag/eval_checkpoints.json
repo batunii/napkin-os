@@ -235,6 +235,44 @@
    "what": "First run on the 5-brief set (test three + betfair PDF + omv long; Sai: 7 make it 5), today's defaults incl. the CLI in an empty folder (N7). Test three 80/93/73 = 246 vs 247 at after_smp4 (noise); input tokens 130.6k vs 142.8k (-8.5%, the memory block gone); betfair 84, omv 73. 1 invented (employer: a 38% State target not in the brief). OMV: 2 of 8 open questions answered in the part of the brief the 12,000-char extraction clip cut off",
    "comparable": true,
    "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "9b89f6c-test5-rep1",
+   "order": 19,
+   "dir": "checkpoint_test5_rep1_9b89f6c",
+   "role": "repeat",
+   "what": "First repeat of today's defaults on the 5-brief set at 9b89f6c (40,000-char extraction window, N9 off). Health 384 / quality 410, 0 invented, 0 open questions answered (the 12k clip is gone: OMV answered 2 of 8 at 0f05b9e, 0 of 10 now). Ran while the other two 5-brief runs overlapped (rep1 alone at first, rep2 and N9 started ~15 min later), so times and call counts are not comparable; health, failed checks and invented counts are.",
+   "arm": "after",
+   "commit": "9b89f6c",
+   "date": "2026-09-29",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "9b89f6c-test5-rep2",
+   "order": 20,
+   "dir": "checkpoint_test5_rep2_9b89f6c",
+   "role": "repeat",
+   "what": "Second repeat, identical code and set. Health 380 / quality 410, 0 invented. Per-brief health, rep1 minus rep2: 0, +5, +9, +2, -12 (betfair, employer, friskies, mamaliga, omv); RMS 7.1, 2 x = 14. Ran while the other two 5-brief runs overlapped (rep1 alone at first, rep2 and N9 started ~15 min later), so times and call counts are not comparable; health, failed checks and invented counts are.",
+   "repeat_of": "9b89f6c-test5-rep1",
+   "repeat_note": "identical code and set; measures run-to-run noise",
+   "arm": "after",
+   "commit": "9b89f6c",
+   "date": "2026-09-29",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "9b89f6c-test5-n9",
+   "order": 21,
+   "dir": "checkpoint_test5_n9_9b89f6c",
+   "role": "variant",
+   "what": "BRIEF_ACYCLIC_FILL=1 (audit N9) on the 5-brief set. Health 388 / quality 410, 0 invented; +6 health vs the repeats' mean of 382 (noise); per brief: betfair -2, employer +1.5, friskies +1.5, mamaliga -15, omv +20 against the repeats' mean. 26 failed checks against 23 and 22. Not a repeat: behaviour changed by the flag. Ran while the other two 5-brief runs overlapped (rep1 alone at first, rep2 and N9 started ~15 min later), so times and call counts are not comparable; health, failed checks and invented counts are.",
+   "arm": "after",
+   "commit": "9b89f6c",
+   "date": "2026-09-29",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
   }
  ]
 }
