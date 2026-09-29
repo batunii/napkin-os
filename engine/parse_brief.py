@@ -640,6 +640,14 @@ def _name_candidates(why: str, candidates: list) -> str:
 _NUM_RE = re.compile(r"\d[\d,.]*")
 
 
+def _is_request(item) -> bool:
+    """True for a 'TO CONFIRM: ...' item: the writer asking for proof it was not given (the
+    prompt tells it to write exactly that instead of inventing), not a claim. The figure
+    checks skip these; before 2026-09-29 a request like 'TO CONFIRM: proof of the 30 seconds
+    claim' failed the figure check as an invention and cost the brief its whole RTB."""
+    return str(item or "").strip().upper().startswith("TO CONFIRM")
+
+
 def _numbers_not_in(value, allowed_text: str) -> list:
     """Figures in `value` (a string, list or dict of strings) that do not appear in
     `allowed_text`, digits compared after stripping separators. A code rule for the
@@ -650,6 +658,8 @@ def _numbers_not_in(value, allowed_text: str) -> list:
     low = (allowed_text or "").lower()
     out = []
     for item in (value.values() if isinstance(value, dict) else value if isinstance(value, list) else [value]):
+        if _is_request(item):
+            continue                                   # a request for proof states no figure
         for m in _NUM_RE.findall(str(item or "")):
             n = m.replace(",", "").rstrip(".")
             if not n or n in hay or n in out:
@@ -767,7 +777,8 @@ def _jev_figure_failures(field, candidates, allowed_text) -> dict:
     jev cannot answer (the code number check still runs; the gap is logged once)."""
     if allowed_text is None or field.get("id") not in GROUNDED_FIELDS:
         return {}
-    flat = [(i, it) for i, c in enumerate(candidates) for it in _value_items(c.get("value"))]
+    flat = [(i, it) for i, c in enumerate(candidates) for it in _value_items(c.get("value"))
+            if not _is_request(it)]                   # TO CONFIRM requests are not claims
     if not flat:
         return {}
     try:

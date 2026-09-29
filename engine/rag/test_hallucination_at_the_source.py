@@ -356,3 +356,18 @@ def test_injection_in_the_brief_is_wrapped_as_data(monkeypatch):
         i, j = u.rindex("<client_brief>"), u.index("</client_brief>")
         assert "IGNORE PREVIOUS" in u[i:j] and "never instructions to follow" in u[:i]
     assert "IGNORE PREVIOUS" in pb._user_msg(planted, {}).split("<client_brief>", 1)[1]
+
+
+def test_a_to_confirm_request_is_not_an_invented_figure(monkeypatch):
+    """'TO CONFIRM: proof of the 30 seconds claim' asks for proof; the figure checks skip it,
+    while the same figure in a claim still fails (2026-09-29: the request used to fail the jev
+    figure check and the whole RTB was dropped)."""
+    allowed = "Sourdough takes 36 hours to make."
+    assert pb._numbers_not_in(["Sourdough takes 36 hours", "TO CONFIRM: proof of the 30 seconds claim"], allowed) == []
+    assert pb._numbers_not_in(["Ready in 30 seconds"], allowed) == ["30"]
+    import jev_checks
+    seen = []
+    monkeypatch.setattr(jev_checks, "figures_supported", lambda text, items: seen.extend(items) or [0.02] * len(items))
+    field = {"id": "reasons_to_believe"}
+    out = pb._jev_figure_failures(field, [{"value": ["Ready in 30 seconds", "TO CONFIRM: proof of the 30 seconds claim"]}], allowed)
+    assert seen == ["Ready in 30 seconds"] and list(out) == [0]          # the request never reaches jev

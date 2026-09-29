@@ -79,3 +79,15 @@ not in the material.
 - Not done here: jev checks on RTB provenance (H10's Choice call, parked with Shrey's jev
   scope), app regeneration grounding (H14/F10), docx attachments in the app (critic-G2),
   scanned-image transcription (critic-G8).
+
+## Addendum 2026-09-29 — a TO CONFIRM request is not an invented figure
+
+The writers are told to write "TO CONFIRM: <the proof that is needed>" instead of inventing a
+fact. Both figure checks (the code number check and jev's figure check) read such a request's
+figure as a claim: on the injection test brief, "TO CONFIRM: proof of the '30 seconds' claim"
+failed as an invented figure, and since a draft that invents a figure is never kept (ADR 0006
+addendum), the whole RTB was dropped although every other item was the brief's own fact. Both
+checks now skip items that start with TO CONFIRM (`_is_request`), as the grounding count already
+did; a claim with the same figure still fails. Rerun: the RTB came through with three facts
+from the brief. Test: `test_hallucination_at_the_source.py`.
+
