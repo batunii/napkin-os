@@ -130,7 +130,7 @@ one Postgres transaction. This is the single write funnel — the version check
 | Field | Meaning |
 |---|---|
 | `id` | Stable, generated at creation, never content-derived |
-| `kind` | `edit` · `contest` · `resolve` · `verdict` · `classify` · `pin` · `finding` · `verify` · `approve` · `lease` · `backref` (§7) |
+| `kind` | `edit` · `contest` · `resolve` · `verdict` · `classify` · `pin` · `finding` · `verify` · `approve` · `lease` · `backref` (§7) · `client_review` · `unlock` (§7.5) |
 | `targets[]` | Addresses this decision is about |
 | `cites[]` | Fact pins, sources, findings and decisions it rests on |
 | `superseded_by` | The decision that replaced this one |
@@ -499,6 +499,7 @@ nothing to compare or address.
 | Merging a branch | Agent work on its own branch |
 | A job, only at commit (N2) | Research lenses writing layer rows |
 | `approve` (lock) | Decision appends in general — append-only rows cannot clobber |
+| `unlock` (reopening a part, §7.5.6) | `client_review` records, confirmations and dismissals |
 
 This narrows the spec's open question: the facts member needs no append
 mechanism while only the lease holder or a merge writes it.
@@ -521,7 +522,9 @@ item is settled in the child, and fixes the backref's shape and moment.
 
 1. A document is locked when its chain holds an `approve` decision, not
    superseded, whose `targets` include **this document's id** — the bare
-   `document_id`, the form `/approve` writes.
+   `document_id`, the form `/approve` writes. When more than one does (a
+   document locked again after a part was reopened, §7.5.6), the newest is
+   the lock.
 2. A carried `approve` (it targets the parent's id) records that the parent
    was accepted. It does not lock the child and settles nothing on the child's
    list.
@@ -557,6 +560,9 @@ default, 2026-09-29; may be reversed):
    reason (`/verdict good`) on the same address. A carried
    bad verdict on an upstream address can only be overridden: the frozen field
    is read-only.
+6. **A client's rejection not yet answered** — a rejected part not edited
+   since, or a rejected document whose parts are not known yet (§7.5.4). It
+   can only arise on a locked document, so it bears on locking again.
 
 A carried branch or carried merge-report conflict is settled only upstream:
 merged in the parent, then taken with the newer upstream (§5.5, not built).
@@ -629,6 +635,329 @@ else: a `backref` is the only thing a child ever writes to a parent.
 
 Still open: what unsealing means (W5-Z1).
 
+### 7.5 Client review
+
+*Added 2026-09-30.* The owner's design (prototype, version 4; the research
+behind it is `docs/research-tool-experiment/client-approval-research.md`,
+which this section overrides where they differ). A client's answer to a
+locked document, recorded by the agency person it reached — pasted from an
+email, attached as a file, or noted from a call.
+
+1. **An OS feature, not an app's.** Client review is a global mode of the
+   shell, like edit mode. Every app gets it the same way; an app only declares
+   its parts (item 3).
+2. **Only on a locked document** (§7.1) with no part reopened (§7.5.6).
+   `POST /client-review` is refused `409` otherwise. It does not unlock the
+   document: it appends to the chain and changes nothing else. It needs no
+   lease (§6), as a backref does not (§7.4).
+3. **Parts are the app's.** A brief's fields, a report's sections, later a
+   deck's slides: the app hands the shell a list of `{address, label}` and the
+   shell sends it with each review (§8.2). How the view hands the list over is
+   the bridge's (the UI, built elsewhere). The host checks every address and
+   computes each part's value hash from the document; it never takes a hash
+   from the body.
+4. **Its own kind, `client_review`.** Not `approve`: that is the agency
+   accepting its own work, and it is the lock (§7.1). Not `verdict`: verdicts
+   feed the quality dossier, and a reasoned good verdict answers a bad one
+   (§7.2, item 5), so a client's "accepted" would silently clear the Judge's
+   objection. A `client_review` never carries `polarity` or `reason_code` —
+   `Decision::is_verdict` counts any decision with a `polarity` as a verdict.
+5. **Recorded by staff, about a client.** The recorder is the person in `Ctx`
+   (`403` for a process), as for every review route. There is no client
+   actor: `Actor::parse` gains nothing, and a body naming `actor` or
+   `recorded_by` is refused `400`. The client is data — a name and an email
+   the recorder typed — and nothing checks that the client is that person;
+   the record states its evidence (§7.5.2), never more.
+6. **Confidential is not a filter here** (owner, 2026-09-29: confidential
+   means only "kept out of RAG and the corpus"). Clients see everything, so
+   nothing in client review — the records, `/decisions`, the extract's
+   rendering (§7.5.8) — filters by a `classify` mark. One rule that is not
+   about clients still holds: a part whose value is marked `model: false` is
+   sent to Ellis without its value (`napkin.middleware/1` §11), as every
+   model call withholds it (`napkin.middleware/1` §10.13, item 6).
+
+#### 7.5.1 Parts and hashes
+
+- **`address`** is a data path on this document in dotted keys — the paths
+  `/edit` can write, since "Make this change" answers a request with an
+  `/edit` (§7.5.6). An entity-keyed segment (`sections[s_2]`) is refused
+  until `/edit` takes one; a part the recorder could reopen but not edit would
+  block locking again for good. Bare, or `<this document id>#<path>`; the host
+  records the full form. Refused `400`: another document's id (a carried part is the parent's work, and its
+  frozen copy is read-only), `upstream`, `projection`, a member
+  (`facts[…]`, `findings[…]`, `sources[…]`), `text[<key>]` (a view's wording
+  is keyed by layout and is not stable), two parts with one address, and a
+  part inside another (`audience` and `audience.commercial`), which would make
+  "that part changed" ambiguous. An address the data does not hold yet is
+  allowed: the client can reject a field left empty.
+- **`label`**: non-empty, at most 80 characters — what the chip and the
+  extract call the part. At most 100 parts per review.
+- **Part hash**: `clan_sdk::hash::sha256_prefixed` of the canonical JSON of
+  the value at the address — object keys sorted by code point, no
+  insignificant whitespace, strings escaped as `serde_json` writes them. A
+  field envelope (an object with `value` and `origin`, Contract 3 §2) hashes
+  its `value` only: its provenance is not what the client read. A value the
+  data does not hold hashes as `null`.
+- **`doc_hash`**: `sha256_prefixed` of the `shared/data.yaml` bytes as read,
+  the §5.3 form.
+
+A part answer is **stale** when its part's hash now differs from the hash it
+recorded. Another part changing does not stale it.
+
+#### 7.5.2 The records
+
+One `POST /client-review` writes, in one change: one **document answer**,
+one **part answer** per part the recorder marked, and — when parts were not
+marked and there is proof text — one **suggestion** per part Ellis found
+(§8.2). Confirming a suggestion writes a part answer; dismissing it writes a
+dismissal. "Make this change" writes an `unlock` (§7.5.6).
+
+```yaml
+# The document answer — a person's
+- id: d_01K…A
+  kind: client_review
+  action: client_answer
+  agent: human:aoife
+  actor: human:aoife                   # the recorder, from Ctx
+  targets: ["3f2a…"]                   # the bare document id, the form /approve writes
+  cites: [d_01K…LOCK]                  # the approve it answers
+  covers: document
+  answer: rejected
+  reasons: [off_brief, tone]
+  said: "Honestly this isn't the brief we talked about. The summer line doesn't feel like us."
+  client: { name: Jane Murphy, email: jane@acme.ie }
+  channel: file
+  evidence: { asset: human/assets/re-brief.eml, sha256: "sha256:…", strength: strong }
+  seen:
+    version: "sha256:…"                # the version the lock's approve names
+    doc_hash: "sha256:…"
+    parts:                             # every part the app declared, as the client saw it
+    - { address: "3f2a…#single_minded_proposition", label: Single-minded proposition, part_hash: "sha256:…" }
+    - { address: "3f2a…#audience", label: Audience, part_hash: "sha256:…" }
+  rationale: Jane Murphy rejected the document (off brief, tone), from an attached file; recorded by aoife.
+
+# A suggestion — the agent's, counts for nothing until a person confirms it
+- id: d_01K…S
+  kind: client_review
+  action: suggest_part
+  agent: find_client_parts
+  actor: process:middleware
+  handler: find_client_parts@1.0
+  backend: …
+  targets: ["3f2a…#single_minded_proposition"]
+  cites: [d_01K…A]
+  covers: part
+  review: d_01K…A
+  label: Single-minded proposition
+  answer: rejected
+  quote: "The summer line doesn't feel like us."
+  found_by: agent
+  seen: { version: "sha256:…", doc_hash: "sha256:…", part_hash: "sha256:…" }
+  rationale: "Derived by the agent: Jane Murphy may mean Single-minded proposition (rejected): “The summer line doesn't feel like us.”"
+  reasoning:
+    decided: Suggested that Jane Murphy's answer is about Single-minded proposition.
+    because: [{ point: "The client's words name it: “The summer line doesn't feel like us.”", cites: [d_01K…A] }]
+    rejected: []
+    only_option: the words are the client's and the part list is the app's; a person confirms or dismisses it
+    certainty: { level: medium, why: found by the agent in the client's words; not yet confirmed }
+    would_change_if: a person dismisses it
+    attention: Derived by the agent. Confirm or dismiss it; only a confirmed part counts.
+
+# A part answer — a person's: marked in the review, marked later, or a confirmed suggestion
+- id: d_01K…P
+  kind: client_review
+  action: client_answer_part
+  agent: human:aoife
+  actor: human:aoife
+  targets: ["3f2a…#single_minded_proposition"]
+  cites: [d_01K…A, d_01K…S]            # the document answer, and the suggestion it confirms
+  covers: part
+  review: d_01K…A
+  label: Single-minded proposition
+  answer: rejected
+  client: { name: Jane Murphy, email: jane@acme.ie }   # copied from the document answer
+  found_by: agent                      # person, when the recorder marked it
+  suggestion: d_01K…S                  # found_by agent only: this decision is the confirmation
+  quote: "The summer line doesn't feel like us."        # found_by agent only
+  seen: { version: "sha256:…", doc_hash: "sha256:…", part_hash: "sha256:…" }
+  rationale: aoife confirmed that Jane Murphy rejected Single-minded proposition.
+
+# A dismissal — a person's
+- { id: d_01K…X, kind: client_review, action: dismiss_part, actor: human:aoife,
+    targets: ["3f2a…#audience"], cites: [d_01K…S2], covers: part, review: d_01K…A,
+    suggestion: d_01K…S2, rationale: "Dismissed: she means the proposition, not the audience." }
+```
+
+| Field | Type | Rule |
+|---|---|---|
+| `covers` | `document` \| `part` | The owner's `scope`, spelled `covers`: `scope` on a decision is the org and brand from `Ctx` (§3, `DecisionScope`), and a string there would not parse — the whole chain would fail to read |
+| `answer` | `accepted` \| `accepted_with_changes` \| `rejected` | Required on a document answer, a suggestion and a part answer. A part's answer may differ from the document's ("love the proposition, the audience is wrong") |
+| `reasons` | list of `off_brief` · `wrong_audience` · `tone` · `facts_wrong` · `budget` · `other` | Document answer only, `rejected` only (`400` otherwise). Optional; no repeats, the recorder's order. Absent when empty |
+| `said` | string | The client's words, **verbatim**: stored exactly as sent, never trimmed inside, summarised, rewritten or compressed (`compress_chain` rewrites `rationale` only; `decision.rs`, the `rationale` field). All-whitespace is absent. At most 20,000 characters. With `call` it is the recorder's note of what the client said, and every reader says so |
+| `client` | `{name, email?}` | Required on a document answer, copied onto each part answer. `name` non-empty, at most 120 characters. `email`, when given, lower-cased, one `@` with something either side. Data, not identity |
+| `channel` | `pasted_email` \| `file` \| `call` \| `none` | `pasted_email` and `call` need `said`; `file` needs an asset; `none` takes neither. An asset means `file` |
+| `evidence` | `{asset?, sha256?, strength}` | Host-written; the body sends `asset` only. `asset` is `human/assets/<name>` in this document, a `.eml` or `.pdf`, stored first with `/upload-asset` (which a lock does not refuse); `sha256` is of its bytes. `strength` is `strong` with an asset, `weaker` without — pasted text, a call note, or nothing |
+| `seen` | `{version, doc_hash, parts[]}` on the document answer; `{version, doc_hash, part_hash}` on a part record | `version` is the one the lock's `approve` names: every answer is tied to the locked version. `parts[]` is `{address, label, part_hash}` for every part the app declared |
+| `review` | decision id | Part records: the document answer they belong to |
+| `label` | string | Part records: the part's label as the app declared it |
+| `found_by` | `person` \| `agent` | Part answers and suggestions. `agent` on a part answer means a person confirmed a suggestion: the part answer is itself the confirming decision, and `suggestion` names what it confirmed |
+| `suggestion` | decision id | A part answer with `found_by: agent`, and a dismissal |
+| `quote` | string | Suggestions, and part answers confirming one: the sentence Ellis found, a verbatim substring of the proof (`napkin.middleware/1` §11), at most 500 characters. Never compressed |
+| `recorded_by` | — | Not stored. It is the decision's `actor`, from `Ctx`, like every decision's; reads show it as `recorded_by` (§8.2). Never from the body |
+
+What counts: a document answer, and part answers. A suggestion or a
+dismissal is never an answer — "derived by the agent" until a person
+confirms it, and a confirmed one is a part answer like any other. The
+document answer and the client's words always count, whatever happens to the
+suggestions.
+
+#### 7.5.3 The state of each part
+
+For a part address `A` on this document, the **current answer** is the
+newest of: a part answer targeting `A`, and a document answer `accepted`
+whose `seen.parts` holds `A` ("accepted needs nothing else and marks every
+part accepted on that version"). A newer document answer that is not
+`accepted` and names no part leaves `A` at its last answer.
+
+| State | When |
+|---|---|
+| `accepted`, `accepted_with_changes`, `rejected` | The current answer's `answer` |
+| `stale` (flag) | `A`'s hash now differs from the one the answer recorded (`seen.part_hash`, or the entry in `seen.parts`) |
+| `answered` (flag) | `accepted_with_changes` or `rejected`, and a person's `edit` touching `A` (it, or a path inside it) came after the answer. Every `/edit` says why — it is refused without a rationale — so any such edit is "edited with a reason" |
+| `reopened` (flag) | An `unlock` targets `A` after the newest lock (§7.5.6) |
+
+The document's own state is its newest document answer: `current` when its
+`seen.version` is the lock's version now, and `parts_known` when a part answer
+names it as its `review`.
+
+A carried `client_review` (it targets a parent's address) is the parent's
+record: it shows in the history and counts in none of this — no part state,
+no lock item, no reopen.
+
+#### 7.5.4 Lock rules — §7.2 item 6
+
+A client's rejection not yet answered. Only locking **again** can meet it (a
+client review exists only on a locked document), but `/decisions` lists it
+from the moment it is recorded, so the view shows what the next lock needs.
+
+- **a.** A part whose current answer is `rejected` and not `answered`:
+  "Jane Murphy rejected Single-minded proposition. Edit it, saying why, before
+  locking again." (`client_rejected`, blocks)
+- **b.** The newest document answer is `rejected` and no part answer names it:
+  "Jane Murphy rejected the document and which parts is not known yet. Mark or
+  confirm them, then edit them, before locking again."
+  (`client_rejected_parts_unknown`, blocks)
+- `accepted_with_changes` **never blocks.** Until answered it is attention:
+  "Jane Murphy asked for a change to Audience." (`client_change_asked`)
+- An open suggestion is attention, not a blocker: "Ellis thinks Jane Murphy's
+  answer is about Audience. Confirm or dismiss it." (`client_part_suggested`)
+- A client's `accepted` is never required to lock.
+
+#### 7.5.5 What the edit must be
+
+"Make this change" answers the request with an ordinary `/edit` on the part,
+reason pre-filled "<client> asked: …", which carries `answers: <part answer
+id>` (§8.2). The link is for the reader; the rule in §7.5.3 does not need it.
+
+#### 7.5.6 Reopening one part: `unlock`
+
+The lock is file-wide (§7), and an edit needs an unlocked document. "Make this
+change" therefore reopens **one part** with a decision of a new kind, and
+nothing else:
+
+```yaml
+- id: d_01K…U
+  kind: unlock
+  action: reopen_part
+  agent: human:aoife
+  actor: human:aoife
+  targets: ["3f2a…#single_minded_proposition"]
+  cites: [d_01K…P]
+  answers: d_01K…P                     # the part answer it reopens for
+  lock: d_01K…LOCK                     # the approve it reopens under
+  rationale: "Jane Murphy asked: The summer line doesn't feel like us."
+```
+
+1. **Only for an open client request.** `POST /client-review/reopen {answer}`:
+   a person, holding the lease (§6), on a locked document; `answer` is a part
+   answer that is its part's current answer, `accepted_with_changes` or
+   `rejected`, not `answered`, on a part not already reopened. Anything else
+   is `409`. A document answer with parts unknown reopens nothing: mark or
+   confirm a part first.
+2. **While a part is reopened** — an `unlock` on it newer than the newest
+   `approve` — `/edit` of that address or a path inside it is allowed despite
+   the lock. It is `not_locked`'s one exception. Every other write stays
+   refused: `/edit` elsewhere, `/edit-text`, the members, jobs, the review
+   routes, and `/client-review` itself (a client answers a locked version, and
+   with a part reopened the document is no longer the version the lock
+   accepted).
+3. **Locking again.** `/approve` is allowed on a locked document that has a
+   reopened part (still `409` on one that has none). It runs the whole §7.2
+   list, item 6 included, writes a new `approve` naming the new version, and
+   sends backrefs as any `/approve` does (§7.4). The newest unsuperseded
+   `approve` is the lock; the older one is not rewritten. The new `approve`
+   closes every reopened part, edited or not.
+4. **Nothing else changes.** §7.1 is unchanged; there is no whole-document
+   unlock (what unsealing means stays W5-Z1's).
+
+Why this, and not an `/edit` permitted on a locked document for a part with
+an open request:
+
+- **Honest.** An edit on a locked document leaves the lock claiming it accepted
+  content it never saw. With `unlock`, the chain reads, in order: the lock, the
+  client's answer, the reopen and why, the edit, the new lock. The seal
+  (W5-Z1) is over the approved version, and is simply out of date until the
+  next `approve`.
+- **Smallest.** One kind, one exception in `not_locked`, one relaxation in
+  `/approve`. The lock predicate does not change.
+- **Scoped to what the client asked about.** The other parts stay exactly as
+  the client saw them, so their answers do not go stale.
+- **A cancelled edit is harmless.** A reopened `rejected` part still blocks
+  the next lock (item 6a) until it is edited; an `accepted_with_changes` part
+  does not, and the next lock closes it.
+
+Rejected: unlocking the whole document (superseding the `approve`). It reopens
+every part, including those the client accepted, for a request about one.
+
+#### 7.5.7 Spin-off
+
+Client reviews travel with the chain (§5.2, item 4) and keep their addresses.
+In the child they are the parent's (§7.5.3, last paragraph).
+
+#### 7.5.8 In the extract
+
+The extract (`docs/contracts/clan-extract.md`, in design in another branch;
+not in this one) renders client reviews. The rules it must keep:
+
+- **One block per document answer, scoped to that client.** Two clients'
+  answers are two blocks; they are never merged or counted together.
+- The block says: the overall answer and the version it answers; the client's
+  words as a quote, **verbatim** (never paraphrased; the recorder's note of a
+  call is introduced as such); the reasons; the evidence strength in words; who
+  recorded it and when.
+- **Part lines only for part answers** — marked by a person, or a suggestion a
+  person confirmed. Never an unconfirmed suggestion, a dismissal, or the parts
+  an `accepted` document answer implies (the overall line says "accepted").
+  Each part line says whether it is stale and whether it was answered.
+- Evidence strength in words: `strong` — "from an attached file (<name>)";
+  `weaker` — "from pasted email text, not verified", "on a call, as noted by
+  <recorder>", or "no evidence attached; recorded by <recorder>".
+- No filter by confidentiality (item 6 above).
+
+> **Client review** of revision `sha256:9c1e…`: **rejected** (off brief,
+> tone). Jane Murphy (jane@acme.ie), from an attached file (re-brief.eml),
+> recorded by aoife on 30 Sept: "Honestly this isn't the brief we talked
+> about. The summer line doesn't feel like us."
+> - Single-minded proposition: rejected — found by the agent, confirmed by
+>   aoife: "The summer line doesn't feel like us." Edited since.
+
+Still open: recording an answer against an earlier lock than the newest one;
+when the client said it (`said_at`), as against when it was recorded; DKIM
+checking of an attached `.eml`, which would make "strong" mean more than
+"attached"; and text extraction of `.eml` attachments — the host extracts
+PDF and plain text only today (`ops/mod.rs`, `extract_text`), so an `.eml`'s
+words reach Ellis only when the recorder pastes them as `said`.
+
 ---
 
 ## 8. Routes — contract v1
@@ -648,11 +977,13 @@ freely, never redefine.
 - A body `agent` field on `/patch-data` is kept as `claimed_agent` on the
   decision. The actor always comes from `Ctx`.
 - New in v1: `/verdict`, `/classify`, `/contest`, `/resolve`, `/finding`,
-  `/verify`, `/approve`, `/history`, `/timeline`, `/open`, `/stale`, and
-  `/upstream` (§8.1).
+  `/verify`, `/approve`, `/history`, `/timeline`, `/open`, `/stale`,
+  `/upstream` (§8.1), and `/client-review`, `/client-review/confirm` and
+  `/client-review/reopen` (§8.2).
 - Landed (2026-09-28), each a person's decision — a process is refused `403` —
   recording one decision as the person in `Ctx` with what it changes, in one
-  generation; refused `409` once the document is locked:
+  generation; refused `409` once the document is locked (a reopened part's
+  `/edit` and locking again excepted, §8.2):
   - `/verdict {target, polarity: good|bad, rationale, reason_code?}` — on a
     finding, `bad` rejects it (`status: rejected`, `rejection`), `good` is
     refused: a finding is verified. A bad verdict needs its rationale.
@@ -798,6 +1129,142 @@ body or reply changes meaning.
    - Lists are sorted by `id`. `label` is the pin's readable name, as
      `/decisions` labels a target.
 
+### 8.2 Client review routes
+
+*Added 2026-09-30.* The routes behind §7.5. Each is a person's (`403` for a
+process), records as the person in `Ctx`, and writes one change.
+
+1. **`POST /client-review`** — the document-level answer, plus any parts the
+   recorder marked.
+
+   ```json
+   {
+     "answer": "accepted | accepted_with_changes | rejected",
+     "client": { "name": "Jane Murphy", "email": "jane@acme.ie" },
+     "reasons": ["off_brief", "tone"],
+     "channel": "pasted_email | file | call | none",
+     "said": "…",
+     "asset": "human/assets/re-brief.eml",
+     "parts": [ { "address": "single_minded_proposition", "label": "Single-minded proposition" },
+                { "address": "audience", "label": "Audience" } ],
+     "marked": [ { "address": "audience", "answer": "rejected" } ]
+   }
+   ```
+
+   - Refused `409` unless the document is locked with no part reopened
+     (§7.5, item 2). Refused `400` for a field that breaks §7.5.2's table, a
+     part that breaks §7.5.1, a `marked` address not in `parts`, a part marked
+     twice, any `marked` with `accepted` (it marks every part already), and a
+     body naming `actor` or `recorded_by`. `404` when `asset` is not in the
+     document.
+   - `parts` is the app's whole list, every time: it is what `seen.parts`
+     records. It may be empty — an app that declares no parts gets the
+     document answer alone.
+   - **Asking Ellis.** When `answer` is not `accepted`, `marked` is empty,
+     `parts` is not, and there is proof text, the host asks the middleware's
+     `find_client_parts` before it writes (`napkin.middleware/1` §11), as
+     `/verify` asks `verify_finding`: `client_review_request` builds the ask,
+     the shell sends it, and `client_review` writes the answer with what came
+     back. The proof text is `said` when there is one, else the asset's
+     extracted text (`human/assets/.extracted/<name>.txt`). The host checks
+     every suggestion again — its address is one of `parts`, its answer one of
+     the three, its quote a verbatim substring of that proof text by the §11
+     rule, one per address — and drops any that fails. No middleware, a
+     middleware error, or a call over its bound: the answer is recorded without
+     suggestions, and the reply says so. The recorder can still mark parts by
+     hand (item 2).
+   - Writes the document answer, a part answer per `marked` entry
+     (`found_by: person`), and a suggestion per surviving suggestion, in that
+     order, in one change.
+
+   ```json
+   { "ok": true, "decision": "d_…", "parts": ["d_…"],
+     "suggestions": { "status": "none | found | unavailable", "decisions": ["d_…"], "dropped": 0,
+                      "reason": "why unavailable, when it is" } }
+   ```
+
+   `none`: nothing was asked (accepted, parts marked, no parts, no proof).
+2. **`POST /client-review/confirm`** — confirm or dismiss a suggestion, or
+   mark a part by hand after the fact.
+
+   ```json
+   { "suggestion": "d_…", "confirm": true, "answer": "rejected", "rationale": "…" }
+   { "review": "d_…", "address": "audience", "answer": "accepted_with_changes" }
+   ```
+
+   - With `suggestion`: it must be a `suggest_part` in this chain that no part
+     answer or dismissal names yet (`409` otherwise). `confirm: true` writes a
+     part answer, `found_by: agent`, with the suggestion's `review`, `label`,
+     `quote` and `seen`; `answer` may correct the suggestion's, and defaults
+     to it. `confirm: false` writes a dismissal; `rationale` is optional.
+   - With `review` and `address`: `review` must be a document answer that is
+     not `accepted`, and `address` one of its `seen.parts`, which give the
+     label and hash. Writes a part answer, `found_by: person`.
+   - Either way, `409` when a part answer for that `review` and address
+     exists already: a later answer from the client is a new
+     `/client-review`. Allowed while the document is locked, a part reopened
+     or not. No lease.
+3. **`POST /client-review/reopen {answer}`** — "Make this change" (§7.5.6).
+   Writes the `unlock`. The reply gives the shell what edit mode opens with:
+
+   ```json
+   { "ok": true, "decision": "d_…", "address": "3f2a…#single_minded_proposition",
+     "label": "Single-minded proposition", "answers": "d_…",
+     "reason": "Jane Murphy asked: The summer line doesn't feel like us." }
+   ```
+
+   `reason` is "<client name> asked: " and then the part answer's `quote`,
+   else the document answer's `said`, else its reasons in words, else "a
+   change", clipped to 300 characters. It is the `unlock`'s rationale too.
+4. **`/edit {path, value, gate?, rationale, answers?}`.** On a locked
+   document, allowed only for a path at or inside a reopened part (§7.5.6,
+   item 2). `answers`, when given, must be the part answer that part was
+   reopened for (`400` otherwise); the `edit` decision records it as
+   `answers` and cites it. Unchanged otherwise.
+5. **`/approve`** on a locked document with a reopened part locks again
+   (§7.5.6, item 3). Body and reply unchanged.
+6. **`GET /decisions`** gains `client`, and `lock` gains two fields. A read:
+   any actor, locked or not.
+
+   ```json
+   "lock": { "can_lock": false, "blockers": 1, "locked": true,
+             "reopened": [ { "address": "3f2a…#single_minded_proposition", "label": "Single-minded proposition",
+                             "decision": "d_…U", "answers": "d_…P" } ] },
+   "client": {
+     "available": false,
+     "answer": { "decision": "d_…A", "answer": "rejected", "reasons": ["off_brief", "tone"],
+                 "said": "…", "client": { "name": "Jane Murphy", "email": "jane@acme.ie" },
+                 "channel": "file", "evidence": { "asset": "human/assets/re-brief.eml", "sha256": "sha256:…", "strength": "strong" },
+                 "recorded_by": { "id": "aoife", "name": "aoife" }, "at": "2026-09-30T10:20:03Z",
+                 "seen": { "version": "sha256:…", "doc_hash": "sha256:…", "parts": [ … ] },
+                 "current": true, "parts_known": true },
+     "answers": [ "… every document answer, newest first, in the shape of `answer`" ],
+     "parts": [ { "address": "3f2a…#single_minded_proposition", "label": "Single-minded proposition",
+                  "state": "rejected", "decision": "d_…P", "review": "d_…A", "found_by": "agent",
+                  "quote": "The summer line doesn't feel like us.",
+                  "client": { "name": "Jane Murphy" }, "at": "2026-09-30T10:21:40Z",
+                  "stale": false, "answered": false, "reopened": true } ],
+     "suggestions": [ { "decision": "d_…S2", "review": "d_…A", "address": "3f2a…#audience", "label": "Audience",
+                        "answer": "rejected", "quote": "…" } ]
+   }
+   ```
+
+   - `lock.locked`: §7.1 holds. `lock.reopened`: the parts §7.5.6 item 2
+     reopens. `can_lock` and `blockers` count §7.5.4 too.
+   - `client.available`: `POST /client-review` would be accepted now (locked,
+     nothing reopened).
+   - `client.answer`: the newest document answer, `null` when there is none.
+     `recorded_by` is the actor, labelled as `who` labels a person.
+   - `client.parts`: one entry per address that has a current answer
+     (§7.5.3), sorted by address. `found_by: document` (a read value; no record carries it)
+     marks a part whose current answer is an `accepted` document answer; it
+     has no `quote`.
+   - `client.suggestions`: suggestions nobody has confirmed or dismissed yet,
+     oldest first.
+   - The §7.5.4 items are in `attention` with their codes, `address` the
+     part's, `decision` the answer's; an open suggestion's item names the
+     suggestion.
+
 ---
 
 ## 9. Retrieval scope
@@ -824,6 +1291,7 @@ Checked against the nine questions in `campaign-flow-usecases.clan`.
 | 7 | What is frozen at a spin-off, and checkable how? | The whole upstream, at `data.upstream.<id>`; `lineage.carried` holds its hashes and last decision id, and `GET /upstream` compares them (§5.3, §8.1) |
 | 8 | What runs under someone else's lease? | See the lease table (§6) |
 | 9 | What is parallel; does its target append? | Research and per-field drafters on branches; the chain appends by row (§6) |
+| — | How does a client's answer reach the document? | A `client_review` on the locked version, recorded by staff with its evidence strength; per-part state by value hash; a rejection blocks locking again; "Make this change" reopens one part (§7.5, §8.2) |
 
 ---
 
