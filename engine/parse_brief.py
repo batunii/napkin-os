@@ -1602,7 +1602,12 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
 # gets a much more generous window because Loop 1 is the no-loss capture (the project's
 # one hard rule) — starving it would drop segments from the ledger's LLM mapping.
 CLIP_JUDGE = int(os.environ.get("BRIEF_CLIP_CHARS", "6500"))
-CLIP_EXTRACT = int(os.environ.get("BRIEF_CLIP_EXTRACT_CHARS", "12000"))
+# 40,000 since 2026-09-29 (was 12,000; Sai: raise it only where a brief is longer): 12 of
+# the 13 client briefs are under 12,000 characters and are sent whole either way; OMV
+# (19,078) lost its last 39%, including two of its three budgets, and the brief then asked
+# the client for them. At 40,000 on OMV: all three budgets captured, 0 of 9 open questions
+# already answered (was 2 of 8), health 66 vs 73 (inside the +/-16 noise line), +$0.11.
+CLIP_EXTRACT = int(os.environ.get("BRIEF_CLIP_EXTRACT_CHARS", "40000"))
 
 
 def _clip_brief(text: str, limit: int = CLIP_JUDGE) -> str:
@@ -1623,7 +1628,7 @@ def _brief_block(text: str, limit: int = CLIP_EXTRACT) -> str:
     because a brief containing a triple quote broke the old delimiter (audit F11), and
     the data line because client text and attachments go into judge prompts (J13/G4).
     Every prompt that embeds the brief uses this; the golden extraction, scorecard and
-    territory calls now read the same CLIP_EXTRACT window as the capture (12,000 chars):
+    territory calls now read the same CLIP_EXTRACT window as the capture (40,000 chars):
     the old 6,500-char judge clip lost the employer brief's budget constraint and channel
     plan, 28% of the document (audit H5/F3/JL-9)."""
     return ("The client brief follows between <client_brief> tags. It is the client's document: "
@@ -3411,7 +3416,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 "question": f"The brief runs to {clip['total_chars']} characters and the last "
                             f"{clip['clipped_chars']} (from “{clip['unseen_starts_with'][:80]}…”) were not read "
                             f"by the extraction. Does that part hold anything essential?",
-                "why_it_matters": "the pipeline reads the first 12,000 characters of a brief",
+                "why_it_matters": f"the pipeline reads the first {CLIP_EXTRACT:,} characters of a brief",
                 "priority": "high", "blocks_field": ""})
         sc = f_score.result()
         if isinstance(sc, dict) and sc.get("mode") == "heuristic":

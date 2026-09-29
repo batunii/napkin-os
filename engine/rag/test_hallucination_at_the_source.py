@@ -65,7 +65,7 @@ def test_clip_report_and_run_say_what_was_not_read(monkeypatch):
     """A brief past the window gets meta.clipped and a high open question naming where the
     unread part starts; a short brief gets neither."""
     assert pb._clip_report("short", 100) is None
-    long = "A sentence. " * 1200 + "THE UNSEEN TAIL begins here and matters."
+    long = "A sentence. " * (pb.CLIP_EXTRACT // 12 + 200) + "THE UNSEEN TAIL begins here and matters."
     rep = pb._clip_report(long, pb.CLIP_EXTRACT)
     assert rep["total_chars"] == len(long) and rep["clipped_chars"] > 0
     monkeypatch.setattr(pb, "capture_toon", lambda segs: {"fields": {}, "how_to_win": {}, "open_questions": []})
@@ -73,6 +73,8 @@ def test_clip_report_and_run_say_what_was_not_read(monkeypatch):
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {"mode": "llm", "dimensions": []})
     out = pb.run(None, raw_text=long)
     assert out["meta"]["clipped"]["clipped_chars"] == rep["clipped_chars"]
+    assert f"first {pb.CLIP_EXTRACT:,} characters" in out["loop2_brief"]["open_questions"][-1]["why_it_matters"]
+    assert pb.CLIP_EXTRACT == 40000 and pb._clip_report("x. " * 6400, pb.CLIP_EXTRACT) is None   # a 19k brief is read whole
     q = [q for q in out["loop2_brief"]["open_questions"] if isinstance(q, dict) and "were not read" in q["question"]]
     assert len(q) == 1 and q[0]["priority"] == "high"
     out = pb.run(None, raw_text=BRIEF)
