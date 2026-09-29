@@ -71,8 +71,8 @@ def _usd(label: str, tin: int, tout: int, cache_read: int = 0, cache_creation: i
     """List-price USD for one call's tokens: uncached input and output at the model's rates,
     cache reads at 0.1x input and cache writes at 1.25x input. Before 2026-09-25 cache
     tokens were folded into the input and priced in full, overstating CLI runs by ~35-40%
-    (audit BW13). CLI and API costs are still not comparable: the CLI adds ~507 input
-    tokens of its own per call (ADR 0005)."""
+    (audit BW13). CLI and API costs are still not comparable: the CLI adds ~350 input
+    tokens of its own per call (~507 before 2026-09-29, when it ran from ~; ADR 0005)."""
     pi, po = _price(label)
     return round((tin + cache_read * CACHE_READ_FACTOR + cache_creation * CACHE_WRITE_FACTOR) / 1e6 * pi
                  + tout / 1e6 * po, 5)

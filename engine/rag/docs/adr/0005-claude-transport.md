@@ -73,8 +73,14 @@ in each `e2e_eval` trace and summary row (`api`, `cli`, or `api→cli` after an 
   what the run would cost on the API, not what the Claude Code account was charged.
 - **CLI and API costs are not comparable** (audit 2026-09-24, BW13/N7/CC9). Measured on
   identical prompts, the CLI adds a constant ~507 input tokens per Opus call (~+35–40%
-  input per brief; the source of that block is unverified — not this repo's CLAUDE.md,
-  which is ~1.3k tokens), and serial calls run 2–3× slower. Since 2026-09-25 cache reads
+  input per brief), and serial calls run 2–3× slower. **Identified 2026-09-29 (N7)**
+  through a local logging proxy on `ANTHROPIC_BASE_URL`: two system blocks (a billing
+  line, "You are a Claude agent, built on Anthropic's Claude Agent SDK.") and user-turn
+  reminders (working folder and platform, model name and knowledge cutoff, account email,
+  today's date), plus, from `~`, the home folder's Claude Code auto-memory (MEMORY.md).
+  Since then the CLI runs in an empty temp folder (`brief_llm._cli_workdir`), which drops
+  the memory block: 499 → 347 input tokens on a two-line call. The ~350-token rest needs
+  `--bare`, which needs an API key. Since 2026-09-25 cache reads
   and writes are recorded apart from the uncached input and priced at 0.1× / 1.25×
   (`e2e_eval._usd`); before that they were folded into input at the full rate, so the
   cli_smoke figures ($0.47 / $0.54) overstated the runs. Compare cost and latency only

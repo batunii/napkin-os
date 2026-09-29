@@ -702,6 +702,24 @@ def transport_used() -> str:
     return t
 
 
+_CLI_WORKDIR: str | None = None
+
+
+def _cli_workdir() -> str:
+    """The folder every `claude -p` call runs in: an empty temp folder made once per
+    process. Claude Code adds context about the folder it starts in, and from ~ (used until
+    2026-09-29) that included the home folder's auto-memory (MEMORY.md with personal notes),
+    about 110 input tokens on every brief call and text the brief has no business seeing
+    (audit N7, measured through a logging proxy). What remains cannot be switched off without
+    --bare, which needs an API key: a billing line, an Agent SDK identity line, the folder,
+    platform, model name, account email and date, about 375 tokens a call."""
+    global _CLI_WORKDIR
+    if _CLI_WORKDIR is None or not os.path.isdir(_CLI_WORKDIR):
+        import tempfile
+        _CLI_WORKDIR = tempfile.mkdtemp(prefix="napkin-engine-cli-")
+    return _CLI_WORKDIR
+
+
 def _chat_claude_cli(user, system=None, max_tokens=None, schema=None, model=None):
     """The Anthropic link over the Claude Code CLI: one `claude -p` call, prompt on stdin.
 
@@ -733,7 +751,7 @@ def _chat_claude_cli(user, system=None, max_tokens=None, schema=None, model=None
     env.pop("ANTHROPIC_API_KEY", None)
     try:
         proc = subprocess.run(cmd, input=user, capture_output=True, text=True,
-                              timeout=CLI_TIMEOUT_S, env=env, cwd=os.path.expanduser("~"))
+                              timeout=CLI_TIMEOUT_S, env=env, cwd=_cli_workdir())
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(f"claude CLI timed out after {CLI_TIMEOUT_S:.0f}s") from e
     try:

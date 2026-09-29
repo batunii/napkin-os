@@ -46,7 +46,7 @@ def cli(monkeypatch):
 
     def fake_run(cmd, input=None, capture_output=None, text=None, timeout=None, env=None, cwd=None):
         """Record the call and return the next queued reply."""
-        calls.append({"cmd": cmd, "input": input, "env": env, "timeout": timeout})
+        calls.append({"cmd": cmd, "input": input, "env": env, "timeout": timeout, "cwd": cwd})
         return replies.pop(0) if replies else _Proc(_envelope('{"ok": true}'))
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -99,6 +99,18 @@ def test_api_key_is_not_inherited_by_the_cli(cli):
     calls, _ = cli
     pb._call_link("anthropic", "claude-opus-4-6", "x")
     assert "ANTHROPIC_API_KEY" not in calls[0]["env"]
+
+
+def test_the_cli_runs_in_an_empty_folder_not_home(cli):
+    """From ~ Claude Code attached the home folder's auto-memory to every brief call (audit
+    N7); the CLI runs in an empty temp folder of its own, the same one for every call."""
+    import os
+    calls, _ = cli
+    pb._call_link("anthropic", "claude-opus-4-6", "x")
+    pb._call_link("anthropic", "claude-opus-4-6", "y")
+    cwd = calls[0]["cwd"]
+    assert cwd and cwd == calls[1]["cwd"] and cwd != os.path.expanduser("~")
+    assert os.path.isdir(cwd) and os.listdir(cwd) == []
 
 
 def test_non_thinking_model_runs_with_thinking_off_and_the_callers_cap(cli):
