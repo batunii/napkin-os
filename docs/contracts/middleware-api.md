@@ -52,6 +52,23 @@ name the stand-in, its port, or branch on which implementation answered.
   `app/pipeline.yaml`. The host sends the whole `clan` — the document as it
   holds it now — on **every** request, `job_status` included: a
   `start_campaign` job reads it on each poll (§8.4).
+- **Upstream is sent as an index** (2026-09-29). A spun-off document holds
+  its parent's data frozen at `data.upstream.<id>` (Contract 4 §5), often
+  larger than the document itself. The host replaces it in `clan.data` with
+
+  ```json
+  "upstream": { "<id>": { "direct": true, "keys": ["campaign", "selection", "materials", "intake", "report"],
+                          "open_contests": [{ "id": "ct_…", "key": "…", "fact_ids": ["f_…", "f_…"] }] } }
+  ```
+
+  one entry per key: `direct` whether it is `lineage.carried.document_id`,
+  `keys` the frozen copy's top-level keys, `open_contests` its
+  `selection.contested` entries still `open` and not resolved in the chain
+  (Contract 4 §7.2), each with the `fact_id` of every value.
+  The carried pins and findings are not here: they are merged into the
+  document's own members and arrive in `clan.facts` and `clan.findings`. The
+  frozen data reaches a model only as §10.13 says. `upstream` is read-only:
+  a `data_patch` that names it is refused (Contract 4 §8.1).
 - **Task → handler.** `payload.task` is resolved against `clan.pipeline.tasks.<task>.handler`
   (`name@major`). When the document carries no pipeline, the middleware's
   declared built-in map is used (`extract_ask@1`, `research_lens@1`,
@@ -659,6 +676,14 @@ the output is a job whose `change` the **host** applies — never bare JSON —
 and nothing the view receives is written by the view. The peripherals each
 stage uses are Contract 5 §6.
 
+*Changed 2026-09-29*, for briefs spun off from research (Contract 4 §5): the
+drafters read `clan.findings` and may cite `fi_` (§10.1, §10.3, §10.7), capture
+stays free of research as well as of retrieval (§10.3), a brief is locked by
+an `approve` on it rather than by a data flag (§10.5), and §10.13 says which
+research evidence each loop gets and that nothing marked `model: false`
+reaches a model. The drafters never read findings before, so research could
+not reach a brief; and the data flag let a view lock around the lock list.
+
 ### 10.1 Input
 
 `draft_brief`: `{ "prompt"?, "attachments": [...] }`.
@@ -674,6 +699,10 @@ stage uses are Contract 5 §6.
   **unread** and grounds nothing.
 - At least a non-empty `prompt`, a `text` or an `image`; else `400
   invalid_input`.
+
+The drafters also read `clan.facts` and `clan.findings` (§1) — in a brief
+spun off from research, the pins and findings it carried (§10.13); capture
+never does.
 
 The middleware indexes every material itself, in `data_patch.materials`
 (§10.4); the view does not index first. Material ids are deterministic —
@@ -741,12 +770,14 @@ One job, three stages, in order. `progress` counts stages: `{done, total: 3}`.
 | Stage | Does | Writes (on the reply after it finishes) |
 |---|---|---|
 | `extract` | Transcribe each image (Contract 5 §1.6). **Loop 1 — no-loss capture:** one structured-output call over the materials returning the eighteen Loop-1 keys (the engine's `EXTRACTION_SYSTEM`: each item `{value, status: fact \| assumption, quote, material_id}`, plus `how_to_win` and `open_questions`); every `fact` quote checked verbatim in its material — an item whose quote is not found is dropped and its words stay unmapped; the no-loss ledger over the materials' segments. **Loop 2 — the working brief:** the captured fields, derived from the capture by the engine's `map_brief` rules (a Loop-2 client fact is never an insight or an SMP). The **BetterBriefs scorecard** (`SCORECARD_SYSTEM`: seven dimensions and single-mindedness, evidence quoted verbatim) | `materials`, `capture`, `review` (scorecard), every captured field it can support |
-| `draft` | For each drafted field not locked, **one drafter, all in parallel** (N4). A drafter builds its loop's query from the working brief (the captured fields' values — never raw material, never the capture itself), asks the retrieval port for the packs whose `loops` include its loop (and, for insight and substantiation, each case pack at its own `k`), and drafts: insight and SMP by tournament (N candidates in one call, ranked, auto-gated, one sharpen pass), the rest once. It may cite passages (`psg_…`), capture items (`cap_…`) and pins in `clan.facts` (`f_…`) — nothing else. Drafters never see each other's drafts | nothing yet: a draft lands only once judged |
+| `draft` | For each drafted field not locked, **one drafter, all in parallel** (N4). A drafter builds its loop's query from the working brief (the captured fields' values — never raw material, never the capture itself), asks the retrieval port for the packs whose `loops` include its loop (and, for insight and substantiation, each case pack at its own `k`), and drafts: insight and SMP by tournament (N candidates in one call, ranked, auto-gated, one sharpen pass), the rest once. It may cite passages (`psg_…`), capture items (`cap_…`), pins in `clan.facts` (`f_…`) and findings in `clan.findings` (`fi_…`, §10.13) — nothing else. Drafters never see each other's drafts | nothing yet: a draft lands only once judged |
 | `judge` | **Serial** (N4). The Judge (§10.8) judges every field that holds or will hold a value, then the brief as a whole; one revision per failed drafted field, by its drafter with the Judge's `fix`, re-judged once. Composes `open_questions` | the drafted fields that passed, the `passages` they cite, verdicts, proposals, `review` (with the Judge), `open_questions` |
 
-**The one hard rule: capture is RAG-free.** The `extract` stage has no
-retrieval or research capability (Contract 5 §3.4): nothing retrieved is fed
-to Loop 1, and no captured field cites a passage. The no-loss ledger measures
+**The one hard rule: capture is RAG-free and research-free.** The `extract`
+stage has no retrieval or research capability (Contract 5 §3.4): nothing
+retrieved and nothing from research — no pin, finding, contest or report,
+own or carried — is fed to Loop 1, and no captured field cites a passage, a
+pin or a finding. The no-loss ledger measures
 fidelity to the client's own words, and injected text craters it.
 
 **Omitted, not blank.** No patch sets a brief field to `""`, `[]`, `{}` or
@@ -825,7 +856,11 @@ the old context panel; the middleware no longer returns a `context`.
 
 ### 10.5 Fields the middleware never writes
 
-- **Locked.** `data.locked: true` locks the whole brief: both tasks are `400
+- **Locked.** The brief is locked when `clan.decision_chain` holds an
+  `approve` decision, not superseded, whose `targets` include `clan.id`
+  (Contract 4 §7.1) — or, in a brief made before it locked through
+  `/approve`, when `data.locked` is `true`. A carried `approve` (it targets
+  the parent) does not lock the brief. Locked, both tasks are `400
   invalid_input`. A key in `data.locked_fields` — or whose top-level key is
   there — is locked: not drafted, not written, not proposed; its
   `result.fields` state is `kept`.
@@ -879,6 +914,9 @@ The §2 envelope; `task` and `handler` are the job's own (`draft_brief@1.x`,
   already sent or in this reply. `failed`: judged bad twice, not written.
   `absent`: nothing supports it.
 - `result.proposals` — the proposals so far (§10.5). Display only.
+- `result.withheld` — the ids kept out of every model call because a
+  `classify` mark says `model: false` (§10.13, item 6). Display only; absent
+  when nothing was withheld.
 - `trace.hits` — each passage read (`id` its `psg_`, `scope` `house` or
   `agency:<org>`, `source` its `uri`) and each pin cited.
 
@@ -895,7 +933,7 @@ reply's.
 | one per captured field written | `edit`, action `extract` | `#K` | the `cap_` items and `mat_` it rests on |
 | the capture | `edit`, action `capture` | `#capture`, each new `#materials[mat_…]` | the `mat_` ids; flatten tail `material_read`, `unread`, `abstained` (keys not written) |
 | the scorecard, the review | `edit`, action `score` / `review` | `#review` | `mat_` ids / the verdict decision ids |
-| one per drafted field written | `edit`, action `draft` (`regenerate` for §10.10) | `#K` | its `psg_`, `cap_`, `f_` grounds |
+| one per drafted field written | `edit`, action `draft` (`regenerate` for §10.10) | `#K` | its `psg_`, `cap_`, `f_`, `fi_` grounds |
 | one per judged field | `verdict`, `polarity: good \| bad`, `reason_code` when bad, `taxonomy_version: "reason-codes/1"` | `#K` | the edit decision it judges; loop-7 `psg_` |
 | a coherence failure | `verdict`, polarity `bad` | every field it names | their edit decisions |
 | a proposal | `edit`, action `propose`, flatten `proposed_value` | `#K` | as a draft or an extraction |
@@ -911,14 +949,19 @@ Reasoning, by what decided:
   `would_change_if`: the client's material says otherwise, or a person edits
   it.
 - **Drafted field.** `because`: the drafter's grounds, each citing passages,
-  capture items or pins; a point stating a figure cites the pin holding it.
+  capture items, pins or findings; a point stating a figure cites the pin
+  holding it, and a point that cites a finding and states a figure cites that
+  finding's pins too (its `cites` that are in `clan.facts`).
   `rejected`: the losing tournament candidates, each with why it lost (the
   ranking's reason, a failed auto check, walking onto a competitor's ground).
   `certainty` (derived, never the model's): `high` — every rubric check passed
   first time and the grounds cite passages from at least two packs, or a pin
-  and a passage; `medium` — passed with checks left at `review`, or grounded
+  (or a verified finding) and a passage; `medium` — passed with checks left at `review`, or grounded
   in one pack; `low` — passed only after revision, or grounded in no passage
-  (retrieval unconfigured, failed or empty — `attention` then says so).
+  (retrieval unconfigured, failed or empty — `attention` then says so). A
+  field whose kept points cite a finding not yet verified is at most
+  `medium`, and its `attention` includes "rests on a finding not yet
+  verified" (§10.13).
 - **Verdict.** `decided`: the outcome; `because`: one point per check that
   decided it; `certainty`: `high` when auto checks alone decided, `medium` when
   a model check did; `attention` on every bad verdict and every check left at
@@ -932,7 +975,9 @@ Reasoning, by what decided:
 
 **Cites resolve in the document after the change** (§3), extended for these
 tasks: a `psg_` resolves when `data.passages` holds it, a `cap_` when
-`data.capture.items` does. Every passage a decision cites is therefore written
+`data.capture.items` does, and an `fi_` when `clan.findings` holds it with
+status `proposed` or `verified` — a rejected finding never resolves, and a
+point citing one is dropped. Every passage a decision cites is therefore written
 into `passages` by the same change.
 
 **What the host keeps.** The host reads a middleware decision whole into
@@ -1052,3 +1097,83 @@ field whose decisions are all in the chain.
 - `regenerate_field` for an unknown or a locked field → `400`; a second
   `draft_brief` while one runs → `409`.
 - Polling a `done` job again returns the same change.
+
+### 10.13 Research-fed briefs
+
+*Added 2026-09-29.* A brief can now start from a research document (Contract
+4 §5): its pins, findings and sources are merged into the brief's members,
+its data is frozen at `data.upstream.<research id>`, and its chain — contests,
+verdicts, classify marks — comes with it. This section says which of that
+reaches which loop, so research feeds the drafting without touching the
+client's words, and each call carries only what it needs.
+
+1. **Where it arrives.** Carried pins in `clan.facts`, carried findings in
+   `clan.findings`, carried marks in `clan.decision_chain`, and the frozen data
+   as the §1 index only. A brief is *research-fed* when `data.upstream` is not
+   empty; one that is not keeps §10.3 exactly.
+2. **Evidence by loop.** Chosen in code, per drafter, before any model call.
+
+   | Stage · loop | Gets from the research | Never |
+   |---|---|---|
+   | `extract` · Loop 1, Loop 2, scorecard | Nothing | Any pin, finding, contest, report or `campaign.*` value |
+   | `draft` · `loop4_insight` (insight) | Findings of lenses `consumer_culture`, `category_codes`, `rhythm_moments`, `brands_positioning`, and the pins they cite | |
+   | `draft` · `loop5_proposition` (SMP, desired response) | Findings of `brands_positioning`, `consumer_culture`, `category_codes`, and their pins | |
+   | `draft` · `loop6_substantiation` (reasons to believe) | Findings of `effectiveness_evidence`, `market_structure`, `brands_positioning`, `regulation_clearance`, and their pins | |
+   | `judge` · loop 7 | Nothing: it judges the brief as it would stand (UC-6) | The drafters' findings and pins |
+
+   The client's own material that travelled with the research — a frozen
+   `materials` entry whose `asset` is in the brief's `human/assets/` — may be
+   attached to `draft_brief` like any upload. It is the client's words, so it
+   becomes a material of the brief (`mat_` from its bytes, §10.1) and is
+   captured; it is never cited as research.
+3. **The selection.** For each drafter:
+   1. candidate findings: status `proposed` or `verified`, of the loop's
+      lenses, not withheld (item 6);
+   2. ordered verified first, then proposed; then `confidence` high, medium,
+      low; then `derived_at`, newest first; **at most 12**;
+   3. pins: those the chosen findings cite that `clan.facts` holds, not
+      `replaced_by` another (the replacement is given instead), not a value of
+      an open contest (item 5), not withheld; **at most 40**;
+   4. a finding is sent as `{id, statement, status, confidence, lens,
+      markets, cites}`, `cites` narrowed to the pins sent; a pin as today.
+   The ids sent, with the passages and capture items, are the only ids the
+   drafter may cite: a cite outside them is dropped (§10.7).
+4. **Unchecked findings are cited only** (owner default, 2026-09-29; may be
+   reversed). A `proposed` finding may ground insight, SMP, reasons to believe
+   and desired response. It is shown there as **"derived by the agent"**;
+   certainty is at most `medium`; `attention` includes "rests on a finding
+   not yet verified". It never fills a captured field and never enters
+   capture. A person verifies it in the brief (`/verify`, which also sends
+   the research a `backref`) or upstream.
+5. **Contests.** A pin that is a value of an open contest — the brief's own,
+   or one the §1 index lists under `open_contests` (its `fact_ids`) — is not
+   sent: nothing is picked yet. Once a person resolves it (Contract 4 §8.1), the chosen pin is
+   in `clan.facts` like any other.
+6. **`model: false` never goes into a payload.**
+   - The mark that holds on an item is the newest `classify` decision in
+     `clan.decision_chain`, not superseded, targeting it — own or carried.
+     Ids are never remapped, so a mark on `<research id>#facts[f_…]` holds for
+     `f_…` in the brief. A mark on a data path holds for everything under it.
+   - An item whose mark has `model: false` is withheld from **every** model
+     call of every stage: the drafters, the Judge, the capture call and a
+     vision transcription. A finding that cites a withheld pin is withheld
+     too — its statement may restate the figure. A material so marked is
+     recorded `unread` and grounds nothing. A brief field so marked is left
+     out of the working brief and the Judge's brief; its `result.fields` state
+     is `kept`.
+   - The withheld ids are listed in `result.withheld` (display only). An id
+     never sent can never be cited, so none reaches a decision.
+7. **Cost** (owner default, 2026-09-29; may be reversed). Each drafter gets
+   only item 3's selection — never `clan.facts` or `clan.findings` whole, and
+   never the frozen data. Prompt caching is not used until a measured run
+   shows what it saves.
+8. **The extract.** The research's own sections (its campaign fields and
+   report) will reach the drafters as its **extract**
+   (`docs/contracts/clan-extract.md`, in design), not as raw data. Until that
+   grammar is agreed, a drafter gets findings and pins only, as above.
+
+When built, §10.12 gains, for a research-fed brief: no captured field's
+decision cites an `f_` or `fi_`; a drafted decision citing a `proposed`
+finding has certainty at most `medium` and the `attention` of item 4; no
+decision cites an id marked `model: false`; every `fi_` cite resolves in
+`clan.findings` and is not rejected.

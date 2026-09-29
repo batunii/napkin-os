@@ -943,8 +943,10 @@ licensed-internal content (C2), with a visible tombstone.
 
 Facts a brief cites are **pins in the document** (`clan.facts`) — e.g. a brief
 spun off from a Research Tool campaign carrying its pins (D6) — cited by
-`f_…`; a drafter never reads the raw layer. How the host sends a carried
-upstream's facts is **Open** (§9, O7).
+`f_…`; a drafter never reads the raw layer. A spin-off merges the carried pins
+and findings into the brief's own members (Contract 4 §5.2), so they arrive in
+`clan.facts` and `clan.findings` like the brief's own and are cited by id
+(§9, O7, settled 2026-09-29).
 
 ---
 
@@ -1093,7 +1095,7 @@ recommendation.
 | O4 | Same as O3 for `set_roster`'s key mapping (`roster.categories.primary` …) | Keep the route: the three keys are fixed here; the middleware still decides *when* a roster row is written |
 | O5 | Passages as a data block (`data.passages`) or a member (`shared/passages.yaml`) | Data block now (§6) |
 | O6 | Images: whether `claude -p --input-format stream-json` takes image blocks (the mock's vision path), and whether image-only PDFs get their pages rendered for transcription (engine did, with PyMuPDF) | The mock builder verifies the CLI first; if it cannot, the mock refuses images honestly and §8.1's image check runs only against a real endpoint. Page rendering belongs to the host's extraction (it already extracts PDF text), not the middleware — a host task. **Mock half verified 2026-09-24:** Claude Code 2.1.281 reads image blocks sent with `--input-format stream-json` (which requires `--output-format stream-json --verbose`); `mock-backend` serves images on both wires and §8.1's image check passes against it *The host now sends a picture attachment's bytes as `image`; rendering an image-only PDF's pages is still a TODO in `ops/read.rs` `splice_images` (it needs a PDF rasteriser in the host)* |
-| O7 | How carried upstream facts reach the middleware: `clan.facts` holds only the brief's own member; D6's carried upstream is not sent (the host's `clan_context_for_agent` has no `carried`) | Host sends `clan.carried: [{id, facts, findings}]`; the middleware cites carried pins by address `<upstream-doc-id>#facts[f_…]`. Until then a brief cites only pins in its own `clan.facts` |
+| O7 | How carried upstream facts reach the middleware: `clan.facts` holds only the brief's own member; D6's carried upstream is not sent (the host's `clan_context_for_agent` has no `carried`) | **Settled 2026-09-29, differently:** the spin-off merges the carried members into the brief's own (Contract 4 §5.2), so `clan.facts` and `clan.findings` hold them and a drafter cites them by id, never by upstream address; the frozen data is sent as an index (`middleware-api.md` §1, §10.13). No `clan.carried` |
 | O8 | Whether the research port receives the org for metering | Not in v1 (public-web questions); add `X-Napkin-Org` as informational only if billing needs it |
 | O9 | Where the Brief Maker rubric (the golden-brief field prompts, examples, limits, checks) lives — M2's principle says app-specific knowledge arrives as a declaration | The field map (app key ↔ loop ↔ packs kind) is declared in Brief Maker's `pipeline.yaml` (`middleware-api.md` §10.2); the rubric text is bundled with `draft_brief@1` and versioned with it, since a major pins behaviour. Move it into the template when a second brief app needs a different rubric |
 | O10 | N4's parallel drafters vs the engine's sequential dependency (insight → SMP → RTBs → desired response); the golden schema even makes SMP and RTBs depend on each other | Parallel, per N4; the serial Judge's coherence checks (`smp_derivation`, `rtb_supports_smp`, `response_ladders`) and one serial revision own the dependency. Watch the engine's SMP-derives-from-insight check as the quality measure; fall back to two waves (insight first) only if it regresses |
