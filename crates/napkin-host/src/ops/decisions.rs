@@ -32,6 +32,12 @@
 //! `resolve` here names it, a merge report carried beside it — and an address
 //! on an ancestor is labelled and resolved from its frozen copy.
 //!
+//! A client's answer to the locked document (Contract 4 §7.5) is derived
+//! here too: each part's current answer, whether it went stale (its own value
+//! changed since), whether an edit answered it, whether it is reopened; and
+//! what it asks of a person — an unanswered rejection blocks locking again, a
+//! change asked or one of Ellis's suggestions is attention.
+//!
 //! A read of one snapshot: nothing here writes.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,9 +50,10 @@ use serde_json::Value;
 use crate::document::Document;
 use crate::error::HostResult;
 
+use super::client_review::{self as cr, extra_json, extra_str};
 use super::edit::UPSTREAM_KEY;
 use super::middleware::PROPOSE_ACTION;
-use super::{members, read};
+use super::{members, read, review};
 
 const CHAIN_PATH: &str = "agent/decision-chain.yaml";
 const SCHEMA_PATH: &str = "agent/output-schema.json";
@@ -65,6 +72,8 @@ pub struct DecisionsView {
     /// Every id a decision cites, resolved once.
     pub cites: BTreeMap<String, Cite>,
     pub lock: LockState,
+    /// Client review (Contract 4 §7.5, §8.2 item 6).
+    pub client: ClientView,
     /// Set when the chain could not be read; the rest is then empty.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
@@ -162,6 +171,96 @@ pub struct LockState {
     /// Nothing on the OS lock list is open. An app may still refuse.
     pub can_lock: bool,
     pub blockers: usize,
+    /// The document is locked (Contract 4 §7.1).
+    pub locked: bool,
+    /// The parts reopened for a client's request since the lock (§7.5.6).
+    pub reopened: Vec<ReopenedPart>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Clone)]
+pub struct ReopenedPart {
+    pub address: String,
+    pub label: String,
+    /// The `unlock`.
+    pub decision: String,
+    /// The part answer it was reopened for.
+    pub answers: String,
+}
+
+/// What `/decisions` says of client review.
+#[derive(Debug, Serialize, Default)]
+pub struct ClientView {
+    /// `POST /client-review` would be accepted now: locked, nothing reopened.
+    pub available: bool,
+    /// The newest document answer.
+    pub answer: Option<ClientAnswer>,
+    /// Every document answer, newest first.
+    pub answers: Vec<ClientAnswer>,
+    /// One per address with a current answer, by address.
+    pub parts: Vec<ClientPart>,
+    /// Ellis's suggestions nobody has confirmed or dismissed, oldest first.
+    pub suggestions: Vec<ClientSuggestion>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientAnswer {
+    pub decision: String,
+    pub answer: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
+    /// The client's words, verbatim.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub said: Option<String>,
+    pub client: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    pub evidence: Value,
+    pub recorded_by: RecordedBy,
+    pub at: String,
+    pub seen: Value,
+    /// It answers the version the lock names now.
+    pub current: bool,
+    /// A part answer names it as its review.
+    pub parts_known: bool,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct RecordedBy {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientPart {
+    pub address: String,
+    pub label: String,
+    /// `accepted`, `accepted_with_changes` or `rejected`.
+    pub state: String,
+    /// The current answer: a part answer, or an `accepted` document answer.
+    pub decision: String,
+    pub review: String,
+    /// `person`, `agent` (a confirmed suggestion), or `document` (an accepted
+    /// document answer marks every part).
+    pub found_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote: Option<String>,
+    pub client: Value,
+    pub at: String,
+    /// The part's value changed since the answer.
+    pub stale: bool,
+    /// A person edited the part since the answer asked for a change.
+    pub answered: bool,
+    pub reopened: bool,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientSuggestion {
+    pub decision: String,
+    pub review: String,
+    pub address: String,
+    pub label: String,
+    pub answer: String,
+    pub quote: String,
 }
 
 /// `GET /decisions` — see the module docs.
@@ -183,7 +282,10 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
         lock: LockState {
             can_lock: true,
             blockers: 0,
+            locked: false,
+            reopened: Vec::new(),
         },
+        client: ClientView::default(),
         problem: None,
     };
 
@@ -233,8 +335,11 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
     let mut order: Vec<usize> = (0..chain.decisions.len()).collect();
     order.sort_by_key(|&i| (std::cmp::Reverse(ctx.at(i)), i));
 
+    let client = client_review(&ctx);
     let mut attention = lock_blockers(&ctx, clan);
+    attention.extend(client.blockers);
     attention.extend(asked_for(&ctx));
+    attention.extend(client.attention);
 
     for &i in &order {
         let d = &chain.decisions[i];
@@ -293,7 +398,10 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
     view.lock = LockState {
         can_lock: blockers == 0,
         blockers,
+        locked: client.locked,
+        reopened: client.reopened,
     };
+    view.client = client.view;
     view.attention = attention;
     Ok(view)
 }
@@ -1028,6 +1136,274 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
     out
 }
 
+/// Client review as derived from the snapshot, and what it asks of a person.
+struct ClientDerived {
+    view: ClientView,
+    locked: bool,
+    reopened: Vec<ReopenedPart>,
+    blockers: Vec<Attention>,
+    attention: Vec<Attention>,
+}
+
+/// Contract 4 §7.5.3 and §7.5.4, over this document's own records. A carried
+/// `client_review` targets a parent's address: it is the parent's record,
+/// shown in the history and counted in nothing here.
+fn client_review(ctx: &Lookup) -> ClientDerived {
+    let chain = &ctx.chain.decisions;
+    let here = ctx.doc_id;
+    let is = |d: &Decision, action: &str| d.kind.as_deref() == Some(cr::KIND) && d.action == action;
+    // A part record's address, when it is on this document.
+    let part_here = |d: &Decision| {
+        let a = ctx.qualify(d.targets.first()?);
+        let (on, path) = a.split_once('#')?;
+        (on == here && !path.is_empty()).then_some(a)
+    };
+    let newest_first = |mut v: Vec<usize>| {
+        v.sort_by_key(|&i| (std::cmp::Reverse(ctx.at(i)), i));
+        v
+    };
+    let id = |d: &Decision| d.id.clone().unwrap_or_default();
+
+    let lock = review::lock_of(ctx.chain, here);
+    let reopened_now = cr::reopened(ctx.chain, here);
+    let label_of = |address: &str, fallback: Option<&str>| {
+        fallback.map(String::from).unwrap_or_else(|| ctx.target(address).label)
+    };
+    let reopened: Vec<ReopenedPart> = reopened_now
+        .iter()
+        .map(|r| ReopenedPart {
+            label: label_of(
+                &r.address,
+                ctx.index_of(&r.answers).and_then(|i| extra_str(&chain[i], "label")),
+            ),
+            address: r.address.clone(),
+            decision: r.decision.clone(),
+            answers: r.answers.clone(),
+        })
+        .collect();
+
+    let documents = newest_first(
+        (0..chain.len())
+            .filter(|&i| is(&chain[i], cr::CLIENT_ANSWER) && chain[i].targets.iter().any(|t| t == here))
+            .collect(),
+    );
+    let part_answers: Vec<usize> = (0..chain.len())
+        .filter(|&i| is(&chain[i], cr::CLIENT_ANSWER_PART) && part_here(&chain[i]).is_some())
+        .collect();
+
+    // Each address's current answer: the newest part answer on it, or
+    // `accepted` document answer that saw it.
+    enum Source {
+        Part,
+        Document { label: String, hash: String },
+    }
+    let mut current: BTreeMap<String, (usize, Source)> = BTreeMap::new();
+    let mut offer = |address: String, i: usize, from: Source| {
+        if current.get(&address).map_or(true, |(j, _)| ctx.after(i, *j)) {
+            current.insert(address, (i, from));
+        }
+    };
+    for &i in &documents {
+        if extra_str(&chain[i], "answer") != Some("accepted") {
+            continue;
+        }
+        let seen = extra_json(&chain[i], "seen");
+        for e in seen.get("parts").and_then(Value::as_array).into_iter().flatten() {
+            let Some(address) = e.get("address").and_then(Value::as_str) else { continue };
+            let text = |k| e.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+            offer(ctx.qualify(address), i, Source::Document { label: text("label"), hash: text("part_hash") });
+        }
+    }
+    for &i in &part_answers {
+        if let Some(address) = part_here(&chain[i]) {
+            offer(address, i, Source::Part);
+        }
+    }
+
+    let mut parts = Vec::new();
+    for (address, (i, from)) in current {
+        let d = &chain[i];
+        let path = address.split_once('#').map_or("", |(_, p)| p);
+        let (state, label, recorded, review, found_by, quote) = match from {
+            Source::Part => (
+                extra_str(d, "answer").unwrap_or_default().to_string(),
+                label_of(&address, extra_str(d, "label")),
+                extra_json(d, "seen").get("part_hash").and_then(Value::as_str).unwrap_or_default().to_string(),
+                extra_str(d, "review").unwrap_or_default().to_string(),
+                extra_str(d, "found_by").unwrap_or("person").to_string(),
+                extra_str(d, "quote").map(String::from),
+            ),
+            Source::Document { label, hash } => (
+                "accepted".to_string(),
+                label_of(&address, Some(label.as_str()).filter(|l| !l.is_empty())),
+                hash,
+                id(d),
+                "document".to_string(),
+                None,
+            ),
+        };
+        // Every `/edit` says why, so any person's edit of the part since the
+        // answer is "edited with a reason".
+        let answered = state != "accepted"
+            && (0..chain.len()).any(|j| {
+                ctx.after(j, i) && is_person(&chain[j]) && is_edit(&chain[j]) && ctx.touches(j, &address)
+            });
+        parts.push(ClientPart {
+            stale: cr::part_hash(ctx.data, path) != recorded,
+            reopened: reopened_now.iter().any(|r| r.address == address),
+            answered,
+            address,
+            label,
+            state,
+            decision: id(d),
+            review,
+            found_by,
+            quote,
+            client: extra_json(d, "client"),
+            at: d.timestamp.clone(),
+        });
+    }
+
+    let lock_version = lock.and_then(|l| l.version.as_deref());
+    let answer_of = |i: usize| {
+        let d = &chain[i];
+        let seen = extra_json(d, "seen");
+        let w = who(d);
+        ClientAnswer {
+            decision: id(d),
+            answer: extra_str(d, "answer").unwrap_or_default().to_string(),
+            reasons: d
+                .extra
+                .get("reasons")
+                .and_then(|v| v.as_sequence())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect(),
+            said: extra_str(d, "said").map(String::from),
+            client: extra_json(d, "client"),
+            channel: extra_str(d, "channel").map(String::from),
+            evidence: extra_json(d, "evidence"),
+            recorded_by: RecordedBy { id: w.id, name: w.name },
+            at: d.timestamp.clone(),
+            current: lock_version.is_some() && seen.get("version").and_then(Value::as_str) == lock_version,
+            parts_known: part_answers
+                .iter()
+                .any(|&j| extra_str(&chain[j], "review") == d.id.as_deref()),
+            seen,
+        }
+    };
+    let answers: Vec<ClientAnswer> = documents.iter().map(|&i| answer_of(i)).collect();
+
+    let named: BTreeSet<&str> = chain
+        .iter()
+        .filter(|d| is(d, cr::CLIENT_ANSWER_PART) || is(d, cr::DISMISS_PART))
+        .filter_map(|d| extra_str(d, "suggestion"))
+        .collect();
+    let mut open: Vec<usize> = (0..chain.len())
+        .filter(|&i| {
+            let d = &chain[i];
+            is(d, cr::SUGGEST_PART) && part_here(d).is_some() && !d.id.as_deref().is_some_and(|x| named.contains(x))
+        })
+        .collect();
+    open = newest_first(open);
+    open.reverse();
+    let suggestions: Vec<ClientSuggestion> = open
+        .iter()
+        .map(|&i| {
+            let d = &chain[i];
+            let address = part_here(d).unwrap_or_default();
+            ClientSuggestion {
+                decision: id(d),
+                review: extra_str(d, "review").unwrap_or_default().to_string(),
+                label: label_of(&address, extra_str(d, "label")),
+                address,
+                answer: extra_str(d, "answer").unwrap_or_default().to_string(),
+                quote: extra_str(d, "quote").unwrap_or_default().to_string(),
+            }
+        })
+        .collect();
+
+    // §7.5.4: what the next lock needs, and what only asks for a look.
+    let name = |client: &Value| {
+        client.get("name").and_then(Value::as_str).unwrap_or("The client").to_string()
+    };
+    let item = |code, text: String, blocks_lock, decision: String, address: Option<String>, label: Option<String>| Attention {
+        code,
+        text,
+        blocks_lock,
+        decision: Some(decision),
+        address,
+        label,
+    };
+    let mut blockers = Vec::new();
+    let mut attention = Vec::new();
+    for p in parts.iter().filter(|p| !p.answered) {
+        let who = name(&p.client);
+        match p.state.as_str() {
+            "rejected" => blockers.push(item(
+                "client_rejected",
+                format!("{who} rejected {}. Edit it, saying why, before locking again.", p.label),
+                true,
+                p.decision.clone(),
+                Some(p.address.clone()),
+                Some(p.label.clone()),
+            )),
+            "accepted_with_changes" => attention.push(item(
+                "client_change_asked",
+                format!("{who} asked for a change to {}.", p.label),
+                false,
+                p.decision.clone(),
+                Some(p.address.clone()),
+                Some(p.label.clone()),
+            )),
+            _ => {}
+        }
+    }
+    if let Some(a) = answers.first().filter(|a| a.answer == "rejected" && !a.parts_known) {
+        blockers.push(item(
+            "client_rejected_parts_unknown",
+            format!(
+                "{} rejected the document and which parts is not known yet. Mark or confirm them, then edit them, before locking again.",
+                name(&a.client)
+            ),
+            true,
+            a.decision.clone(),
+            None,
+            None,
+        ));
+    }
+    for s in &suggestions {
+        let who = answers
+            .iter()
+            .find(|a| a.decision == s.review)
+            .map(|a| name(&a.client))
+            .unwrap_or_else(|| "The client".to_string());
+        attention.push(item(
+            "client_part_suggested",
+            format!("Ellis thinks {who}'s answer is about {}. Confirm or dismiss it.", s.label),
+            false,
+            s.decision.clone(),
+            Some(s.address.clone()),
+            Some(s.label.clone()),
+        ));
+    }
+
+    ClientDerived {
+        view: ClientView {
+            available: lock.is_some() && reopened.is_empty(),
+            answer: answers.first().cloned(),
+            answers,
+            parts,
+            suggestions,
+        },
+        locked: lock.is_some(),
+        reopened,
+        blockers,
+        attention,
+    }
+}
+
 /// A `resolve` in this chain, not superseded, names `address`: how a contest
 /// carried open in a frozen copy is settled (Contract 4 §7.2, item 1).
 fn resolved_here(ctx: &Lookup, address: &str) -> bool {
@@ -1133,7 +1509,9 @@ fn asked_for(ctx: &Lookup) -> Vec<Attention> {
     let mut out = Vec::new();
     for (i, d) in ctx.chain.decisions.iter().enumerate() {
         let Some(r) = &d.reasoning else { continue };
-        if d.superseded_by.is_some() {
+        // Ellis's suggestions ask for a person as client review does
+        // (`client_part_suggested`), once.
+        if d.superseded_by.is_some() || d.kind.as_deref() == Some(cr::KIND) {
             continue;
         }
         // A person has looked when they have since decided about the decision
@@ -1537,9 +1915,12 @@ fn clip(s: &str, max: usize) -> String {
     out
 }
 
-fn stamp(ts: &str) -> i64 {
+/// When, to the second. The chain mixes precisions — a packed entry is stamped
+/// to the nanosecond, a review decision to the second — so within one second
+/// the stamps say nothing and chain order (prepend-only, newest first) decides.
+pub(crate) fn stamp(ts: &str) -> i64 {
     chrono::DateTime::parse_from_rfc3339(ts.trim())
-        .map(|t| t.timestamp_millis())
+        .map(|t| t.timestamp() * 1000)
         .unwrap_or(0)
 }
 

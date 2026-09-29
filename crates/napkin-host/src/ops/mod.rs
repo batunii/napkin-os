@@ -15,6 +15,7 @@
 //! operation knowing which.
 
 pub mod assemble;
+pub mod client_review;
 pub mod decisions;
 pub mod edit;
 pub mod members;
@@ -32,7 +33,7 @@ pub use edit::{attribute, attributed};
 /// Cap on extracted text we cache + send, to bound the agent's token cost
 /// (~6k tokens). The full asset always stays in the archive; this only limits
 /// what the agent reads.
-const MAX_EXTRACT_CHARS: usize = 24_000;
+pub(crate) const MAX_EXTRACT_CHARS: usize = 24_000;
 
 /// What an operation produced: the reply for whoever asked, and the changes
 /// that would make it true. No changes means nothing needs writing — a no-op
