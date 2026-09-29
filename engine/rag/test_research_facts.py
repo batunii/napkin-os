@@ -78,3 +78,51 @@ def test_run_records_the_facts_and_keeps_them_out_of_the_capture(monkeypatch):
     assert "F:f-1" not in seen["capture"] and "40 shops" not in seen["capture"]
     plain = pb.run(None, raw_text="A bakery. Under-30s buy supermarket bread.")
     assert "research_facts" not in plain["meta"]
+
+
+# ---------- C1b: citations checked in code, moved into fact_refs ----------
+
+FACTS = {f["id"]: f for f in rf.current(FIXTURE_FACTS)[0]}
+
+
+def test_citation_checks():
+    fails = rf.citation_failures(["40 shops near you [F:f-1 v2]", "45 shops [F:f-1]", "We run 40 shops", "x [F:f-9]"],
+                                 FACTS, "A bakery.")
+    assert fails == ["fact citation: 45 is not in the fact it cites (F:f-1) (item 1)",
+                     "fact citation: 40 comes from the research (F:f-1) but is not cited (item 2)",
+                     "fact citation: cites F:f-9, which was not given (item 3)"]
+    assert rf.citation_failures(["Baked before 7am"], FACTS, "Baked before 7am.") == []   # a brief figure needs no cite
+    assert rf.citation_failures(["x [F:f-9]"], {}, "") == []                              # no facts, no checks
+    assert pb._invents(fails)                                                             # never kept for review
+
+
+def test_markers_move_into_fact_refs():
+    clean, refs = rf.strip(["40 shops near you [F:f-1 v2]", "Baked before 7am"], FACTS)
+    assert clean == ["40 shops near you", "Baked before 7am"]
+    assert refs == [{"item": 0, "id": "f-1", "version": 2, "scope": "brand", "source_ids": ["s-9"]}]
+    assert rf.strip({"think": "x [F:f-2]", "do": "y"}, FACTS)[1][0]["item"] == "think"
+
+
+def test_the_fill_keeps_refs_and_the_app_passes_them_through(monkeypatch):
+    _fake_models(monkeypatch)
+    real = pb._json_call
+    def cite(user, system=None, **k):
+        out = real(user, system=system, **k)
+        if isinstance(out, dict) and isinstance(out.get("value"), list):
+            out = {**out, "value": ["40 shops put a Hearthstone near you [F:f-1 v2]", "Baked before 7am"]}
+        return out
+    monkeypatch.setattr(pb, "_json_call", cite)
+    gf = {"audience": {"value": "under-30s", "source": "client_stated"},
+          "background": {"value": "a bakery", "source": "client_stated"},
+          "competitor_context": {"value": "supermarkets", "source": "client_stated"}}
+    from test_cannot_fail_silently import GOLDEN_SCHEMA
+    pb.fill_derivable_fields(gf, {"loops": {}}, GOLDEN_SCHEMA, brief_text="A bakery, baked before 7am.",
+                             research_facts=rf.current(FIXTURE_FACTS)[0])
+    rtb = gf["reasons_to_believe"]
+    assert rtb["value"] == ["40 shops put a Hearthstone near you", "Baked before 7am"]
+    assert rtb["fact_refs"] == [{"item": 0, "id": "f-1", "version": 2, "scope": "brand", "source_ids": ["s-9"]}]
+    sys.path.insert(0, str(HERE.parent / "agent-server"))
+    import mapping
+    out = mapping.map_brief({"meta": {}, "loop1_capture": {}, "loop2_brief": {}, "loop2_golden": {"fields": gf}})
+    assert out["fact_refs"]["reasons_to_believe"][0]["id"] == "f-1"
+    assert out["reasons_to_believe"][0] == "40 shops put a Hearthstone near you"          # no marker in the app text

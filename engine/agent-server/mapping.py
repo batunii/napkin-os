@@ -174,6 +174,13 @@ def map_brief(brief: dict, clan_data: dict | None = None) -> dict:
 
     put("rationale", build_rationale(brief))
     put("context", build_context(brief))
+    # Which verified research facts each field used (C1b, 2026-09-29), keyed by the app's
+    # field names: {"reasons_to_believe": [{"item", "id", "version", "scope", "source_ids"}]}.
+    # A pass-through until the campaign CLAN's source field is confirmed (Shrey).
+    app_name = {"insight": "insight", "smp": "single_minded_proposition",
+                "reasons_to_believe": "reasons_to_believe", "desired_response": "desired_response"}
+    put("fact_refs", {app_name[k]: v["fact_refs"] for k, v in gf.items()
+                      if k in app_name and isinstance(v, dict) and v.get("fact_refs")})
     return out
 
 

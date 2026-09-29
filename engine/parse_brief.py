@@ -160,6 +160,7 @@ HERE = Path(__file__).resolve().parent
 
 import capture_fallback  # noqa: E402  (the fallback readers: jev, then deterministic rules)
 import research_facts  # noqa: E402  (verified facts from the knowledge layer, C1a)
+_facts_mod = research_facts   # the module, where a parameter of the same name shadows it
 
 
 def _cap(value, status="fact", quote=None, conf=0.6):
@@ -752,7 +753,7 @@ def _value_items(value) -> list:
 
 # Failure messages that mean a draft invents a fact (the code number check in
 # _judge_and_gate and _jev_figure_failures). A draft carrying one is never kept for review.
-INVENTION_MARKERS = ("figures not in the brief", "jev: a figure in")
+INVENTION_MARKERS = ("figures not in the brief", "jev: a figure in", research_facts.FAIL)
 
 
 def _invents(fails) -> bool:
@@ -798,7 +799,8 @@ def _jev_figure_failures(field, candidates, allowed_text) -> dict:
 
 
 def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", territory=None,
-                    allowed_text: "str | None" = None) -> list:
+                    allowed_text: "str | None" = None, facts: "dict | None" = None,
+                    brief_text: str = "") -> list:
     """Rank the candidates AND run every llm rubric test (and, for the SMP, the two territory
     tests) on every candidate in ONE judge call. Returns [(candidate, passed, failures)]
     best-first. The pass rule is _pass_rule; a line off the brand's territory fails.
@@ -902,6 +904,9 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
             if bad:
                 hard.append(f"figures not in the brief: {', '.join(bad)} — remove or replace with a stated fact")
         hard.extend(jev_bad.get(i, []))
+        # C1b: a draft's [F:id] citations must name a fact the run was given, a figure next
+        # to one must be that fact's, and a research-only figure must be cited.
+        hard.extend(_facts_mod.citation_failures(c["value"], facts or {}, brief_text))
         verdicts = {tid: _verdict(res, tid) for tid in judged_tests}
         missing = [tid for tid, v in verdicts.items() if v is None]
         if missing:
@@ -1129,7 +1134,22 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         e = golden_fields.get(fid)
         return " (assumption)" if isinstance(e, dict) and e.get("source") == "inferred" and not str(e.get("method") or "").startswith("gen:") else ""
 
-    research = [str(x) for x in (research_facts or []) if str(x).strip()]
+    # research_facts: fact rows (C1b: citations checked) or ready-made lines (C1a form).
+    rows = [f for f in (research_facts or []) if isinstance(f, dict)]
+    facts_by_id = {f["id"]: f for f in rows if f.get("id")}
+    research = ([_facts_mod.line(f) for f in rows]
+                + [str(x) for x in (research_facts or []) if isinstance(x, str) and x.strip()])
+
+    def _with_refs(entry: dict) -> dict:
+        """Move the [F:...] markers out of the value (and its alternatives) into fact_refs."""
+        if not research:
+            return entry
+        entry["value"], refs = _facts_mod.strip(entry["value"], facts_by_id)
+        if refs:
+            entry["fact_refs"] = refs
+        if entry.get("alternatives"):
+            entry["alternatives"] = [_facts_mod.strip(a, facts_by_id)[0] for a in entry["alternatives"]]
+        return entry
 
     def _allowed_for(field):
         """The text a fact-bearing field's figures are checked against: the brief, plus the
@@ -1142,7 +1162,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         """Does one value clear its field's rubric (and, given a territory, the SMP's
         territory tests)? One judge call through the one gate."""
         return _judge_and_gate(field, [{"value": value}], brand_blob, ctx, territory,
-                               allowed_text=_allowed_for(field))[0][1]
+                               allowed_text=_allowed_for(field), facts=facts_by_id, brief_text=brief_text)[0][1]
 
     def _one(fid):
         """Generate, judge, gate and sharpen ONE field. Returns (entry or None, open questions).
@@ -1260,7 +1280,8 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         # One call ranks every draft and runs every test on it. The best-ranked draft that
         # passes wins; if none passes, the best-ranked one carries its failures.
         chosen, chosen_fail, chosen_notes = None, None, []
-        judged = _judge_and_gate(field, candidates, brand_blob, ctx, territory, allowed_text=_allowed_for(field))
+        judged = _judge_and_gate(field, candidates, brand_blob, ctx, territory, allowed_text=_allowed_for(field),
+                                 facts=facts_by_id, brief_text=brief_text)
         candidates = [c for c, _ok, _f in judged]
         for c, ok, fails in judged:
             if ok:
@@ -1314,7 +1335,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                                     "why": "; ".join(fails)}}
                 if kept.get("_judge_why"):
                     entry["judge_note"] = kept["_judge_why"]
-                golden_fields[fid] = entry
+                golden_fields[fid] = _with_refs(entry)
                 qs.append({"question": f"Review the {label}: every draft failed "
                                        f"{', '.join(_check_ids(fails))}; the best one is kept as a draft.",
                            "why_it_matters": "; ".join(fails),
@@ -1374,7 +1395,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         alts = [c["value"] for c in candidates if c.get("value") != chosen["value"]]
         if alts:
             entry["alternatives"] = alts[:3]
-        golden_fields[fid] = entry  # downstream deps see the generated value
+        golden_fields[fid] = _with_refs(entry)  # downstream deps see the generated value
         return entry, qs
 
     def _one_safe(fid):
@@ -3083,7 +3104,6 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         # writers; superseded or malformed ones are skipped and recorded.
         rf_given = (upstream or {}).get("facts")
         rf_usable, rf_skipped = research_facts.current(rf_given)
-        rf_lines = [research_facts.line(f) for f in rf_usable]
 
         def _facets():
             """The facets once ready (waits at most 20 s); None if they failed."""
@@ -3116,7 +3136,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 if not (gb0 and l37_0 and l37_0.get("enabled")):
                     return None
                 return fill_derivable_fields(gb0.setdefault("fields", {}), l37_0, golden_schema,
-                                             brief_text=text, allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_lines)
+                                             brief_text=text, allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_usable)
             f_fill = ex.submit(_scoped(_fill_early))
 
         llm = f_cap.result() if f_cap else None
@@ -3201,7 +3221,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 # precedent, schema-driven and rubric-gated. Mutates gf in place; never
                 # overwrites a client_stated field. Failures become open questions.
                 filled = fill_derivable_fields(gf, l37, golden_schema, brief_text=text,
-                                               allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_lines)
+                                               allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_usable)
             _fills, gen_open_qs = filled
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs

@@ -19,6 +19,8 @@ prose, so a line carries the fact's id and version for the writers to cite.
 """
 from __future__ import annotations
 
+import re
+
 # A fact in one of these states is no longer the current truth.
 NOT_CURRENT = {"superseded", "retired", "withdrawn", "rejected", "deprecated"}
 
@@ -80,3 +82,82 @@ def record(usable: list, skipped: list) -> dict:
     return {"given": len(usable) + len(skipped),
             "used": [{"id": f["id"], "version": f.get("version"), "scope": scope(f)} for f in usable],
             "skipped": skipped}
+
+
+# ---- C1b: the writers' citations, checked in code and moved out of the prose -------------
+
+CITE = re.compile(r"\s*\[F:([^\]\s]+)(?:\s+v(\d+))?\]")
+_NUM = re.compile(r"\d[\d.,]*\d|\d")
+# Every failure below starts with this, so parse_brief counts it as an invention and never
+# keeps the draft (INVENTION_MARKERS).
+FAIL = "fact citation:"
+
+
+def _nums(text: str) -> set:
+    """The figures in `text`, separators dropped ('1,200' -> '1200')."""
+    return {m.replace(",", "").rstrip(".") for m in _NUM.findall(str(text or ""))}
+
+
+def _items(value) -> list:
+    """(item key, text) for a field value: list index, dict key, or None for a string."""
+    if isinstance(value, list):
+        return [(i, str(v)) for i, v in enumerate(value)]
+    if isinstance(value, dict):
+        return [(k, str(v)) for k, v in value.items()]
+    return [(None, str(value or ""))]
+
+
+def citation_failures(value, facts: dict, brief_text: str) -> list:
+    """Hard failures for a draft's [F:id] citations, given the run's current facts by id:
+    a cited id that was not given; a figure in a citing item that is neither in the brief nor
+    in a fact it cites (a misquote); a figure that exists only in the research, used without
+    citing the fact. [] when all is well, or when the run has no facts."""
+    if not facts:
+        return []
+    brief_nums = _nums(brief_text)
+    fact_nums = {fid: _nums(f"{f.get('value')} {f.get('unit') or ''}") for fid, f in facts.items()}
+    out = []
+    for key, text in _items(value):
+        cited = [fid for fid, _v in CITE.findall(text)]
+        plain = CITE.sub("", text)
+        where = f" (item {key})" if key is not None else ""
+        for fid in cited:
+            if fid not in facts:
+                out.append(f"{FAIL} cites F:{fid}, which was not given{where}")
+        for n in sorted(_nums(plain) - brief_nums):
+            if cited:
+                if not any(n in fact_nums.get(fid, set()) for fid in cited):
+                    out.append(f"{FAIL} {n} is not in the fact it cites ({', '.join('F:' + c for c in cited)}){where}")
+            else:
+                src = [fid for fid, ns in fact_nums.items() if n in ns]
+                if src:
+                    out.append(f"{FAIL} {n} comes from the research ({', '.join('F:' + x for x in src)}) "
+                               f"but is not cited{where}")
+    return out
+
+
+def strip(value, facts: dict) -> tuple:
+    """(clean value, fact_refs): the [F:...] markers removed from what a reader sees, and one
+    ref per citation {item, id, version, scope, source_ids}, item being the list index or
+    think/feel/do key (None for a one-line field). The campaign CLAN shows the sources from
+    fact_refs, not from the prose."""
+    refs = []
+
+    def one(key, text):
+        for fid, v in CITE.findall(text):
+            f = facts.get(fid) or {}
+            refs.append({"item": key, "id": fid,
+                         "version": int(v) if v else f.get("version"),
+                         "scope": scope(f) if f else None,
+                         "source_ids": [x.get("id") for x in (f.get("sources") or []) if isinstance(x, dict) and x.get("id")]})
+        return CITE.sub("", text).strip()
+
+    if isinstance(value, list):
+        clean = [one(i, str(v)) for i, v in enumerate(value)]
+    elif isinstance(value, dict):
+        clean = {k: one(k, str(v)) for k, v in value.items()}
+    elif isinstance(value, str):
+        clean = one(None, value)
+    else:
+        clean = value
+    return clean, refs

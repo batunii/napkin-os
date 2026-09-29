@@ -36,12 +36,22 @@ allowed text, so a figure taken from a fact is not an invention. `meta.research_
 records the ids and versions used and those skipped. The Loop 1 capture and the golden
 extraction still read the client brief only. A run given no facts is unchanged.
 
+## C1b (built)
+
+The writers' `[F:id vN]` citations are checked in code, in the one gate
+(`research_facts.citation_failures`): a cited id the run was not given, a figure next to a
+citation that is not in the cited fact (a misquote), and a figure that exists only in the
+research but is used without a citation, each fail the draft. They start with
+`fact citation:`, which counts as an invention, so such a draft is never kept for review. The
+markers are then moved out of the prose into the field's `fact_refs`
+(`[{item, id, version, scope, source_ids}]`, item = list index or think/feel/do key), and the
+app mapping passes them on as a `fact_refs` key by app field name until the campaign CLAN's
+source field is confirmed (question with Shrey).
+
 ## Next
 
-- C1b: the writers' cited `[F:id]` are checked in code (the id exists; a figure matches the
-  fact's value).
 - C1c: the grounding count and the grader treat a claim as supported by the brief or a current
   fact, and say which.
-- C1d: each generated field lists the facts it used (id, version) for the campaign CLAN; where
-  the brief and a fact differ, both values are kept with their origin.
+- C1d: where the brief and a fact differ, both values are kept with their origin for the CLAN
+  merge report (the per-field fact list itself landed with C1b as `fact_refs`).
 - C2: the territory check's rival from the brand's competitor facts.
