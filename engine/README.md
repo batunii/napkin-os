@@ -58,6 +58,7 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `brief_llm.py` | talking to models: providers, the Claude-only chain, model routes by job, the API and Claude Code transports, `_json_call`, the per-run call ledger, `NoClaudeAvailable` |
 | `brief_ingest.py` | reading a brief: `.txt` / `.md` / `.docx` (document order, hyperlink addresses kept as `text <url>`, since research documents cite by link) / `.pdf` / `.eml` / images (vision model), and sentence segmentation |
 | `capture_fallback.py` | the Loop 1 capture when the model capture fails: the jev sentence sorter first (45% of the model's fields on 7 saved briefs), then a deterministic reader (sections from headings + per-field sentence cues, regex only, 37%); also the keyless demo's reader. The brief says which one ran |
+| `research_facts.py` | verified facts from the brand and category research (knowledge-layer fact rows): the current ones become cited `[F:id vN]` lines for every hero writer and count as allowed for the figure check; recorded in `meta.research_facts`; never in the Loop 1 capture (ADR 0014) |
 | `brief_render.py` | the brief for people: client brief, review file, Loops 3-7 evidence, provenance, `.docx` / `.pdf` output, marker scrubbing |
 | `golden_critic.py` | the independent critic: schema checks plus one Sonnet-judged call, health and quality scores |
 | `toon_lite.py` | the TOON reader/writer the capture uses |

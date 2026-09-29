@@ -560,6 +560,7 @@ rejected, consequences.
 | [0011](docs/adr/0011-model-routes-and-jev-checks.md) | Model routes by job, a judge never on its writer's model, and jev as a checker (figures, scorecard, category, synthesis) |
 | [0012](docs/adr/0012-engine-code-structure.md) | Engine code structure: parse_brief split into brief_llm / brief_ingest / brief_render, one .env loader, dead code out |
 | [0013](docs/adr/0013-measurement-noise-and-grounding.md) | Checkpoint reports: brief lists, the noise line from repeat pairs, the grounding count, a runner that checks before it spends |
+| [0014](docs/adr/0014-research-facts.md) | Verified research facts in the brief: current fact rows as cited lines for every hero writer, allowed for the figure check, never in the Loop 1 capture; the CLAN shows sources and settles disagreements |
 
 ## Plans
 
