@@ -1,7 +1,8 @@
 # Brief Maker agent server
 
 The real backend behind the Brief Maker app's **Generate** flow — replaces
-`mock-agent/` (which remains the keyless demo). Implements the contract
+`mock-agent/` (kept for one release behind `serve.py --mock-agent`; `serve.py` with no
+flag starts this server, on the Claude Code login when there is no API key). Implements the contract
 declared in the template's `app/pipeline.yaml`.
 
 ## Run

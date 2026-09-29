@@ -6,17 +6,21 @@
     python3 serve.py --api           # the full engine on the API key (fails if the key has no credit)
     python3 serve.py --auto          # the full engine on the API key, switching to the Claude Code
                                      # login if the key has no credit or is rejected
-    python3 serve.py --mock-agent    # the lightweight mock agent (one Claude Code call per request)
+    python3 serve.py --mock-agent    # the old lightweight mock agent (one Claude Code call, no checks)
 
-With no flag it picks the backend for you:
-  * a chat key in the env (GROQ_API_KEY / CEREBRAS_API_KEY / NVIDIA_API_KEY /
-    GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY) -> the full engine
-    pipeline (Loops 1-7, golden fill), grounded on the shipped pack digests; on
-    transport `auto` when Claude Code is installed, so a key with no credit hands
-    over to the login instead of failing (the chain is Claude-only by default).
-  * no key but the `claude` CLI is installed and logged in -> the mock-agent,
-    briefs via your Claude login, grounded on the same digests.
-  * neither -> tells you the ways to fix that, and exits.
+With no flag it picks the backend for you (engine/.env is read first, never overriding the
+shell), always the full engine pipeline (Loops 1-7, golden fill):
+  * BRIEF_CLAUDE_TRANSPORT set -> that transport.
+  * ANTHROPIC_API_KEY set -> transport `auto` when Claude Code is installed (a key with no
+    credit hands over to the login), else `api`.
+  * no Anthropic key but the `claude` CLI installed and logged in -> transport `cli`: every
+    Claude call on your Claude Code login, no API key needed.
+  * another chat key only -> the engine, which stops with a clear error (the chain is
+    Claude-only unless BRIEF_ALLOW_NONCLAUDE=1).
+  * nothing -> tells you the ways to fix that, and exits.
+Until 2026-09-29 the no-key case started the mock-agent, a second backend with its own
+prompt and no checks (audit C7), and only the shell was checked, so keys kept in
+engine/.env were missed (N10). --mock-agent still starts it on request.
 
 --claude-code, --api and --auto set BRIEF_CLAUDE_TRANSPORT (cli / api / auto) for the
 engine, which decides how every `anthropic:` link in the model chain is sent; see
@@ -69,6 +73,34 @@ def _run_mock() -> int:
     return subprocess.call([sys.executable, str(MOCK_SERVER)], env=env)
 
 
+def choose(env: dict, has_claude: bool) -> "tuple[str, str | None, str]":
+    """What a run with no flag starts: ("engine", transport or None, why), or ("none", None,
+    "") when there is no way to reach a model. Pure, so the choice is testable."""
+    if env.get("BRIEF_CLAUDE_TRANSPORT"):
+        return "engine", None, f"BRIEF_CLAUDE_TRANSPORT={env['BRIEF_CLAUDE_TRANSPORT']}"
+    if env.get("ANTHROPIC_API_KEY"):
+        return "engine", ("auto" if has_claude else "api"), "ANTHROPIC_API_KEY found"
+    if has_claude:
+        return "engine", "cli", "no Anthropic key, Claude Code installed"
+    key = next((k for k in CHAT_KEYS if env.get(k)), None)
+    if key:
+        # The engine's chain is Claude-only by default (2026-09-25): this stops with a clear
+        # error instead of a brief written by another model, unless BRIEF_ALLOW_NONCLAUDE=1.
+        return "engine", None, f"{key} found"
+    return "none", None, ""
+
+
+def _load_engine_env() -> None:
+    """Read engine/.env into this process (never overriding the shell), as the engine does,
+    so the choice below sees the same keys the engine will."""
+    sys.path.insert(0, str(ROOT / "engine"))
+    try:
+        import engine_env
+        engine_env.load()
+    except Exception as e:  # noqa: BLE001 — a missing or odd .env never blocks start-up
+        print(f"[serve] engine/.env not read: {e}", file=sys.stderr)
+
+
 def main(argv=None) -> int:
     """Pick the backend from the flag, or automatically when no flag is given."""
     ap = argparse.ArgumentParser(description="Start the Napkin Studio backend on :8787.")
@@ -94,16 +126,10 @@ def main(argv=None) -> int:
     if a.auto:
         return _run_engine("auto", "--auto")
 
-    key = next((k for k in CHAT_KEYS if os.environ.get(k)), None)
-    if key:
-        # The engine's chain is Claude-only by default (engine/parse_brief.py, 2026-09-25),
-        # so a key with no credit fails loudly rather than producing a NIM-written brief.
-        # With Claude Code installed and no transport chosen, `auto` lets the login take
-        # over when the key cannot be used.
-        auto = "auto" if shutil.which("claude") and not os.environ.get("BRIEF_CLAUDE_TRANSPORT") else None
-        return _run_engine(auto, f"{key} found")
-    if shutil.which("claude"):
-        return _run_mock()
+    _load_engine_env()
+    kind, transport, why = choose(dict(os.environ), bool(shutil.which("claude")))
+    if kind == "engine":
+        return _run_engine(transport, why)
     sys.exit("[serve] no backend available. Either:\n"
              "  1. install Claude Code and log in  (https://claude.ai/code), then run with --claude-code, or\n"
              "  2. export any one chat key: " + " / ".join(CHAT_KEYS))

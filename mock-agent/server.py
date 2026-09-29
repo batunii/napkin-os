@@ -2,8 +2,10 @@
 """
 Napkin Studio — local mock agent server.
 
-A dependency-free stand-in for the real inference backend — kept as the
-keyless demo. The production backend is `engine/agent-server/server.py` (the
+A dependency-free stand-in for the real inference backend, kept for one release
+behind `serve.py --mock-agent` (since 2026-09-29 `serve.py` with no key starts the real
+engine on the Claude Code login instead; audit C7). The production backend is
+`engine/agent-server/server.py` (the
 napkin briefing pipeline); both listen on :8787, so run one at a time.
 
 It receives the
