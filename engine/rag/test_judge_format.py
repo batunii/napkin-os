@@ -100,3 +100,94 @@ def test_the_dump_records_each_judge_call(monkeypatch, tmp_path):
     pb._judge_and_gate(SMP, [{"value": "a"}], ctx="C")
     rec = json.loads(out.read_text().splitlines()[0])
     assert rec["field"]["id"] == "smp" and rec["values"] == ["a"] and rec["ctx"] == "C"
+
+
+# ---- the missing-verdict re-ask (Sai, 2026-09-29) -----------------------------------------
+
+def _sequence(monkeypatch, replies: list, prompts: list):
+    """A judge that gives `replies` in turn (then None) and keeps every prompt it was sent."""
+    it = iter(replies)
+
+    def fake(user, system=None, **k):
+        """Test stub: stands in for the judge call."""
+        prompts.append(user)
+        return next(it, None)
+    monkeypatch.setattr(pb, "_json_call", fake)
+
+
+FULL6 = {t: {"pass": True} for t in SMP_TESTS[:6]}
+
+
+def test_a_missing_verdict_is_asked_for_once_and_fills_in(monkeypatch):
+    """The judge skipped 'ownable' on draft 1: one more call asks for exactly that, and the
+    draft is then judged instead of left empty."""
+    monkeypatch.delenv("BRIEF_JUDGE_FORMAT", raising=False)
+    partial = {k: v for k, v in FULL6.items() if k != "ownable"}
+    prompts: list = []
+    _sequence(monkeypatch, [{"results": {"0": FULL6, "1": partial}, "ranking": [1, 0]},
+                            {"results": {"1": {"ownable": {"pass": True}}}}], prompts)
+    judged = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}, {"value": "Line B for Acme"}])
+    assert len(prompts) == 2
+    assert "- candidate 1: ownable" in prompts[1] and "candidate 0" not in prompts[1]
+    assert [ok for _c, ok, _f in judged] == [True, True]
+    assert judged[0][0]["value"] == "Line B for Acme"          # the first reply's ranking holds
+
+
+def test_still_missing_after_the_re_ask_stays_unjudged(monkeypatch):
+    """One re-ask only: a verdict still missing leaves the draft unjudged, as before."""
+    monkeypatch.delenv("BRIEF_JUDGE_FORMAT", raising=False)
+    partial = {k: v for k, v in FULL6.items() if k != "ownable"}
+    prompts: list = []
+    _sequence(monkeypatch, [{"results": {"0": partial}, "ranking": [0]}, {"results": {"0": {}}}], prompts)
+    (_c, ok, fails), = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}])
+    assert len(prompts) == 2 and ok is False
+    assert fails[-1] == f"{pb.UNJUDGED}: no verdict for ownable"
+
+
+def test_a_judge_that_is_down_is_not_asked_again(monkeypatch):
+    """No reply at all: no re-ask; every draft unjudged, as before."""
+    prompts: list = []
+    _sequence(monkeypatch, [None], prompts)
+    (_c, ok, fails), = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}])
+    assert len(prompts) == 1 and ok is False and fails[-1] == f"{pb.UNJUDGED}: judge unavailable"
+
+
+def test_a_complete_reply_makes_no_second_call(monkeypatch):
+    """Every verdict readable: one call, as before."""
+    monkeypatch.delenv("BRIEF_JUDGE_FORMAT", raising=False)
+    prompts: list = []
+    _sequence(monkeypatch, [{"results": {"0": FULL6}, "ranking": [0]}], prompts)
+    (_c, ok, _f), = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}])
+    assert len(prompts) == 1 and ok is True
+
+
+def test_the_re_ask_keeps_a_failure_and_its_reason(monkeypatch):
+    """A verdict filled by the re-ask counts like any other, reason included."""
+    monkeypatch.delenv("BRIEF_JUDGE_FORMAT", raising=False)
+    partial = {k: v for k, v in FULL6.items() if k != "derives_from"}
+    _sequence(monkeypatch, [{"results": {"0": partial}, "ranking": [0]},
+                            {"results": {"0": {"derives_from": {"pass": False, "why": "no line to the insight"}}}}], [])
+    (_c, ok, fails), = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}])
+    assert ok is False and fails == ["derives_from: no line to the insight"]    # a hard test
+
+
+def test_the_re_ask_realigns_a_reply_numbered_from_1(monkeypatch):
+    """The first reply numbered drafts from 1; the re-ask answers by the prompt's index."""
+    monkeypatch.delenv("BRIEF_JUDGE_FORMAT", raising=False)
+    partial = {k: v for k, v in FULL6.items() if k != "ownable"}
+    prompts: list = []
+    _sequence(monkeypatch, [{"results": {"1": FULL6, "2": partial}, "ranking": [1, 2]},
+                            {"results": {"1": {"ownable": {"pass": True}}}}], prompts)
+    judged = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}, {"value": "Line B for Acme"}])
+    assert "- candidate 1: ownable" in prompts[1]
+    assert [ok for _c, ok, _f in judged] == [True, True]
+
+
+def test_the_compact_re_ask_names_tests_by_number(monkeypatch):
+    """In the compact format the re-ask lists the test numbers and reads a compact reply."""
+    monkeypatch.setenv("BRIEF_JUDGE_FORMAT", "compact")
+    prompts: list = []
+    _sequence(monkeypatch, [{"results": {"0": {"pass": [1, 2, 3, 5, 6], "fail": {}}}, "ranking": [0]},
+                            {"results": {"0": {"pass": [4], "fail": {}}}}], prompts)
+    (_c, ok, _f), = pb._judge_and_gate(SMP, [{"value": "Line A for Acme"}])
+    assert "- candidate 0: 4. ownable" in prompts[1] and ok is True
