@@ -7,9 +7,11 @@
 //! snapshot, so any shell holding a [`Document`] can answer them.
 
 use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
 
-use clan_sdk::{export_html, validate, ClanFile, ExportOptions};
-use serde_json::Value;
+use clan_sdk::hash::sha256_prefixed;
+use clan_sdk::{export_html, validate, ClanFile, DecisionChain, ExportOptions};
+use serde_json::{json, Value};
 
 use crate::document::Document;
 use crate::error::{HostError, HostResult};
@@ -20,7 +22,9 @@ use crate::log::log;
 use crate::session::{AppMeta, LineageInfo, ManifestInfo, OpenResult};
 use crate::view;
 
-use super::{content_type_for, members};
+use super::edit::UPSTREAM_KEY;
+use super::members::{FACTS, FINDINGS, SOURCES};
+use super::{content_type_for, decisions, members, review};
 
 /// What a shell is told about a document it has just opened.
 pub fn describe(doc: &Document) -> OpenResult {
@@ -331,6 +335,11 @@ fn splice_text(doc: &Document, attachments: Option<&mut Value>, key: &str) {
 /// lists when the document has none) and the parsed `app/pipeline.yaml` (null
 /// when it has none), which the middleware resolves tasks against. Every key
 /// an existing agent reads is unchanged.
+///
+/// A spun-off document's `data.upstream` — its ancestors' data, frozen, often
+/// larger than the document itself — is sent as a small index instead
+/// ([`upstream_index`], `napkin.middleware/1` §1). The carried pins and
+/// findings arrive in `facts` and `findings`, where they were merged.
 pub fn clan_context_for_agent(doc: &Document) -> Value {
     let clan = doc.clan();
     let yaml_to_json = |p: &str| -> Value {
@@ -350,7 +359,7 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "document_type": m.document_type,
         "app": m.app.as_ref().map(|a| serde_json::json!({ "name": a.name, "app_id": a.app_id, "version": a.version })),
         "schema": schema,
-        "data": yaml_to_json("shared/data.yaml"),
+        "data": with_upstream_index(clan, yaml_to_json("shared/data.yaml")),
         "decision_chain": yaml_to_json("agent/decision-chain.yaml"),
         "context": clan.read_entry_string("agent/context.md").unwrap_or_default(),
         "lineage": m.lineage.as_ref().map(|l| serde_json::json!({ "parent_id": l.parent_id, "delta": l.delta })),
@@ -362,6 +371,280 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "edits": members::edits_map(clan),
         "pipeline": yaml_to_json("app/pipeline.yaml"),
     })
+}
+
+/// `data` with its `upstream` replaced by [`upstream_index`]; unchanged when
+/// it carries none.
+fn with_upstream_index(clan: &ClanFile, mut data: Value) -> Value {
+    if let Some(up) = data.get(UPSTREAM_KEY).filter(|v| v.is_object()) {
+        let index = upstream_index(clan, up);
+        data[UPSTREAM_KEY] = index;
+    }
+    data
+}
+
+/// What a middleware task is told of each ancestor a document carries
+/// (`napkin.middleware/1` §1): whether it is the direct parent, the frozen
+/// copy's top-level keys, and its contests still open — `open` in the copy
+/// and not resolved in this chain (Contract 4 §7.2, item 1) — each with the
+/// fact id of every value.
+pub fn upstream_index(clan: &ClanFile, upstream: &Value) -> Value {
+    let chain = chain_of(clan);
+    let direct = clan.manifest().carried().map(|c| c.document_id.as_str());
+    let mut out = serde_json::Map::new();
+    for (id, copy) in upstream.as_object().into_iter().flatten() {
+        let keys: Vec<&String> = copy.as_object().map(|o| o.keys().collect()).unwrap_or_default();
+        let open: Vec<Value> = contests(copy)
+            .filter(|c| c.get("status").and_then(Value::as_str) == Some("open"))
+            .filter(|c| !resolved_in(&chain, id, str_of(c, "id").unwrap_or_default()))
+            .map(|c| {
+                let fact_ids: Vec<&str> = c
+                    .get("values")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| str_of(v, "fact_id"))
+                    .collect();
+                json!({ "id": c.get("id"), "key": c.get("key"), "fact_ids": fact_ids })
+            })
+            .collect();
+        out.insert(
+            id.clone(),
+            json!({ "direct": direct == Some(id.as_str()), "keys": keys, "open_contests": open }),
+        );
+    }
+    Value::Object(out)
+}
+
+/// `GET /upstream` — what changed in each ancestor since this document was
+/// spun off (Contract 4 §8.1, item 6). `parent` finds an ancestor by
+/// document id, as the store holds it for whoever asks, or `None`.
+///
+/// One entry per key of `data.upstream`, the direct parent first. Only the
+/// direct parent is compared: `lineage.carried` records it, and a hoisted
+/// ancestor's record is its own child's. The parent is `current` when each
+/// carried hash is the hash of its entry now — absent on both sides is equal
+/// — else `changed`, with its pins, findings and contests set against this
+/// document's copies. A backref this document wrote changes only the
+/// parent's chain, so it never makes it `changed`.
+pub fn upstream_status(doc: &Document, parent: impl Fn(&str) -> Option<Document>) -> Value {
+    let clan = doc.clan();
+    let here = clan.document_id();
+    let Some(carried) = clan.manifest().carried() else {
+        return json!({ "document_id": here, "carried": null, "upstream": [] });
+    };
+    let data = data_json(doc);
+    let mut ids: Vec<String> = data
+        .get(UPSTREAM_KEY)
+        .and_then(Value::as_object)
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+    if !ids.contains(&carried.document_id) {
+        ids.push(carried.document_id.clone());
+    }
+    // Direct first; the rest keep key order.
+    ids.sort_by_key(|id| *id != carried.document_id);
+
+    let upstream: Vec<Value> = ids
+        .iter()
+        .map(|id| {
+            let direct = *id == carried.document_id;
+            let Some(p) = parent(id) else {
+                return json!({ "document_id": id, "direct": direct, "in_store": false, "status": "unknown" });
+            };
+            let pm = p.clan().manifest();
+            let app_id = pm.app.as_ref().map(|a| a.app_id.clone());
+            if !direct {
+                return json!({
+                    "document_id": id, "direct": false, "in_store": true,
+                    "title": pm.title, "app_id": app_id, "status": "not_compared",
+                });
+            }
+            let mut entry = compare(doc, &data, carried, &p);
+            entry["title"] = pm.title.clone().into();
+            entry["app_id"] = json!(app_id);
+            entry
+        })
+        .collect();
+    json!({ "document_id": here, "carried": carried, "upstream": upstream })
+}
+
+/// The direct parent `p` now, against what `doc` carried from it.
+fn compare(doc: &Document, data: &Value, carried: &clan_sdk::Carried, p: &Document) -> Value {
+    let pc = p.clan();
+    let now = |path: &str| pc.read_entry(path).ok().map(|b| sha256_prefixed(&b));
+    let differs = |was: Option<&String>, path: &str| was.cloned() != now(path);
+    let changed = json!({
+        "data": differs(Some(&carried.data_sha256), "shared/data.yaml"),
+        "facts": differs(carried.facts_sha256.as_ref(), FACTS.path),
+        "findings": differs(carried.findings_sha256.as_ref(), FINDINGS.path),
+        "sources": differs(carried.sources_sha256.as_ref(), SOURCES.path),
+    });
+    let is_changed = changed.as_object().unwrap().values().any(|v| v == true);
+    let parent_chain = chain_of(pc);
+    let decisions_since = carried.last_decision.as_deref().and_then(|last| {
+        parent_chain
+            .decisions
+            .iter()
+            .position(|d| d.id.as_deref() == Some(last))
+    });
+    let (pins, findings, contests) = if is_changed {
+        (
+            pin_changes(doc, p),
+            finding_changes(doc, p),
+            contest_changes(doc, data, carried, p),
+        )
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
+    json!({
+        "document_id": carried.document_id, "direct": true, "in_store": true,
+        "version": p.version().as_str(),
+        "locked": review::lock_of(&parent_chain, pc.document_id()).is_some(),
+        "status": if is_changed { "changed" } else { "current" },
+        "changed": changed,
+        "decisions_since": decisions_since,
+        "pins": pins, "findings": findings, "contests": contests,
+    })
+}
+
+/// A member's entries by id, sorted — the order every `/upstream` list keeps.
+fn by_id(clan: &ClanFile, m: members::Member) -> BTreeMap<String, Value> {
+    let Value::Array(items) = members::list_for_agent(clan, m) else {
+        return BTreeMap::new();
+    };
+    items
+        .into_iter()
+        .filter_map(|v| Some((str_of(&v, "id")?.to_string(), v)))
+        .collect()
+}
+
+/// The parent's pins against this document's: `added`, `replaced` or
+/// `changed`. A pin only this document holds is its own, and not listed.
+fn pin_changes(doc: &Document, p: &Document) -> Vec<Value> {
+    let ours = by_id(doc.clan(), FACTS);
+    let mut out = Vec::new();
+    for (id, theirs) in by_id(p.clan(), FACTS) {
+        let label = decisions::fact_label(&theirs);
+        let set = |v: &Value, k: &str| v.get(k).filter(|x| !x.is_null()).cloned();
+        let change = match ours.get(&id) {
+            None => Some("added"),
+            Some(o) if set(&theirs, "replaced_by").is_some() && set(o, "replaced_by").is_none() => {
+                Some("replaced")
+            }
+            Some(o) if ["value", "unit", "as_of", "status"].iter().any(|k| set(&theirs, k) != set(o, k)) => {
+                Some("changed")
+            }
+            Some(_) => None,
+        };
+        let Some(change) = change else { continue };
+        let mut entry = json!({ "id": id, "change": change, "label": label });
+        if change == "replaced" {
+            let by = &theirs["replaced_by"];
+            entry["replaced_by"] = by.get("fact_id").unwrap_or(by).clone();
+        }
+        out.push(entry);
+    }
+    out
+}
+
+/// The parent's findings against this document's copies: `added`,
+/// `verified` (there, and still proposed here) or `rejected` (there, and not
+/// here), each with the fields here that cite it.
+fn finding_changes(doc: &Document, p: &Document) -> Vec<Value> {
+    let ours = by_id(doc.clan(), FINDINGS);
+    let status = |f: &Value| str_of(f, "status").unwrap_or_default().to_string();
+    let mut listed: Vec<(String, &str, Value)> = Vec::new();
+    for (id, theirs) in by_id(p.clan(), FINDINGS) {
+        let change = match ours.get(&id) {
+            None => "added",
+            Some(o) if status(&theirs) == "verified" && status(o) == "proposed" => "verified",
+            Some(o) if status(&theirs) == "rejected" && status(o) != "rejected" => "rejected",
+            Some(_) => continue,
+        };
+        listed.push((id, change, theirs));
+    }
+    let wanted: BTreeSet<String> = listed.iter().map(|(id, _, _)| id.clone()).collect();
+    let citing = if wanted.is_empty() {
+        BTreeMap::new()
+    } else {
+        decisions::fields_citing(doc, &wanted)
+    };
+    listed
+        .into_iter()
+        .map(|(id, change, theirs)| {
+            let cited_by: Vec<&String> = citing.get(&id).into_iter().flatten().collect();
+            let mut entry = json!({
+                "id": id, "change": change,
+                "statement": theirs.get("statement").cloned().unwrap_or(Value::Null),
+                "cited_by": cited_by,
+            });
+            if change == "rejected" {
+                entry["reason"] = theirs
+                    .pointer("/rejection/reason")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+            }
+            entry
+        })
+        .collect()
+}
+
+/// The parent's contests now against the ones frozen in this document's copy
+/// of it: `opened` there since, or `resolved` there since it was carried open.
+fn contest_changes(doc: &Document, data: &Value, carried: &clan_sdk::Carried, p: &Document) -> Vec<Value> {
+    let up = &carried.document_id;
+    let frozen = data.get(UPSTREAM_KEY).and_then(|u| u.get(up)).cloned().unwrap_or(Value::Null);
+    let was: BTreeMap<&str, &Value> = contests(&frozen)
+        .filter_map(|c| Some((str_of(c, "id")?, c)))
+        .collect();
+    let parent_data = data_json(p);
+    let now: BTreeMap<&str, &Value> = contests(&parent_data)
+        .filter_map(|c| Some((str_of(c, "id")?, c)))
+        .collect();
+    let chain = chain_of(doc.clan());
+    let mut out = Vec::new();
+    for (id, c) in now {
+        let status = str_of(c, "status");
+        let before = was.get(id).and_then(|f| str_of(f, "status"));
+        let entry = match (before, status) {
+            (None, Some("open")) => json!({ "id": id, "change": "opened", "key": c.get("key") }),
+            (Some("open"), Some("resolved")) => json!({
+                "id": id, "change": "resolved", "key": c.get("key"), "chosen": c.get("chosen"),
+                "resolved_here": resolved_in(&chain, up, id),
+            }),
+            _ => continue,
+        };
+        out.push(entry);
+    }
+    out
+}
+
+/// A `resolve` in `chain`, not superseded, names the contest `ct` of
+/// ancestor `up`: how a carried contest is settled (Contract 4 §7.2).
+fn resolved_in(chain: &DecisionChain, up: &str, ct: &str) -> bool {
+    let address = format!("{up}#selection.contested[{ct}]");
+    chain.decisions.iter().any(|d| {
+        d.kind.as_deref() == Some("resolve") && d.superseded_by.is_none() && d.targets.contains(&address)
+    })
+}
+
+fn contests(data: &Value) -> impl Iterator<Item = &Value> {
+    data.pointer("/selection/contested")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+}
+
+fn str_of<'v>(v: &'v Value, key: &str) -> Option<&'v str> {
+    v.get(key).and_then(Value::as_str)
+}
+
+fn chain_of(clan: &ClanFile) -> DecisionChain {
+    clan.read_entry("agent/decision-chain.yaml")
+        .ok()
+        .and_then(|b| DecisionChain::from_yaml(&b).ok())
+        .unwrap_or_default()
 }
 
 /// Build the `window.__CLAN__` context object the template/view reads:

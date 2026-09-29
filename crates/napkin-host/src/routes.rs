@@ -20,7 +20,9 @@ use crate::error::HostError;
 use crate::event::HostEvent;
 #[cfg(feature = "native")]
 use crate::export::write_temp_html;
-use crate::library::{create_instance, scan_apps, scan_recent, spinoff_document, spinoff_targets};
+use crate::library::{
+    create_instance, scan_apps, scan_recent, spinoff_document_as, spinoff_targets, Backref,
+};
 #[cfg(feature = "native")]
 use crate::proxy::api_proxy;
 use crate::session::{Applied, Session, TRUSTED_CAPABILITIES};
@@ -200,7 +202,14 @@ pub async fn dispatch_async(
     #[cfg(feature = "native")]
     if req.path == "/verify" {
         return match crate::proxy::verify(ctx, session, cfg, &req.body_str()).await {
-            Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
+            Ok((mut v, events)) => {
+                // Parsed already by the verify itself, so it holds.
+                let finding = crate::ops::review::parse_verify(&req.body_str())
+                    .map(|(f, _)| f)
+                    .unwrap_or_default();
+                with_backrefs(session, ctx, &mut v, &Backref::Verified { finding });
+                HostResponse::json(200, &v).with_events(events)
+            }
             Err(e) => e.into(),
         };
     }
@@ -220,14 +229,50 @@ fn review(
     ctx: &Ctx,
     op: impl FnOnce(&Ctx, &crate::document::Document) -> crate::error::HostResult<crate::ops::Outcome>,
 ) -> HostResponse {
+    review_then(session, ctx, op, |_| {})
+}
+
+/// [`review`], with `then` given the reply once the decision is written —
+/// and the open document holds it — to add to before it is sent.
+fn review_then(
+    session: &Session,
+    ctx: &Ctx,
+    op: impl FnOnce(&Ctx, &crate::document::Document) -> crate::error::HostResult<crate::ops::Outcome>,
+    then: impl FnOnce(&mut Value),
+) -> HostResponse {
     match session.perform(ctx, op) {
         Ok(done) => {
             let mut reply = done.reply;
             reply["clan"] = session.document_now().unwrap_or(Value::Null);
+            then(&mut reply);
             HostResponse::json(200, &reply).with_events(done.events)
         }
         Err(e) => e.into(),
     }
+}
+
+/// After a child's `/approve`, `/resolve` or `/verify`, tell its parents
+/// (Contract 4 §7.4) and say so in the reply: `backrefs: [{document_id,
+/// decision}]`, one per backref written — empty when the decision touched
+/// nothing carried, or no parent is in the store.
+fn with_backrefs(session: &Session, ctx: &Ctx, reply: &mut Value, backref: &Backref) {
+    let written = match reply.get("decision").and_then(Value::as_str) {
+        Some(decision) => session.write_backrefs_as(ctx, decision, backref),
+        None => Vec::new(),
+    };
+    reply["backrefs"] = serde_json::json!(written);
+}
+
+/// The ancestor a `/resolve` reply's contest is on, when it is not this
+/// document: its first target is the contest's address (Contract 4 §8.1,
+/// item 2), `<id>#selection.contested[<ct>]`.
+fn carried_contest(reply: &Value, here: &str) -> Option<(String, String)> {
+    let first = reply.pointer("/targets/0")?.as_str()?;
+    let (on, path) = first.split_once('#')?;
+    let ct = path
+        .strip_prefix("selection.contested[")?
+        .strip_suffix(']')?;
+    (on != here).then(|| (on.to_string(), ct.to_string()))
 }
 
 /// [`handle`] under a context the shell resolved for this request.
@@ -308,9 +353,27 @@ pub fn dispatch(
         "/classify" => review(session, ctx, |c, d| {
             crate::ops::review::classify(c, d, crate::ops::review::Classify::parse(&req.body_str())?)
         }),
-        "/resolve" => review(session, ctx, |c, d| {
-            crate::ops::review::resolve(c, d, crate::ops::review::Resolve::parse(&req.body_str())?)
-        }),
+        "/resolve" => {
+            let body = req.body_str();
+            review_then(
+                session,
+                ctx,
+                |c, d| crate::ops::review::resolve(c, d, crate::ops::review::Resolve::parse(&body)?),
+                |reply| {
+                    let here = reply.pointer("/clan/id").and_then(Value::as_str).unwrap_or("");
+                    match carried_contest(reply, here) {
+                        Some((upstream, contest)) => {
+                            let chosen = crate::ops::review::Resolve::parse(&body)
+                                .map(|r| r.chosen)
+                                .unwrap_or_default();
+                            let backref = Backref::Resolved { upstream, contest, chosen };
+                            with_backrefs(session, ctx, reply, &backref);
+                        }
+                        None => reply["backrefs"] = serde_json::json!([]),
+                    }
+                },
+            )
+        }
         "/edit-text" => review(session, ctx, |c, d| {
             crate::ops::review::edit_text(c, d, crate::ops::review::parse_edit_text_full(&req.body_str())?)
         }),
@@ -327,9 +390,12 @@ pub fn dispatch(
         "/acknowledge" => review(session, ctx, |c, d| {
             crate::ops::review::acknowledge(c, d, &crate::ops::review::parse_acknowledge(&req.body_str())?)
         }),
-        "/approve" => review(session, ctx, |c, d| {
-            crate::ops::review::approve(c, d, &crate::ops::review::parse_approve(&req.body_str())?)
-        }),
+        "/approve" => review_then(
+            session,
+            ctx,
+            |c, d| crate::ops::review::approve(c, d, &crate::ops::review::parse_approve(&req.body_str())?),
+            |reply| with_backrefs(session, ctx, reply, &Backref::Used),
+        ),
         #[cfg(feature = "native")]
         "/verify" => HostResponse::error(500, "/verify must be dispatched asynchronously"),
         #[cfg(not(feature = "native"))]
@@ -337,6 +403,13 @@ pub fn dispatch(
             503,
             "Verifying needs the middleware, to write the finding to the agency's knowledge; this build has none.",
         ),
+
+        // What changed upstream since this document was spun off — a read,
+        // for any actor, locked or not (Contract 4 §8.1, item 6).
+        "/upstream" => match session.upstream_as(ctx) {
+            Ok(v) => HostResponse::json(200, &v),
+            Err(e) => e.into(),
+        },
 
         // The decision view the shell's OS layer renders: every decision,
         // newest first, with what needs a person — derived here, not by the app.
@@ -414,14 +487,15 @@ pub fn dispatch(
             let Some(source) = session.current_id() else {
                 return HostError::no_file_open().into();
             };
-            match spinoff_document(&**session.store(), &source, app_id, title, map) {
+            match spinoff_document_as(&**session.store(), ctx, &source, app_id, title, map) {
                 Ok(id) => HostResponse::json(
                     200,
                     &serde_json::json!({ "ok": true, "path": id.to_string() }),
                 )
                 .with_event(HostEvent::OpenDocument(id.to_string())),
                 // Carries the real status: 404 when the app is not installed,
-                // 422 when the target refuses this source.
+                // 422 when the target refuses this source or an upstream app
+                // is given a map, 403 when the source is another tenant's.
                 Err(e) => e.into(),
             }
         }

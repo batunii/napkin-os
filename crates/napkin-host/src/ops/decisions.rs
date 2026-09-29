@@ -721,6 +721,50 @@ impl<'a> Lookup<'a> {
     }
 }
 
+/// This document's fields that cite each of `findings`, by the lock list's
+/// rule (Contract 4 §7.2, item 4): an envelope's `finding_ids`, or the
+/// field's current writing decision. Each field as a full address on this
+/// document. What `GET /upstream` reports as a finding's `cited_by`; the
+/// frozen copies are skipped, as the lock list skips them.
+pub(crate) fn fields_citing(
+    doc: &Document,
+    findings: &BTreeSet<String>,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let clan = doc.clan();
+    let doc_id = clan.document_id().to_string();
+    let chain = clan
+        .read_entry(CHAIN_PATH)
+        .ok()
+        .and_then(|b| DecisionChain::from_yaml(&b).ok())
+        .unwrap_or_default();
+    let data = read::data_json(doc);
+    let ctx = Lookup {
+        doc_id: &doc_id,
+        data: &data,
+        schema: &Value::Null,
+        facts: BTreeMap::new(),
+        findings: BTreeMap::new(),
+        sources: BTreeMap::new(),
+        chain: &chain,
+    };
+    let wanted: BTreeMap<&str, &Value> = findings
+        .iter()
+        .map(|id| (id.as_str(), &Value::Null))
+        .collect();
+    let mut by_field: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+    citing_findings(&data, &mut Vec::new(), &wanted, &mut by_field);
+    written_citing_findings(&ctx, &wanted, &mut by_field);
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (field, ids) in by_field {
+        for id in ids {
+            out.entry(id.to_string())
+                .or_default()
+                .insert(ctx.address(&field));
+        }
+    }
+    out
+}
+
 /// The lock list (Contract 3 §11, items 1–5; Contract 4 §7).
 fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
     let mut out = Vec::new();
@@ -1349,7 +1393,7 @@ fn citing_findings<'r>(
 /// `market.private_label_share` → "Private label share · IE"; a one-word
 /// leaf keeps its namespace (`awareness.prompted` → "Awareness prompted").
 /// A synthesis fact is named by what it says.
-fn fact_label(f: &Value) -> String {
+pub(crate) fn fact_label(f: &Value) -> String {
     let key = str_of(f, "key").unwrap_or_default();
     let words = if str_of(f, "method") == Some("synthesis") {
         f.get("value")

@@ -171,7 +171,8 @@ struct Spinoff {
 }
 
 /// Branch this document into another app, carrying its data and its decisions,
-/// and open the result.
+/// and open the result. As the tenant: a source that says it is another
+/// tenant's is refused (`403`, Contract 4 §5.1).
 async fn spinoff_document(
     State(ctx): Ctx,
     Tenant(tenant): Tenant,
@@ -179,8 +180,9 @@ async fn spinoff_document(
     Json(body): Json<Spinoff>,
 ) -> ApiResult<Json<OpenView>> {
     let ws = ctx.workspace(&tenant);
-    let out = library::spinoff_document(
+    let out = library::spinoff_document_as(
         &*ws.store,
+        &tenant.ctx(),
         &DocId::new(doc),
         &body.app_id,
         body.title,

@@ -11,15 +11,24 @@
 //! installed templates are library documents rather than instances, but they
 //! go through the same funnel.
 
+use clan_sdk::decision::new_decision_id;
 use clan_sdk::{
     create, instantiate, make_template, spinoff, AppInfo, ClanBuilder, ClanFile, CreateOptions,
-    InstantiateOptions, MakeTemplateOptions, SpinoffOptions,
+    Decision, DecisionChain, InstantiateOptions, MakeTemplateOptions, SpinoffOptions,
 };
 use serde::Serialize;
+use serde_json::Value;
 
+use crate::ctx::Ctx;
 use crate::document::Document;
 use crate::error::{HostError, HostResult};
+use crate::log::log;
+use crate::ops::edit::{attributed, UPSTREAM_KEY};
+use crate::ops::members::{self, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 use crate::store::{Change, DocId, DocStore};
+
+const CHAIN: &str = "agent/decision-chain.yaml";
+const DATA: &str = "shared/data.yaml";
 
 #[derive(Serialize)]
 pub struct InstalledApp {
@@ -40,8 +49,12 @@ pub struct SpinoffTarget {
     pub version: String,
     pub icon: Option<String>,
     /// The dotted key the source's data is grafted under, when the app declares
-    /// one. `None` means it folds in at the root.
+    /// one. `None` means it folds in at the root — or, with `upstream`, that
+    /// nothing is folded in at all.
     pub map: Option<String>,
+    /// The app carries the source whole, frozen under `data.upstream.<id>`
+    /// (Contract 4 §5.1), rather than grafting its data.
+    pub upstream: bool,
 }
 
 #[derive(Serialize)]
@@ -254,6 +267,7 @@ pub fn spinoff_targets(store: &dyn DocStore, source_app_id: Option<&str>) -> Vec
             version: app.version.clone(),
             icon: displayable_icon(&clan, app.icon.as_deref()),
             map: spec.map.clone(),
+            upstream: spec.upstream,
         });
     }
     out
@@ -263,9 +277,24 @@ pub fn spinoff_targets(store: &dyn DocStore, source_app_id: Option<&str>) -> Vec
 /// and its decisions across, and return the new document's id.
 ///
 /// The counterpart to [`create_instance`]: that one starts a document empty,
-/// this one starts it from work already done somewhere else.
+/// this one starts it from work already done somewhere else. As the local
+/// user; see [`spinoff_document_as`].
 pub fn spinoff_document(
     store: &dyn DocStore,
+    source: &DocId,
+    target_app_id: &str,
+    title: Option<String>,
+    map: Option<String>,
+) -> HostResult<DocId> {
+    spinoff_document_as(store, &Ctx::local(), source, target_app_id, title, map)
+}
+
+/// [`spinoff_document`] under the context the shell resolved for the request.
+/// A source that belongs to another tenant than `ctx` is refused (`403`,
+/// Contract 4 §5.1): a spin-off stays in the workspace it starts in.
+pub fn spinoff_document_as(
+    store: &dyn DocStore,
+    ctx: &Ctx,
     source: &DocId,
     target_app_id: &str,
     title: Option<String>,
@@ -280,6 +309,7 @@ pub fn spinoff_document(
         .map_err(|e| HostError::new(e.status, format!("source document: {e}")))?;
     let change = spinoff_from(
         store,
+        ctx,
         &template,
         &source_clan,
         source,
@@ -292,9 +322,22 @@ pub fn spinoff_document(
 }
 
 /// The new document [`spinoff_document`] would write from the snapshot
-/// `source`, without writing it.
+/// `source`, without writing it. As the local user; see
+/// [`spinoff_change_as`].
 pub fn spinoff_change(
     store: &dyn DocStore,
+    source: &Document,
+    target_app_id: &str,
+    title: Option<String>,
+    map: Option<String>,
+) -> HostResult<Change> {
+    spinoff_change_as(store, &Ctx::local(), source, target_app_id, title, map)
+}
+
+/// [`spinoff_change`] under an explicit context.
+pub fn spinoff_change_as(
+    store: &dyn DocStore,
+    ctx: &Ctx,
     source: &Document,
     target_app_id: &str,
     title: Option<String>,
@@ -303,6 +346,7 @@ pub fn spinoff_change(
     let template = load_template(store, target_app_id)?;
     spinoff_from(
         store,
+        ctx,
         &template,
         source.clan(),
         source.id(),
@@ -312,8 +356,10 @@ pub fn spinoff_change(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spinoff_from(
     store: &dyn DocStore,
+    ctx: &Ctx,
     template: &ClanFile,
     source: &ClanFile,
     source_id: &DocId,
@@ -321,6 +367,17 @@ fn spinoff_from(
     title: Option<String>,
     map: Option<String>,
 ) -> HostResult<Change> {
+    if foreign(ctx, source) {
+        return Err(HostError::new(
+            403,
+            format!(
+                "\"{}\" belongs to another workspace; a spin-off stays in the workspace it starts in",
+                source.manifest().title
+            ),
+        ));
+    }
+    // With `upstream` declared the SDK refuses a `map` (422, Contract 4
+    // §5.1) and carries the source whole.
     let bytes = spinoff(
         template,
         source,
@@ -333,8 +390,316 @@ fn spinoff_from(
             source_uri: Some(format!("clan-store:{source_id}")),
         },
     )?;
+    let bytes = with_projection(bytes)?;
     let out = allocate(store, target_app_id, &bytes)?;
     Ok(Change::create(out, bytes))
+}
+
+/// A document spun off with `upstream` arrives with the source's pins and
+/// findings merged into its own members, and the host owns the projection of
+/// those (Contract 3 §5): it is built here, from the member bytes the new
+/// document holds, so the first view of it can show what a cite names
+/// without waiting for a write. Any other spin-off is returned as it came.
+fn with_projection(bytes: Vec<u8>) -> HostResult<Vec<u8>> {
+    let clan = ClanFile::from_bytes(bytes)?;
+    if clan.manifest().carried().is_none() {
+        return Ok(clan.raw_bytes().to_vec());
+    }
+    let member = |m: members::Member| -> HostResult<(Vec<serde_yaml::Value>, Vec<u8>)> {
+        let bytes = clan.read_entry(m.path).unwrap_or_default();
+        Ok((members::read_list(&clan, m)?, bytes))
+    };
+    let (facts, facts_bytes) = member(FACTS)?;
+    let (findings, findings_bytes) = member(FINDINGS)?;
+    let (sources, sources_bytes) = member(SOURCES)?;
+    let projection = members::projection(
+        &facts,
+        &facts_bytes,
+        &findings,
+        &findings_bytes,
+        members::projects_sources(&clan).then_some((sources.as_slice(), sources_bytes.as_slice())),
+        &clan.manifest().updated_at,
+    );
+    let mut data: serde_yaml::Mapping = match clan.read_entry(DATA) {
+        Ok(b) => serde_yaml::from_slice(&b)
+            .map_err(|e| HostError::internal(format!("{DATA}: {e}")))?,
+        Err(_) => serde_yaml::Mapping::new(),
+    };
+    data.insert(
+        PROJECTION_KEY.into(),
+        serde_yaml::to_value(&projection).map_err(|e| HostError::internal(e.to_string()))?,
+    );
+    let data = serde_yaml::to_string(&data).map_err(|e| HostError::internal(e.to_string()))?;
+    let mut b = ClanBuilder::new(clan.manifest().clone());
+    for (path, entry) in clan.read_all_entries()? {
+        if path == clan_sdk::MANIFEST_PATH || path == DATA {
+            continue;
+        }
+        b.add_entry(path, entry);
+    }
+    b.add_entry(DATA, data.into_bytes());
+    Ok(b.build()?)
+}
+
+// ── Tenancy ─────────────────────────────────────────────────────────────────
+
+/// The tenant a document says it belongs to: the org of the newest decision
+/// in its chain that records one. `None` when no decision does — a document
+/// made on the desktop, or never written under a scoped context.
+///
+/// The store a shell hands the host is already its tenant's; this is what
+/// the document itself says, which is what a store that holds many tenants
+/// (or a document carried in from elsewhere) has to be checked against.
+fn tenant_of(clan: &ClanFile) -> Option<String> {
+    chain_of(clan)
+        .decisions
+        .into_iter()
+        .find_map(|d| d.scope.and_then(|s| s.org))
+}
+
+/// `clan` belongs to another tenant than the one `ctx` acts for. A context
+/// with no tenant (the desktop, the browser) and a document that names none
+/// are never foreign.
+fn foreign(ctx: &Ctx, clan: &ClanFile) -> bool {
+    match (&ctx.scope.org, tenant_of(clan)) {
+        (Some(ours), Some(theirs)) => *ours != theirs,
+        _ => false,
+    }
+}
+
+fn chain_of(clan: &ClanFile) -> DecisionChain {
+    clan.read_entry(CHAIN)
+        .ok()
+        .and_then(|b| DecisionChain::from_yaml(&b).ok())
+        .unwrap_or_default()
+}
+
+// ── Parents, and what a child tells them (Contract 4 §7.4) ──────────────────
+
+/// The document `document_id` names, as the store holds it for `ctx`, when
+/// `child` carries it in `data.upstream`.
+///
+/// The direct parent is looked for first where the spin-off recorded it
+/// (`lineage.parent_uri`, `clan-store:<DocId>`); a write to the child moves
+/// its lineage on, so after that, and for a hoisted ancestor, the library is
+/// searched by `document_id`. A fork branch of the parent shares its id and is
+/// not the parent; a document of another tenant is skipped.
+pub fn find_upstream(
+    store: &dyn DocStore,
+    ctx: &Ctx,
+    child: &Document,
+    document_id: &str,
+) -> Option<Document> {
+    let m = child.clan().manifest();
+    let recorded = m
+        .carried()
+        .filter(|c| c.document_id == document_id)
+        .and(m.lineage.as_ref())
+        .and_then(|l| l.parent_uri.strip_prefix("clan-store:"))
+        .map(DocId::new);
+    recorded
+        .into_iter()
+        .chain(store.documents())
+        .filter(|id| id != child.id())
+        .find_map(|id| {
+            let doc = Document::load(store.parts(), id).ok()?;
+            let dm = doc.clan().manifest();
+            let is_it = doc.clan().document_id() == document_id
+                && dm.fork.is_none()
+                && dm.document_type.as_deref() != Some("template")
+                && !foreign(ctx, doc.clan());
+            is_it.then_some(doc)
+        })
+}
+
+/// What a child decided about something it carried, as its parents are told
+/// (Contract 4 §7.4).
+#[derive(Debug, Clone)]
+pub enum Backref {
+    /// `/approve`: the child is locked, with every ancestor it carries in it.
+    Used,
+    /// `/resolve` of the contest `contest` carried from `upstream`, picking
+    /// `chosen`.
+    Resolved {
+        upstream: String,
+        contest: String,
+        chosen: String,
+    },
+    /// `/verify` of `finding`, which the direct parent holds too.
+    Verified { finding: String },
+}
+
+/// One back-reference written: the parent, and the decision it now holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BackrefWritten {
+    pub document_id: String,
+    pub decision: String,
+}
+
+/// The backrefs `child`'s decision `decision` owes its parents, as changes to
+/// them, without writing anything. `child` is the snapshot that holds the
+/// decision. A parent the store does not hold for `ctx` gets none.
+///
+/// A backref changes the parent's chain and nothing else — not its data, its
+/// members, its revision or its lock — so it is written to a locked parent
+/// too, and needs no lease (§7.4, item 3).
+pub fn backref_changes(
+    store: &dyn DocStore,
+    ctx: &Ctx,
+    child: &Document,
+    decision: &str,
+    backref: &Backref,
+) -> HostResult<Vec<(BackrefWritten, Change)>> {
+    let clan = child.clan();
+    let child_id = clan.document_id().to_string();
+    let title = clan.manifest().title.clone();
+    // The version the decision names: an approve records the one it
+    // accepted; a resolve or a verify names none, so the version the child
+    // is at with it.
+    let version = chain_of(clan)
+        .decisions
+        .iter()
+        .find(|d| d.id.as_deref() == Some(decision))
+        .and_then(|d| d.version.clone())
+        .unwrap_or_else(|| child.version().as_str().to_string());
+
+    // (parent, action, target, rationale)
+    let owed: Vec<(String, &str, String, String)> = match backref {
+        Backref::Used => upstream_ids(child)
+            .into_iter()
+            .map(|up| {
+                let rationale = format!("Used in locked \"{title}\" at {version}.");
+                (up.clone(), "used", up, rationale)
+            })
+            .collect(),
+        Backref::Resolved {
+            upstream,
+            contest,
+            chosen,
+        } => vec![(
+            upstream.clone(),
+            "resolved",
+            format!("{upstream}#selection.contested[{contest}]"),
+            format!("Resolved in \"{title}\": {chosen}."),
+        )],
+        Backref::Verified { finding } => clan
+            .manifest()
+            .carried()
+            .map(|c| {
+                (
+                    c.document_id.clone(),
+                    "verified",
+                    format!("{}#findings[{finding}]", c.document_id),
+                    format!("Verified in \"{title}\"."),
+                )
+            })
+            .into_iter()
+            .collect(),
+    };
+
+    let mut out = Vec::new();
+    for (up, action, target, rationale) in owed {
+        let Some(parent) = find_upstream(store, ctx, child, &up) else {
+            continue;
+        };
+        if let Backref::Verified { finding } = backref {
+            let holds = members::read_list(parent.clan(), FINDINGS)
+                .unwrap_or_default()
+                .iter()
+                .any(|e| members::entry_id(e) == Some(finding.as_str()));
+            if !holds {
+                continue;
+            }
+        }
+        let mut d = attributed(ctx, "", "backref");
+        let id = new_decision_id();
+        d.id = Some(id.clone());
+        d.agent = "napkin-host".into();
+        d.action = action.into();
+        d.targets = vec![target];
+        d.rationale = rationale;
+        d.timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let mut from = serde_yaml::Mapping::new();
+        from.insert("document_id".into(), child_id.clone().into());
+        from.insert("decision".into(), decision.into());
+        from.insert("version".into(), version.clone().into());
+        d.extra.insert("from".into(), serde_yaml::Value::Mapping(from));
+        let change = with_decision(&parent, d)?;
+        out.push((
+            BackrefWritten {
+                document_id: up,
+                decision: id,
+            },
+            change,
+        ));
+    }
+    Ok(out)
+}
+
+/// [`backref_changes`], applied. Best effort: the child's decision has
+/// already been written, and a parent that cannot take its backref does not
+/// undo it — the failure is logged and that parent is left out of the list.
+pub fn write_backrefs(
+    store: &dyn DocStore,
+    ctx: &Ctx,
+    child: &Document,
+    decision: &str,
+    backref: &Backref,
+) -> Vec<BackrefWritten> {
+    let changes = match backref_changes(store, ctx, child, decision, backref) {
+        Ok(c) => c,
+        Err(e) => {
+            log(&format!("backref: none written for {decision}: {e}"));
+            return Vec::new();
+        }
+    };
+    changes
+        .into_iter()
+        .filter_map(|(written, change)| match store.apply(&change) {
+            Ok(_) => Some(written),
+            Err(e) => {
+                log(&format!("backref: {} not written: {e}", written.document_id));
+                None
+            }
+        })
+        .collect()
+}
+
+/// The keys of `child`'s `data.upstream`: every ancestor it carries.
+fn upstream_ids(child: &Document) -> Vec<String> {
+    crate::ops::read::data_json(child)
+        .get(UPSTREAM_KEY)
+        .and_then(Value::as_object)
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// `doc` with `d` prepended to its chain and every other entry, the manifest
+/// included, as it was.
+fn with_decision(doc: &Document, d: Decision) -> HostResult<Change> {
+    let clan = doc.clan();
+    let mut chain = if clan.has_entry(CHAIN) {
+        DecisionChain::from_yaml(&clan.read_entry(CHAIN)?)?
+    } else {
+        DecisionChain::default()
+    };
+    chain.prepend(d);
+    let mut b = ClanBuilder::new(clan.manifest().clone());
+    for (path, bytes) in clan.read_all_entries()? {
+        if path == clan_sdk::MANIFEST_PATH || path == CHAIN {
+            continue;
+        }
+        b.add_entry(path, bytes);
+    }
+    b.add_entry(CHAIN, chain.to_yaml()?);
+    doc.change(b.build()?)
+}
+
+/// `GET /upstream` for `doc`: what changed in each ancestor it carries since
+/// it was spun off (Contract 4 §8.1, item 6), the ancestors as the store
+/// holds them for `ctx`. A read: nothing is written.
+pub fn upstream_status(store: &dyn DocStore, ctx: &Ctx, doc: &Document) -> Value {
+    crate::ops::read::upstream_status(doc, |id| find_upstream(store, ctx, doc, id))
 }
 
 // ── The home page, as a CLAN file ───────────────────────────────────────────

@@ -127,8 +127,15 @@ impl NapkinHost {
             .session
             .current_id()
             .ok_or_else(|| err("no file open"))?;
-        let id =
-            library::spinoff_document(&*self.store, &source, app_id, title, map).map_err(err)?;
+        let id = library::spinoff_document_as(
+            &*self.store,
+            self.session.ctx(),
+            &source,
+            app_id,
+            title,
+            map,
+        )
+        .map_err(err)?;
         self.session.open(id).map(|o| to_js(&o)).map_err(err)
     }
 

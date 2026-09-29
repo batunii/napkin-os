@@ -71,7 +71,13 @@ impl Library for MemStore {
         DocId::new(format!("apps/{app_id}/app.clan"))
     }
     fn documents(&self) -> Vec<DocId> {
-        Vec::new()
+        self.files
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|k| k.starts_with("docs/"))
+            .map(DocId::new)
+            .collect()
     }
     fn new_document(&self, app_id: &str, id_short: &str) -> HostResult<DocId> {
         Ok(DocId::new(format!("docs/{app_id}-{id_short}.clan")))
@@ -87,6 +93,15 @@ impl Library for MemStore {
 /// The view a template of `version` carries: its version is in the markup, the
 /// stylesheet and an asset, so a test can tell which one it is looking at.
 fn template(version: &str, assets: &[(&str, &[u8])]) -> Vec<u8> {
+    template_with(version, assets, None)
+}
+
+/// [`template`], declaring `spinoff`.
+fn template_with(
+    version: &str,
+    assets: &[(&str, &[u8])],
+    spinoff: Option<clan_sdk::SpinoffSpec>,
+) -> Vec<u8> {
     let base = create(CreateOptions {
         title: "Brief Maker".into(),
         brief: "fixture".into(),
@@ -140,7 +155,7 @@ fn template(version: &str, assets: &[(&str, &[u8])]) -> Vec<u8> {
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
             data_seed: None,
-            spinoff: None,
+            spinoff,
         },
         MakeTemplateOptions::default(),
     )
@@ -453,4 +468,87 @@ fn a_write_keeps_the_library_view() {
     // served_archive of a snapshot is the same transform the session uses.
     let doc = Document::from_bytes(f.doc.clone(), f.stored()).unwrap();
     assert_eq!(&*served_archive(&doc).unwrap(), f.stored().as_slice());
+}
+
+/// A research document installed and filled, and a Brief Maker `version`
+/// that carries it whole (Contract 4 §5.1).
+fn spun_off_brief(version: &str) -> (Arc<MemStore>, DocId, DocId) {
+    const RESEARCH: &str = "ie.napkin.campaign-research";
+    let store = Arc::new(MemStore::default());
+    let base = ClanFile::from_bytes(
+        create(CreateOptions {
+            title: "Campaign Research".into(),
+            brief: "fixture".into(),
+            document_type: None,
+            no_render: false,
+            schema: None,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let research = make_template(
+        &base,
+        AppInfo {
+            name: "Campaign Research".into(),
+            app_id: RESEARCH.into(),
+            version: "1.0.0".into(),
+            icon: None,
+            entry: "human/index.html".into(),
+            schema: Some("agent/output-schema.json".into()),
+            prompt_templates: vec![],
+            data_seed: None,
+            spinoff: None,
+        },
+        MakeTemplateOptions::default(),
+    )
+    .unwrap();
+    install_app(&*store, research).unwrap();
+    let source = create_instance(&*store, RESEARCH, Some("Lúnasa".into())).unwrap();
+    let s = Session::new(store.clone() as Arc<dyn DocStore>);
+    s.open(source.clone()).unwrap();
+    s.patch_data(r#"{"patch":{"campaign":{"name":"Lúnasa 0.0"}},"agent":"human"}"#)
+        .unwrap();
+
+    let carries = clan_sdk::SpinoffSpec {
+        accepts: vec![RESEARCH.into()],
+        upstream: true,
+        ..Default::default()
+    };
+    install_app(&*store, template_with(version, &[], Some(carries))).unwrap();
+    let brief = napkin_host::library::spinoff_document(&*store, &source, APP, None, None).unwrap();
+    (store, source, brief)
+}
+
+// A brief spun off from research is shown with the installed Brief Maker's
+// view like any document of it, holds the research whole in the view's data,
+// and asking what changed upstream writes to neither document.
+#[test]
+fn a_spun_off_brief_is_shown_with_the_library_view_and_reading_upstream_writes_nothing() {
+    let (store, source, brief) = spun_off_brief("1.0.0");
+    install_app(&*store, template("1.2.0", &[])).unwrap();
+    let before = (store.read(&brief).unwrap(), store.read(&source).unwrap());
+
+    let session = Session::new(store.clone() as Arc<dyn DocStore>);
+    let open = session.open(brief.clone()).unwrap();
+    assert_eq!(open.view_source, ViewSource::Library);
+    let html = session.human_html().unwrap();
+    assert!(html.contains("VIEW 1.2.0"), "{html}");
+    assert!(html.contains("Lúnasa 0.0"), "the view's data carries the frozen copy whole");
+
+    let resp = napkin_host::handle(
+        &session,
+        &napkin_host::NoConfig,
+        napkin_host::HostRequest::new("/upstream", "", Vec::new()),
+    );
+    assert_eq!(resp.status, 200);
+    let up: serde_json::Value = serde_json::from_slice(&resp.body).unwrap();
+    assert_eq!(up["upstream"][0]["status"], "current", "{up}");
+    assert_eq!(up["upstream"][0]["title"], "Lúnasa");
+    session.compose_export(true, false).unwrap();
+
+    assert_eq!(
+        (store.read(&brief).unwrap(), store.read(&source).unwrap()),
+        before,
+        "neither the brief nor its research is written"
+    );
 }
