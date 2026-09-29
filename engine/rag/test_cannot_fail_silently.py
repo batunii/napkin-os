@@ -881,3 +881,14 @@ def test_app_rationale_names_the_kept_drafts():
     brief = {"meta": {"extraction_mode": "anthropic:claude-opus-4-6"}, "loop1_capture": {},
              "loop2_golden": {"fields": {"smp": {"value": "x", "review": {"status": "failed_checks"}}}}}
     assert "DRAFTS TO REVIEW (failed their checks): smp" in mapping.build_rationale(brief)
+
+
+def test_brief_sharpen_0_skips_the_sharpen_pass(monkeypatch):
+    """BRIEF_SHARPEN=0 (phase C A/B): no refine call for the hero lines; default keeps it."""
+    calls = _fake_models(monkeypatch)
+    _fill(monkeypatch)
+    assert any(k == "refine" for k, _u, _s in calls)
+    calls2 = _fake_models(monkeypatch)
+    monkeypatch.setenv("BRIEF_SHARPEN", "0")
+    _fill(monkeypatch)
+    assert not any(k == "refine" for k, _u, _s in calls2)

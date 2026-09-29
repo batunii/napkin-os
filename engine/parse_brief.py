@@ -1374,7 +1374,9 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             return None, qs
 
         # Sharpen the winning hero line once; keep the refinement only if it still clears the gate.
-        if fid in ("insight", "smp"):
+        # BRIEF_SHARPEN=0 skips it (phase C change 1, 2026-09-29: the sharpen and its re-judge
+        # are 4 sequential calls, ~31 s and ~$0.06 a brief; kept only if the A/B shows it helps).
+        if fid in ("insight", "smp") and os.environ.get("BRIEF_SHARPEN", "1").lower() not in ("0", "false", "no"):
             refined = _refine_field(field, chosen["value"], chosen.get("_judge_why", ""))
             if refined:
                 # gate_one includes the territory tests for the SMP: never let the sharpen

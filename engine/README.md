@@ -81,6 +81,7 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `BRIEF_LOOPS37` / `BRIEF_RERANK` / `BRIEF_HERO_CANDIDATES` | stage toggles |
 | `BRIEF_CAPTURE` | `toon` (default): Loop 1 capture in TOON citing sentence numbers, how_to_win in its own call; `json`: the one-call JSON capture |
 | `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |
+| `BRIEF_SHARPEN` | `1`: after the judge picks the best insight and SMP, one sharpen call each plus a re-judge; `0` skips them (phase C A/B, 2026-09-29) |
 | `BRIEF_ALLOW_NONCLAUDE` | unset (default): with Claude as the lead link the chain is Claude-only, and a run with no route to Claude stops with a clear error; `1`: non-Claude links stay as fallbacks (not for production; a brief they answer is named in `meta.fallback_links`). See [ADR 0006](rag/docs/adr/0006-cannot-fail-silently.md) |
 | `BRIEF_CLI_FALLBACK_TTL` | seconds an `auto` switch to the Claude Code login lasts before the API is tried again (600) |
 | `ANTHROPIC_API_KEY` | Claude (the default lead link; also the independent critic) |
