@@ -71,6 +71,23 @@ fact stays usable. Sai notes the research tool may detect such conflicts too; if
 them, the engine can take its records and skip this check (question with Shrey and the
 research team).
 
+## C2 (built): the territory rival from the brand research
+
+Decision 5. `research_facts.rivals` takes competitor names from the upstream `competitors`
+facet, then from current competitor facts (a fact the brief contradicts is already out, C1d).
+The first becomes THE rival in the one territory call (the same Opus 5.5 call, told which rival
+to use; the others go in as context), `rival_source` is "research", and the SMP entry records
+`territory = {rival, rival_source}`. With no researched competitor the call picks the rival
+from the brief as before ("brief").
+
+## Rule for everything from the level above
+
+Sai, 2026-09-29: anything from the upper level may only make the brief better, and the tool
+must work fully without it. Every upstream input here (facts, competitors, category) is
+optional and additive: with none, the prompts and behaviour are exactly as before (tested:
+`test_with_no_research_at_all_everything_runs_as_before`); a failing helper (jev down, bad
+fact rows) falls back to that path and never blocks a brief.
+
 ## Next
 
-- C2: the territory check's rival from the brand's competitor facts.
+- One real run on Sai's sample research when it arrives.

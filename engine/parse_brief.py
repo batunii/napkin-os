@@ -959,7 +959,7 @@ SMP_ANGLE_SEEDS = (
 )
 
 
-def _smp_territory(brief_text: str, competitor_ctx: str) -> "dict | None":
+def _smp_territory(brief_text: str, competitor_ctx: str, rivals: "list | None" = None) -> "dict | None":
     """Map the SMP's ownable white space in one call. Returns {own, avoid, rival}:
     `own`  — the territory THIS brand should claim (its white space, per the brief);
     `avoid`— the emotional/territorial ground the named competitor ALREADY owns;
@@ -967,11 +967,19 @@ def _smp_territory(brief_text: str, competitor_ctx: str) -> "dict | None":
     Returns None when there is nothing to map or the call fails on every link: the SMP then
     skips the territory tests and the brief asks which competitor the proposition must beat.
     Before 2026-09-25 a failure substituted a placeholder rival ('the named competitor'),
-    so the territory tests judged a line against nobody (audit J12)."""
-    if not (brief_text or competitor_ctx):
+    so the territory tests judged a line against nobody (audit J12).
+    `rivals` (decision 5, C2 2026-09-29): competitors named by the brand research (the
+    upstream facets or current competitor facts). The first is THE rival and the call only
+    describes its ground and the white space; `rival_source` says "research". Without
+    rivals the call picks the rival from the brief as before ("brief")."""
+    rivals = [str(r).strip() for r in (rivals or []) if str(r).strip()]
+    if not (brief_text or competitor_ctx or rivals):
         return None
+    given = (f"\n\nRIVAL (from the verified brand research; use this competitor as the rival): {rivals[0]}"
+             + (f"\nOTHER RESEARCHED COMPETITORS (context only): {', '.join(rivals[1:])}" if rivals[1:] else "")
+             if rivals else "")
     obj = _json_call(
-        _brief_block(brief_text or "", CLIP_EXTRACT) + f"\n\nCOMPETITOR CONTEXT: {competitor_ctx}",
+        _brief_block(brief_text or "", CLIP_EXTRACT) + f"\n\nCOMPETITOR CONTEXT: {competitor_ctx}" + given,
         system=("You map strategic white space for a single-minded proposition. From the brief and the "
                 "competitor context identify three things: the named competitor; the emotional/territorial "
                 "ground that competitor ALREADY OWNS (so we steer away from it — give the concept plus its "
@@ -983,7 +991,9 @@ def _smp_territory(brief_text: str, competitor_ctx: str) -> "dict | None":
         accept=lambda o: isinstance(o, dict) and bool(o.get("own")) and bool(o.get("avoid"))
         and bool(o.get("rival")))
     if isinstance(obj, dict) and obj.get("own") and obj.get("avoid") and obj.get("rival"):
-        return {"own": str(obj["own"]), "avoid": str(obj["avoid"]), "rival": str(obj["rival"])}
+        return {"own": str(obj["own"]), "avoid": str(obj["avoid"]),
+                "rival": rivals[0] if rivals else str(obj["rival"]),        # research names the rival
+                "rival_source": "research" if rivals else "brief"}
     return None
 
 
@@ -1045,7 +1055,7 @@ def _allowed_facts(segs: list, capture_future=None, wait_s: float = 45.0) -> lis
 
 
 def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict, brief_text: str = "",
-                          allowed_facts=None, research_facts=None, contested=None):
+                          allowed_facts=None, research_facts=None, contested=None, rivals=None):
     """Guided-generative fill of the zone-3 strategy fields (insight → smp →
     reasons_to_believe → desired_response), schema-driven via each field's
     depends_on and rubric. A field is generated ONLY if its extracted source is
@@ -1226,7 +1236,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         territory = None
         if fid == "smp":
             n_cand = max(n_cand, int(os.environ.get("BRIEF_SMP_CANDIDATES", "6")))
-            territory = f_terr.result() if f_terr else _smp_territory(brief_text, val("competitor_context"))
+            territory = f_terr.result() if f_terr else _smp_territory(brief_text, val("competitor_context"), rivals)
             if territory is None:
                 # No mapped competitor: the territory tests are skipped, and the brief says so
                 # instead of testing the line against a placeholder rival (audit J12).
@@ -1377,6 +1387,8 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
 
         entry = {"value": chosen["value"], "source": "inferred",
                  "method": f"gen:{fid}", "confidence": round(conf, 2)}
+        if fid == "smp" and territory:      # which rival the line was tested against, and from where (C2)
+            entry["territory"] = {"rival": territory["rival"], "rival_source": territory.get("rival_source", "brief")}
         if chosen.get("rationale"):
             # A precedent, brand or campaign named in the rationale must be in what was sent.
             rationale, removed = _strip_unsupplied_names(
@@ -1433,7 +1445,7 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
     smp_cur = golden_fields.get("smp") or {}
     smp_generated = not (isinstance(smp_cur, dict) and smp_cur.get("source") == "client_stated")
     with ThreadPoolExecutor(max_workers=4) if parallel else _Inline() as ex:
-        f_terr = (ex.submit(_scoped(_smp_territory), brief_text, val("competitor_context"))
+        f_terr = (ex.submit(_scoped(_smp_territory), brief_text, val("competitor_context"), rivals)
                   if smp_generated and _field_by_id(schema, "smp") else None)
         for w in sorted(set(waves.values())):
             wave = [f for f in GEN_ZONE3_ORDER if waves[f] == w]
@@ -3110,6 +3122,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         rf_usable, rf_skipped = research_facts.current(rf_given)
         # C1d: a fact the client brief contradicts is recorded, not used (Sai: CLAN settles).
         rf_usable, rf_contested = research_facts.split_conflicts(text, rf_usable) if rf_usable else ([], [])
+        rivals = research_facts.rivals(upstream, rf_usable)       # C2: the territory check's rival
 
         def _facets():
             """The facets once ready (waits at most 20 s); None if they failed."""
@@ -3143,7 +3156,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                     return None
                 return fill_derivable_fields(gb0.setdefault("fields", {}), l37_0, golden_schema,
                                              brief_text=text, allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_usable,
-                                             contested=rf_contested)
+                                             contested=rf_contested, rivals=rivals)
             f_fill = ex.submit(_scoped(_fill_early))
 
         llm = f_cap.result() if f_cap else None
@@ -3233,7 +3246,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 # overwrites a client_stated field. Failures become open questions.
                 filled = fill_derivable_fields(gf, l37, golden_schema, brief_text=text,
                                                allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_usable,
-                                             contested=rf_contested)
+                                             contested=rf_contested, rivals=rivals)
             _fills, gen_open_qs = filled
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs

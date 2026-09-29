@@ -204,3 +204,25 @@ def conflict_question(c: dict) -> dict:
             "why_it_matters": "the brief and the research disagree; the brief does not state either as fact "
                               "until a person settles it",
             "priority": "high", "fact_id": c["id"]}
+
+
+# ---- C2: the territory check's rival from the brand research ---------------------------
+
+def rivals(upstream: "dict | None", facts: list) -> list:
+    """Competitor names from the brand research, in order and without repeats: the upstream
+    `competitors` facet first, then current facts whose entity is 'competitor' (their value,
+    or key when the value is not a name). Facts the brief contradicts are already out of
+    `facts` (C1d). [] when the research names none: the territory call then picks the rival
+    from the brief, as before (decision 5: research first, the Claude call as fallback)."""
+    out = []
+    comps = (upstream or {}).get("competitors")
+    comps = comps if isinstance(comps, list) else [c for c in str(comps or "").split(",")]
+    for c in comps:
+        if str(c).strip() and str(c).strip() not in out:
+            out.append(str(c).strip())
+    for f in facts or []:
+        if str(f.get("entity") or "").lower() == "competitor":
+            name = str(f.get("value") if not str(f.get("value") or "").replace(".", "").isdigit() else f.get("key") or "").strip()
+            if name and name not in out:
+                out.append(name)
+    return out

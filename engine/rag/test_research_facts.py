@@ -207,3 +207,65 @@ def test_run_records_conflicts_and_asks(monkeypatch):
     sys.path.insert(0, str(HERE.parent / "agent-server"))
     import mapping
     assert mapping.map_brief(out)["fact_conflicts"][0]["id"] == "f-1"
+
+
+# ---------- C2: the territory check's rival from the brand research ----------
+
+def test_rivals_come_from_the_facet_then_competitor_facts():
+    facts = [{"id": "c-1", "entity": "competitor", "key": "main rival", "value": "Greggs"},
+             {"id": "c-2", "entity": "competitor", "key": "Pret", "value": "12"}]
+    assert rf.rivals({"competitors": ["Tesco Bakery"]}, facts) == ["Tesco Bakery", "Greggs", "Pret"]
+    assert rf.rivals(None, []) == []
+
+
+def test_the_territory_call_uses_the_research_rival(monkeypatch):
+    seen = {}
+    def fake(user, system=None, **k):
+        seen["user"] = user
+        return {"rival": "Somebody Else", "avoid": "cheap convenience", "own": "craft on your street"}
+    monkeypatch.setattr(pb, "_json_call", fake)
+    t = pb._smp_territory("A bakery brief.", "supermarkets", rivals=["Greggs", "Pret"])
+    assert "RIVAL (from the verified brand research; use this competitor as the rival): Greggs" in seen["user"]
+    assert "OTHER RESEARCHED COMPETITORS (context only): Pret" in seen["user"]
+    assert t["rival"] == "Greggs" and t["rival_source"] == "research"
+    t0 = pb._smp_territory("A bakery brief.", "supermarkets")
+    assert "RIVAL (from" not in seen["user"] and t0["rival"] == "Somebody Else" and t0["rival_source"] == "brief"
+
+
+def test_the_smp_records_its_rival_and_where_it_came_from(monkeypatch):
+    _fake_models(monkeypatch)
+    from test_cannot_fail_silently import GOLDEN_SCHEMA
+    gf = {"audience": {"value": "under-30s", "source": "client_stated"},
+          "background": {"value": "a bakery", "source": "client_stated"},
+          "competitor_context": {"value": "supermarkets", "source": "client_stated"}}
+    pb.fill_derivable_fields(gf, {"loops": {}}, GOLDEN_SCHEMA, brief_text="A bakery.", rivals=["Greggs"])
+    assert gf["smp"]["territory"] == {"rival": "Greggs", "rival_source": "research"}
+
+
+def test_a_contradicted_competitor_fact_is_not_the_rival(monkeypatch):
+    import jev_checks
+    facts = [{"id": "c-1", "entity": "competitor", "key": "main rival", "value": "Greggs"},
+             {"id": "c-2", "entity": "competitor", "key": "second", "value": "Pret"}]
+    monkeypatch.setattr(jev_checks, "fact_conflicts", lambda text, lines: [0.97 if "Greggs" in l else 0.05 for l in lines])
+    agreed, contested = rf.split_conflicts("Our only rival is Costa, not Greggs.", rf.current(facts)[0])
+    assert rf.rivals(None, agreed) == ["Pret"] and contested[0]["id"] == "c-1"
+
+
+def test_with_no_research_at_all_everything_runs_as_before(monkeypatch):
+    """Sai: it must work when no research comes in. No upstream: no research block, no
+    CONTESTED block, the rival picked from the brief, no research_facts in meta."""
+    calls = _fake_models(monkeypatch)
+    from test_cannot_fail_silently import GOLDEN_SCHEMA
+    gf = {"audience": {"value": "under-30s", "source": "client_stated"},
+          "background": {"value": "a bakery", "source": "client_stated"},
+          "competitor_context": {"value": "supermarkets", "source": "client_stated"}}
+    fills, qs = pb.fill_derivable_fields(gf, {"loops": {}}, GOLDEN_SCHEMA, brief_text="A bakery.")
+    prompts = [u for k, u, s in calls if k in ("gen", "gen_batch", "territory")]
+    assert not any("VERIFIED RESEARCH FACTS" in u or "CONTESTED" in u or "RIVAL (from" in u for u in prompts)
+    assert gf["smp"]["territory"]["rival_source"] == "brief" and not any("fact_refs" in (v or {}) for v in gf.values() if isinstance(v, dict))
+    monkeypatch.setattr(pb, "capture_toon", lambda segs: {"fields": {"business_problem": {"value": "p", "status": "fact"}},
+                                                          "how_to_win": {}, "open_questions": []})
+    monkeypatch.setattr(pb, "how_to_win_toon", lambda segs: {})
+    monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
+    out = pb.run(None, raw_text="A bakery.")
+    assert "research_facts" not in out["meta"]
