@@ -36,18 +36,21 @@ sys.path.insert(0, str(HERE))
 INVENTED_P = 0.9                 # the same confidence the pipeline's figure check fails at
 SUPPORTED = ("supported", "supported_by_research")
 COUNTED = {"Reasons to believe": "rtb"}
+# The note brief_render puts above a kept draft ('_Draft — to review: it failed ..._') is
+# the brief talking about the field, not a claim; the draft's items below it are counted.
+REVIEW_NOTE = re.compile(r"^_Draft\b.*\bto review\b", re.I)
 
 
 def claims_from_md(md: str) -> list:
     """(field, claim) for each reason to believe in a client_brief.md, in order;
-    placeholder lines ('To be agreed') left out."""
+    placeholder lines ('To be agreed') and the review note of a kept draft left out."""
     out, cur = [], None
     for line in (md or "").splitlines():
         if line.startswith("## "):
             cur = COUNTED.get(line[3:].strip())
             continue
         t = line.strip()
-        if not cur or not t or "To be agreed" in t:
+        if not cur or not t or "To be agreed" in t or REVIEW_NOTE.match(t):
             continue
         out.append((cur, re.sub(r"^[-*]\s+", "", t)))
     return out

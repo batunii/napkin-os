@@ -35,6 +35,15 @@ def test_claims_are_reasons_to_believe_only_with_requests_kept():
                    ("rtb", "Smart meter rollout across Ireland")]
 
 
+def test_the_review_note_of_a_kept_draft_is_not_a_claim():
+    """The note brief_render puts above a kept draft is skipped; the draft's items are counted
+    (2026-09-29: the note was counted as an invented reason to believe)."""
+    md = "## Reasons to believe\n_Draft — to review: it failed supports_smp. See open questions._\n- A real item\n"
+    assert grounding.claims_from_md(md) == [("rtb", "A real item")]
+    render = (Path(__file__).resolve().parent.parent / "brief_render.py").read_text()
+    assert "_Draft — to review: it failed" in render                        # the note's wording holds
+
+
 def test_grounding_counts_invented_but_not_requests(monkeypatch):
     import jev_checks
     asked = []

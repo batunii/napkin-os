@@ -459,7 +459,10 @@ def main() -> None:
                 "after_compactjudge": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "compact"}),
                 # 4 SMP drafts instead of 6, one per angle seed (CC4 remainder)
                 "after_smp4": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "full",
-                                               "BRIEF_SMP_CANDIDATES": "4"})}
+                                               "BRIEF_SMP_CANDIDATES": "4"}),
+                # the insight and SMP writers read evidence spans (1200 / 800 chars) instead of
+                # 220 / 160-char clips (RAG-5, approved 2026-09-23), on today's defaults
+                "after_fulltext": (Path(a.after), {"BRIEF_FULLTEXT": "1"})}
     arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
     if a.reuse:
