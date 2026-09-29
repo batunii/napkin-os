@@ -206,6 +206,6 @@ def test_reports_show_tokens_and_the_three_costs():
             "after": {"m": {"health": 72, "claude_usd": 0.4, "jev_usd": None, "total_usd": None,
                             "tokens": {"in": 10000, "out": 8000}}}}
     out = cr.render("t", {"before": None, "after": None}, rows, {"brief": 16, "sd": 7.8, "pairs": 6, "from": []})
-    assert "| tokens in / out | Claude $ | jev $ | total $ |" in out
+    assert "| input tokens (incl. cache) / output | Claude $ | jev $ | total $ |" in out
     assert "12,000 / 9,000 | 0.500 | 0.0010 | 0.501 |" in out
     assert "10,000 / 8,000 | 0.400 |  |  |" in out          # jev cost not logged for this run: blank, not 0

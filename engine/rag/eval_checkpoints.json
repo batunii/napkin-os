@@ -163,6 +163,30 @@
    "what": "Same code as c4edf35 with RAG_MIX_ORDER=edge (each field's strongest passages at both ends): 237 vs 234, every brief inside the noise line; kept off",
    "comparable": true,
    "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "5c1b2fd",
+   "order": 13,
+   "dir": "checkpoint_sharpen_ab",
+   "arm": "after",
+   "commit": "5c1b2fd",
+   "date": "2026-09-29",
+   "role": "change",
+   "what": "Today's code: draft kept for review, TO CONFIRM figure fix, capture fallback (jev then rules), research facts (off without facts), jev timing, token budget; sharpen pass on",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "5c1b2fd-nosharpen",
+   "order": 14,
+   "dir": "checkpoint_sharpen_ab",
+   "arm": "after_nosharpen",
+   "commit": "5c1b2fd",
+   "date": "2026-09-29",
+   "role": "variant",
+   "what": "Same code with BRIEF_SHARPEN=0 (phase C change 1): 234 vs 236, every brief inside the noise line; 347 s vs 409 s, $1.28 vs $1.50",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
   }
  ]
 }

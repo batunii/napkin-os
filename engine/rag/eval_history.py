@@ -41,7 +41,7 @@ def build() -> dict:
         f = E2E / c["dir"] / "rows.json"
         rows = (json.loads(f.read_text()).get(c["arm"]) or {}) if f.exists() else {}
         for brief, r in rows.items():
-            if "claude_usd" not in r:      # older checkpoints: from the saved trace, no rerun
+            if "in_total" not in (r.get("tokens") or {}):   # older checkpoints: from the saved trace, no rerun
                 import checkpoint_run
                 r = checkpoint_run.add_trace_numbers(E2E / c["dir"] / c["arm"], brief, r)
             if isinstance(r.get("grounding"), dict):   # the per-claim rows stay in rows.json

@@ -203,6 +203,9 @@ def trace_numbers(trace: dict) -> dict:
     tok = {"in": sum(e.get("in") or 0 for e in llm), "out": sum(e.get("out") or 0 for e in llm),
            "cache_read": sum(e.get("cache_read") or 0 for e in llm),
            "cache_write": sum(e.get("cache_creation") or 0 for e in llm)}
+    # All input the models read: uncached + cache written + cache read. On the Claude Code login
+    # most input arrives as cache writes, so "in" alone understated it (120k vs 36k, 2026-09-29).
+    tok["in_total"] = tok["in"] + tok["cache_write"] + tok["cache_read"]
     claude_usd = round(sum(e.get("usd") or 0 for e in llm), 4)
     jev_tokens = sum(e.get("tokens") or 0 for e in jev) if jev else None
     jev_usd = round(jev_tokens / 1e6 * JEV_USD_PER_M, 5) if jev_tokens is not None else None
@@ -217,7 +220,7 @@ def trace_numbers(trace: dict) -> dict:
 def add_trace_numbers(out_dir: Path, stem: str, row: dict) -> dict:
     """Backfill trace_numbers on a row (a reused arm, an older checkpoint) from its saved trace."""
     f = out_dir / f"trace_mix_{stem}.json"
-    if "claude_usd" in row or not f.exists():
+    if ("tokens" in row and "in_total" in (row.get("tokens") or {})) or not f.exists():
         return row
     return {**row, **trace_numbers(json.loads(f.read_text()))}
 
@@ -376,7 +379,7 @@ def render(label: str, arms: dict, rows: dict, noise: "dict | None" = None) -> s
     for stem in rows[base_arm]:
         base = rows[base_arm].get(stem, {}).get("health")
         L += [f"## {stem}", f"| arm | health | Δ vs {base_arm} | grader spread | invented proof points (RTB) | quality | judged | "
-              "brief s | calls | tokens in / out | Claude $ | jev $ | total $ | failed checks | sign-off fails |",
+              "brief s | calls | input tokens (incl. cache) / output | Claude $ | jev $ | total $ | failed checks | sign-off fails |",
               "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for arm in arms:
             r = rows[arm].get(stem, {})
@@ -385,7 +388,7 @@ def render(label: str, arms: dict, rows: dict, noise: "dict | None" = None) -> s
                 continue
             spread = (r.get("critic_samples") or {}).get("spread")
             tk = r.get("tokens") or {}
-            tokens = f"{tk.get('in', 0):,} / {tk.get('out', 0):,}" if tk else ""
+            tokens = f"{tk.get('in_total', tk.get('in', 0)):,} / {tk.get('out', 0):,}" if tk else ""
             money = lambda v, d=3: "" if v is None else f"{v:.{d}f}"
             L.append(f"| {arm} | {_score(r.get('health'))} | {'' if arm == base_arm else _delta(r.get('health'), base, line)} | "
                      f"{'' if spread is None else spread} | {_grounding_cell(r.get('grounding'))} | {_score(r.get('quality'))} | "
@@ -397,7 +400,7 @@ def render(label: str, arms: dict, rows: dict, noise: "dict | None" = None) -> s
     stems = [s for s in rows[base_arm] if all(rows[a].get(s, {}).get("health") is not None for a in arms)]
     sum_line = f" A difference in the health sum under {round(noise['brief'] * len(stems) ** 0.5)} is noise." if noise and stems else ""
     L += ["## Totals", f"Over the {len(stems)} of {len(rows[base_arm])} briefs every arm scored.{sum_line}", "",
-          "| arm | health sum | quality sum | invented proof points | brief s sum | tokens in / out | Claude $ | jev $ | total $ |",
+          "| arm | health sum | quality sum | invented proof points | brief s sum | input tokens (incl. cache) / output | Claude $ | jev $ | total $ |",
           "|---|---|---|---|---|---|---|---|---|"]
     for arm in arms:
         ok = [rows[arm][s] for s in stems]
@@ -406,7 +409,7 @@ def render(label: str, arms: dict, rows: dict, noise: "dict | None" = None) -> s
                  f"{sum(r.get('quality') or 0 for r in ok) if ok else 'not scored'} | "
                  f"{sum(i for i in inv if i is not None) if any(i is not None for i in inv) else ''} | "
                  f"{round(sum(r.get('brief_secs') or 0 for r in ok), 1)} | "
-                 f"{sum((r.get('tokens') or {}).get('in', 0) for r in ok):,} / {sum((r.get('tokens') or {}).get('out', 0) for r in ok):,} | "
+                 f"{sum((r.get('tokens') or {}).get('in_total', (r.get('tokens') or {}).get('in', 0)) for r in ok):,} / {sum((r.get('tokens') or {}).get('out', 0) for r in ok):,} | "
                  f"{round(sum(r.get('claude_usd', r.get('usd')) or 0 for r in ok), 3)} | "
                  f"{'' if any(r.get('jev_usd') is None for r in ok) else round(sum(r['jev_usd'] for r in ok), 4)} | "
                  f"{'' if any(r.get('total_usd') is None for r in ok) else round(sum(r['total_usd'] for r in ok), 3)} |")
