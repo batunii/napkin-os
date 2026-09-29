@@ -241,3 +241,12 @@ def test_reports_show_tokens_and_the_three_costs():
     assert "| input tokens (incl. cache) / output | Claude $ | jev $ | total $ |" in out
     assert "12,000 / 9,000 | 0.500 | 0.0010 | 0.501 |" in out
     assert "10,000 / 8,000 | 0.400 |  |  |" in out          # jev cost not logged for this run: blank, not 0
+
+
+def test_a_stem_with_a_converted_copy_reads_the_clients_document(tmp_path):
+    """omv-btl-brief has a .docx and a converted .md: every tool reads the .docx."""
+    from e2e_eval import brief_files
+    for n in ("omv.md", "omv.docx", "solo.md", "b.pdf", ".DS_Store"):
+        (tmp_path / n).write_text("x")
+    got = {k: v.name for k, v in brief_files(tmp_path).items()}
+    assert got == {"omv": "omv.docx", "solo": "solo.md", "b": "b.pdf"}

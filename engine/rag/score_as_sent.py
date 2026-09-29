@@ -34,7 +34,8 @@ def score_one(stem: str) -> dict:
     import parse_brief as pb
     import golden_critic as gc
     import labelset
-    text = labelset._doc_text({f.stem: f for f in BRIEFS.iterdir()}[stem]).strip()
+    from e2e_eval import brief_files            # one file per stem, the client's own first
+    text = labelset._doc_text(brief_files(BRIEFS)[stem]).strip()
     t = time.time()
     brief = pb.run(None, loops37=False, golden=True, raw_text=text, source_name=stem)
     secs = round(time.time() - t, 1)

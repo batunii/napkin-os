@@ -109,7 +109,8 @@ def brief_text(stem: str) -> str:
     if stem not in _texts:
         sys.path.insert(0, str(ENGINE))
         import parse_brief as pb
-        src = next((f for f in BRIEFS_DIR.iterdir() if f.stem == stem), None) if BRIEFS_DIR.exists() else None
+        from e2e_eval import brief_files        # the same file the arm's run read
+        src = brief_files(BRIEFS_DIR).get(stem) if BRIEFS_DIR.exists() else None
         _texts[stem] = pb.ingest(src)[0] if src else ""
     return _texts[stem]
 

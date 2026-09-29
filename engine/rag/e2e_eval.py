@@ -38,6 +38,18 @@ OUT = ENGINE / "outputs" / "e2e"
 BRIEFS = ENGINE.parent / "client_briefs"
 
 
+def brief_files(folder: Path = BRIEFS) -> dict:
+    """{stem: file} for the client briefs, one file per stem. When a stem has several files
+    the client's own document wins over a converted .md copy (omv-btl-brief has both; the
+    .md is a vault conversion with front matter), so every tool reads the same text: before
+    2026-09-29 this module took whichever came last and checkpoint_run whichever came first."""
+    rank = lambda f: (f.suffix.lower() == ".md", f.name)
+    out: dict = {}
+    for f in sorted((f for f in folder.iterdir() if f.is_file() and not f.name.startswith(".")), key=rank):
+        out.setdefault(f.stem, f)
+    return out
+
+
 def _pick() -> list[str]:
     """The client briefs to run, in order, from golden/labels/client/pick.txt (git-ignored:
     the file names are client names). Empty when the file is absent."""
@@ -245,7 +257,7 @@ def trace_one(stem: str, path: str = "mix") -> dict:
     judge.Chain.judge = lambda self, *a, **k: timed("validator", orig_judge, validator_info)(self, *a, **k)
     judge_jev.JevBackend.score, judge_jev.JevBackend.ask = jev_score, jev_ask
     try:
-        text = pb.ingest({f.stem: f for f in BRIEFS.iterdir()}[stem])[0].strip()   # the production reader (audit D5)
+        text = pb.ingest(brief_files()[stem])[0].strip()   # the production reader (audit D5)
         brief = pb.run(None, loops37=True, golden=True, raw_text=text, source_name=stem)
         t_brief = round(time.time() - t0, 1)
         # Score it in the same process so the independent judge call is traced too.
@@ -363,7 +375,7 @@ def main() -> None:
     import rag
     import store_qdrant as q
     import parse_brief as pb
-    files = {f.stem: f for f in BRIEFS.iterdir()}
+    files = brief_files()
     chosen = [s for s in _pick() if s in files][:a.n]
     rows, finished = [], {}
     for stem in chosen:
