@@ -138,7 +138,7 @@ def test_rtb_user_prompt_carries_the_allowed_facts(monkeypatch):
         if "judging candidate" in (system or ""):
             import re
             n = len(re.findall(r"^\[\d+\] ", user, flags=re.M))
-            tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+            tests = re.findall(r"^- (?:\d+\. )?([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
             return {"ranking": list(range(n)), "results": {str(i): {t: {"pass": True} for t in tests} for i in range(n)}}
         if '"think"' in (system or ""):
             return {"value": {"think": "a", "feel": "b", "do": "open the app"}, "confidence": 0.9}
@@ -194,7 +194,7 @@ def test_rationale_names_not_in_the_material_are_removed(monkeypatch):
         if "judging candidate" in (system or ""):
             import re
             n = len(re.findall(r"^\[\d+\] ", user, flags=re.M))
-            tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+            tests = re.findall(r"^- (?:\d+\. )?([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
             return {"ranking": list(range(n)), "results": {str(i): {t: {"pass": True} for t in tests} for i in range(n)}}
         if '"think"' in (system or ""):
             return {"value": {"think": "a", "feel": "b", "do": "open the app"}, "confidence": 0.9,
@@ -281,7 +281,7 @@ def test_writer_context_labels_inferred_dependencies_as_assumptions(monkeypatch)
         if "judging candidate" in (system or ""):
             import re
             n = len(re.findall(r"^\[\d+\] ", user, flags=re.M))
-            tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+            tests = re.findall(r"^- (?:\d+\. )?([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
             return {"ranking": list(range(n)), "results": {str(i): {t: {"pass": True} for t in tests} for i in range(n)}}
         if "REFINE MODE" in (system or ""):
             return {"value": "d, because it holds", "confidence": 0.9}

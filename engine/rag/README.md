@@ -224,6 +224,8 @@ after each run. After a checkpoint: add its registry entry, run `eval_history.py
 
 **Brief lists, noise and grounding (2026-09-28, ADR 0013):** `checkpoint_run.py --set test-three` runs a named list from `golden/labels/client/eval_sets.json` (git-ignored). Each report opens with the noise line, measured from registry entries marked `repeat_of` (currently ±16 health per brief), marks every difference as real or noise, and shows each brief's grounding count (`grounding.py`: reasons to believe jev finds not in the client's document; TO CONFIRM requests counted apart). The runner stops before any brief when the critic cannot reach Claude, grades a brief again when no sample answered, and prints "not scored", never 0.
 
+**Paired judge test (2026-09-29, phase C change 2):** every checkpoint run records each judge call's inputs in `<arm>/judge_calls_<stem>.jsonl` (`BRIEF_JUDGE_DUMP`). `judge_format_ab.py <arm>/judge_calls_*.jsonl --repeats 2` replays the same drafts through both judge formats (`BRIEF_JUDGE_FORMAT=full` and `compact`), each twice. It reports verdict agreement within a format (the judge's own noise) and across formats (the change's effect), per test, per draft and for the winner, plus output tokens, time and cost per call. A brief-level A/B cannot separate a judge change from generation noise, because every run writes different drafts.
+
 `golden.py` builds 11,651 cases from the corpus's own "Retrieval Queries" with a 1-in-5
 held-out split. Held-out recall@5 **0.928**, recall@10 **0.945** (290 cases, re-measured
 2026-09-23; the weak spot is templated IPA queries at 0.825). The earlier published 0.974 /

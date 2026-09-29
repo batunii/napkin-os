@@ -228,7 +228,10 @@ def add_trace_numbers(out_dir: Path, stem: str, row: dict) -> dict:
 def run_one(tree: Path, stem: str, env_extra: dict, out_dir: Path) -> dict:
     """One brief through one tree's e2e_eval --trace; returns the trace's headline numbers."""
     env = {**os.environ, "RAG_STORE": "local", "RAG_INDEX": "_index_v4",
-           "BRIEF_CLAUDE_TRANSPORT": "cli", **env_extra}
+           "BRIEF_CLAUDE_TRANSPORT": "cli",
+           # every judge call's inputs, for the paired judge test (judge_format_ab.py)
+           "BRIEF_JUDGE_DUMP": str((out_dir / f"judge_calls_{stem}.jsonl").resolve()), **env_extra}
+    (out_dir / f"judge_calls_{stem}.jsonl").unlink(missing_ok=True)
     rag = tree / "engine" / "rag"
     log = out_dir / f"{stem}.log"
     t0 = time.time()
@@ -449,8 +452,11 @@ def main() -> None:
                 "after_hero55": (Path(a.after), {"BRIEF_ROUTE_HERO": "claude-opus-5-5,claude-opus-4-6"}),
                 # evidence strongest at both ends of each field's list (RAG_MIX_ORDER=edge, A/B)
                 "after_edge": (Path(a.after), {"RAG_MIX_ORDER": "edge"}),
-                # the hero sharpen pass off (phase C change 1)
-                "after_nosharpen": (Path(a.after), {"BRIEF_SHARPEN": "0"})}
+                # the hero sharpen pass off (phase C change 1); the judges then still
+                # answered one object per test
+                "after_nosharpen": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "full"}),
+                # compact judge answers: pass lists by test number, short reasons (phase C change 2)
+                "after_compactjudge": (Path(a.after), {"BRIEF_SHARPEN": "0", "BRIEF_JUDGE_FORMAT": "compact"})}
     arms = {k: all_arms[k] for k in a.arms.split(",") if k in all_arms}
     rows: dict = {arm: {} for arm in arms}
     if a.reuse:

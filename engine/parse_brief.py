@@ -741,6 +741,56 @@ MAXTOK_BATCH_JUDGE = 3000   # one verdict per candidate x test (reasons on failu
                             # 1500 could truncate on 6 SMP drafts x 5 tests; a ceiling, not a cost.
 
 
+def _judge_compact() -> bool:
+    """True when BRIEF_JUDGE_FORMAT=compact: the judge answers each draft with the numbers of
+    the tests it passes and a short reason per test it fails (phase C change 2), instead of
+    a {"pass": bool} object per test. Off by default (Sai, 2026-09-29): on the three test
+    briefs it halved the hero judges' output (about 8 s and $0.02 a brief) but judged
+    'ownable' and the territory test harder (paired replay: 42 vs 37 of 72 drafts passed),
+    and one dropped verdict left an SMP empty."""
+    return os.environ.get("BRIEF_JUDGE_FORMAT", "full").strip().lower() == "compact"
+
+
+def _from_compact(results, test_ids: list) -> dict:
+    """A compact judge reply ({"<idx>": {"pass": [1, 3], "fail": {"2": "why"}}}, tests numbered
+    from 1 in the order sent) in the full shape ({"<idx>": {"<test_id>": {"pass": bool,
+    "why": str}}}), so the strict verdict rules read both. A test in neither list, in both,
+    or under a number that was not sent gets no verdict, so the draft stays unjudged. A draft
+    answered in the full shape anyway (no pass list, no fail object) is kept as it is."""
+    out = {}
+    for idx, r in (results or {}).items():
+        if not isinstance(r, dict):
+            continue
+        if not isinstance(r.get("pass"), list) and not isinstance(r.get("fail"), dict):
+            out[str(idx)] = r
+            continue
+        passed = {str(x).strip().lstrip("T") for x in (r.get("pass") or []) if not isinstance(x, bool)} \
+            if isinstance(r.get("pass"), list) else set()
+        failed = {str(k).strip().lstrip("T"): v for k, v in r.get("fail").items()} \
+            if isinstance(r.get("fail"), dict) else {}
+        row = {}
+        for n, tid in enumerate(test_ids, 1):
+            k = str(n)
+            if (k in passed) == (k in failed):          # neither or both: no verdict
+                continue
+            row[tid] = {"pass": True} if k in passed else {"pass": False, "why": str(failed[k] or "")}
+        out[str(idx)] = row
+    return out
+
+
+def _dump_judge(record: dict):
+    """Append one judge call's inputs to the JSON-lines file BRIEF_JUDGE_DUMP names, when set:
+    the paired judge test (rag/judge_format_ab.py) replays them. Never fails a run."""
+    path = os.environ.get("BRIEF_JUDGE_DUMP")
+    if not path:
+        return
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+    except Exception as e:  # noqa: BLE001 — a diagnostic only
+        print(f"[!] judge dump failed: {e}", file=sys.stderr)
+
+
 def _value_items(value) -> list:
     """The checkable items of a field value: a list's strings, a dict's values (think /
     feel / do), or the value itself."""
@@ -818,14 +868,30 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
     many = len(candidates) > 1
     judge = None
     if llm_tests or territory or many:
-        tests = "\n".join(f'- {r["id"]}: {r["test"]}' for r in llm_tests)
+        compact = _judge_compact()
+        pairs = [(r["id"], r["test"]) for r in llm_tests]
         if territory:
-            tests += (f"\n- own_territory: does the line live on what the BRAND should own "
-                      f"({territory['own']}) rather than on {territory['rival']}'s ground "
-                      f"({territory['avoid']}) — counting synonyms and rephrasings?"
-                      f"\n- brand_only: is this a line ONLY this brand can credibly say? "
-                      f"(fail if {territory['rival']}'s own campaign could run it verbatim "
-                      f"without changing its meaning)")
+            pairs += [("own_territory",
+                       f"does the line live on what the BRAND should own ({territory['own']}) rather "
+                       f"than on {territory['rival']}'s ground ({territory['avoid']}) — counting "
+                       f"synonyms and rephrasings?"),
+                      ("brand_only",
+                       f"is this a line ONLY this brand can credibly say? (fail if "
+                       f"{territory['rival']}'s own campaign could run it verbatim without changing "
+                       f"its meaning)")]
+        # compact: tests are numbered and the judge answers by number (phase C change 2)
+        tests = "\n".join(f"- {n}. {tid}: {t}" if compact else f"- {tid}: {t}"
+                           for n, (tid, t) in enumerate(pairs, 1))
+        if compact:
+            reply = ('{"results": {"<candidate index>": {"pass": [numbers of the tests it passes], '
+                     '"fail": {"<test number>": "why it fails, at most 12 words"}}}, '
+                     '"ranking": [candidate indexes, best first], '
+                     '"why": "the winner, in at most 20 words"}. Every test number goes in pass or '
+                     'in fail for every candidate')
+        else:
+            reply = ('{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short, '
+                     'ONLY when pass is false"}}}, "ranking": [candidate indexes, best first], '
+                     '"why": "one line on the winner"}')
         listing = "\n".join(f"[{i}] {json.dumps(c.get('value'))}" for i, c in enumerate(candidates))
         # The ranking guidance depends on the field's shape. A hero LINE (insight, SMP) is
         # judged on purity and single-mindedness; a list field (reasons to believe) or a
@@ -865,17 +931,21 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
                     "creative brief — fair but rigorous. Judge each candidate on each test on its own "
                     "merits, using the upstream context where given (do not fail derivation merely because "
                     "the context wasn't repeated in the value). " + framing
-                    + " Candidate indexes start at 0. Return ONLY raw JSON: "
-                    '{"results": {"<candidate index>": {"<test_id>": {"pass": true|false, "why": "short, '
-                    'ONLY when pass is false"}}}, "ranking": [candidate indexes, best first], '
-                    '"why": "one line on the winner"}'),
+                    + " Candidate indexes start at 0. Return ONLY raw JSON: " + reply),
             retries=1, max_tokens=MAXTOK_BATCH_JUDGE, whole=True,
             # the judge is never the writer (ADR 0011): exclude the writer job's lead model
             route=judge_route(field.get("id", "")),
             exclude=(route_models(writer_route(field.get("id", ""))) or [None])[0])
+        _dump_judge({"field": field, "values": [c.get("value") for c in candidates],
+                     "brand_lines": brand_lines, "ctx": ctx, "territory": territory,
+                     "allowed_text": allowed_text, "brief_text": brief_text, "facts": facts,
+                     "format": "compact" if compact else "full"})
     judge = judge if isinstance(judge, dict) else {}
     n = len(candidates)
     results = judge.get("results") if isinstance(judge.get("results"), dict) else {}
+    judged_tests = [r["id"] for r in llm_tests] + (["own_territory", "brand_only"] if territory else [])
+    if judge and judged_tests and _judge_compact():
+        results = _from_compact(results, judged_tests)
     results = {str(k): v for k, v in results.items()}
     shift = 0
     if n and set(results) == {str(i) for i in range(1, n + 1)}:
@@ -886,7 +956,6 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
              if (isinstance(i, int) and not isinstance(i, bool)) or (isinstance(i, str) and i.isdigit())]
     order = [i for i in order if 0 <= i < n]
     order = list(dict.fromkeys(order)) + [i for i in range(n) if i not in order]
-    judged_tests = [r["id"] for r in llm_tests] + (["own_territory", "brand_only"] if territory else [])
     jev_bad = _jev_figure_failures(field, candidates, allowed_text)
     out = []
     for rank, i in enumerate(order):

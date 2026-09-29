@@ -201,7 +201,7 @@ def _pass_all(user: str) -> dict:
     """A judge reply that passes every candidate on every test named in the prompt."""
     import re
     n = len(re.findall(r"^\[\d+\] ", user, flags=re.M))
-    tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+    tests = re.findall(r"^- (?:\d+\. )?([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
     return {"ranking": list(range(n)), "why": "w",
             "results": {str(i): {t: {"pass": True} for t in tests} for i in range(n)}}
 

@@ -23,7 +23,7 @@ def _judge(monkeypatch, verdicts: dict, why: dict | None = None):
     def fake(user, system=None, **k):
         """Test stub: stands in for `fake` in _judge."""
         import re
-        tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+        tests = re.findall(r"^- (?:\d+\. )?([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
         res = {t: {"pass": verdicts.get(t, True), "why": (why or {}).get(t, "")} for t in tests}
         return {"ranking": [0], "results": {"0": res}}
     monkeypatch.setattr(pb, "_json_call", fake)
@@ -103,7 +103,7 @@ def test_gate_notes_and_flags_are_stored_on_the_entry(monkeypatch):
             return {"value": "Vision line for the bank, because it holds", "confidence": 0.9}
         if "judging candidate" in system:
             n = len(re.findall(r"^\[\d+\] ", user, flags=re.M))
-            tests = re.findall(r"^- ([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
+            tests = re.findall(r"^- (?:\d+\. )?([a-z0-9_]+):", user.split("TESTS", 1)[-1], flags=re.M)
             res = {t: {"pass": t != "reason_to_care", "why": "meh" if t == "reason_to_care" else ""} for t in tests}
             return {"ranking": list(range(n)), "results": {str(i): res for i in range(n)}}
         if '"think"' in system:

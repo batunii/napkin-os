@@ -187,6 +187,18 @@
    "what": "Same code with BRIEF_SHARPEN=0 (phase C change 1): 234 vs 236, every brief inside the noise line; 347 s vs 409 s, $1.28 vs $1.50",
    "comparable": true,
    "critic": "claude-fable-5-1x3"
+  },
+  {
+   "id": "f95e1ea-compactjudge",
+   "order": 15,
+   "dir": "checkpoint_judge_format_ab",
+   "arm": "after_compactjudge",
+   "commit": "f95e1ea",
+   "date": "2026-09-29",
+   "role": "variant",
+   "what": "Compact judge replies (BRIEF_JUDGE_FORMAT=compact, phase C change 2): 205 vs 234 on the old format; the employer SMP went empty (no verdict for ownable). Hero judge output halved (about 8 s, $0.02 a brief). Paired replay: stricter on ownable. Not adopted; the old format stays the default",
+   "comparable": true,
+   "critic": "claude-fable-5-1x3"
   }
  ]
 }
