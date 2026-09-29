@@ -345,6 +345,12 @@ app:
    `app/**` and `agent/output-schema.json` (the target's own are the new
    document's), `human/patches.yaml`, and `shared/edits.yaml` — a person's
    wording for the *source's* view, meaningless in another app's.
+8. **The projection is the new document's own.** The source's `projection`
+   is not carried (item 1). The SDK writes none at the root; the host builds
+   it from the merged members when it writes the spin-off (`/spinoff`), as it
+   does on any member write (Contract 3 §5). A spin-off made by the SDK alone
+   (`clan spinoff`) has no root `projection` until the host next writes its
+   members.
 
 ### 5.3 What the hop records: `lineage.carried`
 
@@ -461,11 +467,16 @@ pub fn spinoff(template: &ClanFile, source: &ClanFile, opts: SpinoffOptions) -> 
 ```
 
 `clan_sdk` re-exports `Carried` beside `Lineage`. Adding the two fields breaks
-the struct literals that name every field — `Lineage` in `pack.rs`,
-`render.rs`, `merge.rs`, `instantiate.rs`; `SpinoffSpec` in `library.rs`,
-`tests/routes.rs`, `examples/make_advertising_studio.rs`, `clan-cli` — each
-gains `carried: None` / `upstream: false` and nothing else, and the
-hand-written `impl Default for SpinoffSpec` gains `upstream: false`.
+the struct literals that name every field. `SpinoffSpec` in `library.rs`,
+`tests/routes.rs`, `examples/make_advertising_studio.rs` and `clan-cli` gains
+`upstream: false` and nothing else, and the hand-written
+`impl Default for SpinoffSpec` gains `upstream: false`. `Lineage` in
+`instantiate.rs` gains `carried: None` for `instantiate()` and the filled
+record for an upstream `spinoff()`. `Lineage` in `pack.rs`, `render.rs` and
+`merge.rs` (fork and merge) copies `carried` from the revision it rewrites:
+a document keeps the record of its hop on every later write, or the first
+edit would erase it and `GET /upstream` and backrefs (§7.4) would have
+nothing to compare or address.
 
 ---
 
@@ -551,6 +562,15 @@ A carried branch or carried merge-report conflict is settled only upstream:
 merged in the parent, then taken with the newer upstream (§5.5, not built).
 Until then it blocks. **Still open:** whether a child may dismiss one with a
 written reason.
+
+Item 4 applies to this document's own fields only. A field in a frozen copy
+that cites a rejected finding (its `finding_ids`) is not on the child's list:
+the frozen copy is read-only, so nothing in the child could revise it and it
+would block the lock for good. The parent's own list still holds it;
+nothing in the child names it yet (`GET /upstream`'s `cited_by` skips the
+frozen copies too). **Still open:** whether the owner's "every carried
+item" default should count it, which needs a way to settle it in the child
+first (as `/verdict good` settles a carried bad verdict).
 
 ### 7.3 At lock
 
