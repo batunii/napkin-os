@@ -24,7 +24,7 @@ uses — run one of them at a time.**
 | `NAPKIN_AGENT_PORT` | listen port (default 8787) |
 | `BRIEF_LOOPS37=1` | RAG-grounded Loops 3–7 (insight/SMP/RTBs); forces golden fill on |
 | `BRIEF_GOLDEN=1` | golden-brief fill without loops37 |
-| `BRIEF_RESEARCH=0` | disable the research dossier (default on when keys exist) |
+| `BRIEF_RESEARCH=0` | disable the research dossier (default on when keys exist; it runs only with Loops 3–7 off or `RESEARCH_WEB` on) |
 | `RESEARCH_WEB=claude` | live web track via headless `claude` CLI (dev-mode; default `off`) |
 | `RAG_STORE=qdrant` + `QDRANT_*` | remote corpus store. `NVIDIA_API_KEY` is **required** for query embedding in this mode — without it queries silently embed at the wrong dimension and Qdrant errors |
 
@@ -46,7 +46,10 @@ rationale says so. That's honest, not broken.
 Research never enters Loop-1 capture (the engine's one hard rule — the no-loss
 ledger measures fidelity to the client's own brief). The dossier surfaces in
 the app's context panel; strategy grounding comes from Loops 3–7's own
-retrieval over the same corpora.
+retrieval over the same corpora. With Loops 3–7 on and the web track off (the
+app default) the dossier is skipped: the panel already lists the precedent the
+writers read, and the dossier's second retrieval plus Opus gist call (~20 s,
+~$0.03 a draft) only added a line of citation ids.
 
 ## Tests
 

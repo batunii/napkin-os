@@ -172,7 +172,7 @@ def _derive_names(text: str, clan_data: dict) -> dict:
         "natural project/campaign name if none is stated. Reply as JSON: "
         '{"project_name": "...", "client": "..."}\n\nBRIEF:\n' + text[:4000],
         system="You name advertising projects. JSON only.",
-        max_tokens=120,
+        max_tokens=120, route="mechanical",       # a small job: Sonnet 5 at low effort, not the writer
         accept=lambda o: isinstance(o, dict) and (o.get("project_name") or o.get("client")),
     )
     if not isinstance(obj, dict):
@@ -201,8 +201,15 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
     # ledger — feeding it a dossier craters coverage). Strategy grounding
     # comes from Loops 3–7's own retrieval; the dossier goes to the planner
     # via the context panel.
+    # The dossier is skipped when it would only repeat the brief (audit C2/critic-G10, Sai
+    # 2026-09-29): with Loops 3-7 on, the panel lists the precedent the writers read from
+    # the brief's own retrieval, and the dossier's corpus track was a second retrieval plus
+    # an Opus gist call (7-24 s, $0.015-0.034 a draft) for one line of citation ids. It
+    # still runs when it is the panel's only precedent (Loops 3-7 off) or when the web
+    # track is on (RESEARCH_WEB), which needs the gist.
+    web_on = os.environ.get("RESEARCH_WEB", "off").strip().lower() not in ("", "off", "0", "false")
     research_summary = None
-    if research is not None and _env_flag("BRIEF_RESEARCH", "1"):
+    if research is not None and _env_flag("BRIEF_RESEARCH", "1") and (not loops37 or web_on):
         try:
             with parse_brief._stats_scope():        # research calls stay out of the brief's ledger
                 _dossier, research_summary = research.gather(text, clan_data)

@@ -99,3 +99,54 @@ def test_regen_is_grounded_and_rule_checked(monkeypatch):
     monkeypatch.setattr(parse_brief, "_json_call", empty)
     code, _ = server.do_regen({"task": "regenerate_field", "field": "reasons_to_believe"}, clan)
     assert code == 502 and empty_ok is False
+
+
+# ---- the draft path's extra work (audit C2/critic-G10, Sai 2026-09-29) --------------------
+
+class _FakeResearch:
+    """Stands in for the research module; counts gather() calls."""
+    def __init__(self):
+        self.calls = 0
+
+    def gather(self, text, clan_data):
+        """Record the call; return a one-line summary."""
+        self.calls += 1
+        return "dossier", "- Precedent: ipa_0001"
+
+
+def _draft(monkeypatch, loops37: bool, web: str = "off"):
+    """One stubbed draft; returns (gather calls, the naming call's kwargs, fields)."""
+    fake = _FakeResearch()
+    naming = {}
+
+    def fake_json(user, **k):
+        """The naming call: record its kwargs."""
+        naming.update(k)
+        return {"project_name": "P", "client": "C"}
+    monkeypatch.setattr(parse_brief, "run", lambda path, **kw: {**MINIMAL, "meta": dict(MINIMAL["meta"])})
+    monkeypatch.setattr(parse_brief, "_json_call", fake_json)
+    monkeypatch.setattr(server, "research", fake)
+    monkeypatch.setenv("RESEARCH_WEB", web)
+    monkeypatch.delenv("BRIEF_RESEARCH", raising=False)
+    code, fields = server.do_draft({"input": "A brief.", "loops37": loops37}, {"data": {}})
+    assert code == 200
+    return fake.calls, naming, fields
+
+
+def test_the_dossier_is_skipped_when_it_would_repeat_the_brief(monkeypatch):
+    """Loops 3-7 on, web off (the app default): no second retrieval, no gist call."""
+    calls, _n, fields = _draft(monkeypatch, loops37=True)
+    assert calls == 0 and "**Research:**" not in fields.get("context", "")
+
+
+def test_the_dossier_runs_when_it_is_the_only_precedent_or_the_web_is_on(monkeypatch):
+    """Loops 3-7 off, or RESEARCH_WEB on: the dossier runs as before."""
+    assert _draft(monkeypatch, loops37=False)[0] == 1
+    calls, _n, fields = _draft(monkeypatch, loops37=True, web="claude")
+    assert calls == 1 and "**Research:**" in fields["context"]
+
+
+def test_naming_runs_on_the_mechanical_route(monkeypatch):
+    """The project name is a small job: the mechanical route, not the writer chain."""
+    _c, naming, fields = _draft(monkeypatch, loops37=True)
+    assert naming.get("route") == "mechanical" and fields["project_name"] == "P"
