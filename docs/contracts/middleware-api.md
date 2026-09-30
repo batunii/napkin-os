@@ -36,7 +36,8 @@ name the stand-in, its port, or branch on which implementation answered.
             "version": "<doc version the host holds>",
             "app": { "app_id": "...", "version": "..." },
             "schema": {}, "data": {}, "facts": [], "findings": [], "pipeline": {},
-            "decision_chain": {}, "context": "...", "lineage": {} }
+            "decision_chain": {}, "context": "...", "lineage": {},
+            "upstream_payload"?: {}, "upstream_skipped"?: [] }
 }
 ```
 
@@ -69,6 +70,36 @@ name the stand-in, its port, or branch on which implementation answered.
   document's own members and arrive in `clan.facts` and `clan.findings`. The
   frozen data reaches a model only as §10.13 says. `upstream` is read-only:
   a `data_patch` that names it is refused (Contract 4 §8.1).
+- **`upstream_payload`** (2026-09-30): the research a brief carries, as Sai's
+  brief engine takes it — exactly the engine's `upstream` object,
+  `{brand?, category?, competitors, facts, decisions}` — printed by the
+  extract's `upstream` printer (`clan_sdk::extract::upstream`,
+  `docs/contracts/clan-extract.md` §1.1, §11.3) from the document's own
+  bytes: the frozen copy, the merged members and the carried chain. `facts`
+  are ADR 0014's fact rows (`research_facts`), `decisions` ADR 0015's
+  decision rows (`research_decisions`): rejected and verified findings,
+  resolved and open contests, edits and verdicts with a person's reason, and
+  client answers, with people's words verbatim and names from the account
+  (a dummy account in the host until accounts exist). A value marked
+  `model: false` reads `[Marked confidential]` in both, wherever it appears;
+  a corpus-only mark hides nothing here, and the brief's own `model: false`
+  marks (`<brief id>#<field>`) are matched too. `category` is the first of
+  the research's categories that maps to one of the engine's (the fixed
+  table `clan_sdk::extract::CATEGORY_MAP`: `soft_drinks.*` → `food_drink`,
+  `alcohol.*` → `alcohol`, …); none maps, it is left out and named in
+  `upstream_skipped`.
+  - **When.** Sent when the document runs the brief tasks — its pipeline
+    declares `draft_brief` or `regenerate_field`, or it is a Brief Maker
+    document — and carries research (a `data.upstream` copy holding
+    `campaign`, the direct parent first); absent otherwise. It rides every
+    request on such a document, as the rest of `clan` does; `draft_brief`
+    reads it (§10.14), and a task that does not simply ignores it.
+  - **Never a halt.** The printer refuses nothing: what it could not print
+    is named in `upstream_skipped`, `[{what, why}]` (an id or member path
+    and a fixed reason, never a value), present only when something was
+    left out. Its absence is not an error: the brief is drafted without
+    research.
+  - It is built at the call and never stored, logged or cached by the host.
 - **Task → handler.** `payload.task` is resolved against `clan.pipeline.tasks.<task>.handler`
   (`name@major`). When the document carries no pipeline, the middleware's
   declared built-in map is used (`extract_ask@1`, `research_lens@1`,
@@ -164,8 +195,9 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
   laptop closing (N2), so a job outlives the request that started it.
 - **`needs_input`** (`start_campaign` only): the job is waiting for the person.
   It carries `job.question` (§8.3) and stays so — polls are free and change
-  nothing — until an `answer_question` for it is accepted. It never times out
-  in the contract.
+  nothing — until an `answer_question` for it is accepted, or until its wait
+  runs out and the job goes on with the question's stated default (§8.3;
+  *changed 2026-09-30*: no stage may halt a research job).
 - `progress.total` is the number of units of work: for `research_lens`, one per
   lens × market. `progress.done` never goes backwards.
 - A `job_status` response describes the job: its `task` and `handler` are the
@@ -592,6 +624,18 @@ invalid_input`, §4). Its request's `clan` — which now holds the person's writ
 — becomes the job's base for the stages that follow. The reply describes the
 job: `running` (or `needs_input` again, with the next question).
 
+*Changed 2026-09-30 (the owner: no stage may halt a research job).* A question
+nobody answers does not hold the job for ever. After a wait (30 minutes in the
+real middleware) the job goes on with a **stated default**, written with an
+`identify` decision and an agent message saying so: for `categories`, the
+material's most likely candidate (`origin: extracted` with its span, or
+`proposed` with its pins), certainty `low`, `attention` asking the person to
+confirm it; for the `brand`, nothing: the subject brand is never guessed, and
+the field stays open; for `markets`, or any question with no such candidate,
+the field stays open. Once one question has gone unanswered, any later
+question in the same job takes its default at once. A later `answer_question`
+is `409 job_state`, saying that nobody answered in time.
+
 ### 8.4 Staged changes
 
 - A reply carries the change for every stage finished since the previous reply
@@ -609,8 +653,33 @@ job: `running` (or `needs_input` again, with the next question).
 - The **`report` stage** composes from the document as the host holds it: from
   the `clan` of the first request (a poll) whose `clan.decision_chain` holds
   every decision of the earlier stages — i.e. once they have landed. Until
-  then the job stays `running`, `stage: report`. If an earlier stage was
-  refused, the job stays there; **Refresh report** composes from what landed.
+  then the job stays `running`, `stage: report`. *Changed 2026-09-30:* it
+  never stays there for ever. A staged change missing from three polls after
+  it was sent is sent on its own, and missing from three more polls the host
+  has refused it. The middleware then stops sending it, so the stages after
+  it can land, and records the refused stage as a gap (below). The report does
+  not wait for it. When no poll brings the earlier stages within a wait (ten
+  minutes in the real middleware), the report is composed from the job's own
+  copy of the document, and its decision's `attention` says so; **Refresh
+  report** composes it again from the document.
+- **No stage halts the job** (the owner, 2026-09-30). A stage can raise, have
+  its model call refused or answered with output that never validates, run
+  out of its time, or have its change refused by the host. None of these
+  fails the job. The stage becomes a **gap**: a decision with the stage's own
+  action (`extract`, `identify`, `select`, `research`, `synthesise`,
+  `report`) and no field target. Its reasoning says why the stage did not
+  finish and what the job does without it, and an agent message says the
+  same in the crew's words (what we could not finish, why, and what we did
+  instead; never a stage name, *changed 2026-09-30*); the stage and the kind
+  stay in the reasoning and the logs. The next stage then runs, and the job
+  ends `done`. Each reply's `result.gaps` lists `[{stage, reason}]` (display
+  only), so the view shows a step the job went on without as skipped. A research gap
+  also writes each selected lens × market into `selection.gaps`, with a
+  `research_run` decision per pair, so the report names them and the view
+  can offer to look again. With no model plan, `select` runs every lens in
+  every market. With nothing to cite, the `report` stage writes no report,
+  and its decision says why. `failed` is left for a fault in the job runner
+  itself.
 
 ### 8.5 The report
 
@@ -914,8 +983,8 @@ The §2 envelope; `task` and `handler` are the job's own (`draft_brief@1.x`,
   kept | failed`; `by`: the worker doing it or that last did it — `extract |
   drafter | judge` — or `null`. This is what lets the view show Extract, one
   Drafter per field and the Judge working for real. `done`: written by a change
-  already sent or in this reply. `failed`: judged bad twice, not written.
-  `absent`: nothing supports it.
+  already sent or in this reply. `failed`: judged bad twice, or its stage did
+  not finish (a gap, §10.9); not written. `absent`: nothing supports it.
 - `result.proposals` — the proposals so far (§10.5). Display only.
 - `result.withheld` — the ids kept out of every model call because a
   `classify` mark says `model: false` (§10.13, item 6). Display only; absent
@@ -1049,9 +1118,14 @@ field whose decisions are all in the chain.
   proposals, `open_questions`, and `review` again — a deliberate rewrite, so a
   **new** decision id and a `read` holding the value the extract stage wrote
   (§3, *Staged writes*).
-- `draft` sends no change. A failed stage fails the job (`job.error`); the
-  reply carries the change for the stages that did finish, and what landed
-  stays.
+- `draft` sends no change. *Changed 2026-09-30:* a stage that does not finish
+  does not fail the job. It is a gap, as in §8.4: one decision with no field
+  target (action `capture`, `draft` or `review`; agent `…/extract`,
+  `…/drafter` or `…/judge`), and the fields it was working on become
+  `failed`. Then the next stage runs, and the job ends `done`, with
+  `result.gaps` listing `[{stage, reason, detail}]` (display only; absent
+  when there are none). A judge stage that does not finish writes no draft
+  unjudged. What landed stays.
 - The `done` poll carries the last change; later polls repeat it.
 
 ### 10.10 `regenerate_field`
@@ -1077,7 +1151,10 @@ field whose decisions are all in the chain.
   document is `queued` or `running` → `409 job_state`. `regenerate_field` while
   a `draft_brief`, or a `regenerate_field` for the same field, is → `409
   job_state`. `regenerate_field` jobs for different fields may run together.
-- A model failure in `extract` fails the job: nothing was captured. A retrieval
+- A model failure in `extract` is a gap (§10.9), not the job's end. The
+  captured fields are `failed`, and the drafters draft from what the document
+  holds. A scorecard that cannot be made leaves the capture standing and the
+  review out. A retrieval
   failure in `draft` does not: the drafter drafts without passages, certainty
   `low`, `attention` naming the failure. A model failure for one drafter makes
   that field `failed`; the others continue.
@@ -1170,16 +1247,92 @@ client's words, and each call carries only what it needs.
    only item 3's selection — never `clan.facts` or `clan.findings` whole, and
    never the frozen data. Prompt caching is not used until a measured run
    shows what it saves.
-8. **The extract.** The research's own sections (its campaign fields and
-   report) will reach the drafters as its **extract**
-   (`docs/contracts/clan-extract.md`, in design), not as raw data. Until that
-   grammar is agreed, a drafter gets findings and pins only, as above.
+8. **The extract.** For the brief engine, the research arrives as
+   `clan.upstream_payload` (§1): the extract's `upstream` printer, fact rows
+   and decision rows, which the engine adapter sends as `payload.upstream`
+   (§10.14). The research's campaign fields and report reach no drafter
+   (`docs/contracts/clan-extract.md` §11.5). The middleware's own drafters
+   still get findings and pins only, as above.
 
 When built, §10.12 gains, for a research-fed brief: no captured field's
 decision cites an `f_` or `fi_`; a drafted decision citing a `proposed`
 finding has certainty at most `medium` and the `attention` of item 4; no
 decision cites an id marked `model: false`; every `fi_` cite resolves in
 `clan.findings` and is not rejected.
+
+### 10.14 Drafting through the brief engine
+
+*Added 2026-09-30* (owner: Sai's engine is the brief generator; we adapt to
+it and never change it). With `NAPKIN_BRIEF_ENGINE_URL` set, `draft_brief`
+is drafted by the engine's agent server (`engine/agent-server/server.py`),
+and the job turns its answer into the §10 change. Unset, nothing here
+applies. `regenerate_field` is unchanged either way. The adapter is
+`server/napkin/brief/engine.py`.
+
+1. **The request.** One `POST <url>/`, waiting at most 900 s:
+   `{request_kind: "agent", payload: {task: "draft_brief", input, attachments:
+   [{name, extracted_text}], upstream?}, clan: {data: {project_name?,
+   client?}}}`. `input` is the prompt's text (`""` when there is none). Each
+   other readable material is an attachment. A picture is transcribed
+   first (Contract 5 §1.6), and one that cannot be read is recorded unread
+   and not sent. *Changed 2026-09-30:* every material is the client's, so
+   `input` is the brief the engine captures: the prompt's text, then each
+   readable material's text under a plain heading of ours (`--- From the
+   client: <name> ---`), never the engine's `===== ATTACHMENT` header, whose
+   text it treats as supporting context, never as fact. Only a picture's
+   vision transcription goes in `attachments`. `loops37: true` is sent (the
+   engine's own switch for Loops 3–7: insight, SMP, reasons to believe);
+   `NAPKIN_BRIEF_ENGINE_LOOPS37=0` leaves it to the engine host's
+   `BRIEF_LOOPS37`. A name (`project_name`, `client`) that a `model: false`
+   mark holds (§10.13 item 6) is left out of `clan.data`, and the engine's
+   value for it is not taken (`kept`). `upstream` is `clan.upstream_payload` (the extract's
+   `upstream` printer, clan-extract.md §1.1, §11.2), narrowed to `brand`,
+   `category`, `competitors`, `facts` and `decisions`, and left out when it
+   is empty. Nothing else in the document is sent: the materials go whole
+   (they are the brief; a material mark is not read here yet, §10.13 item 6).
+2. **The reply** is mapped by the §10.3–§10.5 rules. Omitted, not blank. A
+   locked field is `kept`. A value equal to what the document holds is not
+   written, nor proposed (`map_brief` echoes the names sent). Otherwise a
+   field a person holds is proposed. Each written field (per
+   leaf) gets one `edit`, action `draft`, `agent draft_brief@1.x/drafter`
+   (Dara), flatten `drafted_by: "brief-engine"`. Its cites are the `mat_` ids
+   the engine read and, for every `fact_ref` on that leaf, the fact id when
+   `clan.facts` holds it, or the finding whose `verification.fact_id` it is.
+   The refs themselves ride as flatten `fact_refs`. A ref the document holds
+   neither way is not cited, and the run decision says so. `certainty` is
+   `medium`, or `low` with `attention` for a draft the engine's rationale
+   names under "DRAFTS TO REVIEW".
+3. **Attention items.** `open_questions` is written whole (action
+   `questions`), and its `attention` lists them. Each `fact_conflicts` entry
+   is an `edit`, action `flag_conflict`, targeting `#facts[<id>]` (or the
+   finding), whose `attention` asks a person to settle which is current. The
+   engine picks no winner, and neither does the middleware.
+4. **The run decision** (action `draft_run`, targeting the materials)
+   records `material_read`, `unread`, `abstained`, the engine's `rationale`
+   as a point, `research_facts` and `research_decisions` when the reply
+   carries them (under `meta`), and the engine's `context` as
+   `engine_context`. Its `attention` names a degraded run, a non-Claude
+   answer, a capture without the model, research rows the engine skipped,
+   and values in a shape the field cannot hold.
+5. **No Judge.** The engine checks its own drafts, so the `judge` stage does
+   nothing: no verdicts, no `review`. The stages stay `extract | draft |
+   judge` for the view. The engine is called from `extract`, which reports
+   `job.stage: draft` and each field `drafting`/`drafter` while it waits.
+   `result.engine` is `{state: waiting | running | used | skipped,
+   reason?}` (display only).
+6. **Never a halt.** Any of these makes the job run the middleware's own
+   `extract → draft → judge`, exactly as without the setting: a timeout, an
+   unreachable engine, a non-2xx, a body that is not a JSON object or
+   carries `error`, a reply with no brief field, or a reply that cannot be
+   mapped. The reason (`result.engine.reason`) never carries request or
+   reply content. It is added to the capture decision's `attention` (or,
+   when the fallback's own capture does not finish either, to that stage's
+   gap decision, whose action is also `capture`, §10.11) and to
+   `result.summary`; the job still ends `done` with `result.gaps` (no stage
+   halts the brief, §8.4). A readable reply that is thin is not a failure:
+   what it has lands, and the rest is `absent` and named in `abstained`.
+   The engine call runs inside the `extract` stage, so that stage's time
+   limit (60 minutes) covers the engine's 900 s plus the fallback capture.
 
 ---
 

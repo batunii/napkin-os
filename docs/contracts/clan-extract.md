@@ -1,7 +1,10 @@
 # The extract — `clan-extract/1`
 
 Status: **draft**. The owner answered the four open questions, and chose the
-brief generator, on 2026-09-30 (OD7–OD11); what is still open is §14.3. Owner: Shrey.
+brief generator, on 2026-09-30 (OD7–OD11), then brought people's decisions to
+the engine, ruled that nothing halts a brief and that only fields are marked
+(OD12–OD15); what is still open is §14.3. Owner: Shrey. The `upstream` printer
+is built: `clan_sdk::extract::upstream` (§1.1, §11.3).
 Versions: grammar `1.0.0`, cast `1`. Written 2026-09-30 against `fe7fb03` on
 `Research-tool-experiment`, with Contract 4 §7.5 as it stands in this
 worktree, and against Sai's RAG module on `origin/jev-hardening` at `7009001`.
@@ -15,7 +18,9 @@ are: the RAG module's `engine/schema/rag_io.v1.json` 1.4.0 (retrieval),
 `engine/schema/rag_metadata.v1.json` 1.3.0 (chunk metadata) and
 `engine/rag/chunking.py` (ingest), and the brief engine's
 `engine/parse_brief.py` `run(upstream=…)` and `engine/research_facts.py`
-(ADR 0014). Where this
+(ADR 0014), and on `task/jev-human-context` at `c223e1b`,
+`engine/research_decisions.py` (ADR 0015) and the agent server that passes
+`payload.upstream` to `run()`. Where this
 document restates one of them, that one wins, except where an owner decision
 of 2026-09-29/30 changes it (§0.2); each such place is named there as a defect
 to amend.
@@ -115,6 +120,10 @@ override the draft, the review issues and the critic wherever they disagree.
 | OD9 | **Names come from the account.** Accounts will exist; until then a dummy account supplies the person's name (2026-09-30). | §3.1.2 | Answers Q3. The grammar reads the name from the context it is given. The pseudonym, the decoding of name-encoded ids and the `tenant-is-person` refusal are withdrawn. |
 | OD10 | **The retrieval path is Sai's RAG module** on `origin/jev-hardening`, and "we will adapt to it, rather than the other way round" (2026-09-30). The module is not changed and is asked for nothing. The corpus version is written in a form the module already ingests: frontmatter `source: "dossier"`, chunked by its default `sections` strategy, one file per record. Retrieval is `rag_io` 1.4.0 as it is. The agent version's fact lines take ADR 0014's form, `[F:<id> v<version>] …`. | §1.4, §2, §10.3, §11.6–§11.8 | Answers Q4. Replaces the recommendation to grow `napkin.retrieval/1` with dossier packs (the draft's P6) and the ragAdded dossier ingest (the draft's P5). Where the module has no place for something, the contract says what that costs and works within it (§11.8). |
 | OD11 | **The brief generator the extract feeds is Sai's engine** on `origin/jev-hardening` (`engine/parse_brief.py` loops 3–7, `engine/research_facts.py`, ADR 0014), not the server's drafters (`server/napkin/brief/drafters.py`). The same rule as OD10: we adapt to the engine as it is and ask it for nothing (2026-09-30). | §10, §11.1–§11.5 | Answers the new question of 2026-09-30. The agent version reaches the engine only through its existing inputs: `run(upstream={brand, category, competitors, facts})`, where the extract supplies fact rows and the engine writes the `[F:…]` lines itself. What has no input — people's decisions and reasons, client answers, open contests, gaps, the research's fields — does not reach it (§11.5). **Superseded:** the drafter integration (the draft's P7 and P11, §11.4–§11.8 of the draft, and `napkin.middleware/1` §10.13 items 5–8 as amended by A3). |
+| OD12 | **We integrate Brief Maker with Sai's engine** ("We integrate it", 2026-09-30), and what people decided on the research reaches it through the engine's second upstream input, `upstream.decisions` (ADR 0015, `engine/research_decisions.py`, on `task/jev-human-context`). | §10.2, §11.2, §11.3, §11.5 | Answers Q6. The upstream printer writes decision rows from the carried chain: rejected and verified findings, resolved and open contests, edits and verdicts with a person's reason, client answers, each with the person's words verbatim and their name from the account. Narrows OD11's "people's decisions … do not reach it", §11.5, L15 and L16. |
+| OD13 | **No stage may halt a brief or a research job**: "that's the worst thing we can do" (2026-09-30). | §1.3, §11.3 | The upstream printer refuses nothing. What it cannot print is left out with its reason (`skipped`, sent as `clan.upstream_skipped`), and the brief is drafted with what there is, or without research. The corpus version's refusals stand: ingesting a locked revision is not a stage of a brief or a research job. |
+| OD14 | **Only fields can be marked** (2026-09-30): "How will we even mark a file confidential, we only have mechanism to mark fields so far." | §5.2, §14.3 | Withdraws Q7. No view writes a mark on a whole material; a `materials[mat]` target, should one exist, is read like any other data path. |
+| OD15 | **A spun-off document may dismiss a carried item it cannot settle** — a flagged field, a carried branch or merge-report conflict — with a written reason, recorded (2026-09-30). | §11.3 | A dismissal is a decision row of kind `edit`, with the person's reason. A contest it dismisses is not settled, so it stays an `open_contest` row. |
 
 Earlier owner rules this contract keeps: the chain's order decides which of
 two decisions came first, never their stamps (2026-09-30); a lock means
@@ -369,9 +378,12 @@ An `Extract` holds the records in grammar order, each in its three parts
   extract only: in Rust the types differ (`CorpusExtract::files`), so an agent
   extract cannot be written as files at all.
 - **`upstream`** prints an agent extract as the brief engine's `upstream`
-  input: `{brand, category, competitors, facts}`, with fact rows (§10.2,
-  §11.3). It is the only part of the agent version that reaches a brief
-  generator today (OD11).
+  input: `{brand, category, competitors, facts, decisions}`, with fact rows
+  and decision rows (§10.2, §11.3). It is the only part of the agent version
+  that reaches a brief generator today (OD11, OD12). Built as
+  `clan_sdk::extract::upstream(clan, ctx) -> Option<Upstream>`
+  (`crates/clan-sdk/src/extract.rs`); the host sends its output as
+  `clan.upstream_payload` (`napkin.middleware/1` §1).
 - **`sections`** prints records as the agent version's list lines (§10.3):
   the agent extract of a research document, and the corpus records of other
   documents that a `rag_io` hit returns (§11.7), in one grammar.
@@ -420,6 +432,13 @@ anchor. It never names a value, and it writes nothing.
 | `invalid-document` | corpus | `clan_sdk::validate(clan).is_content_valid()` is false |
 | `not-locked` | corpus | the revision holds no lock (§5.6) |
 | `changed-after-lock` | corpus | a part is reopened, or something other than a client review, a backref or a lease was written after the lock (§5.6) |
+
+**The `upstream` printer refuses nothing** (OD13). A member that does not
+parse is read as empty, a mark on the whole research leaves every row out, a
+decision with no id is not a row, rows past the engine's cap are cut
+(§11.3): each is named, with its reason and never a value, in the output's
+`skipped`, and the rest is printed. A document that carries no research gives
+no output, and the brief is drafted as it would be without research.
 
 **No file is blocked** (OD8). *Changed 2026-09-30:* the draft's output scan
 kept a file out of the bundle when it found a hidden value in it; the
@@ -2078,6 +2097,10 @@ knowledge base never does. The view's default mark is `{model: true, export:
 true, corpus: false}` (§0.4), so most marks hide a value from the corpus
 only. A gate keyed on `model` would let every one of them into RAG.
 
+*Changed 2026-09-30 (OD14):* only fields are marked; no view writes a mark on
+a whole material, and the `#materials[mat]` rows below apply only to a mark
+written by hand.
+
 A mark whose target is the bare document id covers the whole document, which
 is refused for every version it would hide from (`document-closed`). A mark
 whose target cannot be read refuses the same way (`unparseable-classify`); it
@@ -2300,7 +2323,9 @@ marked value survives in `corpus/`.
   copy stays frozen (owner default, 2026-09-29), and the extract reads only the
   file. A brief spun off before the research marked its budget confidential
   holds the research without that mark. Until `GET /upstream` lists such marks
-  (P16), the child's reviewer marks the child. This is a known gap, not a rule
+  (P16), the child's reviewer marks the child: the carried `<source>#…`
+  address, or the child's own field, whose value is then matched in the
+  engine's `upstream` rows too (§11.3). This is a known gap, not a rule
   (critic G10).
 
 ### 5.8 Client reviews and confidentiality (OD6)
@@ -2625,6 +2650,20 @@ filter, which the module as it is cannot do (DT13, RF6).
   `contract.validate` finds no problem; `research_facts.current` keeps every
   row of the `upstream` printer but the stale ones, and `research_facts.line`
   of each row equals the sections printer's fact line.
+- **The `upstream` printer** (built, `crates/clan-sdk/tests/extract_upstream.rs`):
+  the example research spun into a brief gives the golden
+  `tests/fixtures/upstream-example-brief.json` byte for byte; two spin-offs
+  of the same research give the same output; a `model: false` pin, finding
+  and field read `[Marked confidential]` in their rows and their values show
+  nowhere else, while a corpus-only mark hides nothing; a mark on the whole
+  research leaves every row out and says why; the brief's own resolve and
+  dismissal of carried items are rows; a client's answer is the client's
+  words, and Ellis's suggestion is not a row; the cap cuts changes, never
+  rejections or contests; and every row has only the fields, kinds and roles
+  `research_facts` and `research_decisions` read, checked against the
+  engine's source when a checkout is at hand (`JEV_ENGINE_DIR`). The golden
+  was also run through the engine's own `current()` and `line()`: every
+  decision row is kept, and every fact row but the stale one.
 - **Leaks**: a marked value repeated exactly in intake, the report,
   `was`/`now`, reasoning, capture quotes and a client's words never appears in
   `corpus/`; every number form of §5.4 is caught; overlapping matches with `ß`
@@ -2925,14 +2964,19 @@ Which of the research's records go to the engine, in this order:
 1. **Verified findings** of the lenses the engine's hero writers serve — the
    lenses of loops 4, 5 and 6 (`napkin.middleware/1` §10.13 item 2: consumer
    and culture, category codes, rhythm and moments, brands and positioning,
-   effectiveness, market structure, regulation) — not marked `model: false`;
-   then confidence high, medium, low; then `derived_at`, newest first; **at
-   most 12**.
+   effectiveness, market structure, regulation); then confidence high,
+   medium, low; then `derived_at`, newest first; **at most 12**.
 2. **The pins** the chosen findings cite, a replaced pin's replacement in its
-   place, then the pins the research's `campaign.*` fields rest on; current
-   ones only (§4.3), not marked `model: false`; **at most 40**.
+   place, then the pins the research's `campaign.*` fields rest on (each
+   field's `fact_ids`, in profile order), then the chosen value of each
+   resolved contest — the research's, or one this document resolved; current
+   ones only (§4.3); a pin already given as a row is not given again; **at
+   most 40**.
 3. **Stale pins** among them are kept, as rows the engine skips and records
    (§11.3).
+4. **Marked values.** A finding or pin marked `model: false` is still
+   selected; its row's value reads `[Marked confidential]` (§10.5). *Changed
+   2026-09-30:* the draft left it out.
 
 Proposed findings, open contests' values, excluded facts, the losing values of
 resolved contests and gaps are not selected: the engine treats every row it
@@ -3077,9 +3121,10 @@ general, are not in the agent version.
 
 - A `model: false` value, and every exact occurrence of it, reads `[Marked
   confidential]` (§5.1). In the sections the record's line stays, so a
-  reader can see that a value exists; a record whose own value is marked
-  `model: false` is never a row for the engine (§11.3), and a cite of it is
-  dropped.
+  reader can see that a value exists; so does its row for the engine, whose
+  value is `[Marked confidential]` (§11.3): the writers know a value exists
+  and never see it, and the value has no figure to cite. *Changed
+  2026-09-30:* the draft dropped the row.
 - A confidential value (`corpus: false`, `model: true`) is shown in full, and
   is a row for the engine: the brief is the same client's work, and its
   writers get the switch off (OD1, OD2). In the brief's corpus version an
@@ -3099,12 +3144,15 @@ for loops 3–7 (`brief_context.build_multi`), and the strategy fill
 to it as it is and ask it for nothing.
 
 The engine takes research through one input, `run(..., upstream={brand,
-category, competitors, facts})`. Its HTTP server calls `run()` without
-`upstream` (`agent-server/server.py`, `do_draft`), so the research reaches
-the engine only when the platform calls `parse_brief.run(None,
-raw_text=…, loops37=True, golden=True, upstream=…)` in the engine's process
-and then `mapping.map_brief(brief, clan_data)`: two functions the engine
-already has, used as they are.
+category, competitors, facts, decisions})`; `decisions` is ADR 0015's, on
+`task/jev-human-context`. There its HTTP server passes `payload.upstream` of
+a `draft_brief` to `run()` (`agent-server/server.py`, `_upstream`,
+`do_draft`), so the middleware's engine adapter sends the upstream printer's
+output there (`napkin.middleware/1` §10.14). At `7009001` on
+`origin/jev-hardening` the server called `run()` without it, and the research
+reached the engine only through `parse_brief.run(None, raw_text=…,
+loops37=True, golden=True, upstream=…)` in the engine's process, then
+`mapping.map_brief(brief, clan_data)` (L15).
 
 *Changed 2026-09-30 (OD11):* the draft wrote the brief with the server's
 drafters (`server/napkin/brief/drafters.py`): a research block per loop,
@@ -3117,57 +3165,178 @@ superseded, with P7 and P11.
 | Part of the extract | Engine input | What the engine does with it |
 |---|---|---|
 | the research's brand: `campaign.brand`'s name | `upstream.brand` | an exact retrieval keyword (`brief_facets`) |
-| the research's first category, only when it is one of the metadata contract's 18 values | `upstream.category` | the retrieval category filter; otherwise it is left out and jev chooses one |
+| the first of the research's categories that maps to one of the engine's (`CATEGORY_MAP`, below) | `upstream.category` | the retrieval category filter; otherwise it is left out, named in `skipped`, and jev chooses one |
 | the research's comparators: `campaign.competitor_set`'s names | `upstream.competitors` | exact retrieval keywords; the first is the rival in the territory check (C2) |
 | the selected pins (§10.2) | `upstream.facts`, one row each (§11.3) | `current()` keeps them; every hero writer reads them as `[F:…]` lines inside a data tag and may cite them; the figure check allows their figures; a row the client brief contradicts is held back as contested (C1d) |
 | the selected verified findings | `upstream.facts`, as the fact the finding became in the layer (`verification.fact_id`) | the same as a pin |
 | a stale pin among them | a row with `superseded_by` | `current()` skips it and records why in `meta.research_facts.skipped` |
+| what people decided on the research: rejected and verified findings, resolved and open contests, edits and verdicts with a reason, client answers (§11.3) | `upstream.decisions`, one row each (ADR 0015) | `research_decisions.current()` keeps them; every hero writer that gets the facts reads them as `[D:…]` lines in a `<decisions>` data tag: a rejected finding is not used, an open contest is stated as fact on neither side; a figure taken only from a decision, or a `[D:id]` it was not given, fails the draft |
 | a research `.clan` the person attached to the brief | its selected rows, after the carried research's | the same, read as `extract(X, false)` under its own marks |
 
 The extract supplies **rows, not lines**: the engine writes each line itself
-(`research_facts.line`), and `run()` drops a ready-made line as "not a fact
-record". Everything else in the agent version has no input (§11.5).
+(`research_facts.line`, `research_decisions.line`), and `run()` drops a
+ready-made line as "not a fact record". Everything else in the agent version
+has no input (§11.5).
 
 ### 11.3 The rows
 
+The printer's output is exactly the engine's `upstream` object:
+
+```json
+{ "brand": "Lúnasa",
+  "competitors": ["Brightwater 0.0", "Orchard Hill Zero", "Kestrel Press"],
+  "facts": [ { "id": "f_…", "version": 2, "status": "current", "entity": "…", "key": "…",
+               "value": "…", "unit": "…", "as_of": "…", "scope": "…", "sources": [ … ] } ],
+  "decisions": [ { "id": "d_…", "kind": "…", "who": "…", "role": "person", "about": "…",
+                   "statement": "…", "reason": "…", "as_of": "2026-09-22", "status": "current" } ] }
+```
+
+- **`brand`**: `campaign.brand`'s name; left out when the field is marked
+  `model: false`, has none, or holds a hidden value (§5.4: a keyword is
+  exact, so a partly replaced name would match nothing).
+- **`category`** (*changed 2026-09-30*): the research stores taxonomy leaf
+  codes (`soft_drinks.carbonates`), never the engine's categories, so each
+  is mapped by a fixed table, `clan_sdk::extract::CATEGORY_MAP`: a leaf's
+  own row first (`food.pet_food` → `fmcg`, `public.betting_gaming` →
+  `gambling_betting`), else its vertical's (`soft_drinks.*` → `food_drink`,
+  `alcohol.*` → `alcohol`, `finance.*` → `financial_services`). Every value
+  is one of the engine's categories (`jev_checks.CATEGORY_DESC`) other than
+  `other`, which `brief_facets` never takes from upstream; a test checks the
+  table against the engine's source and the taxonomy. The first category
+  that maps is sent. None maps (energy, property, recruitment, a code
+  outside the taxonomy): left out, `skipped` names `campaign.categories`,
+  and jev chooses one.
+- **`competitors`**: `campaign.competitor_set`'s names, in order, without
+  repeats, less any name holding a hidden value; `[]` when the field is
+  marked `model: false`.
+- **Source titles** in a fact row's `sources` are matched like any other
+  slot (§5.4).
+- **The document's own marks** (*added 2026-09-30*): a `model: false` mark
+  on a data path of the brief itself (`<brief id>#client`) hides that
+  field's value in every row, as a research mark does. Fields are the only
+  thing a person marks.
+- The golden output for the example research spun into a brief is
+  `crates/clan-sdk/tests/fixtures/upstream-example-brief.json`.
+
+**Fact rows** (ADR 0014).
+
 ```json
 { "id": "f_01JXF001", "version": 1, "status": "current",
-  "entity": "category/example", "key": "market.category_value",
+  "entity": "category/example (XA)", "key": "market.category_value", "market": "XA",
   "value": "2400000", "unit": "eur", "as_of": "2025", "scope": "category",
   "sources": [ { "id": "src_01JXS01", "title": "Example Market Review 2026",
                  "uri": "https://example.org/review" } ] }
 ```
 
-The keys are those `research_facts` reads; the engine carries a row's other
-keys unread.
+The keys are those `research_facts` reads, and `market`, which the engine
+carries unread.
 
 - **`id`**: the pin's `f_` id — its id in the research's members, which a
   spun-off brief carries merged, so the engine's cites resolve inside the
   brief (§11.4). For a verified finding, its `verification.fact_id`.
 - **`version`**: the layer version, the `@<version>` of the pin's `origin`;
   left out when it has none, and the engine then prints `[F:<id>]`.
-- **`status`**: `current`. A stale pin adds `superseded_by`, the id of the
-  layer's newer version.
-- **`entity`, `key`**: as stored. A finding: those of the fact it became,
-  when the members hold it; else the entity of the first fact it cites and
-  the key `finding.<lens id>`.
+- **`status`**: `current` for a pin stored `active`, `contested` (a resolved
+  contest's chosen value) or with none; any other stored status as it is,
+  which the engine skips. A stale pin adds `superseded_by`, the id of the
+  layer's newer version (`stale.current_fact_id`).
+- **`entity`, `key`**: as stored, and `entity` followed by ` (<market>)` when
+  the pin has a market: the engine's line prints no market, and the IE and GB
+  values of one key would otherwise read as one fact. A finding: those of the
+  fact it became, when the members hold it; else the entity of the first fact
+  it cites and the key `finding.<lens id>`.
 - **`value`**: the exact value in its JCS text (§6.6), as a string, so the
   engine prints what the `.clan` holds; a finding: its statement.
-- **`unit`**: as stored; none for a finding.
+- **`unit`**: as stored, but `text`, `code` and `date`, which name a value's
+  type and would print after it; none for a finding.
 - **`as_of`**: the fact's period as stored, never its publication or
   retrieval date (the owner's dating rule). The engine prints it after "as
-  of" and checks no format.
-- **`scope`**: the pin's layer, from `fact://<layer>/…`; the engine prints
-  `<scope> research`. A finding: the layer of the fact it became, else
-  `research`.
+  of" and checks no format. None for a finding.
+- **`scope`**: the pin's layer, from `fact://<layer>/…`, else its `layer`; the
+  engine prints `<scope> research`. A finding: the layer of the fact it
+  became, else `research`.
 - **`sources`**: one `{id, title, uri}` per `src_` id, with the source's
-  title and link as the `.clan` stores them; the engine prints the first
-  title. A reviewer-verified source, whose link and publisher are a person's
-  id, is `{id}` alone.
-- **Marks.** A value marked `model: false` is never a row: no agent may read
-  it (OD2). A confidential value with `model: true` is a row (OD1).
+  title and link as the `.clan` stores them; `{id}` alone when the sources
+  member holds no record of it. The engine prints the first title. A
+  reviewer-verified source, whose link and publisher are a person's id, is
+  `{id}` alone, and a person's id or a fact id among a pin's `sources` is not
+  a source.
+- **Marks** (§10.5). A value marked `model: false` — the pin, the finding, or
+  the fact it became — keeps its row, and its `value` reads `[Marked
+  confidential]`; every exact occurrence of a hidden value in another row's
+  value is replaced (§5.4). A confidential value with `model: true` is shown
+  (OD1). *Changed 2026-09-30:* the draft never made such a row.
 - **Order**: the verified findings, then the pins, each in the selection's
   order (§10.2). The engine keeps the order it is given.
+
+**Decision rows** (ADR 0015, OD12).
+
+```json
+{ "id": "d_01JA0D07REJ", "kind": "rejected_finding", "who": "Aoife", "role": "person",
+  "about": "rhythm and moments",
+  "statement": "rejected the finding fi_01JA0F5E (\"Orchard Hill's March launch has taken the spring occasion; a Lúnasa launch before May would be second in.\"); neither it nor its reasoning is evidence",
+  "reason": "A launch date is not evidence the occasion was taken — nothing here measures Orchard Hill's sales. campaign.in_market cites it and must be revised.",
+  "as_of": "2026-09-22", "status": "current" }
+```
+
+The engine prints it `[D:<id>] <who> (<role>) <statement> — about <about>;
+their words: "<reason>" (as of <as_of>).`
+
+- **Which decisions.** The research's own — every decision below the newest
+  spin-off marker and above the next (§9.2, §9.5) — and this document's that
+  settle what it carried: a person's resolve, verification, rejection,
+  verdict, edit or dismissal whose target is in the research (`<R>#…`) or is
+  a carried finding. Not superseded, and with an id. Nothing else: not the
+  intake (`start_campaign`, `create`, `answer_question`, `upload-asset`),
+  not agents' or processes' decisions, not marks, not the lock, not Ellis's
+  suggestions.
+
+  | `kind` | From | `statement` | `about` |
+  |---|---|---|---|
+  | `rejected_finding` | a person's `reject_finding`, or a bad verdict on `findings[fi]` | `rejected the finding {fi} ("{statement}"); neither it nor its reasoning is evidence` | the finding's lens label |
+  | `verified_finding` | a person's `verify` of `findings[fi]` | `verified the finding {fi} ("{statement}"), now fact {f}` | the lens label |
+  | `resolved_contest` | a person's `resolve` of `selection.contested[ct]` | `settled the contest on {entity key in market}: use {value unit} (fact {f}); do not use {value unit} (fact {f})` | the contest's subject |
+  | `open_contest` | a contest still `open` in the frozen copy and not resolved in this document | `has settled the contest on {subject}: the research holds {each value (fact, from)}; do not state either as settled`, `who` `No one on the team` | the contest's subject |
+  | `edit` | a person's `exclude_fact` (`left fact {f} out of the research; do not use it`), `correct_fact` (`corrected …`), `confirm` (`confirmed {Label}`), any other edit (`changed {Label}`), a set-aside of a carried item (the host's `verdict` with action `set_aside` and no polarity, Contract 4 §7.2.1, or any person's action starting `dismiss`: `set {Label} aside as something this document cannot settle`, OD15; `{Label}` is `the agent branch {id}` or `the merge conflict {key}` for those addresses; it is read before the verdicts, so it never reads as an acceptance) — only with a reason the person gave | as said | the label, or `fact {f}` |
+  | `verdict` | a person's verdict on anything but a finding, only with a reason: `marked {Label} as wrong` or `as right`, with the reason code's phrase (§3.3) | as said | the label |
+  | `client_review` | a client's `client_answer` (`accepted the research`, `… with changes`, `rejected the research`, with the reasons' phrases) and `client_answer_part` (`{answer} {part label}`) | as said | `the whole research`, or the part's label |
+
+- **`who`**: the person's name from the account (`ctx.people`, §3.1.2; the
+  host's dummy account until accounts exist), capitalised; `The document
+  owner` for `human:local`; `A person on the team` for anyone the account
+  does not name; a client's typed `client.name` for a client answer, else
+  `The client`. Never a raw id, never an email address.
+- **`role`**: `person`, or `client` for a client answer: the engine's two.
+- **`reason`**: the person's words, verbatim (§3.3 R1): the rationale, with
+  each `human:<id>` in it read as the person's name (§6.4); `null` when it is
+  empty or a text the host or an app wrote for them. A reason chip is not a
+  reason: the statement adds `, picking the reason “{chip}”`. When the
+  rationale is not the person's, the data copy (`rejection.reason`, the
+  contest's `reason`, the exclusion's `reason`) is used. A client answer's
+  reason is the client's `said`, verbatim. An open contest has none.
+- **`as_of`**: the decision's timestamp as a UTC date, `YYYY-MM-DD`; `null`
+  when it does not parse. Shown, never used to order (§6.2).
+- **`status`**: `current`: superseded decisions are not rows.
+- **Marks.** A statement slot that quotes a hidden finding, or shows a hidden
+  contest's values, reads `[Marked confidential]`; a reason on a decision
+  marked `model: false` (`decisions[<id>]`) reads the same; every exact
+  occurrence of a hidden value in `about`, `statement` and `reason` is
+  replaced (§5.4). Everything else stays (OD8).
+- **Order** (§10.3's groups): rejections — rejected findings, bad verdicts,
+  excluded facts; corrections; resolved contests; open contests; changes;
+  acceptances — verified findings, good verdicts; client answers. Chain
+  order, oldest first, within a group.
+- **The cap.** At most 40 rows (`research_decisions.MAX_DECISIONS`): past it,
+  changes, acceptances and client answers are cut from the end, newest first
+  within a group, each named in `skipped`; rejections, corrections and
+  contests are never cut.
+
+**What was left out** (OD13). `Upstream.skipped` names each thing the
+printer could not print — a member that does not parse, a mark that closes
+the whole research, a decision with no id, a verified finding with no
+statement, a row over the cap — by its id or member path, with a fixed
+reason and never a value. The host sends it as `clan.upstream_skipped`
+(`napkin.middleware/1` §1).
 
 ### 11.4 Citations back into the `.clan`
 
@@ -3196,10 +3365,9 @@ and the brief's reviewer sees them as open questions.
 
 | Part of the agent version | Why not | What is lost |
 |---|---|---|
-| WHAT PEOPLE DECIDED: rejections with reasons, corrections, resolved contests, changes, acceptances, marks | no input takes text or decisions | the reasons. The outcome survives only where a row carries it: a correction's new fact and a contest's chosen value are rows, while the rejected finding, the excluded fact and the losing value are simply not sent |
-| client answers to the research | no input | what the client said, and why |
+| WHAT PEOPLE DECIDED: marks, the lock, and edits and verdicts with no reason a person gave | decision rows carry the rest (OD12, §11.3); a mark has no row, and a decision with no words of a person's says nothing the fields do not | that a value was marked; the mark's own reason |
 | EVIDENCE · THE CAMPAIGN AS RESEARCHED | no input but the three facets | the research's objective, audience, problem and the rest; the engine reads the brief's own text |
-| STILL OPEN: open contests | no input marks a value disputed (C1d's contested set is the engine's own, from the client brief) | the dispute; neither value is sent, so neither is stated as fact |
+| STILL OPEN: open contests | reach the writers as `open_contest` decision rows (OD12), but no fact input marks a value disputed (C1d's contested set is the engine's own, from the client brief) | neither value is a fact row, so neither may be cited; a figure from the contest fails the draft |
 | gaps | no input | "not established; do not claim it" |
 | proposed findings | every row is read as verified | nothing is sent |
 | agency memory: records of other documents | the brief path retrieves with no tenant and no brand, so it serves house and global material only, and every dossier chunk carries its agency's tenant and a `brand:` scope (§5.5) | no earlier brief, rejection or finding of the agency reaches a writer; they reach a `rag_io` caller only (§11.7) |
@@ -3327,8 +3495,12 @@ Each limit, and how the contract works within it:
 | L12 | `cite_for` makes one cite per document and section role | The contract's cite key is built from `doc_id` and the heading's anchor, not from the module's cite |
 | L13 | `rag_io`'s `research[].as_of` must be a full date, and `research` holds at most 50 items; `research` and `attachments` only shape the relevance check | A period that is not a full date is sent as null and stays in the text; rows past 50 are not sent; nothing relies on them reaching a writer |
 | L14 | `memory.used_cites` is planned: validated, not acted on | It is not sent |
-| L15 | The engine's HTTP server does not forward `upstream` | The platform calls `parse_brief.run(upstream=…)` and `map_brief` in the engine's process (§11.1) |
-| L16 | The engine has no text input for research, and no input for a disputed value, a gap or an unverified finding | §11.5 says what is lost; the fact rows carry what the engine can take |
+| L15 | At `7009001` the engine's HTTP server did not forward `upstream`; on `task/jev-human-context` (`c223e1b`) it passes `payload.upstream` of a `draft_brief` to `run()`, and `regenerate_field` takes none | The middleware's engine adapter sends `clan.upstream_payload` as `payload.upstream` (`napkin.middleware/1` §10.14); in the engine's process, `parse_brief.run(upstream=…)` and `map_brief` (§11.1) |
+| L16 | The engine has no text input for research, and no input for a gap or an unverified finding; a disputed value reaches it only as an `open_contest` decision row | §11.5 says what is lost; the fact and decision rows carry what the engine can take |
+| L19 | `research_decisions` collapses each text part's whitespace and clips it at 300 characters with `…` (`MAX_CHARS`), and turns `<` and `>` into `‹` and `›` | The printer sends the words verbatim; a longer reason reaches the writers clipped by the engine, and stays whole in the `.clan` |
+| L20 | A decision row's `role` is `person` or `client`, and `who`, `about` and `statement` must be non-empty | An open contest, which nobody decided, reads `No one on the team (person) has settled the contest …` |
+| L21 | At most 40 decision rows (`MAX_DECISIONS`); past it the engine skips rows in the order given | The printer cuts first, by §11.3's order, and names what it cut in `skipped` |
+| L22 | `research_facts.line` prints no market | A pin's `entity` carries ` (<market>)` (§11.3) |
 | L17 | The engine's figure check compares a draft's figures with the row's value and unit | Rows carry the exact stored value (§11.3), so a writer who writes a rounded form (`€2.4m` for `2400000`) fails the check and the draft is not kept; the engine then leaves the field open, as it does for any failed draft |
 | L18 | The engine's hosted embedder and reranker run on NVIDIA trial terms | A licensing matter, not a confidentiality rule (§11.6, OD7) |
 
@@ -3675,10 +3847,25 @@ stored, gives `parse_brief.run(…, upstream=…)`:
       "value": "The three largest brands hold most of the category, so a challenger needs an occasion of its own.",
       "scope": "research" },
     { "id": "f_01JXF0A1", "version": 1, "status": "current",
-      "entity": "category/example", "key": "market.top3_share",
+      "entity": "category/example (XA)", "key": "market.top3_share", "market": "XA",
       "value": "0.72", "unit": "proportion", "as_of": "2025", "scope": "category",
       "sources": [ { "id": "src_01JXS01", "title": "Example Retail Panel",
-                     "uri": "https://example.org/panel" } ] } ] }
+                     "uri": "https://example.org/panel" } ] } ],
+  "decisions": [
+    { "id": "d_01JXA0REJ", "kind": "rejected_finding", "who": "Alex Doe", "role": "person",
+      "about": "consumer and culture",
+      "statement": "rejected the finding fi_01JXF05E (\"Shoppers in XA are switching to the no-alcohol range at weekends.\"); neither it nor its reasoning is evidence",
+      "reason": "A launch date is not evidence that shoppers switched; nothing here\nmeasures sales.",
+      "as_of": "2026-09-22", "status": "current" },
+    { "id": "d_01JXA0RES", "kind": "resolved_contest", "who": "Alex Doe", "role": "person",
+      "about": "category/example market.top3_share in XA",
+      "statement": "settled the contest on category/example market.top3_share in XA: use 0.72 proportion (fact f_01JXF0A1); do not use 0.68 proportion (fact f_01JXF0A2)",
+      "reason": "The retail panel covers the whole market; the other figure leaves\nout discounters.",
+      "as_of": "2026-09-21", "status": "current" },
+    { "id": "d_01JXA0EDO", "kind": "edit", "who": "Alex Doe", "role": "person",
+      "about": "Objective", "statement": "changed Objective",
+      "reason": "Robin marked the objective as too vague; the client's email names\nmidweek as the gap.",
+      "as_of": "2026-09-22", "status": "current" } ] }
 ```
 
 - The first row is the verified finding `fi_01JXF0B2`, as the fact it became
@@ -3689,12 +3876,14 @@ stored, gives `parse_brief.run(…, upstream=…)`:
 - The engine writes each row's line itself: `[F:f_01JXF0A1 v1]
   category/example market.top3_share: 0.72 proportion (category research, as
   of 2025; Example Retail Panel)`.
-- **What the engine is not given** (§11.5): the losing 68% and why Alex Doe
-  chose 72%; the rejected weekend finding and the reason; the changed
-  Objective and why; the confidential Budget band, which is a campaign field,
-  not a fact; the client's rejection of the brief; and the gap on category
-  codes. The sections printer holds them all (§10.3), for a person reading
-  the block, and no input of the engine takes them.
+- **What people decided** reaches the writers as decision rows (OD12): the
+  rejected weekend finding and the reason, the contest and why Alex Doe chose
+  72% over 68% (0.68 is no fact row, so a draft stating it fails), and the
+  changed Objective and why.
+- **What the engine is not given** (§11.5): the confidential Budget band,
+  which is a campaign field, not a fact, and its mark; the client's rejection
+  of the brief, which is the brief's own; and the gap on category codes. The
+  sections printer holds them (§10.3), for a person reading the block.
 
 The start of the same research as the sections printer writes it:
 
@@ -3830,11 +4019,14 @@ the RAG module or the brief engine (OD10, OD11).
 
 **For brief writing:**
 
-- **P22.** The platform calls the engine in its process:
-  `parse_brief.run(None, raw_text=…, loops37=True, golden=True,
-  upstream=<the upstream printer's output>)`, then `mapping.map_brief`, and
-  records each field's `fact_refs` as the draft decision's cites (§11.1,
-  §11.4). The engine's HTTP server does not forward `upstream` (L15).
+- **P22.** The engine is given the upstream printer's output: the host sends
+  it as `clan.upstream_payload` for a document the brief tasks run on
+  (`napkin.middleware/1` §1), and the middleware's engine adapter passes it
+  as `payload.upstream` (§10.14), which the engine's server on
+  `task/jev-human-context` gives `run()`; the platform records each field's
+  `fact_refs` as the draft decision's cites (§11.1, §11.4). *Built
+  2026-09-30:* the printer and the host's context; the adapter is the
+  middleware's.
 
 *Superseded 2026-09-30 (OD10, OD11):* **P5** (a dossier ingest in the RAG
 module), **P6** (dossier packs on `napkin.retrieval/1`), **P7** (the research
@@ -3889,8 +4081,10 @@ inputs, which only the withdrawn `hidden_inputs` flag needed) and **P11**
 
 *Answered 2026-09-30:* Q1, a hosted embedder (OD7); Q2, echoes (OD8: exact
 occurrences are replaced, and no file is blocked); Q3, names (OD9); Q4, the
-retrieval path (OD10); and which brief generator the extract feeds (OD11).
-Open:
+retrieval path (OD10); which brief generator the extract feeds (OD11); Q6,
+the research's decisions, which now reach the engine as decision rows
+(OD12). *Withdrawn:* Q7, a mark on a whole material: only fields can be
+marked (OD14). Open:
 
 - **Q5. The agency's knowledge base reaches no brief writer.** The engine's
   brief path retrieves with no tenant and no brand, so it serves house and
@@ -3899,16 +4093,6 @@ Open:
   no writer. Is that acceptable until the engine changes on its own
   schedule, and which `rag_io` caller should read them meanwhile — a panel
   beside the brief, for the planner?
-- **Q6. The research's decisions do not reach the engine.** People's reasons,
-  client answers, open contests, gaps and the research's own fields have no
-  engine input (§11.5); the engine gets verified facts only. Is the loss
-  accepted, or should they reach the planner some other way, such as that
-  panel?
-- **Q7. A mark on a whole material hides only its name.** Its text is never
-  rendered, and under OD8 a quote taken from it is not the marked value
-  (§5.2). Is that what "the exact figures" means for a marked material, or
-  should the person mark the quoted figure itself, as the example does
-  (§12.4)?
 - **Q8. Who may rewrite the remote store?** A removed record keeps its row in
   a remote store until the store is rewritten from the local index with
   `migrate --replace`, which the module's README asks to be agreed first
@@ -4002,7 +4186,7 @@ owner decision (§0.2).
 | DT18 | Sort keys with gaps; stamp comparison | Missing first; no stamp comparison | 6.3 |
 | DT19 | A brief's bytes depended on its research's current state | No resolver; the upstream view from the brief's bytes | 1.1, 9.5 |
 | CF1 | Closing a field left its grounds open | Withdrawn by OD8: a mark hides the marked value and its exact occurrences, not what it rests on | 5.1 |
-| CF2 | A material's mark left its quotes open | Withdrawn by OD8: a marked material's name is replaced; a quote taken from it is not the marked value (Q7) | 5.2 |
+| CF2 | A material's mark left its quotes open | Withdrawn by OD8: a marked material's name is replaced; a quote taken from it is not the marked value. No view marks a whole material (OD14) | 5.2 |
 | CF3 | Needles too narrow | OD8: the exact marked value, with a figure's normal number forms, specificity and dates; the source span and 8-word windows are withdrawn | 5.4 |
 | CF4 | Research values laundered into the corpus through the brief | OD8: the upstream copy's marked values are matched in the brief, so an exact repeat is replaced; a brief field that cites one is not hidden | 5.4, 5.7 |
 | CF5 | Agent text written from closed inputs | OD8: accepted, with no flag; the `hidden_inputs` flag, the input map and P10 are withdrawn | 5.1 |

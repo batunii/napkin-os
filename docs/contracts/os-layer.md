@@ -559,14 +559,22 @@ default, 2026-09-29; may be reversed):
    - a `contest` decision in the chain, own or carried, with no later
      `resolve` on its target;
    - a conflict in `merge-report.yaml`, or in a carried
-     `upstream/<id>/merge-report.yaml`.
-2. **An unmerged agent branch** under `agents/`, carried ones included.
+     `upstream/<id>/merge-report.yaml` (addressed
+     `<id>#merge-report[<key>]`, the conflict's `key` verbatim).
+2. **An unmerged agent branch** under `agents/`, carried ones included. In a
+   document with `lineage.carried` every branch is carried — the host never
+   writes a branch into a document (its forks are documents of their own,
+   §6) and the spin-off keeps the parent's `agents/**` as they are (§5.2,
+   item 5) — and is addressed `<direct parent id>#agents[<branch id>]`. In
+   any other document a branch is its own and has no address.
 3. **A finding not yet verified or rejected** — any `proposed` entry in this
    document's findings member, carried copies included.
 4. **A field citing a rejected finding** — its envelope's `finding_ids`, or
    its **current writing decision**: the newest decision in this chain that
    wrote the field (`napkin.middleware/1` §10.5's rule), not superseded and not
-   a `propose`, citing the `fi_` id.
+   a `propose`, citing the `fi_` id. A field in a frozen copy counts too,
+   through its envelope's `finding_ids` only, when the finding is rejected in
+   this document's copy of it; it is addressed `<id>#<path>` (*2026-09-30*).
 5. **A bad verdict not yet answered**, own or carried — the field revised
    since, or the verdict overridden since by a good verdict with a written
    reason (`/verdict good`) on the same address. A carried
@@ -579,19 +587,61 @@ default, 2026-09-29; may be reversed):
    since, or a rejected document whose parts are not known yet (§7.5.4). It
    can only arise on a locked document, so it bears on locking again.
 
-A carried branch or carried merge-report conflict is settled only upstream:
-merged in the parent, then taken with the newer upstream (§5.5, not built).
-Until then it blocks. **Still open:** whether a child may dismiss one with a
-written reason.
+#### 7.2.1 Setting a carried item aside
 
-Item 4 applies to this document's own fields only. A field in a frozen copy
-that cites a rejected finding (its `finding_ids`) is not on the child's list:
-the frozen copy is read-only, so nothing in the child could revise it and it
-would block the lock for good. The parent's own list still holds it;
-nothing in the child names it yet (`GET /upstream`'s `cited_by` skips the
-frozen copies too). **Still open:** whether the owner's "every carried
-item" default should count it, which needs a way to settle it in the child
-first (as `/verdict good` settles a carried bad verdict).
+*Decided 2026-09-30* (owner: a spun-off document may dismiss a carried item
+it cannot settle, with a written reason, recorded). Four carried items have
+no way to be settled in the child: the frozen copy is read-only, a branch or
+a merge report names the parent's data, and a contest with no value the
+child holds has nothing for `/resolve` to take.
+
+| Carried item | Lock-list item | Its address |
+|---|---|---|
+| A frozen field citing a finding rejected here | 4 | `<id>#<path>` |
+| An agent branch (the document has `lineage.carried`) | 2 | `<direct parent id>#agents[<branch id>]` |
+| A conflict in `upstream/<id>/merge-report.yaml` | 1 | `<id>#merge-report[<key>]` |
+| A contest carried open in a frozen copy, none of whose values is a pin this document holds or carries a frozen `pin` (*added 2026-09-30*) | 1 | `<id>#selection.contested[<ct>]` |
+
+1. Each is merged or revised in the document it came from, and reaches the
+   child only when it takes the newer upstream (§5.5, not built). Until then
+   a person may **set it aside with a written reason**:
+   `/acknowledge {target, rationale}` (§8.1, item 7). `/decisions` marks each
+   such item `can_set_aside: true`, with its address.
+2. **What it writes.** One decision, as the person in `Ctx`:
+
+   ```yaml
+   - id: d_…
+     kind: verdict
+     action: set_aside            # no polarity: it says nothing of whether the item is right
+     agent: human:<id>
+     actor: human:<id>
+     targets: ["<the item's address>"]
+     cites: ["<the item's address>", "<fi_… flagging the field>" | "<the conflict's decision>"]
+     rationale: <the person's words, required>
+   ```
+
+   Nothing else changes: not the frozen copy, not the branch or the report
+   (they stay in the file, as carried), not the parent. It writes **no
+   backref**: §7.4's table names what a parent is told, and a set-aside is
+   not on it — the parent still merges its branch and settles its conflict
+   for its own lock.
+3. **It leaves the list.** An item is off this document's lock list while a
+   `set_aside` verdict, not superseded, targets its address — and, for a
+   flagged field, cites the finding that flags it: the same field flagged
+   later by another rejected finding is a new item.
+4. **What is not set aside.** Only what the list offers (`can_set_aside`).
+   A carried contest in `selection.contested` with a value to take is
+   settled here with `/resolve`, and a carried bad verdict with `/verdict
+   good` and a reason, so either is refused `409`. `/resolve` of a value with
+   no pin to take is `409` and names set-aside. This document's own items are settled, not set
+   aside (`400`).
+
+A field in a frozen copy whose **writing decision** (not its envelope) cites
+a rejected finding is not on the child's list: carried decisions address the
+parent's fields, and item 4's writing-decision rule is not run over the
+frozen copies. The parent's own list still holds it. `GET /upstream`'s
+`cited_by` still skips the frozen copies: it names this document's own
+fields.
 
 ### 7.3 At lock
 
@@ -1102,6 +1152,8 @@ freely, never redefine.
   - `/acknowledge {decision, rationale?}` — "Looks right": a good verdict
     that cites the decision, which clears what its agent flagged or was unsure
     of (§4) without touching what it wrote. Refused on a finding (verify it).
+    With `{target, rationale}` in place of `decision`, it sets a carried item
+    aside (§7.2.1, §8.1 item 7).
   - `/approve {rationale?}` — refused while anything on the §7 list is open;
     otherwise one `approve` decision naming the exact version accepted. What
     locking does to other writes (`/patch-data`, a job) is W5-Z1's.
@@ -1134,7 +1186,9 @@ body or reply changes meaning.
      `data.upstream.<id>`; the decision targets `<id>#<path>` and the frozen
      copy is not written. `/verdict good` with a rationale on such a target is
      how a carried bad verdict is overridden (§7.2, item 5).
-   - `/acknowledge {decision}` takes a decision id, own or carried, as today.
+   - `/acknowledge {decision}` takes a decision id, own or carried, as today;
+     `/acknowledge {target, rationale}` takes a carried item's address
+     (item 7).
 2. **`/resolve {contest, chosen, rationale}`.** `contest` is a `ct_` id or an
    address. It is looked up in `data.selection.contested`, then in each
    `data.upstream.<id>.selection.contested`. For a carried contest:
@@ -1218,6 +1272,28 @@ body or reply changes meaning.
      document has resolved it too).
    - Lists are sorted by `id`. `label` is the pin's readable name, as
      `/decisions` labels a target.
+7. **`/acknowledge {target, rationale}`** — set aside a carried item this
+   document cannot settle (§7.2.1). *Added 2026-09-30.* The existing route,
+   extended rather than a new one: it already means "a person has looked and
+   the document goes ahead without changing what this names". Exactly one of
+   `decision` and `target` is given (`400` otherwise); a `target` is an
+   address, `<id>#<path>` (`400` without the `#`), and needs a `rationale`
+   (`400` when empty or blank).
+   - A person's (`403` for a process); refused `409` on a locked document,
+     like every review route.
+   - `400`: an address on this document ("settle it here"), on a document
+     this one does not carry, or the bare parent (`<id>#`).
+   - `409`: the lock list holds the address but it can be settled here (a
+     carried contest with a value to take: `/resolve`; a carried bad
+     verdict: `/verdict good`), or
+     it is already set aside (a `set_aside` not superseded targets it).
+   - `404`: nothing carried at that address is on the lock list.
+   - Otherwise the §7.2.1 decision, one generation; the reply is the review
+     routes' `{ok, decision, kind: "verdict", targets}`. No backref.
+   - `/decisions` gains, on an attention item, `can_set_aside: true` (absent
+     when false), and a target `kind` gains `branch` (`<id>#agents[…]`); a
+     merge conflict's address is labelled `Merge conflict · <key>`, kind
+     `contest`.
 
 ### 8.2 Client review routes
 

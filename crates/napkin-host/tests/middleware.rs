@@ -1702,3 +1702,60 @@ fn a_source_without_a_uri_or_a_src_id_is_refused() {
     r["change"]["sources_append"][0]["id"] = json!("human:ana");
     assert!(refused_reason(&f, r).contains("no `src_` id"));
 }
+
+/// The brief engine's fact conflict (`napkin.middleware/1` §10.14): an `edit`,
+/// action `flag_conflict`, on `#facts[<id>]`, with no write to that path. The
+/// host records it without writing the fact, and it stands as a flagged item
+/// that does not block the lock: a person settles it, nothing waits on it.
+#[test]
+fn an_engine_fact_conflict_is_recorded_as_a_flag_and_writes_nothing() {
+    let f = fixture_with(Some(BRIEF_PIPELINE));
+    let clan = f.session.clan_context_for_agent();
+    let (out, _) = settle(&f, reply_for(&clan));
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+    let before = on_disk(&f);
+    let data_before = yaml(&before, "shared/data.yaml");
+    let facts_before = yaml(&before, FACTS_PATH);
+
+    let clan = f.session.clan_context_for_agent();
+    let doc = clan["id"].as_str().unwrap();
+    let mut r = reasoning("Recorded a conflict between the client brief and verified research.", &["mat_email01"]);
+    r["attention"] = json!("The client brief and verified research disagree. Settle which is current.");
+    let reply = json!({
+        "api": "napkin.middleware/1", "task": "draft_brief", "handler": "draft_brief@1.0",
+        "job": { "id": "job_e1", "state": "done", "progress": { "done": 3, "total": 3 },
+                 "started_at": "2026-09-30T09:00:00Z", "finished_at": "2026-09-30T09:00:09Z", "error": null },
+        "result": { "summary": "Brief drafted." },
+        "change": {
+            "doc": doc, "base_version": clan["version"],
+            "decisions": [
+                { "id": "d_01JB0E01CFL", "kind": "edit", "agent": "draft_brief@1.0/drafter",
+                  "action": "flag_conflict", "targets": [format!("{doc}#facts[f_01JA0B3P4Q]")],
+                  "cites": ["mat_email01", "f_01JA0B3P4Q"], "drafted_by": "brief-engine",
+                  "fact_conflict": { "id": "f_01JA0B3P4Q", "version": 2 },
+                  "reasoning": r }
+            ]
+        },
+        "trace": { "scope": { "org": "dev", "brand": "dev" }, "backend": "mock-backend",
+                   "model": null, "hits": [], "usage": { "input_tokens": 0, "output_tokens": 0 } }
+    });
+    let (out, _) = settle(&f, reply);
+    assert_eq!(out["data"]["change"]["applied"], true, "{out}");
+
+    let after = on_disk(&f);
+    assert_eq!(yaml(&after, "shared/data.yaml"), data_before, "no field is written");
+    assert_eq!(yaml(&after, FACTS_PATH), facts_before, "the fact is not written");
+    assert_eq!(chain(&after).decisions[0].action, "flag_conflict");
+    let flags: Vec<_> = f
+        .session
+        .read(napkin_host::ops::decisions::decisions)
+        .unwrap()
+        .attention
+        .into_iter()
+        .filter(|a| a.decision.as_deref() == Some("d_01JB0E01CFL"))
+        .collect();
+    assert_eq!(flags.len(), 1, "one flagged item for the conflict");
+    assert_eq!(flags[0].code, "flagged");
+    assert!(!flags[0].blocks_lock, "a conflict never holds the brief");
+    assert!(flags[0].address.as_deref().unwrap().ends_with("#facts[f_01JA0B3P4Q]"));
+}

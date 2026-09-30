@@ -455,6 +455,9 @@ body.dragging::after{content:"Drop it here to add it";position:fixed;inset:10px;
 .rs-stp.now .rs-lane,.rs-stp.wait .rs-lane{background:linear-gradient(90deg,var(--create) 55%,var(--line-soft) 55%)}
 .rs-stp.wait .tick,.rs-stp.fail{color:var(--create-ink)}
 .rs-stp.fail .rs-lane{background:repeating-linear-gradient(135deg,var(--create) 0 4px,var(--create-soft) 4px 8px)}
+.rs-stp.skip{color:var(--ink2)}
+.rs-stp.skip .tick{color:var(--amber-ink)}
+.rs-stp.skip .rs-lane{background:repeating-linear-gradient(90deg,var(--ink3) 0 4px,transparent 4px 8px)}
 .rs-now{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:center;border:1px solid var(--line);border-radius:20px;padding:22px;background:var(--paper)}
 .rs-now > .agent-figure{width:56px;height:75px}
 .rs-now .say{max-width:none}
@@ -1401,7 +1404,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     h+='<div class="group"><h3>Gaps · '+gaps.length+'</h3>';
     if(!gaps.length) h+='<div class="empty-state">No gaps recorded.</div>';
     h+='<div class="cards">'+gaps.map(function(g){
-      return '<article class="card gap" id="gap-'+esc(g.id)+'" data-address="'+esc(addr('selection.gaps['+g.id+']'))+'"><div class="fh"><span class="pill warn"><span class="d"></span>not found</span>'
+      return '<article class="card gap" id="gap-'+esc(g.id)+'" data-address="'+esc(addr('selection.gaps['+g.id+']'))+'"><div class="fh"><span class="pill warn"><span class="d"></span>'+(notRun(g)?'not looked up':'not found')+'</span>'
         +(g.lens?'<span class="pill">'+esc((LENS[g.lens]||{}).l||g.lens)+'</span>':'')+(g.market?'<span class="pill">'+esc(g.market)+'</span>':'')
         +'<span class="sp" style="flex:1"></span><span class="path">'+esc(g.key)+'</span></div>'
         +'<div class="searched">'+esc(g.searched)+'</div>'
@@ -2142,7 +2145,24 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       st[S.k]=s;
     });
     if(!j && isObj(D().report)) st.report='done';
+    var sk=skippedStages(); Object.keys(sk).forEach(function(k){ if(st[k]==='done') st[k]='skip'; });
     return st;
+  }
+  // A research gap the look-up never ran for (the service failed or was not
+  // reached), as opposed to one it looked for and did not find.
+  function notRun(g){ return /^research (failed|did not run)\b/.test(String(g&&g.note||'')); }
+  // The stages the job went on without: those the job's reply names as gaps,
+  // and the look-up when none of its runs ran (no stage halts the job, so a
+  // skipped one can end in "done").
+  function skippedStages(){
+    var out={}, j=CHAT.job;
+    arr(j&&j.gaps).forEach(function(g){ if(g&&STAGE[g.stage]&&g.reason!=='unanswered') out[g.stage]=true; });
+    var S=sel(), nr=arr(S.gaps).filter(notRun);
+    if(nr.length){
+      var ran=arr(S.lenses_run).filter(function(r){ return r&&!nr.some(function(g){ return g.lens===r.lens&&g.market===r.market; }); });
+      if(!ran.length) out.research=true;
+    }
+    return out;
   }
   function attChip(mid){
     var m=material(mid), href=assetHref(m), name=m?(m.name||mid):mid;
@@ -2229,7 +2249,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function stepsHtml(){
     var st=stageStates();
     return '<ol class="rs-steps" aria-label="How far we are">'+STAGES.map(function(S){
-      var s=st[S.k], tick={done:'Done', now:'Now', wait:'Needs you', fail:'Stopped', todo:'Next'}[s];
+      var s=st[S.k], tick={done:'Done', skip:'Skipped', now:'Now', wait:'Needs you', fail:'Stopped', todo:'Next'}[s];
       return '<li class="rs-stp '+(s==='todo'?'':s)+'"'+(s==='now'||s==='wait'?' aria-current="step"':'')+'>'
         +fig(S.k, s==='now'?'working':s==='wait'?'needs-you':'idle')+'<span class="rs-lane" aria-hidden="true"></span>'
         +'<span>'+esc(stageLabel(S.k))+'</span><span class="tick">'+esc(tick)+'</span></li>';
@@ -2246,6 +2266,18 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       var ran=runs.filter(function(r){ return r&&r.lens===L.k; }).length;
       return {lens:L.k, k:lensAgent(L.k), off:off, done:!off&&ran>0&&ran>=need};
     });
+  }
+  // A finished job with no report says so (no stage halts the job, so it can
+  // end with nothing to cite), and where what is missing is kept: what we
+  // could not look up is told apart from what we looked for and did not find.
+  function doneWords(rep, gaps){
+    gaps=arr(gaps);
+    var nr=gaps.filter(notRun).length, nf=gaps.length-nr, n=function(x){ return x+' gap'+(x===1?'':'s'); };
+    var where=' What’s missing is under Selection ('+n(gaps.length)+').';
+    if(rep) return 'We’re done. Your report is ready.'+(nr?' We couldn’t look some of it up, so the report says less than it could.'+where:'');
+    if(nr) return 'We’re done, but there’s no report: we couldn’t look '+(nf?'some of it':'it')+' up, so there’s nothing to cite yet.'+where;
+    return 'We’re done, but there’s no report: nothing we found can be cited.'
+      +(nf?' What we couldn’t find is under Selection ('+n(nf)+').':'');
   }
   // What the agent at work says, in first person, from the job as it stands.
   function speech(T){
@@ -2278,7 +2310,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       return sp;
     }
     if(rep||(j&&j.state==='done')){
-      sp.stage='report'; sp.k='drafter'; sp.hello='Hi, I’m '+given('drafter')+'.'; sp.text='We’re done. Your report is ready.';
+      sp.stage='report'; sp.k='drafter'; sp.hello='Hi, I’m '+given('drafter')+'.'; sp.text=doneWords(rep, sel().gaps);
       if(document.body.classList.contains('show-run')) sp.acts='<button type="button" class="ans" data-act="show-run">Back to the report</button>';
       return sp;
     }
@@ -2588,6 +2620,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
     if(isObj(b.result)){
       if(b.result.summary) j.summary=b.result.summary;
+      if(Array.isArray(b.result.gaps)) j.gaps=b.result.gaps;
       arr(b.result.messages).forEach(function(m){ if(isObj(m)&&m.id&&m.text&&!CHAT.live[m.id]) CHAT.live[m.id]={role:'agent', text:m.text, stage:m.stage, job_id:j.id}; });
     }
     if(isObj(b.change)){ j.applied=b.change.applied; j.reason=b.change.reason; if(b.change.applied) loadChain(); }
@@ -2703,7 +2736,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function gapBlock(gid){
     var g=arr(sel().gaps).filter(function(x){ return x.id===gid; })[0];
     if(!g) return '<div class="blk-card gap"><span class="pill dash">gap '+esc(gid)+' · not in selection</span></div>';
-    return '<div class="blk-card gap"><div class="h"><span class="pill warn"><span class="d"></span>looked for, not found</span>'+(g.lens?'<span class="pill">'+esc((LENS[g.lens]||{}).l||g.lens)+'</span>':'')+(g.market?'<span class="pill">'+esc(g.market)+'</span>':'')
+    return '<div class="blk-card gap"><div class="h"><span class="pill warn"><span class="d"></span>'+(notRun(g)?'not looked up':'looked for, not found')+'</span>'+(g.lens?'<span class="pill">'+esc((LENS[g.lens]||{}).l||g.lens)+'</span>':'')+(g.market?'<span class="pill">'+esc(g.market)+'</span>':'')
       +'<span class="sp"></span><a class="path" href="#gap-'+esc(g.id)+'">'+esc(g.id)+'</a></div><div class="st">'+esc(g.searched)+'</div>'+(g.note?'<div class="muted" style="font-size:13px">'+esc(g.note)+'</div>':'')+'</div>';
   }
   function contestBlock(cid){

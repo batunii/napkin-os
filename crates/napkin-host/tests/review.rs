@@ -785,3 +785,213 @@ fn a_brief_field_citing_a_rejected_finding_blocks_until_it_is_redrafted() {
     let b = blockers(&brief);
     assert!(b.contains(&("flagged_field".into(), Some(format!("{CHILD}#insight")))), "{b:?}");
 }
+
+/// `f`, as the SDK writes a spin-off with its upstream (Contract 4 §5.2,
+/// §5.3): the hop recorded in `lineage.carried`, and `extra` entries carried
+/// with it — a branch, a merge report beside the frozen copy.
+fn spun_off(f: Fixture, parent: &Fixture, extra: &[(&str, &str)]) -> Fixture {
+    let clan = on_disk(&f);
+    let mut manifest = clan.manifest().clone();
+    manifest.lineage = Some(clan_sdk::Lineage {
+        parent_id: parent.doc.clone(),
+        parent_uri: format!("clan-store:{}", parent.doc),
+        parent_sha256: None,
+        delta: "spun off".into(),
+        parents: Vec::new(),
+        merge: false,
+        carried: Some(clan_sdk::Carried {
+            document_id: parent.doc.clone(),
+            data_sha256: "sha256:0".into(),
+            facts_sha256: None,
+            findings_sha256: None,
+            sources_sha256: None,
+            last_decision: None,
+        }),
+    });
+    let mut b = clan_sdk::ClanBuilder::new(manifest);
+    for (path, bytes) in clan.read_all_entries().unwrap() {
+        if path != clan_sdk::MANIFEST_PATH {
+            b.add_entry(path, bytes);
+        }
+    }
+    for (path, body) in extra {
+        b.add_entry(*path, body.as_bytes().to_vec());
+    }
+    std::fs::write(f.id.as_str(), b.build().unwrap()).unwrap();
+    let session = Session::new(Arc::new(FsStore::new(f._dir.path().to_path_buf())));
+    session.open(f.id.clone()).unwrap();
+    Fixture { session, ..f }
+}
+
+#[test]
+fn a_child_sets_aside_what_it_cannot_settle_with_a_reason() {
+    let parent = fixture();
+    let p = parent.doc.clone();
+    let brief = child_of(
+        &parent,
+        json!({}),
+        |data| data["campaign"] = json!({ "in_market": { "value": "Retail only", "finding_ids": ["fi_01JA0F2B"] } }),
+        |_| {},
+    );
+    let report = "generated_by: test
+conflicts:
+- key: campaign.objective
+  winner: { value: a, agent: drafter }
+  losers: [{ value: b, agent: judge }]
+unresolved: 1
+";
+    let merge = format!("upstream/{p}/merge-report.yaml");
+    let brief = spun_off(brief, &parent, &[(&merge, report), ("agents/u.drafter.t/data.yaml", "{}")]);
+    let parent_before = std::fs::read(parent.id.as_str()).unwrap();
+    // The brief rejects its copy of the finding the frozen field cites.
+    run(&brief, |c, d| review::verdict(c, d, verdict(&format!("{p}#findings[fi_01JA0F2B]"), "bad", "Value, not volume"))).unwrap();
+    let frozen_before = yaml(&brief, "shared/data.yaml")["upstream"].clone();
+
+    let in_market = format!("{p}#campaign.in_market");
+    let branch = format!("{p}#agents[u.drafter.t]");
+    let objective = format!("{p}#merge-report[campaign.objective]");
+    let contest = format!("{p}#selection.contested[ct_share]");
+    let b = blockers(&brief);
+    for (code, at) in [
+        ("open_contest", &contest),
+        ("open_contest", &objective),
+        ("unmerged_branch", &branch),
+        ("flagged_field", &in_market),
+    ] {
+        assert!(b.contains(&(code.to_string(), Some(at.clone()))), "{code} at {at}: {b:?}");
+    }
+    assert_eq!(b.len(), 4, "{b:?}");
+
+    // A reason is required, however it arrives.
+    let ack = |body: Value| review::parse_acknowledge(&body.to_string());
+    assert_eq!(ack(json!({ "target": branch })).unwrap_err().status, 400);
+    assert_eq!(ack(json!({ "target": branch, "rationale": "  " })).unwrap_err().status, 400);
+    assert_eq!(ack(json!({ "target": branch, "decision": "d_x", "rationale": "y" })).unwrap_err().status, 400);
+    assert_eq!(ack(json!({ "target": "agents[u.drafter.t]", "rationale": "y" })).unwrap_err().status, 400);
+    assert_eq!(ack(json!({ "decision": branch })).unwrap_err().status, 400);
+    assert_eq!(ack(json!({})).unwrap_err().status, 400);
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &branch, " ")), Err(400));
+    assert_eq!(run(&brief, |c, d| review::acknowledge(c, d, &(branch.clone(), String::new()))), Err(400));
+
+    // What the brief can settle is settled, not set aside: the carried
+    // contest is picked with `/resolve`.
+    let e = brief
+        .session
+        .perform(brief.session.ctx(), |c, d| review::set_aside(c, d, &contest, "Not ours"))
+        .unwrap_err();
+    assert_eq!(e.status, 409);
+    assert!(e.message.contains("/resolve"), "{}", e.message);
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &contest, "Not ours")), Err(409));
+    // Its own things, a document it does not carry, the whole parent, and an
+    // address nothing lists are not set aside.
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &format!("{CHILD}#findings[fi_01JA0F2B]"), "x")), Err(400));
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, "0d0d0d0d-0000-4000-8000-000000000000#agents[u.drafter.t]", "x")), Err(400));
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &format!("{p}#"), "x")), Err(400));
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &format!("{p}#agents[nope]"), "x")), Err(404));
+    // Only a person sets something aside.
+    let bot = Ctx::new(Actor::process("job_7").unwrap());
+    let e = brief
+        .session
+        .perform(&bot, |c, d| review::set_aside(c, d, &branch, "x"))
+        .unwrap_err();
+    assert_eq!(e.status, 403);
+
+    // The branch, set aside through `/acknowledge {target, rationale}`.
+    let why = "The parent merges its own branch; the brief does not use it";
+    run(&brief, |c, d| review::acknowledge(c, d, &ack(json!({ "target": branch, "rationale": why })).unwrap())).unwrap();
+    let d = &chain(&brief).decisions[0];
+    assert_eq!(d.kind.as_deref(), Some("verdict"));
+    assert_eq!(d.action, review::SET_ASIDE);
+    assert_eq!(d.polarity, None, "it says nothing of whether the branch is right");
+    assert_eq!(d.targets, vec![branch.clone()]);
+    assert_eq!(d.cites, vec![branch.clone()]);
+    assert_eq!(d.rationale, why);
+    assert!(d.actor.as_deref().is_some_and(|a| a.starts_with("human:")), "{:?}", d.actor);
+    assert!(!blockers(&brief).iter().any(|(_, a)| a.as_deref() == Some(branch.as_str())));
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &branch, "Again")), Err(409), "already set aside");
+
+    // The merge conflict, through the route.
+    let r = handle(
+        &brief.session,
+        &NoConfig,
+        HostRequest::new(
+            "/acknowledge",
+            "",
+            json!({ "target": objective, "rationale": "Settled in the research before it locks" }).to_string().into_bytes(),
+        ),
+    );
+    assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+    let r = handle(
+        &brief.session,
+        &NoConfig,
+        HostRequest::new("/acknowledge", "", json!({ "target": in_market }).to_string().into_bytes()),
+    );
+    assert_eq!(r.status, 400, "no reason, nothing written");
+
+    // The flagged frozen field, citing the finding that flags it.
+    run(&brief, |c, d| review::set_aside(c, d, &in_market, "The research's wording; the brief does not use it")).unwrap();
+    assert_eq!(chain(&brief).decisions[0].cites, vec![in_market.clone(), "fi_01JA0F2B".to_string()]);
+
+    // Only what the brief can settle is left; nothing carried was written.
+    assert_eq!(blockers(&brief), vec![("open_contest".to_string(), Some(contest.clone()))]);
+    assert_eq!(yaml(&brief, "shared/data.yaml")["upstream"], frozen_before);
+    let file = on_disk(&brief);
+    assert!(file.has_entry("agents/u.drafter.t/data.yaml") && file.has_entry(&merge));
+    assert!(file.manifest().carried().is_some(), "the hop's record survives every write");
+    assert_eq!(std::fs::read(parent.id.as_str()).unwrap(), parent_before, "the parent is untouched");
+
+    // Settle the contest, and the brief locks.
+    let input = Resolve::parse(r#"{"contest":"ct_share","chosen":"f_01JA0B3P4Q","rationale":"Retail value"}"#).unwrap();
+    run(&brief, |c, d| review::resolve(c, d, input)).unwrap();
+    run(&brief, |c, d| review::approve(c, d, "")).unwrap();
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &branch, "After the lock")), Err(409));
+    let report = clan_sdk::validate(&on_disk(&brief));
+    assert!(report.is_valid(), "{}", report.display());
+    assert_eq!(std::fs::read(parent.id.as_str()).unwrap(), parent_before, "the parent is untouched");
+}
+
+#[test]
+fn a_carried_contest_with_no_value_to_take_can_be_set_aside() {
+    // The owner's rule: a spun-off document may dismiss, with a written
+    // reason, a carried item it cannot settle. A carried contest none of
+    // whose values is held here or carries a frozen pin cannot be resolved
+    // here, so it is offered to set aside.
+    let parent = fixture();
+    let p = parent.doc.clone();
+    let brief = child_of(
+        &parent,
+        json!({}),
+        |data| {
+            let values = &mut data["selection"]["contested"][0]["values"];
+            values[0]["fact_id"] = json!("f_01JANOTHELD");
+            values[1].as_object_mut().unwrap().remove("pin");
+        },
+        |_| {},
+    );
+    let contest = format!("{p}#selection.contested[ct_share]");
+    let view = brief.session.read(napkin_host::ops::decisions::decisions).unwrap();
+    let item = view
+        .attention
+        .iter()
+        .find(|a| a.blocks_lock && a.address.as_deref() == Some(contest.as_str()))
+        .expect("the carried contest blocks the lock");
+    assert_eq!(item.code, "open_contest");
+    assert!(item.can_set_aside, "{}", item.text);
+    assert!(item.text.contains("cannot be resolved here"), "{}", item.text);
+
+    // /resolve cannot take either value, and says what can be done instead.
+    let input = Resolve::parse(r#"{"contest":"ct_share","chosen":"f_01JA0B9Z9Z","rationale":"x"}"#).unwrap();
+    let e = brief.session.perform(brief.session.ctx(), |c, d| review::resolve(c, d, input)).unwrap_err();
+    assert_eq!(e.status, 409);
+    assert!(e.message.contains("set the contest aside"), "{}", e.message);
+
+    // Set aside with a reason, recorded, and it no longer blocks the lock.
+    let why = "The brief does not use the frozen share";
+    run(&brief, |c, d| review::set_aside(c, d, &contest, why)).unwrap();
+    let d = &chain(&brief).decisions[0];
+    assert_eq!((d.kind.as_deref(), d.action.as_str()), (Some("verdict"), review::SET_ASIDE));
+    assert_eq!(d.rationale, why);
+    assert!(d.targets.contains(&contest));
+    assert!(!blockers(&brief).iter().any(|(_, a)| a.as_deref() == Some(contest.as_str())), "{:?}", blockers(&brief));
+    assert_eq!(run(&brief, |c, d| review::set_aside(c, d, &contest, why)), Err(409), "only once");
+}

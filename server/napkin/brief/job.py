@@ -13,6 +13,14 @@ not drafted, written or proposed (`kept`); a field a person holds is proposed
 (`result.proposals` + an `edit` decision with action `propose`) instead of
 written; every passage a decision cites is written into `data.passages` by
 the same change; every decision carries reasoning whose cites resolve.
+
+No stage halts the brief (the owner, 2026-09-30). A stage that raises, that
+the model refuses or answers malformed, or that outlives STAGE_TIMEOUT is a
+recorded gap — a decision naming the stage, why, and what the job does without
+it — and the next stage runs; the job ends `done` with what it has, and
+`result.gaps` names what it went on without. A capture that cannot be made
+leaves the captured fields `failed` and the drafters draft from what the
+document already holds; a scorecard that cannot be made leaves the review out.
 """
 
 from __future__ import annotations
@@ -25,6 +33,7 @@ import traceback
 
 from .. import reasoning as rsn
 from ..doc import apply_patch, ctx_data, ctx_decisions, decision, deep_merge
+from ..jobs import Abandoned, abandon, abandoned, bounded
 from ..model import ModelError
 from ..util import TaskError, iso, uid
 from . import capture as cap_stage
@@ -36,6 +45,30 @@ from .rubric import DEPENDENCIES, FAIL, PASS, REVIEW, health, reason_code
 
 log = logging.getLogger("napkin.brief")
 TAXONOMY = "reason-codes/1"
+STAGE_TIMEOUT = 60 * 60  # seconds a stage may run; one still running is left behind and the job goes on
+IN_FLIGHT = ("waiting", "extracting", "drafting", "judging", "revising")
+
+# A gap's decision: the action of the stage's own work, and the worker who does it.
+GAP_ACTION = {"extract": ("capture", "extract"), "draft": ("draft", "drafter"), "judge": ("review", "judge")}
+# Why a stage did not finish, in words (no figures: a reasons point states none uncited).
+WHY = {"refusal": "the model declined the call", "timeout": "it ran out of time",
+       "invalid_output": "the model's answer did not validate", "model": "the model call failed",
+       "task": "it could not run", "raised": "it stopped with an error"}
+# What the job does without the stage.
+WITHOUT = {"extract": "the captured fields stay as the document had them, and the drafters draft from what it holds",
+           "draft": "no field is drafted, and the Judge reviews what the brief holds",
+           "judge": "no draft is written unjudged, and the brief keeps what it had"}
+
+
+def _why(e) -> tuple[str, str]:
+    """(kind, detail) for what a stage raised: a key of WHY, and a short message."""
+    if isinstance(e, ModelError):
+        kind = {"refusal": "refusal", "timeout": "timeout", "invalid_output": "invalid_output",
+                "truncated": "invalid_output"}.get(e.kind, "model")
+        return kind, str(e)[:200] or f"the model call failed ({e.kind})"
+    if isinstance(e, TaskError):
+        return "task", (e.message or e.etype)[:200]
+    return "raised", f"{type(e).__name__}: {str(e)[:200]}"
 
 
 class Chunk:
@@ -112,6 +145,9 @@ class BriefJob:
                 self.fields[k] = {"state": "done" if filled(get(self.data0, k)) else "absent", "by": None}
         self.capture = None
         self.drafts = {}
+        self.gaps = []           # [{stage, reason}]: every stage the job went on without
+        self._abandoned = set()  # stages the job went on without while they still ran (their threads
+                                 # are marked by jobs.abandon: nothing they write lands)
         self.thread = threading.Thread(target=self._run, name=f"{task}-{jid}", daemon=True)
 
     # -- small helpers -----------------------------------------------------------
@@ -126,11 +162,15 @@ class BriefJob:
 
     def set_state(self, keys, state, by):
         with self.lock:
+            if abandoned():
+                return  # a stage the job went on without does not move the fields any more
             for k in keys:
                 if k in self.fields and self.fields[k]["state"] != "kept":
                     self.fields[k] = {"state": state, "by": by}
 
     def add_chunk(self, stage, patch, decisions):
+        if abandoned():
+            raise Abandoned(stage)  # the job went on without this stage: what it would write is dropped
         paths = field_paths(patch)
         for p in paths:  # every field the patch writes is named by a decision's targets (§3)
             a = f"{self.doc}#{address(p)}"
@@ -159,23 +199,79 @@ class BriefJob:
     def _run(self):
         with self.lock:
             self.state = "running"
-        for i, stage in enumerate(self.stages):
-            with self.lock:
-                self.stage_idx = i
-            try:
-                getattr(self, "stage_" + stage)()
-            except (TaskError, ModelError) as e:
-                etype = getattr(e, "etype", None) or "model_failed"
-                msg = getattr(e, "message", None) or f"the model call failed ({getattr(e, 'kind', 'error')})"
-                self._fail(stage, etype, msg)
-                return
-            except Exception as e:  # never a silent fallback
-                log.error("%s %s stage %s failed: %s\n%s", self.task, self.id, stage, e, traceback.format_exc())
-                self._fail(stage, "internal", f"the {stage} stage failed ({type(e).__name__})")
-                return
+        try:
+            for i, stage in enumerate(self.stages):
+                with self.lock:
+                    self.stage_idx = i
+                self._stage(stage)
+        except Exception as e:  # the runner itself, not a stage: the job still ends, and says so
+            log.error("%s %s runner failed: %s\n%s", self.task, self.id, e, traceback.format_exc())
+            self._fail(self.stages[min(self.stage_idx, len(self.stages) - 1)], "internal",
+                       f"the job's runner failed ({type(e).__name__})")
+            return
         with self.lock:
             self.stage_idx = len(self.stages)
             self.state, self.finished_at = "done", iso()
+
+    def _stage(self, stage):
+        """One stage, in its own thread for at most STAGE_TIMEOUT. However it
+        fails, it is a gap and the next stage runs: never the job's end."""
+        with self.lock:
+            before = {k: f["state"] for k, f in self.fields.items()}
+        _, err, left = bounded(getattr(self, "stage_" + stage), STAGE_TIMEOUT, f"{self.task}-{self.id}-{stage}")
+        if left is not None or err is not None:
+            self._unplace(stage, before)
+        if left is not None:
+            with self.lock:
+                self._abandoned.add(stage)
+                abandon(left)
+            log.warning("%s %s stage %s outlived %ss; going on without it", self.task, self.id, stage, STAGE_TIMEOUT)
+            self._gap(stage, "timeout", f"it did not finish within {round(STAGE_TIMEOUT / 60)} minute(s)")
+        elif err is not None:
+            kind, detail = _why(err)
+            if kind == "raised":
+                log.error("%s %s stage %s failed: %s\n%s", self.task, self.id, stage, err,
+                          "".join(traceback.format_exception(type(err), err, err.__traceback__)))
+            else:
+                log.warning("%s %s stage %s did not finish (%s): %s", self.task, self.id, stage, kind, detail)
+            self._gap(stage, kind, detail)
+
+    def _unplace(self, stage, before):
+        """A stage that did not finish sent nothing: every field it was working
+        on (in flight when it began) is `failed`, whatever state it reached,
+        and a proposal it made but never sent is withdrawn."""
+        worker = GAP_ACTION[stage][1]
+        with self.lock:
+            sent = set().union(*(c.ids for c in self.chunks))
+            for k, st in before.items():
+                if st in IN_FLIGHT and self.fields[k]["state"] != "kept" and \
+                        (stage != "extract" or self.fm[k]["class"] == "captured"):
+                    self.fields[k] = {"state": "failed", "by": worker}
+            self.proposals = [p for p in self.proposals if p["decision"] in sent]
+
+    def _gap(self, stage, kind, detail):
+        """Record a stage the job goes on without (its fields are `failed`
+        already, by `_unplace`): one decision says why and what the job does
+        without it. It targets no field, so it never stands as a field's last
+        writer (a later job would take it for the field's holder)."""
+        action, worker = GAP_ACTION[stage]
+        with self.lock:
+            self.gaps.append({"stage": stage, "reason": kind, "detail": detail[:200]})
+            n = len(self.gaps)
+        r = rsn.make(f"Went on without the {stage} stage: {WHY[kind]}.",
+                     [rsn.point(f"The {stage} stage did not finish: {WHY[kind]}"),
+                      rsn.point(f"Without it, {WITHOUT[stage]}")],
+                     rsn.certainty("high", "the stage did not finish, so nothing it would have written is in the "
+                                           "brief"),
+                     "the brief is drafted again, or a field is redrafted",
+                     rejected=[rsn.rej(f"stop the brief at the {stage} stage",
+                                       "a stopped job leaves the planner with nothing; the later stages run on what "
+                                       "there is")],
+                     attention=f"The {stage} stage did not finish ({detail[:200]}); {WITHOUT[stage]}.")
+        try:
+            self.add_chunk(stage, {}, [self.dec((stage, "gap", n), "edit", action, [], [], r, worker)])
+        except Exception:  # noqa: BLE001 - recording the gap never stops the job either; result.gaps holds it
+            log.error("%s %s: the %s stage's gap decision could not be written", self.task, self.id, stage)
 
     def _fail(self, stage, etype, message):
         with self.lock:
@@ -209,6 +305,7 @@ class BriefJob:
         with self.lock:
             fields = copy.deepcopy(self.fields)
             props = copy.deepcopy(self.proposals)
+            gaps = copy.deepcopy(self.gaps)
             v = self.view()
         drafting = [k for k, f in fields.items() if f["state"] == "drafting"]
         if v["state"] == "done":
@@ -222,7 +319,13 @@ class BriefJob:
             s = f"Drafting {len(drafting)} field(s) in parallel."
         else:
             s = {"extract": "Reading the material.", "draft": "Drafting.", "judge": "The Judge is reviewing."}[v["stage"]]
-        return {"summary": s, "fields": fields, "proposals": props}
+        out = {"summary": s, "fields": fields, "proposals": props}
+        if gaps:  # display only: what the job went on without, and why (§10.11)
+            out["gaps"] = gaps
+            if v["state"] == "done":
+                out["summary"] += " Went on without: " + "; ".join(
+                    f"{g['stage']} ({WHY.get(g['reason'], g['reason'])})" for g in gaps) + "."
+        return out
 
     def _regen_summary(self, fields):
         f = fields.get(self.field, {})
@@ -247,7 +350,15 @@ class BriefJob:
         if not readable:
             raise TaskError(400, "invalid_input", "nothing readable: " + "; ".join(tnotes or ["no text"]))
         cap = cap_stage.run_capture(view, self.mats)
-        score = cap_stage.run_scorecard(view, self.mats)
+        try:
+            score = cap_stage.run_scorecard(view, self.mats)
+        except Exception as e:  # the capture stands; the review waits for a scorecard that can be made
+            kind, detail = _why(e)
+            log.warning("%s %s: the scorecard did not answer (%s): %s", self.task, self.id, kind, detail)
+            with self.lock:
+                self.gaps.append({"stage": "extract", "reason": kind, "detail": f"the scorecard: {detail[:180]}"})
+            score = None
+            tnotes = list(tnotes) + [f"The scorecard could not be made ({WHY[kind]}); the review has none."]
         self.capture = cap
         mats_by = {m.id: m for m in self.mats}
         wb = cap_stage.working_brief(cap["items"], cap["named"])
@@ -258,8 +369,9 @@ class BriefJob:
             patch["materials"] = {m.id: m.entry(t) for m in new}
         patch["capture"] = {"built_at": t, "handler": self.handler, "items": cap["items"], "gaps": cap["gaps"],
                             "how_to_win": cap["how_to_win"], "ledger": cap["ledger"]}
-        patch["review"] = {"built_at": t, "handler": self.handler, "based_on": {"version": self.base},
-                           "scorecard": score}
+        if score is not None:
+            patch["review"] = {"built_at": t, "handler": self.handler, "based_on": {"version": self.base},
+                               "scorecard": score}
         mat_ids = [m.id for m in readable]
         unread = [m.id for m in self.mats if not m.readable]
         led = cap["ledger"]
@@ -327,22 +439,27 @@ class BriefJob:
                       attention=" ".join(attn) or None)
         cdec = self.dec(("capture",), "edit", "capture", ["capture"] + [f"materials[{m.id}]" for m in new], mat_ids, cr,
                         "extract", material_read=mat_ids, unread=unread, abstained=abstained)
-        sm = score["single_mindedness"]
-        not_pass = [d for d in score["dimensions"] if d["verdict"] != "pass"]
-        sp = [rsn.point(f"{d['dimension'].replace('_', ' ')}: {d['verdict']}"
-                        + (f" — “{_quote(d['evidence'], 100)}”" if d.get("evidence") else ""), mat_ids) for d in not_pass]
-        sp = sp or [rsn.point("All seven dimensions pass", mat_ids)]
-        sp.append(rsn.point(f"Overall: {score['summary']}", mat_ids))
-        sr = rsn.make(f"Scored the client's brief on the seven BetterBriefs dimensions: "
-                      f"{sum(1 for d in score['dimensions'] if d['verdict'] == 'pass')} pass, "
-                      f"{sum(1 for d in score['dimensions'] if d['verdict'] == 'vague')} vague, "
-                      f"{sum(1 for d in score['dimensions'] if d['verdict'] == 'missing')} missing.", sp,
-                      rsn.certainty("medium", "a model judged the brief; every quoted evidence was checked verbatim"),
-                      "the client's brief is revised", only_option="the scorecard judges the material as it stands",
-                      attention=(f"The brief bundles {len(sm['split_into']) or 'several'} strategies; consider "
-                                 f"splitting it." if sm["verdict"] == "multiple" else None))
-        sdec = self.dec(("score",), "edit", "score", ["review"], mat_ids, sr, "judge")  # the Judge's review
-        self.add_chunk("extract", patch, [cdec, sdec] + decisions)
+        scored = []
+        if score is not None:
+            sm = score["single_mindedness"]
+            not_pass = [d for d in score["dimensions"] if d["verdict"] != "pass"]
+            sp = [rsn.point(f"{d['dimension'].replace('_', ' ')}: {d['verdict']}"
+                            + (f" — “{_quote(d['evidence'], 100)}”" if d.get("evidence") else ""), mat_ids)
+                  for d in not_pass]
+            sp = sp or [rsn.point("All seven dimensions pass", mat_ids)]
+            sp.append(rsn.point(f"Overall: {score['summary']}", mat_ids))
+            sr = rsn.make(f"Scored the client's brief on the seven BetterBriefs dimensions: "
+                          f"{sum(1 for d in score['dimensions'] if d['verdict'] == 'pass')} pass, "
+                          f"{sum(1 for d in score['dimensions'] if d['verdict'] == 'vague')} vague, "
+                          f"{sum(1 for d in score['dimensions'] if d['verdict'] == 'missing')} missing.", sp,
+                          rsn.certainty("medium",
+                                        "a model judged the brief; every quoted evidence was checked verbatim"),
+                          "the client's brief is revised", only_option="the scorecard judges the material as it stands",
+                          attention=(f"The brief bundles {len(sm['split_into']) or 'several'} strategies; consider "
+                                     f"splitting it." if sm["verdict"] == "multiple" else None))
+            sdec = self.dec(("score",), "edit", "score", ["review"], mat_ids, sr, "judge")  # the Judge's review
+            scored = [sdec]
+        self.add_chunk("extract", patch, [cdec] + scored + decisions)
 
     # =============================================================================
     # draft
@@ -386,10 +503,15 @@ class BriefJob:
         keys_of = {g: keys for g, keys, _, _ in plan_}
 
         def on_state(group, state):
+            if "draft" in self._abandoned:
+                return  # the job went on without this stage
             st = {"drafting": "drafting", "drafted": "waiting", "failed": "failed"}[state]
             self.set_state(keys_of[group], st, "drafter")
 
-        self.drafts = run_drafters(self.ctx, plan, on_state)
+        drafts = run_drafters(self.ctx, plan, on_state)
+        if "draft" in self._abandoned:
+            return
+        self.drafts = drafts
         self.hits += self.ctx.hits
 
     # =============================================================================

@@ -30,7 +30,10 @@
 //! findings and pins merged into this document's members. Everything carried
 //! is on the lock list too (§7.2) — a contest open in a frozen copy until a
 //! `resolve` here names it, a merge report carried beside it — and an address
-//! on an ancestor is labelled and resolved from its frozen copy.
+//! on an ancestor is labelled and resolved from its frozen copy. What nothing
+//! here can settle — a frozen field citing a finding rejected here, a carried
+//! branch, a carried merge conflict — a person may set aside with a reason
+//! (`can_set_aside`); then it is off the list.
 //!
 //! A client's answer to the locked document (Contract 4 §7.5) is derived
 //! here too: each part's current answer, whether it went stale (its own value
@@ -108,7 +111,8 @@ pub struct Target {
     pub address: String,
     pub path: String,
     pub label: String,
-    /// `field`, `contest`, `finding`, `fact`, `decision` or `document`.
+    /// `field`, `contest`, `finding`, `fact`, `decision`, `branch` or
+    /// `document`.
     pub kind: &'static str,
     /// False when the address is on another document — carried from upstream.
     pub here: bool,
@@ -132,6 +136,16 @@ pub struct Attention {
     pub address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// A carried item this document cannot settle — a frozen field citing a
+    /// finding rejected here, a carried agent branch, a carried merge-report
+    /// conflict — which a person may set aside with a written reason
+    /// (`/acknowledge {target, rationale}`, Contract 4 §7.2, §8.1 item 7).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub can_set_aside: bool,
+    /// A flagged field's rejected finding, which a set-aside cites. The
+    /// view says it in `text`; this is for the host.
+    #[serde(skip)]
+    pub finding: Option<String>,
 }
 
 /// What a cite names, in words.
@@ -538,6 +552,15 @@ impl<'a> Lookup<'a> {
     fn label(&self, doc: &str, path: &str) -> (String, &'static str) {
         let data = self.data_for(doc);
         let carried = data.is_some();
+        // A carried merge conflict's key and a branch's id are taken whole:
+        // a key may hold brackets of its own, an id dots.
+        let whole = |name: &str| path.strip_prefix(name)?.strip_prefix('[')?.strip_suffix(']');
+        if let Some(key) = whole("merge-report") {
+            return (format!("Merge conflict · {key}"), "contest");
+        }
+        if let Some(id) = whole("agents") {
+            return (format!("Agent branch · {id}"), "branch");
+        }
         let segs = segments(path);
         match segs.as_slice() {
             [] => ("The document".into(), "document"),
@@ -831,8 +854,9 @@ impl<'a> Lookup<'a> {
 /// This document's fields that cite each of `findings`, by the lock list's
 /// rule (Contract 4 §7.2, item 4): an envelope's `finding_ids`, or the
 /// field's current writing decision. Each field as a full address on this
-/// document. What `GET /upstream` reports as a finding's `cited_by`; the
-/// frozen copies are skipped, as the lock list skips them.
+/// document. What `GET /upstream` reports as a finding's `cited_by`: the
+/// frozen copies are skipped — they cite the parent's findings as the parent
+/// has them, which is what that report compares.
 pub(crate) fn fields_citing(
     doc: &Document,
     findings: &BTreeSet<String>,
@@ -884,7 +908,15 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
             decision,
             address,
             label,
+            can_set_aside: false,
+            finding: None,
         }
+    };
+    // A carried item nothing here can settle: a person may set it aside with
+    // a reason (Contract 4 §7.2), and then it is off the list.
+    let carried = |code, text: String, decision: Option<String>, address: String| Attention {
+        can_set_aside: true,
+        ..blocker(code, text, decision, Some(address))
     };
     let is_kind = |d: &Decision, k: &str| d.kind.as_deref() == Some(k);
 
@@ -934,20 +966,50 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
             if str_of(c, "status") != Some("open") || resolved_here(ctx, &address) {
                 continue;
             }
-            let n = c
+            let values: &[Value] = c
                 .get("values")
                 .and_then(Value::as_array)
-                .map_or(0, Vec::len);
+                .map_or(&[], Vec::as_slice);
+            let n = values.len();
             let key = str_of(c, "key").unwrap_or(id);
+            let opener = str_of(c, "opened_by")
+                .filter(|d| ctx.index_of(d).is_some())
+                .map(String::from);
+            // `/resolve` takes a value this document holds as a pin, or one
+            // the research froze its pin beside. With neither, nothing here
+            // can settle it: a person may set it aside with a reason.
+            let takeable = values.iter().any(|v| {
+                let Some(fid) = str_of(v, "fact_id") else {
+                    return false;
+                };
+                ctx.facts.contains_key(fid)
+                    || v.get("pin")
+                        .filter(|p| p.is_object())
+                        .and_then(|p| str_of(p, "id"))
+                        == Some(fid)
+            });
+            if !takeable {
+                if set_aside(ctx, &address, None) {
+                    continue;
+                }
+                out.push(carried(
+                    "open_contest",
+                    format!(
+                        "Open contest on {key}: {} and nothing picked. It was carried from upstream with none of its values held here to pick, so it cannot be resolved here; until the research settles it, it blocks the lock, unless a person sets it aside here with a reason.",
+                        plural(n, "value")
+                    ),
+                    opener,
+                    address,
+                ));
+                continue;
+            }
             out.push(blocker(
                 "open_contest",
                 format!(
                     "Open contest on {key}: {} and nothing picked. It was carried from upstream; a person has to resolve it here before lock.",
                     plural(n, "value")
                 ),
-                str_of(c, "opened_by")
-                    .filter(|d| ctx.index_of(d).is_some())
-                    .map(String::from),
+                opener,
                 Some(address),
             ));
         }
@@ -988,14 +1050,17 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
     }
     // This document's merge report, and each one carried beside an
     // ancestor's frozen copy (`upstream/<id>/merge-report.yaml`, §5.2). A
-    // carried conflict is settled only upstream, so here it blocks.
+    // carried conflict is settled only upstream, so here it blocks until a
+    // person sets it aside, at `<id>#merge-report[<key>]`.
     let paths = clan.entry_paths().unwrap_or_default();
-    let carried_reports = paths.iter().filter(|p| {
-        p.strip_prefix("upstream/")
+    let carried_reports = paths.iter().filter_map(|p| {
+        let id = p
+            .strip_prefix("upstream/")
             .and_then(|rest| rest.strip_suffix("/merge-report.yaml"))
-            .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+            .filter(|id| !id.is_empty() && !id.contains('/'))?;
+        Some((p.as_str(), Some(id)))
     });
-    for path in std::iter::once(MERGE_REPORT_PATH).chain(carried_reports.map(String::as_str)) {
+    for (path, up) in std::iter::once((MERGE_REPORT_PATH, None)).chain(carried_reports) {
         let Some(report) = clan
             .read_entry(path)
             .ok()
@@ -1003,33 +1068,52 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
         else {
             continue;
         };
-        let carried = path != MERGE_REPORT_PATH;
         for c in &report.conflicts {
             let agents: Vec<&str> = std::iter::once(c.winner.agent.as_str())
                 .chain(c.losers.iter().map(|l| l.agent.as_str()))
                 .collect();
-            out.push(blocker(
-                "open_contest",
-                if carried {
-                    format!(
-                        "The merge upstream left {} contested between {}. It was carried from upstream and is settled there, in the parent; until then it blocks the lock.",
-                        c.key,
-                        agents.join(" and ")
-                    )
-                } else {
+            match up {
+                Some(up) => {
+                    let address = merge_conflict_address(up, &c.key);
+                    if set_aside(ctx, &address, None) {
+                        continue;
+                    }
+                    out.push(carried(
+                        "open_contest",
+                        format!(
+                            "The merge upstream left {} contested between {}. It was carried from upstream and is settled there, in the parent; until then it blocks the lock, unless a person sets it aside here with a reason.",
+                            c.key,
+                            agents.join(" and ")
+                        ),
+                        c.decision.clone(),
+                        address,
+                    ));
+                }
+                None => out.push(blocker(
+                    "open_contest",
                     format!(
                         "The merge left {} contested between {}. A person has to settle it before lock.",
                         c.key,
                         agents.join(" and ")
-                    )
-                },
-                c.decision.clone(),
-                None,
-            ));
+                    ),
+                    c.decision.clone(),
+                    None,
+                )),
+            }
         }
     }
 
-    // 2. Unmerged agent branches.
+    // 2. Unmerged agent branches. In a document spun off with its upstream
+    //    (`lineage.carried`) every branch came with the hop: the host never
+    //    writes a branch into a document (its forks are documents of their
+    //    own, §6), and the SDK carries the parent's `agents/**` as they are
+    //    (§5.2, item 5). Such a branch is merged in the parent, so here it
+    //    blocks until a person sets it aside, at `<parent id>#agents[<id>]`.
+    let parent = clan
+        .manifest()
+        .carried()
+        .map(|c| c.document_id.clone())
+        .filter(|id| ctx.data_for(id).is_some() && id != ctx.doc_id);
     let branches: BTreeSet<String> = paths
         .iter()
         .filter_map(|p| {
@@ -1039,12 +1123,28 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
         })
         .collect();
     for b in branches {
-        out.push(blocker(
-            "unmerged_branch",
-            format!("The agent branch {b} is not merged yet."),
-            None,
-            None,
-        ));
+        match &parent {
+            Some(up) => {
+                let address = format!("{up}#agents[{b}]");
+                if set_aside(ctx, &address, None) {
+                    continue;
+                }
+                out.push(carried(
+                    "unmerged_branch",
+                    format!(
+                        "The agent branch {b} is not merged yet. It was carried from upstream and is merged there, in the parent; until then it blocks the lock, unless a person sets it aside here with a reason."
+                    ),
+                    None,
+                    address,
+                ));
+            }
+            None => out.push(blocker(
+                "unmerged_branch",
+                format!("The agent branch {b} is not merged yet."),
+                None,
+                None,
+            )),
+        }
     }
 
     // 3. Findings still proposed.
@@ -1097,6 +1197,39 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
                     by,
                     Some(address),
                 ));
+            }
+        }
+        // A field in an ancestor's frozen copy that cites, through its
+        // envelope, a finding rejected here (the document's own copy of it):
+        // the copy is read-only, so it is set aside with a reason, or it
+        // blocks (Contract 4 §7.2, item 4).
+        for (up, frozen) in ctx.upstream() {
+            let mut flagged: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+            citing_findings(frozen, &mut Vec::new(), &rejected, &mut flagged);
+            for (path, ids) in flagged {
+                let address = format!("{up}#{path}");
+                for id in ids {
+                    if set_aside(ctx, &address, Some(id)) {
+                        continue;
+                    }
+                    let by = rejected[id]
+                        .get("rejection")
+                        .and_then(|r| r.get("decision")?.as_str())
+                        .filter(|d| ctx.index_of(d).is_some())
+                        .map(String::from);
+                    out.push(Attention {
+                        finding: Some(id.to_string()),
+                        ..carried(
+                            "flagged_field",
+                            format!(
+                                "{} cites finding {id}, which a reviewer rejected. It was carried from upstream and cannot be revised here; set it aside with a reason, or it blocks the lock.",
+                                ctx.target(&address).label
+                            ),
+                            by,
+                            address.clone(),
+                        )
+                    });
+                }
             }
         }
     }
@@ -1351,6 +1484,8 @@ fn client_review(ctx: &Lookup) -> ClientDerived {
         decision: Some(decision),
         address,
         label,
+        can_set_aside: false,
+        finding: None,
     };
     let mut blockers = Vec::new();
     let mut attention = Vec::new();
@@ -1418,6 +1553,27 @@ fn client_review(ctx: &Lookup) -> ClientDerived {
         blockers,
         attention,
     }
+}
+
+/// Where a conflict in an ancestor's carried merge report is addressed:
+/// `<ancestor id>#merge-report[<key>]`, the key verbatim (it may itself hold
+/// brackets, as `decisions[<id>]` does).
+fn merge_conflict_address(up: &str, key: &str) -> String {
+    format!("{up}#merge-report[{key}]")
+}
+
+/// A person set `address` aside in this document (Contract 4 §7.2): a
+/// `set_aside` verdict nothing has superseded targets it — and, for a frozen
+/// field flagged by a rejected finding, cites that finding, so the same field
+/// flagged by another finding later is a new item.
+fn set_aside(ctx: &Lookup, address: &str, finding: Option<&str>) -> bool {
+    ctx.chain.decisions.iter().any(|d| {
+        d.kind.as_deref() == Some("verdict")
+            && d.action == review::SET_ASIDE
+            && d.superseded_by.is_none()
+            && d.targets.iter().any(|t| ctx.qualify(t) == address)
+            && finding.map_or(true, |f| d.cites.iter().any(|c| c == f))
+    })
 }
 
 /// A `resolve` in this chain, not superseded, names `address`: how a contest
@@ -1571,6 +1727,8 @@ fn asked_for(ctx: &Lookup) -> Vec<Attention> {
             decision: d.id.clone(),
             address: first.clone(),
             label: label.clone(),
+            can_set_aside: false,
+            finding: None,
         };
         if let Some(a) = r.attention.as_deref().filter(|a| !a.trim().is_empty()) {
             out.push(item("flagged", a.trim().to_string()));
@@ -1735,8 +1893,9 @@ fn contest_entry<'v>(data: &'v Value, id: &str) -> Option<&'v Value> {
 /// `finding_ids` (or `synthesis_finding_ids`), reported at the field that
 /// holds it: the path stops before `value`, the field envelope's payload
 /// (Contract 3 §2.1). The host's own projection is skipped, and so are the
-/// ancestors' frozen copies: a field there cannot be revised here, and is its
-/// own document's to answer for (`GET /upstream` names what cites it).
+/// ancestors' frozen copies under `upstream`: the lock list walks each copy
+/// on its own, since a field there is set aside rather than revised
+/// (Contract 4 §7.2, item 4).
 fn citing_findings<'r>(
     v: &Value,
     path: &mut Vec<String>,

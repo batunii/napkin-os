@@ -872,13 +872,52 @@ var ClanFields=(function(){
       h+='<span class="who">'+fig+'<span class="count'+(items.length?'':' zero')+'">'+(items.length?items.length+' thing'+(items.length===1?'':'s')+' need'+(items.length===1?'s':'')+' you':'Nothing needs you')+'</span></span>';
       h+='<span class="items">'+(open.length&&!items.length?'<span class="clf-muted">'+esc(andList(open.map(function(r){ return r.label; })))+(open.length===1?' is':' are')+' open for the change the client asked for. Lock it again when you are done.</span>':'')
         +items.map(function(a){ var ref=refOfAddress(a.address), shown=!!document.querySelector('[data-ref="'+cssEsc(ref)+'"]:not(.clf-titem)');
-        return '<button type="button" class="clf-titem" data-ref="'+esc(ref)+'" data-note="'+esc(a.text)+'"><span class="k">'+esc(KIND_LABEL[a.code]||'Needs you')+'</span><span class="x">'+esc(named(ref)||a.label||a.text)+'</span>'+(shown?'':'<span class="off">not on this page</span>')+'</button>'; }).join('')+'</span>';
+        return '<button type="button" class="clf-titem" data-ref="'+esc(ref)+'" data-note="'+esc(a.text)+'"><span class="k">'+esc(a.can_set_aside?'Carried over':KIND_LABEL[a.code]||'Needs you')+'</span><span class="x">'+esc(a.can_set_aside?carriedName(a):named(ref)||a.label||a.text)+'</span>'+(shown?'':'<span class="off">not on this page</span>')+'</button>'; }).join('')+'</span>';
       h+='<button type="button" class="clf-btn primary" data-clf-lock'+(items.length?' disabled title="Everything listed has to be settled first"':'')+'>Lock the '+esc(noun)+(open.length?' again':'')+(items.length?' <span class="n">'+items.length+'</span>':'')+'</button>';
     }
     el.innerHTML=h+'</div></div>';
   }
   var KIND_LABEL={open_contest:'Sources disagree',unverified_finding:'Is this right?',flagged_field:'Needs changing',bad_verdict:'Marked wrong',unmerged_branch:'Copy not brought back',client_rejected:'Client rejected',client_rejected_parts_unknown:'Which parts?'};
   function cssEsc(s){ return String(s).replace(/["\\]/g,'\\$&'); }
+
+  // ── carried items nothing here can settle ───────────────────────────
+  // A field of the research frozen in this document that rests on a point
+  // marked wrong here, work an agent never brought back into it, two agents
+  // it left disagreeing: each is the research's to settle. Until it does, a
+  // person may set it aside, with a reason (OS-layer contract §7.2.1).
+  function carriedAt(ref){ return arr(VIEW&&VIEW.attention).filter(function(a){ return a.can_set_aside&&a.blocks_lock&&!!a.address&&(a.address===ref||refOfAddress(a.address)===ref); }); }
+  function setAsideOf(ref){ return arr(VIEW&&VIEW.decisions).filter(function(b){ var d=b.decision||{};
+    return d.action==='set_aside'&&!b.superseded&&!d.superseded_by&&arr(b.targets).some(function(t){ return !t.here&&(t.address===ref||refOfAddress(t.address)===ref); }); })[0]||null; }
+  function carriedFrom(address){ return upTitle(String(address||'').split('#')[0]); }
+  function carriedName(a){ var p=String(a.address||'').split('#')[1]||'', m;
+    if(a.code==='unmerged_branch') return 'Work not brought back into '+carriedFrom(a.address);
+    if((m=/^merge-report\[(.*)\]$/.exec(p))) return /^decisions\[/.test(m[1])?'Agents disagree on a call':'Agents disagree on '+words(m[1]).toLowerCase();
+    if(/^selection\.contested\[/.test(p)){ var k=String(a.label||'').replace(/^Contest · /,'').split(':').pop().split('@')[0]; return k?'Sources disagree on '+words(k).toLowerCase():'Sources disagree'; }
+    return a.label||words(p); }
+  var CARRIED_WHY={
+    flagged_field:'It rests on a point marked wrong here. It belongs to {from}, so it cannot be changed here.',
+    unmerged_branch:'An agent did this work in {from}, and it was never brought back into it.',
+    open_contest:'Two agents working on {from} disagreed here, and nobody picked one.',
+    contest:'The sources {from} used disagree here, and this copy holds none of their values to pick from.'};
+  function carriedBlock(items){
+    var a=items[0], from=carriedFrom(a.address), noun=trayNoun();
+    var h='<div class="clf-dv"><span class="stmt">'+esc(carriedName(a))+'</span><div class="clf-pills"><span class="clf-pill check">Carried over from '+esc(from)+'</span></div></div>'
+      +'<p class="clf-ex">'+esc(String(CARRIED_WHY[/#selection\.contested\[/.test(a.address||'')?'contest':a.code]||'It came with {from}.').replace('{from}',from))+' It is settled there. Until it is, it stops you locking this '+esc(noun)+'.</p>';
+    if(locked()) return h;
+    return h+'<div class="clf-sec" data-clf-anchor><h3 class="ask">Can this '+esc(noun)+' go ahead without it?</h3>'
+      +'<div class="clf-answers"><button type="button" class="clf-btn big primary" data-clf="aside" data-target="'+esc(a.address)+'">Set aside, with a reason</button></div>'
+      +'<p class="clf-muted">Your reason is kept with this '+esc(noun)+'. Nothing in '+esc(from)+' changes.</p></div>';
+  }
+  function asideForm(target){
+    var noun=trayNoun();
+    return '<form class="clf-form" data-clf-form="aside" data-target="'+esc(target)+'"><label><span>Why can this '+esc(noun)+' go ahead without it? <span class="req">needed</span></span><textarea name="why" required></textarea></label>'
+      +'<div class="clf-err" hidden></div><div class="clf-answers"><button type="submit" class="clf-btn big primary">Set aside, with a reason</button><button type="button" class="clf-btn big quiet" data-clf="redraw">Cancel</button></div>'
+      +'<p class="clf-muted">Your reason is kept with this '+esc(noun)+', and it no longer stops the lock.</p></form>';
+  }
+  function asideDone(b){ var d=b.decision||{};
+    return '<div class="clf-dv"><span class="stmt">'+esc(arr(b.targets).map(function(t){ return t.label; })[0]||'Carried over')+'</span><div class="clf-pills"><span class="clf-pill ok">'+TICK+' Set aside</span></div></div>'
+      +'<p class="clf-by"><b>'+esc(whoDid(b))+'</b> set it aside'+(d.timestamp?' on '+esc(dayMonth(d.timestamp,true)):'')+'</p>'
+      +(d.rationale?'<blockquote class="clf-q said">'+esc(d.rationale)+'</blockquote>':''); }
 
   // ── the drawer ──────────────────────────────────────────────────────
   function ensureDrawer(){
@@ -955,7 +994,8 @@ var ClanFields=(function(){
     var st=stateOf(ref), h='';
     var pp=pins()[ref], ps=pp&&srcOf(pp), byPerson=ps&&ps.rec&&ps.rec.tier==='reviewer-verified';
     if(byPerson&&st==='sourced') st='by-person';
-    h+={'by-person':'<span class="clf-pill ok">'+TICK+' '+esc(srcShort(pp).replace(/^./,function(c){ return c.toUpperCase(); }))+'</span>',sourced:'<span class="clf-pill">Found in a source · the words match</span>',check:'<span class="clf-pill check">Worked out by the crew · please check</span>',verified:'<span class="clf-pill ok">'+TICK+' Checked</span>',rejected:'<span class="clf-pill check">Marked wrong</span>',contest:'<span class="clf-pill check">Sources disagree · pick one</span>',resolved:'<span class="clf-pill ok">'+TICK+' Picked</span>',replaced:'<span class="clf-pill check">Replaced by a person’s pick</span>'}[st]||'';
+    if(st==='contest'&&carriedAt(ref).length) st='contest-carried';  // nothing here to pick: only to set aside
+    h+={'by-person':'<span class="clf-pill ok">'+TICK+' '+esc(srcShort(pp).replace(/^./,function(c){ return c.toUpperCase(); }))+'</span>',sourced:'<span class="clf-pill">Found in a source · the words match</span>',check:'<span class="clf-pill check">Worked out by the crew · please check</span>',verified:'<span class="clf-pill ok">'+TICK+' Checked</span>',rejected:'<span class="clf-pill check">Marked wrong</span>',contest:'<span class="clf-pill check">Sources disagree · pick one</span>','contest-carried':'<span class="clf-pill check">Sources disagree</span>',resolved:'<span class="clf-pill ok">'+TICK+' Picked</span>',replaced:'<span class="clf-pill check">Replaced by a person’s pick</span>'}[st]||'';
     if(confidential(ref)) h+='<span class="clf-pill conf">'+LOCK+'Private</span>';
     var p=pins()[ref]; if(p&&p.confidence&&p.confidence!=='high') h+='<span class="clf-pill warn">'+esc(SURE[p.confidence]?SURE[p.confidence].replace(/^./,function(c){ return c.toUpperCase(); }):p.confidence)+'</span>';
     if(p&&p.stale) h+='<span class="clf-pill warn">Out of date: a newer number is saved</span>';
@@ -964,7 +1004,7 @@ var ClanFields=(function(){
   // What happened to a thing, in plain words: who did what, when, and why.
   var DID={verdict:'checked it',verify:'said it is right',classify:'set who may see it',edit:'changed it',correct:'corrected it',resolve:'picked a value',approve:'locked it',finding:'worked it out',pin:'saved it',claim:'saved it',
     client_review:'recorded the client’s answer',unlock:'opened it for the client’s change',backref:'noted it was used'};
-  var DID_ACTION={propose:'proposed a new version',suggest_part:'thinks the client meant it',dismiss_part:'said the client did not mean it',looks_right:'said it looks right',seed:'carried it over',extract:'took it from your material',draft:'drafted it',regenerate:'drafted it again'};
+  var DID_ACTION={propose:'proposed a new version',suggest_part:'thinks the client meant it',dismiss_part:'said the client did not mean it',looks_right:'said it looks right',set_aside:'set it aside',seed:'carried it over',extract:'took it from your material',draft:'drafted it',regenerate:'drafted it again'};
   function whoDid(b){
     var d=b.decision||{}, A=crew(), k=crewKey(d);
     if(b.who&&b.who.you) return 'You';
@@ -1120,6 +1160,11 @@ var ClanFields=(function(){
   function draw(){
     var t=top(), ref=t.ref, k=kindOf(ref), b='', crumb='Where this came from', L=locked();
     DRAWER.back.hidden=STACK.length<2;
+    // Something carried over that nothing here can settle, and has no page
+    // of its own here: what it is, and "Set aside, with a reason".
+    var ca=carriedAt(ref), sa=!ca.length&&setAsideOf(ref);
+    if((ca.length||sa)&&(!k||(k==='path'&&valueAt(ref)==null))){
+      DRAWER.crumb.textContent='Carried over'; DRAWER.body.innerHTML=ca.length?carriedBlock(ca):asideDone(sa); return; }
     if(t.note) b+='<p class="clf-err" style="background:var(--clf-soft);color:var(--clf-ink2)">'+esc(t.note)+'</p>';
     if(k==='pin'){
       var p=pins()[ref];
@@ -1155,8 +1200,11 @@ var ClanFields=(function(){
       else {
         var vs=arr(c.values), said=function(v){ var s=sources()[arr(v.sources)[0]]||{}; return [pubName(s.publisher)||s.domain||'',s.published_at?monthYear(s.published_at):''].filter(Boolean); };
         b+='<div class="clf-dv"><span class="stmt">'+esc(named(ref))+'</span>'+pills(ref)+'</div>';
-        if(c.carried) b+='<p class="clf-muted">Carried over from '+esc(upTitle(c.carried))+'. '+(c.status==='open'?'Picking one here settles it in this document; the original keeps its own copy.':'It was settled in this document.')+'</p>';
-        if(c.status==='open'&&!L){
+        if(c.carried&&!(c.status==='open'&&(ca.length||sa))) b+='<p class="clf-muted">Carried over from '+esc(upTitle(c.carried))+'. '+(c.status==='open'?'Picking one here settles it in this document; the original keeps its own copy.':'It was settled in this document.')+'</p>';
+        if(c.status==='open'&&(ca.length||sa)){
+          // carried with no value this copy can take: nothing to pick here, only to set aside
+          b+='<div class="clf-sec">'+(ca.length?carriedBlock(ca):asideDone(sa))+'</div>';
+        } else if(c.status==='open'&&!L){
           var from=String(vs[0]&&vs[0].from||'').split('/')[0], A=crew(), ak=agentOf('selection.contested['+ref+']',c.key)||(A&&arr(A.lenses).indexOf(from)!==-1?A.forWork('research',from)||'':'');
           b+=say(ak,vs.map(function(v){ var w=said(v); return (w[0]?'<b>'+esc(w[0])+'</b>':'One source')+' says '+esc(fmt(v))+(w[1]?' ('+esc(w[1])+')':''); }).join('. ')+'.','needs-you');
           b+='<form class="clf-form bare" data-clf-form="resolve"><div class="clf-sec"><h3 class="ask">Which one should the report use?</h3><div class="clf-answers">'+vs.map(function(v){ var sid=arr(v.sources)[0], s=sources()[sid]||{}, q=obj(v.quotes)[sid], line=srcLine(s,v);
@@ -1207,6 +1255,7 @@ var ClanFields=(function(){
       if(env&&arr(env.fact_ids).length) b+='<div class="clf-sec"><h3>Worked out from</h3><div class="clf-rows">'+arr(env.fact_ids).map(function(c){ var p=pins()[c]; return '<button type="button" class="clf-row" data-open="'+esc(c)+'"><span>'+esc(p?label(p):'A fact')+'</span><b>'+esc(fmt(p))+'</b></button>'; }).join('')+'</div></div>';
       if(!env) b+=writerBlock(ref);
       b+=proposalBlock(ref)+verdictBlock(ref);
+      if(ca.length) b+='<div class="clf-sec">'+carriedBlock(ca)+'</div>';
       if(canEdit(ref)&&editableValue(v)) b+=L?'<p class="clf-muted">It is open for the client’s change: tap it to change it.</p>':'<p class="clf-muted">To change it, choose <b>Edit</b> under More at the top, then tap it.</p>';
       b+=history(ref);
     } else if(k==='cite'){
@@ -1251,6 +1300,8 @@ var ClanFields=(function(){
       var host=a.closest('.clf-answers')||a, fb=document.createElement('div');
       fb.innerHTML=w==='override'?overrideForm(target):badForm(target); host.replaceWith(fb.firstChild);
       var ta=DRAWER.body.querySelector('form[data-clf-form="'+(w==='override'?'override':'bad')+'"] textarea'); if(ta) ta.focus(); return; }
+    if(w==='aside'){ var ah=a.closest('.clf-answers')||a, af=document.createElement('div'); af.innerHTML=asideForm(a.getAttribute('data-target')); ah.replaceWith(af.firstChild);
+      var at=DRAWER.body.querySelector('form[data-clf-form="aside"] textarea'); if(at) at.focus(); return; }
     if(w==='useprop'){ var pb=blockOf(a.getAttribute('data-d')), ro=reopenedOf(ref); if(!pb) return;
       var ub={path:ref,value:pb.decision.proposed_value,rationale:'Used proposal '+pb.decision.id}; if(ro) ub.answers=ro.answers;
       act('/edit',ub,null,'Saved. The proposal is used.'); return; }
@@ -1277,7 +1328,8 @@ var ClanFields=(function(){
       act('/resolve',{contest:ref,chosen:fd.get('pick'),rationale:why},form,'Saved. The report uses your pick.'); }
     else if(kind==='correct'){ if(!String(fd.get('value')||'').trim()){ showError(form,'Write the right value.'); return; } if(!why){ showError(form,'Say why the old one is wrong.'); return; }
       top().fix=false; act('/correct',{fact:ref,value:String(fd.get('value')).trim(),source_uri:String(fd.get('src')||'').trim(),rationale:why},form,'Saved. The old value is kept on record.'); }
-    else if(!why){ showError(form,kind==='bad'?'Say what is wrong, so it can be fixed.':'Say why, in a few words.'); return; }
+    else if(!why){ showError(form,kind==='bad'?'Say what is wrong, so it can be fixed.':kind==='aside'?'Say why this can go ahead without it.':'Say why, in a few words.'); return; }
+    else if(kind==='aside') act('/acknowledge',{target:form.getAttribute('data-target'),rationale:why},form,'Set aside. Your reason is kept with it.');
     else if(kind==='classify') act('/classify',{target:form.getAttribute('data-target'),model:fd.get('model')==='on',export:fd.get('export')==='on',corpus:fd.get('corpus')==='on',rationale:why},form,'Saved. It is kept private.');
     else if(kind==='bad') act('/verdict',{target:form.getAttribute('data-target'),polarity:'bad',rationale:why},form,'Thanks. Saved as wrong.');
     else if(kind==='override') act('/verdict',{target:form.getAttribute('data-target'),polarity:'good',rationale:why},form,'Saved. It stays as it is, with your reason.');

@@ -133,13 +133,18 @@ export interface AttentionItem extends AttentionReason {
   decision?: string
   address?: string
   label?: string
+  /** A carried item this document cannot settle (a frozen field citing a finding
+   *  rejected here, a carried agent branch or merge-report conflict): a person may
+   *  set it aside with a written reason (`/acknowledge {target, rationale}`,
+   *  OS-layer contract §7.2.1). Absent when false. */
+  can_set_aside?: boolean
 }
 
 export interface DecisionTarget {
   address: string
   path: string
   label: string
-  kind: 'field' | 'contest' | 'finding' | 'fact' | 'decision' | 'document'
+  kind: 'field' | 'contest' | 'finding' | 'fact' | 'decision' | 'document' | 'branch'
   /** False when the address is on another document, carried from upstream. */
   here: boolean
 }

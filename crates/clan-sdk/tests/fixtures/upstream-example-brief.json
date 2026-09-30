@@ -1,0 +1,308 @@
+{
+  "brand": "Lúnasa",
+  "competitors": [
+    "Brightwater 0.0",
+    "Orchard Hill Zero",
+    "Kestrel Press"
+  ],
+  "decisions": [
+    {
+      "about": "rhythm and moments",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D07REJ",
+      "kind": "rejected_finding",
+      "reason": "A launch date is not evidence the occasion was taken — nothing here measures Orchard Hill's sales. campaign.in_market cites it and must be revised.",
+      "role": "person",
+      "statement": "rejected the finding fi_01JA0F5E (\"Orchard Hill's March launch has taken the spring occasion; a Lúnasa launch before May would be second in.\"); neither it nor its reasoning is evidence",
+      "status": "current",
+      "who": "Aoife"
+    },
+    {
+      "about": "fact f_01J7X3Q2MN",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D09EXC",
+      "kind": "edit",
+      "reason": "2023 share predates the category redefinition; not comparable.",
+      "role": "person",
+      "statement": "left fact f_01J7X3Q2MN out of the research; do not use it",
+      "status": "current",
+      "who": "Aoife"
+    },
+    {
+      "about": "Objective",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D09VRB",
+      "kind": "verdict",
+      "reason": "Two objectives in one sentence — ask-by-name and winning back midweek. The brief needs one; ask Niamh which leads.",
+      "role": "person",
+      "statement": "marked Objective as wrong",
+      "status": "current",
+      "who": "Ciarán"
+    },
+    {
+      "about": "category/drinks.cider market.volume_share_top3 in IE",
+      "as_of": "2026-09-21",
+      "id": "d_01JA0D06RES",
+      "kind": "resolved_contest",
+      "reason": "The retail panel covers on- and off-trade; the 0.68 trade-press figure is off-trade only. 0.68 kept as the loser.",
+      "role": "person",
+      "statement": "settled the contest on category/drinks.cider market.volume_share_top3 in IE: use 0.71 proportion (fact f_01JA0B4B3D); do not use 0.68 proportion (fact f_01JA0B4B9Z)",
+      "status": "current",
+      "who": "Aoife"
+    },
+    {
+      "about": "brand/orchard-hill product.abv",
+      "as_of": "2026-09-21",
+      "id": "d_01JA0D05CTO",
+      "kind": "open_contest",
+      "reason": null,
+      "role": "person",
+      "statement": "has settled the contest on brand/orchard-hill product.abv: the research holds 0 percent_abv (fact f_01JA0B5C6M, from brands_positioning/IE) and 0.5 percent_abv (fact f_01JA0B5C7N, from brands_positioning/GB); do not state either as settled",
+      "status": "current",
+      "who": "No one on the team"
+    },
+    {
+      "about": "Categories",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D07CNC",
+      "kind": "edit",
+      "reason": "From the report's confirm list. Both roster categories apply; no/low leads because the product is 0.0.",
+      "role": "person",
+      "statement": "confirmed Categories",
+      "status": "current",
+      "who": "Aoife"
+    },
+    {
+      "about": "Success measures",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D08STD",
+      "kind": "edit",
+      "reason": "Added a measure for the 'ask for by name' objective, which the email states but does not measure.",
+      "role": "person",
+      "statement": "changed Success measures",
+      "status": "current",
+      "who": "Ciarán"
+    },
+    {
+      "about": "consumer and culture",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D07VER",
+      "kind": "verified_finding",
+      "reason": "Matches what we heard in both Dublin groups. Written to the brand layer as a synthesis fact and pinned.",
+      "role": "person",
+      "statement": "verified the finding fi_01JA0F1A (\"For Irish moderators the 0.0 occasion is social: weeknights at home with friends, where being seen to drink cider still matters.\"), now fact f_01JA0C9V4X",
+      "status": "current",
+      "who": "Aoife"
+    },
+    {
+      "about": "Problem",
+      "as_of": "2026-09-22",
+      "id": "d_01JA0D09VRG",
+      "kind": "verdict",
+      "reason": "The client's own sentence, and it is the problem.",
+      "role": "person",
+      "statement": "marked Problem as right (in the client's words)",
+      "status": "current",
+      "who": "Ciarán"
+    }
+  ],
+  "facts": [
+    {
+      "entity": "brand/lunasa (IE)",
+      "id": "f_01JA0C9V4X",
+      "key": "insight.nolo_occasion_is_social",
+      "market": "IE",
+      "scope": "brand",
+      "status": "current",
+      "value": "For Irish moderators the 0.0 occasion is social: weeknights at home with friends, where being seen to drink cider still matters.",
+      "version": 1
+    },
+    {
+      "as_of": "2026-05-31",
+      "entity": "category/drinks.no_low_alcohol (IE)",
+      "id": "f_01JA0B6D6G",
+      "key": "consumer.adults_moderating",
+      "market": "IE",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_0mn1"
+        }
+      ],
+      "status": "current",
+      "unit": "proportion",
+      "value": "0.31",
+      "version": 2
+    },
+    {
+      "as_of": "2026-05-31",
+      "entity": "category/drinks.no_low_alcohol (IE)",
+      "id": "f_01JA0B6D7H",
+      "key": "consumer.top_occasion",
+      "market": "IE",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_0mn1"
+        },
+        {
+          "id": "src_s0c1"
+        }
+      ],
+      "status": "current",
+      "value": "Weeknight socialising at home",
+      "version": 1
+    },
+    {
+      "as_of": "2026-06-30",
+      "entity": "brand/lunasa (IE)",
+      "id": "f_01JA0B3R5S",
+      "key": "consideration.among_nolo_drinkers",
+      "market": "IE",
+      "scope": "brand",
+      "sources": [
+        {
+          "id": "src_4f2a"
+        }
+      ],
+      "status": "current",
+      "unit": "proportion",
+      "value": "0.18",
+      "version": 1
+    },
+    {
+      "as_of": "2026-01-15",
+      "entity": "brand/lunasa",
+      "id": "f_01JA0B1C4F",
+      "key": "roster.client_org",
+      "scope": "brand",
+      "sources": [
+        {
+          "id": "src_r0st",
+          "title": "Brand roster",
+          "uri": "https://example.com/roster"
+        }
+      ],
+      "status": "current",
+      "value": "org/glenmore-drinks",
+      "version": 1
+    },
+    {
+      "as_of": "2026-01-15",
+      "entity": "brand/lunasa",
+      "id": "f_01JA0B1C3E",
+      "key": "roster.categories.secondary",
+      "scope": "brand",
+      "sources": [
+        {
+          "id": "src_r0st",
+          "title": "Brand roster",
+          "uri": "https://example.com/roster"
+        }
+      ],
+      "status": "current",
+      "value": "drinks.no_low_alcohol",
+      "version": 1
+    },
+    {
+      "as_of": "2026-01-15",
+      "entity": "brand/lunasa",
+      "id": "f_01JA0B1C2D",
+      "key": "roster.categories.primary",
+      "scope": "brand",
+      "sources": [
+        {
+          "id": "src_r0st",
+          "title": "Brand roster",
+          "uri": "https://example.com/roster"
+        }
+      ],
+      "status": "current",
+      "value": "drinks.cider",
+      "version": 1
+    },
+    {
+      "as_of": "2026-03-09",
+      "entity": "brand/orchard-hill (IE)",
+      "id": "f_01JA0B5C4E",
+      "key": "launch.date",
+      "market": "IE",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_tr4d",
+          "title": "Trade press",
+          "uri": "https://example.com/trade"
+        }
+      ],
+      "status": "current",
+      "value": "2026-03-09",
+      "version": 1
+    },
+    {
+      "as_of": "2026-07-01",
+      "entity": "brand/kestrel-press",
+      "id": "f_01JA0B5C5F",
+      "key": "positioning.claim",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_ad7r"
+        }
+      ],
+      "status": "current",
+      "value": "The grown-up alcohol-free",
+      "version": 1
+    },
+    {
+      "as_of": "2025-12-31",
+      "entity": "category/drinks.cider (IE)",
+      "id": "f_01JA0B8F9K",
+      "key": "rhythm.peak_months",
+      "market": "IE",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_n1el"
+        }
+      ],
+      "status": "current",
+      "value": "May–August",
+      "version": 3
+    },
+    {
+      "as_of": "2025-11-01",
+      "entity": "category/drinks.no_low_alcohol (IE)",
+      "id": "f_01JA0B7E8J",
+      "key": "regulation.parent_livery_rule",
+      "market": "IE",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_asa1"
+        }
+      ],
+      "status": "current",
+      "superseded_by": "f_01JA0C8U3W",
+      "value": "EXAMPLE: an ad for a 0.0 variant that shares the parent alcohol brand's livery is assessed as alcohol advertising.",
+      "version": 1
+    },
+    {
+      "as_of": "2026-06-30",
+      "entity": "category/drinks.cider (IE)",
+      "id": "f_01JA0B4B3D",
+      "key": "market.volume_share_top3",
+      "market": "IE",
+      "scope": "category",
+      "sources": [
+        {
+          "id": "src_n1el"
+        }
+      ],
+      "status": "current",
+      "unit": "proportion",
+      "value": "0.71",
+      "version": 2
+    }
+  ]
+}

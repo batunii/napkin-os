@@ -460,7 +460,9 @@ def test_a_drafter_model_failure_fails_only_its_field(tmp_path):
     assert host.data.get("insight") and host.data.get("single_minded_proposition")
 
 
-def test_a_model_failure_in_extract_fails_the_job(tmp_path):
+def test_a_model_failure_in_extract_is_a_gap_and_the_brief_goes_on(tmp_path):
+    """No stage halts a brief (the owner, 2026-09-30): the capture that could not be
+    made is a recorded gap, and the drafters and the Judge still run."""
     model = FakeModel()
     model.overrides["capture"] = lambda p: (_ for _ in ()).throw(RuntimeError("down"))
     s = Server(tmp_path, model=model, retrieval=retrieval())
@@ -470,8 +472,16 @@ def test_a_model_failure_in_extract_fails_the_job(tmp_path):
     finally:
         s.stop()
     last = replies[-1]
-    assert last["job"]["state"] == "failed" and last["job"]["error"]["type"]
-    assert last["job"]["stage"] == "extract" and not host.changes
+    assert last["job"]["state"] == "done" and last["job"]["error"] is None
+    assert last["result"]["gaps"][0]["stage"] == "extract" and last["result"]["gaps"][0]["reason"] == "model"
+    assert "Went on without: extract" in last["result"]["summary"]
+    f = last["result"]["fields"]
+    assert f["background"] == {"state": "failed", "by": "extract"} and "background" not in host.data
+    gap = next(d for d in host.chain if d["action"] == "capture")
+    assert gap["targets"] == [] and "did not finish" in gap["reasoning"]["attention"]
+    assert gap["agent"].endswith("/extract") and gap["reasoning"]["rejected"][0]["option"].startswith("stop the brief")
+    assert [c[0] for c in s.model.calls if c[0].startswith("draft_")], "the drafters ran"
+    check_change_rules(host)
 
 
 def test_image_attachment_is_transcribed_first(bserver):

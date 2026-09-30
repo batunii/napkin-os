@@ -11,8 +11,18 @@ the request's `clan.decision_chain` does not hold yet (§8.4).
 identify may stop the job at `needs_input` with a question; the worker waits
 until `answer_question` is accepted. The report stage waits until a poll
 brings a document holding every earlier stage's decisions, and composes from
-that document (§8.4). A stage that raises fails the job with a message naming
-the stage; what already landed stays.
+that document (§8.4).
+
+No stage halts the job (the owner, 2026-09-30: "no stage should halt a brief
+or Research being produced"). A stage that raises, that the model refuses or
+answers malformed, or that outlives its time is a recorded gap — a decision
+and a chat message naming the stage and why, with what the job does without
+it — and the next stage runs. A question nobody answers within QUESTION_WAIT
+goes on with a stated default (never a guessed brand). A change the host keeps
+refusing is dropped after REFUSED_AFTER polls, so what follows it can land,
+and its stage becomes a gap. The report stage waits at most REPORT_WAIT for a
+poll bringing the earlier stages, then composes from the job's own copy. The
+job always ends `done`, with a report, or with the reason there is none.
 """
 
 from __future__ import annotations
@@ -21,17 +31,20 @@ import copy
 import logging
 import re
 import threading
+import time
 import traceback
 
-from ..doc import (CAMPAIGN_FIELDS, GATES, LENS_TITLES, LENSES, STAGES, address, apply_patch, build_materials,
-                   ctx_data, ctx_decisions, ctx_facts, ctx_findings, decision, deep_merge, field_paths, get_dotted,
-                   human_owned, known_ids, market_list, read_of)
+from ..doc import (CAMPAIGN_FIELDS, GATES, LENS_NAMESPACE, LENS_TITLES, LENSES, STAGES, address, apply_patch,
+                   build_materials, ctx_data, ctx_decisions, ctx_facts, ctx_findings, decision, deep_merge, field_paths,
+                   get_dotted, human_owned, known_ids, market_list, read_of)
+from ..jobs import Abandoned, abandon, abandoned, bounded
 from ..layers import origin_uri
+from ..model import ModelError
 from ..rules import identify as id_rules
 from ..rules import markets as market_rules
 from ..rules.confidence import fact_confidence
 from ..rules.quotes import find_quote
-from ..util import TaskError, iso, slug, uid, ulid_like
+from ..util import TaskError, iso, lid, slug, uid, ulid_like
 from .. import reasoning as rsn
 from . import extract as extract_stage
 from . import report as report_stage
@@ -39,6 +52,61 @@ from . import synthesise as synth_stage
 from .research import Researcher
 
 log = logging.getLogger("napkin.campaign")
+
+# Nothing the job waits on is waited on for ever (§8.3, §8.4). Seconds; a
+# setting of the same name (lower case) overrides each.
+QUESTION_WAIT = 30 * 60      # a question waits this long for the person, then the stated default
+REPORT_WAIT = 10 * 60        # the report stage waits this long for a poll bringing the earlier stages
+STAGE_TIMEOUT = 2 * 60 * 60  # a stage still running after this is left behind
+REFUSED_AFTER = 3            # polls a change is missing from, sent with others and then alone: refused
+
+# The decision a gap records carries the stage's own action, so the person's
+# view names the agent who does that work and offers its "Ask to redo".
+STAGE_ACTION = {"extract": "extract", "identify": "identify", "select": "select", "research": "research",
+                "synthesise": "synthesise", "report": "report"}
+# Why a stage did not finish, in words (no figures: a reasons point states none uncited).
+WHAT = {"refusal": "the model declined the call", "timeout": "it ran out of time",
+        "invalid_output": "the model's answer did not validate", "model": "the model call failed",
+        "task": "it could not run", "raised": "it stopped with an error",
+        "not_applied": "the host did not apply its change",
+        "gated": "no category is settled, and research runs per category"}
+# What the job does without the stage.
+WITHOUT = {"extract": "the fields the material states stay open, and identify reads the material itself",
+           "identify": "what it did not settle stays open, and research runs only on what is settled",
+           "select": "every lens runs in every market, the default",
+           "research": "nothing new is researched, and the gaps say what was not looked into",
+           "synthesise": "no finding is proposed, and the report stands on the pins",
+           "report": "no report is written, and Refresh report composes one from what landed"}
+# The same, in the words the person's view uses for the crew's work: the chat
+# message and the attention item say these; the stage and the kind stay in the
+# decision's reasoning and in the logs.
+DOING = {"extract": "reading what you sent", "identify": "working out the brand and its category",
+         "select": "picking what to look into", "research": "looking it up",
+         "synthesise": "working out the points", "report": "writing the report"}
+WHY = {"refusal": "the model would not answer", "timeout": "it took too long",
+       "invalid_output": "the answer came back in a form we could not use",
+       "model": "we could not reach the model", "task": "it could not start",
+       "raised": "something went wrong on our side",
+       "not_applied": "the document did not take what it wrote",
+       "gated": "no category is settled yet, and we look things up per category"}
+INSTEAD = {"extract": "what your material says stays open, and we read it again to find the brand",
+           "identify": "what we could not settle stays open, and we only look up what is settled",
+           "select": "every researcher looks into every market",
+           "research": "nothing new was looked up; what is missing is under Selection",
+           "synthesise": "the report uses the facts as they are, with no points worked out",
+           "report": "there is no report yet; Refresh report writes one from what is here"}
+
+
+def gap_words(stage, kind) -> str:
+    """A gap in the crew's words: what we could not do, why, and what we did instead."""
+    return (f"We couldn't finish {DOING.get(stage, stage)}: {WHY.get(kind, WHY['raised'])}. "
+            f"We went on without it: {INSTEAD.get(stage, 'the rest goes on without it')}.")
+
+
+# What an unanswered question leaves open, when it has no default to go on with.
+UNANSWERED = {"brand": "no roster row is looked up, and research covers the category and the markets",
+              "categories": "research needs a category, so it does not run",
+              "markets": "research runs once per market, so it does not run"}
 
 IDENTIFY_SYSTEM = """You read a campaign ask for an advertising agency. From the prompt and the attached
 material (each with a material_id) list:
@@ -93,14 +161,36 @@ def classify_schema(leaf_codes):
     return _obj({"leaves": {"type": "array", "items": {"type": "string", "enum": leaf_codes}}})
 
 
+def _why(e) -> tuple[str, str]:
+    """(kind, detail) for what a stage raised: a key of WHAT, and a short message."""
+    if isinstance(e, ModelError):
+        kind = {"refusal": "refusal", "timeout": "timeout", "invalid_output": "invalid_output",
+                "truncated": "invalid_output"}.get(e.kind, "model")
+        return kind, str(e)[:200] or f"the model call failed ({e.kind})"
+    if isinstance(e, TaskError):
+        return "task", (e.message or e.etype)[:200]
+    return "raised", f"{type(e).__name__}: {str(e)[:200]}"
+
+
+def _minutes(seconds) -> str:
+    if seconds < 90:
+        return f"{int(seconds)} second(s)"
+    return f"{round(seconds / 60)} minute(s)"
+
+
 class Chunk:
-    def __init__(self, stage, base, patch, read, facts=(), findings=(), decisions=(), message=None, sources=()):
+    def __init__(self, stage, base, patch, read, facts=(), findings=(), decisions=(), message=None, sources=(),
+                 gap=False):
         self.stage, self.base = stage, base
         self.patch, self.read = patch, read
         self.facts, self.findings, self.decisions = list(facts), list(findings), list(decisions)
         self.sources = list(sources)
         self.message = message
         self.ids = {d["id"] for d in self.decisions}
+        self.gap = gap  # a stage's gap: never itself made a gap when refused
+        # Refusal detection (reply_change): polls this was missing from since
+        # it was last sent, whether it is being sent on its own, and refused.
+        self.misses, self.solo, self.refused = 0, False, False
 
 
 def combine(doc, chunks) -> dict | None:
@@ -143,6 +233,15 @@ class CampaignJob:
         self.selected = None
         self.hits = []
         self._identify_raw = None
+        self._identify_failed = None   # why identify's model call gave nothing, when it did not answer
+        self.gaps = []                 # [{stage, reason}]: every step the job went on without
+        self.skipped_fields = set()    # campaign fields a question asked and nobody answered
+        self.unattended = False        # a question went unanswered: later ones go on at once
+        self.reported = False
+        self._asked_at = None
+        self._report_wait_from = None
+        self._report_from = "landed"   # landed | working: which document the report composes from
+        self._last_sent = set()        # the chunks the previous reply carried
         self.latest_clan = clan
         self.W, self.W_facts, self.W_version, self.clan = {}, [], None, clan
         self.sync(clan)
@@ -155,7 +254,7 @@ class CampaignJob:
         W = copy.deepcopy(ctx_data(clan))
         facts = copy.deepcopy(ctx_facts(clan))
         for c in self.chunks:
-            if c.ids <= known:
+            if c.ids <= known or c.refused:
                 continue
             for p in field_paths(c.patch):
                 if get_dotted(W, p) is None:
@@ -175,7 +274,9 @@ class CampaignJob:
         return uid("d_", self.doc, self.id, *parts)
 
     def add_chunk(self, stage, patch, decisions, facts=(), findings=(), text=None, question=None,
-                  msg_decision=None, base=None, read_from=None, sources=()):
+                  msg_decision=None, base=None, read_from=None, sources=(), gap=False):
+        if abandoned():
+            raise Abandoned(stage)  # the job went on without this stage: what it would write is dropped
         patch = copy.deepcopy(patch)
         decisions = list(decisions)
         message = None
@@ -207,7 +308,7 @@ class CampaignJob:
                 decisions[0]["targets"].append(a)
         c = Chunk(stage, base if base is not None else self.W_version, patch,
                   read_of(read_from if read_from is not None else self.W, patch), facts, findings, decisions, message,
-                  sources)
+                  sources, gap=gap)
         with self.lock:
             self.chunks.append(c)
             self.W = apply_patch(self.W, patch)
@@ -222,33 +323,40 @@ class CampaignJob:
     def start(self):
         self.thread.start()
 
+    def _limit(self, name):
+        v = getattr(self.settings, name, None)
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else globals()[name.upper()]
+
     def _run(self):
+        try:
+            self._loop()
+        except Exception as e:  # the runner itself, not a stage: the job still ends, and says so
+            log.error("start_campaign %s runner failed: %s\n%s", self.id, e, traceback.format_exc())
+            self.fail(STAGES[min(self.stage_idx, len(STAGES) - 1)], "internal",
+                      f"the job's runner failed ({type(e).__name__})")
+
+    def _loop(self):
         while True:
             with self.lock:
                 if self.state in ("done", "failed"):
                     return
                 if self.state == "needs_input":
-                    self.cond.wait()
-                    continue
+                    left = (self._asked_at or 0) + self._limit("question_wait") - time.monotonic()
+                    if left > 0:
+                        self.cond.wait(timeout=min(left, 30))
+                        continue
+                    self.went_on()  # nobody answered: the stated default, recorded (§8.3)
                 self.state = "running"
                 stage = STAGES[self.stage_idx]
-                if stage == "report":
-                    earlier = set().union(*(c.ids for c in self.chunks)) if self.chunks else set()
-                    if not earlier <= known_ids(self.latest_clan):
-                        self.cond.wait(timeout=30)
-                        continue  # composes once the earlier stages have landed (§8.4)
-            try:
-                finished = getattr(self, "stage_" + stage)()
-            except TaskError as e:
-                self.fail(stage, e.etype, e.message)
-                return
-            except Exception as e:  # never a silent fallback
-                log.error("start_campaign %s stage %s failed: %s\n%s", self.id, stage, e, traceback.format_exc())
-                self.fail(stage, "internal", f"the {stage} stage failed ({type(e).__name__}: {str(e)[:200]})")
-                return
+                if stage == "report" and not self._report_ready():
+                    continue
+            finished = self._stage(stage)
             with self.lock:
+                if finished is None:
+                    continue  # the stage runs again: identify, once a question went on without its answer
                 if not finished:
                     self.state = "needs_input"
+                    self._asked_at = time.monotonic()
                     continue
                 self.stage_idx += 1
                 if self.stage_idx >= len(STAGES):
@@ -257,17 +365,164 @@ class CampaignJob:
                     self.cond.notify_all()
                     return
 
+    def _report_ready(self) -> bool:
+        """(Under the lock.) The report composes from the first poll whose
+        document holds every earlier stage (§8.4) — or, when no poll brings
+        them within REPORT_WAIT, from the job's own copy. Never a wait for
+        ever: a change the host refused is not waited on (reply_change)."""
+        earlier = set().union(*(c.ids for c in self.chunks if not c.refused))
+        if earlier <= known_ids(self.latest_clan):
+            self._report_from = "landed"
+            return True
+        now = time.monotonic()
+        if self._report_wait_from is None:
+            self._report_wait_from = now
+        left = self._report_wait_from + self._limit("report_wait") - now
+        if left <= 0:
+            self._report_from = "working"
+            return True
+        self.cond.wait(timeout=min(left, 30))
+        return False
+
+    def _stage(self, stage):
+        """One stage, in its own thread for at most STAGE_TIMEOUT. -> True
+        (finished, or went on without it), False (asked the person), None (run
+        it again). What it raises, however it fails, is a gap, never the end."""
+        limit = self._limit("stage_timeout")
+        value, err, left = bounded(getattr(self, "stage_" + stage), limit, f"campaign-{self.id}-{stage}")
+        if left is not None:
+            with self.lock:
+                abandon(left)
+                self.question = None
+            log.warning("start_campaign %s stage %s outlived %ss; going on without it", self.id, stage, limit)
+            self.skip(stage, "timeout", f"it did not finish within {_minutes(limit)}")
+            return True
+        if err is not None:
+            kind, detail = _why(err)
+            if kind == "raised":
+                log.error("start_campaign %s stage %s failed: %s\n%s", self.id, stage, err,
+                          "".join(traceback.format_exception(type(err), err, err.__traceback__)))
+            else:
+                log.warning("start_campaign %s stage %s did not finish (%s): %s", self.id, stage, kind, detail)
+            with self.lock:
+                self.question = None
+            self.skip(stage, kind, detail)
+            return True
+        return value
+
+    def skip(self, stage, kind, detail, refused=None):
+        """Record a stage the job goes on without: a decision carrying the
+        stage's own action (so "Ask to redo" can run it again), its reason and
+        what the job does without it, and a chat message. `refused` is the
+        chunk the host would not apply; the gap then writes nothing but the
+        message, read from what the host holds. Recording it never stops the
+        job either: a gap that cannot be written in full is written plainly."""
+        with self.lock:
+            self.gaps.append({"stage": stage, "reason": kind})
+            n = len(self.gaps)
+            if stage == "select" and refused is None:
+                self.selected = self.default_plan()
+        try:
+            self._skip(stage, kind, detail, refused, n)
+        except Abandoned:
+            raise
+        except Exception as e:  # noqa: BLE001 - the plain gap, then on
+            log.error("start_campaign %s: the %s stage's gap could not be written in full (%s)", self.id, stage,
+                      type(e).__name__)
+            try:
+                d = decision(self.doc, self.did(stage, "skipped", n, "plain"), "edit", self.handler,
+                             STAGE_ACTION[stage], "", [], reasoning=self._gap_reasoning(stage, kind, detail))
+                self.add_chunk(stage, {}, [d], text=gap_words(stage, kind), gap=True)
+            except Exception:  # noqa: BLE001
+                log.error("start_campaign %s: the %s stage's gap could not be written", self.id, stage)
+
+    def _skip(self, stage, kind, detail, refused, n):
+        if stage == "research" and refused is None:
+            self._research_gap(self.did("research", "skipped", n), kind, detail)
+            return
+        d = decision(self.doc, self.did(stage, "skipped", n), "edit", self.handler, STAGE_ACTION[stage], "", [],
+                     reasoning=self._gap_reasoning(stage, kind, detail))
+        extra = {}
+        if refused is not None:
+            with self.lock:
+                clan = self.latest_clan
+            extra = {"base": clan.get("version"), "read_from": ctx_data(clan)}
+        self.add_chunk(stage, {}, [d], text=gap_words(stage, kind), gap=True, **extra)
+
+    def _gap_reasoning(self, stage, kind, detail) -> dict:
+        return rsn.make(
+            f"Went on without the {stage} stage: {WHAT[kind]}.",
+            [rsn.point(f"The {stage} stage did not finish: {WHAT[kind]}"),
+             rsn.point(f"Without it, {WITHOUT[stage]}")],
+            rsn.certainty("high", "the stage did not finish, so nothing it would have written is in the document"),
+            "the step is asked for again, or the campaign is started again",
+            rejected=[rsn.rej(f"stop the campaign at the {stage} stage",
+                              "a stopped job leaves the person with nothing; the later stages run on what there is")],
+            attention=f"{gap_words(stage, kind)} (What went wrong: {detail[:200]})")
+
+    def default_plan(self):
+        """select's default: every lens in every market (§8.1)."""
+        markets = list(((self.W.get("campaign") or {}).get("markets") or {}).get("value") or [])
+        return [(l, m) for l in LENSES for m in markets], []
+
+    def _research_gap(self, did, kind, detail, pairs=None):
+        """Research did not run: each selected lens x market becomes a gap the
+        report names, with a `research_run` decision the view offers to run
+        again; one decision owns the chat message."""
+        pairs = list(pairs if pairs is not None else (self.selected[0] if self.selected else []))
+        camp = self.W.get("campaign") or {}
+        cats = list((camp.get("categories") or {}).get("value") or [])
+        entity = f"category/{cats[0]}" if cats else "category/unsettled"
+        gaps, decs = [], []
+        for l, m in pairs:
+            gid = lid("gap_", self.doc, self.id, "not-run", l, m)
+            where = f"{LENS_TITLES[l]} in {market_list([m])}"
+            gaps.append({"id": gid, "key": f"{entity}:{LENS_NAMESPACE[l]}", "lens": l, "market": m,
+                         "searched": where, "sources_tried": [f"research:{l}/{m}"],
+                         "note": f"research did not run: {WHAT[kind]} ({detail})"[:300]})
+            decs.append(decision(
+                self.doc, self.did("research", "not-run", l, m), "edit", self.handler, "research_run", "",
+                [f"selection.gaps[{gid}]", f"selection.lenses_run[{l}/{m}]"], fields_changed=["selection.gaps"],
+                reasoning=rsn.make(
+                    f"Did not research {where}: {WHAT[kind]}.",
+                    [rsn.point(f"The research stage did not run: {WHAT[kind]}", gid)],
+                    rsn.certainty("high", "nothing was researched for this lens and market"),
+                    "the lens is looked into again",
+                    rejected=[rsn.rej("report the lens as covered",
+                                      "a lens that did not run is a gap, never a silent success")],
+                    attention=f"{where} was not researched ({detail[:160]}); ask to look again.")))
+        gids = [g["id"] for g in gaps]
+        own = decision(self.doc, did, "edit", self.handler, "research", "", [], gids, reasoning=rsn.make(
+            f"Researched nothing: {WHAT[kind]}.",
+            [rsn.point(f"The research stage did not run: {WHAT[kind]}", gids)],
+            rsn.certainty("high", "no lens and market was researched"),
+            "the step is asked for again, or the campaign is started again",
+            rejected=[rsn.rej("stop the campaign at the research stage",
+                              "a stopped job leaves the person with nothing; the report names what is missing")],
+            attention=f"{gap_words('research', kind)} (What went wrong: {detail[:200]})"))
+        patch = {}
+        if gaps:
+            old = [g for g in ((self.W.get("selection") or {}).get("gaps") or []) if g.get("id") not in set(gids)]
+            patch = {"selection": {"gaps": old + gaps}}
+        text = gap_words("research", kind) + (" Ask to look again from Selection." if gaps else "")
+        self.add_chunk("research", patch, [own] + decs, text=text, msg_decision=own, gap=True)
+
     def fail(self, stage, etype, message):
-        d = decision(self.doc, self.did(stage, "failed"), "edit", self.handler, "stage_failed",
-                     f"The {stage} stage failed: {message}. What landed before it stays.", [], reasoning=rsn.make(
-                         f"Stopped the campaign at the {stage} stage; what landed before it stays.",
-                         [rsn.point(f"The {stage} stage raised an error (its message is in the attention note)")],
-                         rsn.certainty("high", "the stage did not finish"),
-                         "the cause is fixed and the campaign is started again",
-                         rejected=[rsn.rej("carry on past the failed stage",
-                                           "later stages would build on something that did not happen")],
-                         attention=f"The {stage} stage failed: {message[:200]}"))
-        self.add_chunk(stage, {}, [d], text=f"The {stage} stage failed: {message}. What already landed stays.")
+        """The runner itself failed (never a stage: a stage is a gap, see skip)."""
+        try:
+            d = decision(self.doc, self.did(stage, "failed"), "edit", self.handler, "stage_failed",
+                         f"The job's runner failed at the {stage} stage: {message}. What landed before it stays.", [],
+                         reasoning=rsn.make(
+                             f"Stopped the campaign at the {stage} stage; what landed before it stays.",
+                             [rsn.point("The job's runner raised an error (its message is in the attention note)")],
+                             rsn.certainty("high", "the runner did not finish"),
+                             "the cause is fixed and the campaign is started again",
+                             only_option="the runner cannot go on",
+                             attention=f"The job's runner failed at the {stage} stage: {message[:200]}"))
+            self.add_chunk(stage, {}, [d], text=f"The job stopped at the {stage} stage: {message}. What already "
+                                                f"landed stays.", gap=True)
+        except Exception:  # noqa: BLE001 - the job still ends
+            log.error("start_campaign %s: could not record the runner's failure", self.id)
         with self.lock:
             self.state = "failed"
             self.error = {"type": etype, "message": message}
@@ -276,18 +531,45 @@ class CampaignJob:
 
     # -- replies ----------------------------------------------------------------
     def reply_change(self, clan):
-        """The change for this reply: every chunk not landed in `clan`."""
+        """The change for this reply: every chunk not landed in `clan` (§8.4).
+
+        A change the host will not apply must not hold the job, nor everything
+        after it (the host applies a change whole). A chunk missing from
+        REFUSED_AFTER polls after it was sent is sent on its own; on its own
+        and missing from REFUSED_AFTER more, the host refused it. It is dropped,
+        what follows it goes on landing, and its stage becomes a gap."""
+        refused = []
         with self.lock:
             self.latest_clan = clan
-            self.cond.notify_all()
             known = known_ids(clan)
-            pending = [c for c in self.chunks if not c.ids <= known]
-            change = combine(self.doc, pending)
+            pending = [c for c in self.chunks if not c.refused and not c.ids <= known]
+            for c in pending:
+                if id(c) in self._last_sent:
+                    c.misses += 1
+            for c in pending:
+                if c.solo and c.misses >= REFUSED_AFTER:
+                    c.refused = True
+                    refused.append(c)
+            if refused:
+                pending = [c for c in pending if not c.refused]
+                for c in pending:
+                    c.misses = 0
+            if pending and not pending[0].solo and pending[0].misses >= REFUSED_AFTER:
+                pending[0].solo, pending[0].misses = True, 0  # find which one the host will not take
+            send = pending[:1] if pending and pending[0].solo else pending
+            self._last_sent = {id(c) for c in send}
+            change = combine(self.doc, send)
             if change is None and self.state == "done":
                 change = self.last_change
             if change is not None:
                 self.last_change = change
-            return change
+            self.cond.notify_all()
+        for c in refused:
+            log.warning("start_campaign %s: the host did not apply the %s stage's change; going on without it",
+                        self.id, c.stage)
+            if not c.gap:
+                self.skip(c.stage, "not_applied", "the host did not apply the change it was sent", refused=c)
+        return change
 
     def view(self):
         with self.lock:
@@ -297,12 +579,22 @@ class CampaignJob:
                     "question": self.question if self.state == "needs_input" else None,
                     "started_at": self.started_at, "finished_at": self.finished_at, "error": self.error}
 
+    def gap_list(self):
+        """`result.gaps`: every step the job went on without, `[{stage, reason}]` (display only)."""
+        with self.lock:
+            return [dict(g) for g in self.gaps]
+
     def summary(self):
         v = self.view()
         if v["state"] == "needs_input":
             return f"Waiting for you: {self.question['text']}"
         if v["state"] == "done":
-            return "Campaign ready: the report is in the document."
+            if not self.gaps:
+                return "Campaign ready: the report is in the document."
+            stages = ", ".join(dict.fromkeys(g["stage"] for g in self.gaps))
+            head = "Campaign ready: the report is in the document" if self.reported else \
+                "Campaign finished without a report"
+            return f"{head}, with {len(self.gaps)} gap(s) ({stages}); each is named in the chat."
         if v["state"] == "failed":
             return f"Failed at {v['stage']}: {self.error['message']}"
         return f"{v['stage']}: {self.stage_idx} of {len(STAGES)} stage(s) done"
@@ -312,7 +604,8 @@ class CampaignJob:
         from ..util import bad
         with self.lock:
             if self.state != "needs_input":
-                raise TaskError(409, "job_state", f"job {self.id} is {self.state}, not waiting for an answer")
+                why = "; nobody answered in time, so it went on with a stated default" if self.unattended else ""
+                raise TaskError(409, "job_state", f"job {self.id} is {self.state}, not waiting for an answer{why}")
             q = self.question
             if inp.get("question_id") != q["id"]:
                 raise bad("question_id is not the job's open question")
@@ -365,12 +658,21 @@ class CampaignJob:
         """ONE model call over the material, cached for the job."""
         if self._identify_raw is None:
             leaves = self.caps.layers.leaves()
-            raw = self.caps.model.structured(
-                "identify", IDENTIFY_SYSTEM,
-                {"materials": extract_stage.material_payload(self.materials()),
-                 "category_tree": [{"code": l["code"], "name": l["name"], "vertical": l["vertical_name"]}
-                                   for l in leaves]},
-                identify_schema([l["code"] for l in leaves]), max_tokens=4000)
+            try:
+                raw = self.caps.model.structured(
+                    "identify", IDENTIFY_SYSTEM,
+                    {"materials": extract_stage.material_payload(self.materials()),
+                     "category_tree": [{"code": l["code"], "name": l["name"], "vertical": l["vertical_name"]}
+                                       for l in leaves]},
+                    identify_schema([l["code"] for l in leaves]), max_tokens=4000)
+                self._identify_failed = None
+            except Exception as e:  # nothing read is nothing found: the rules ask the person instead
+                kind, detail = _why(e)
+                log.warning("start_campaign %s: identify's model call did not answer (%s): %s", self.id, kind, detail)
+                with self.lock:
+                    self.gaps.append({"stage": "identify", "reason": kind})
+                self._identify_failed = WHAT[kind]
+                raw = {}
             brands = []
             for b in raw.get("brands") or []:
                 name = (b.get("name") or "").strip()
@@ -424,6 +726,9 @@ class CampaignJob:
         qid = uid("q_", self.doc, self.id, field, self.seq + 1, n=12)
         q = {"id": qid, "text": text, "options": options, "allow_text": allow_text,
              "address": f"{self.doc}#campaign.{field}"}
+        if self.unattended:  # nobody answered the last question: this one goes on with its default at once
+            self.default_answer(q, decisions, patch, facts)
+            return None
         opt_cites = ([o["source"]["material_id"] for o in options if o.get("source")]
                      + [f for o in options for f in o.get("fact_ids", [])])
         named = [o["label"] for o in options if "value" in o]
@@ -452,6 +757,70 @@ class CampaignJob:
             self.question = q
         return False
 
+    def went_on(self):
+        """(Under the lock.) Nobody answered within QUESTION_WAIT: take the
+        question's stated default, record it, and run identify again. Later
+        questions in this job go on at once (nobody is there to answer)."""
+        q = self.question
+        self.question = None
+        self.unattended = True
+        self.state = "running"
+        if q:
+            self.default_answer(q)
+
+    def default_answer(self, q, decisions=(), patch=None, facts=()):
+        """A question's stated default, written with its decision: the
+        material's most likely candidate (extracted, with its span, or proposed
+        from pins) — never for the brand, which is never guessed — or, with no
+        candidate, the field left open and named as a gap."""
+        fld = q["address"].partition("#campaign.")[2]
+        label = fld.replace("_", " ")
+        pick = None if fld == "brand" else next(
+            (o for o in q["options"] if "value" in o and (o.get("origin") == "extracted" and o.get("source")
+                                                         or o.get("origin") == "proposed" and o.get("fact_ids"))),
+            None)
+        did = self.did("default", q["id"])
+        patch = copy.deepcopy(patch) if patch else {}
+        cites = []
+        if pick:
+            env = {"value": copy.deepcopy(pick["value"]), "origin": pick["origin"], "gate": GATES[fld],
+                   "decision": did}
+            if pick.get("source"):
+                env["source"] = pick["source"]
+                cites.append(pick["source"]["material_id"])
+            if pick.get("fact_ids"):
+                env["fact_ids"] = list(pick["fact_ids"])
+                cites += list(pick["fact_ids"])
+            patch.setdefault("campaign", {})[fld] = env
+        with self.lock:
+            if not pick:
+                self.skipped_fields.add(fld)
+            self.gaps.append({"stage": "identify", "reason": "unanswered"})
+        waited = _minutes(self._limit("question_wait"))
+        because = [rsn.point(f"Nobody answered the question about the {label}")]
+        if pick:
+            because.append(rsn.point(f"The material's most likely reading is {pick['label']}", cites))
+        rejected = [rsn.rej("wait for the answer for ever", "a job that never finishes leaves the person with nothing")]
+        named = [o["label"] for o in q["options"] if "value" in o]
+        if fld == "brand" and named:
+            rejected.append(rsn.rej(f"take {named[0]} as the client's brand", "the subject brand is never guessed"))
+        r = rsn.make(
+            f"Went on with {pick['label']} as the {label}: nobody answered." if pick else
+            f"Went on without the {label}: nobody answered.", because,
+            rsn.certainty("low", "nobody confirmed it; it is the material's most likely reading") if pick else
+            rsn.certainty("high", "nothing was chosen, so nothing was written"),
+            "the person confirms or changes it, or starts the campaign again with it",
+            rejected=rejected,
+            attention=(f"Nobody answered, so the job went on with {pick['label']} from the material: confirm the "
+                       f"{label}." if pick else
+                       f"Nobody answered, so the job went on without the {label}: {UNANSWERED[fld]}."))
+        d = decision(self.doc, did, "edit", self.handler, "identify", "", [f"campaign.{fld}"] if pick else [], cites,
+                     reasoning=r, **({"fields_changed": [f"campaign.{fld}"]} if pick else {}))
+        text = (f"Nobody answered in {waited}, so I went on with {pick['label']} for the {label}, as the material "
+                f"reads: confirm it." if pick else
+                f"Nobody answered in {waited}, so I went on without the {label}: {UNANSWERED[fld]}.")
+        self.add_chunk("identify", patch, list(decisions or []) + [d], facts=facts, text=text, msg_decision=d)
+
     def stage_identify(self):
         camp = self.W.get("campaign") or {}
         layers = self.caps.layers
@@ -476,7 +845,7 @@ class CampaignJob:
 
         # 1. the subject brand -----------------------------------------------------
         brand = (camp.get("brand") or {}).get("value")
-        if not brand:
+        if not brand and "brand" not in self.skipped_fields:
             pt = self.pending_text if (self.pending_text or {}).get("field") == "brand" else None
             self.pending_text = None
             if pt:
@@ -521,14 +890,18 @@ class CampaignJob:
                              f"client's. Research waits for your answer.")
                     return self.ask("brand", "Which brand is the client's?", what, True, intro, ds, p, facts)
                 return self.ask("brand", "Which brand is this campaign for? Type its name.", [], True,
-                                "I could not find the client's brand in the prompt or the material.", ds, p, facts)
-        subject_ref = brand.get("ref")
-        layers.note_brand(subject_ref, brand.get("name"))
+                                "I could not read the material for the brand, so I am asking." if self._identify_failed
+                                else "I could not find the client's brand in the prompt or the material.", ds, p, facts)
+        # With no brand (nobody answered which it is), identify goes on with the rest.
+        bname = brand.get("name") if brand else None
+        subject_ref = brand.get("ref") if brand else None
+        if brand:
+            layers.note_brand(subject_ref, bname)
 
         # 2. the roster row: pinned already, or looked up in the brand layer ---------
-        pinned = [f for f in self.W_facts if f.get("entity") == subject_ref
+        pinned = [f for f in self.W_facts if brand and f.get("entity") == subject_ref
                   and str(f.get("key", "")).startswith("roster.") and f.get("status", "active") == "active"]
-        if not any(f["key"].startswith("roster.categories") for f in pinned):
+        if brand and not any(f["key"].startswith("roster.categories") for f in pinned):
             row = layers.roster(subject_ref)
             if row and row["categories"]:
                 pin_did = self.did("roster", subject_ref)
@@ -569,7 +942,8 @@ class CampaignJob:
 
         # 3. categories ------------------------------------------------------------------
         cats_env = camp.get("categories")
-        if not cats_env:
+        no_row = f"{bname} has no roster row" if brand else "No brand is settled, so no roster row gives it"
+        if not cats_env and "categories" not in self.skipped_fields:
             if cat_pins:
                 if not human_owned(self.W, ctx_decisions(self.clan), self.doc, "categories"):
                     vals = list(dict.fromkeys(f["value"] for f in cat_pins))[:2]
@@ -593,10 +967,16 @@ class CampaignJob:
                     how = "the category tree"
                     if not leaves:
                         codes = [l for l in labels]
-                        leaves = [l for l in self.caps.model.structured(
-                            "classify_category", CLASSIFY_SYSTEM,
-                            {"typed": pt["text"], "category_tree": [{"code": c, "name": n} for c, n in labels.items()]},
-                            classify_schema(codes), max_tokens=500).get("leaves", []) if l in labels][:2]
+                        try:
+                            leaves = [l for l in self.caps.model.structured(
+                                "classify_category", CLASSIFY_SYSTEM,
+                                {"typed": pt["text"],
+                                 "category_tree": [{"code": c, "name": n} for c, n in labels.items()]},
+                                classify_schema(codes), max_tokens=500).get("leaves", []) if l in labels][:2]
+                        except Exception as e:  # the typed words match no leaf: the question asks again
+                            log.warning("start_campaign %s: classify_category did not answer (%s)", self.id,
+                                        _why(e)[0])
+                            leaves = []
                         how = "the closest leaves"
                     if leaves:
                         return self.ask("categories", "Which category is it?",
@@ -609,12 +989,11 @@ class CampaignJob:
                 if cands:
                     return self.ask("categories", "Which category is it?",
                                     id_rules.category_options(cands, "extracted", labels), True,
-                                    f"{brand['name']} has no roster row, so its category is not known. The material "
-                                    f"points at these; pick one or say what it is.", ds, p, facts)
+                                    f"{no_row}, so its category is not known. The material points at these; pick one "
+                                    f"or say what it is.", ds, p, facts)
                 return self.ask("categories", "Which category is it? Type it.", [], True,
-                                f"{brand['name']} has no roster row and the material does not say its category.",
-                                ds, p, facts)
-        elif cats_env.get("origin") in ("confirmed", "stated") and not cat_pins:
+                                f"{no_row}, and the material does not say its category.", ds, p, facts)
+        elif cats_env and brand and cats_env.get("origin") in ("confirmed", "stated") and not cat_pins:
             # A person settled the categories: the brand layer learns the roster row.
             rdec = {"id": self.did("roster-write", subject_ref), "kind": "edit", "handler": self.handler,
                     "action": "roster_confirmed", "rationale": f"{cats_env.get('by') or 'A person'} confirmed "
@@ -627,7 +1006,7 @@ class CampaignJob:
             notes.append(f"{brand['name']}'s categories are written to the brand layer's roster.")
 
         # 4. markets ------------------------------------------------------------------------
-        if not camp.get("markets"):
+        if not camp.get("markets") and "markets" not in self.skipped_fields:
             pt = self.pending_text if (self.pending_text or {}).get("field") == "markets" else None
             self.pending_text = None
             p, ds = flush()
@@ -667,7 +1046,7 @@ class CampaignJob:
         # 6. the subject is never its own comparator (a later stage rewriting an
         #    earlier stage's field: new decision, read = what extract wrote, §3)
         cs = camp.get("competitor_set")
-        if cs and cs.get("origin") in ("extracted", "proposed") and \
+        if brand and cs and cs.get("origin") in ("extracted", "proposed") and \
                 any(isinstance(c, dict) and c.get("ref") == subject_ref for c in cs.get("value") or []):
             keep = [c for c in cs["value"] if c.get("ref") != subject_ref]
             if keep:
@@ -691,14 +1070,21 @@ class CampaignJob:
         p, ds = flush()
         if not ds:
             settled = [f"{self.doc}#campaign.{f}" for f in ("brand", "categories", "markets") if camp.get(f)]
+            open_ = [f for f in ("brand", "categories", "markets") if f in self.skipped_fields]
             ds = [decision(self.doc, did, "edit", self.handler, "identify", idec["rationale"], [],
                            reasoning=rsn.make(
-                               "Wrote nothing: the brand, categories and markets were already in the document.",
-                               [rsn.point("The document already holds them", settled)],
-                               rsn.certainty("high", "the document holds each of them"),
-                               "a person clears one of them",
+                               "Wrote nothing: the brand, categories and markets were already in the document."
+                               if not open_ else
+                               f"Wrote nothing more: nobody answered for the {' or the '.join(open_)}, so it stays "
+                               f"open.",
+                               [rsn.point("The document already holds them", settled) if settled else
+                                rsn.point("Nothing more was settled")],
+                               rsn.certainty("high", "the document holds each of them" if not open_ else
+                                             "nothing more was written"),
+                               "a person clears one of them" if not open_ else "the campaign is started again",
                                only_option="there was nothing left to identify"))]
-        text = " ".join(notes) or f"{brand['name']}: brand, categories and markets are settled."
+        text = " ".join(notes) or (f"{bname}: brand, categories and markets are settled." if brand and
+                                   not self.skipped_fields else "Went on with what is settled.")
         self.add_chunk("identify", p, ds, facts=facts, text=text)
         with self.lock:
             self.question = None
@@ -731,14 +1117,22 @@ class CampaignJob:
         prompt = next((m for m in self.materials() if m.kind == "prompt"), None)
         leaves = {l["code"]: l for l in self.caps.layers.leaves()}
         from .research import LENS_QUESTIONS
-        raw = self.caps.model.structured(
-            "select", SELECT_SYSTEM,
-            {"prompt": prompt.text if prompt else "", "prompt_material_id": prompt.id if prompt else None,
-             "markets": markets,
-             "categories": [{"code": c, "name": (leaves.get(c) or {}).get("name", c),
-                             "regulated": (leaves.get(c) or {}).get("regulated")} for c in cats],
-             "lenses": [{"lens": l, "title": LENS_TITLES[l], "question": LENS_QUESTIONS[l][0]} for l in LENSES]},
-            SELECT_SCHEMA, max_tokens=2000)
+        failed = None
+        try:
+            raw = self.caps.model.structured(
+                "select", SELECT_SYSTEM,
+                {"prompt": prompt.text if prompt else "", "prompt_material_id": prompt.id if prompt else None,
+                 "markets": markets,
+                 "categories": [{"code": c, "name": (leaves.get(c) or {}).get("name", c),
+                                 "regulated": (leaves.get(c) or {}).get("regulated")} for c in cats],
+                 "lenses": [{"lens": l, "title": LENS_TITLES[l], "question": LENS_QUESTIONS[l][0]} for l in LENSES]},
+                SELECT_SCHEMA, max_tokens=2000)
+        except Exception as e:  # no plan from the model: the default plan, every lens in every market
+            kind, detail = _why(e)
+            log.warning("start_campaign %s: select's model call did not answer (%s): %s", self.id, kind, detail)
+            with self.lock:
+                self.gaps.append({"stage": "select", "reason": kind})
+            raw, failed = {}, f"{WHAT[kind]} ({detail[:160]})"
         skip = {}
         for item in raw.get("lenses") or []:
             l, reason = item.get("lens"), (item.get("reason") or "").strip()
@@ -755,7 +1149,6 @@ class CampaignJob:
         skipped = [{"lens": l, **({"market": m} if m else {}), "reason": r} for (l, m), r in
                    sorted(skip.items(), key=lambda kv: (LENSES.index(kv[0][0]),
                                                         markets.index(kv[0][1]) if kv[0][1] in markets else -1))]
-        self.selected = (pairs, skipped)
         did = self.did("select")
         prior = [x for x in ((self.W.get("selection") or {}).get("lenses_skipped") or [])
                  if (x.get("lens"), x.get("market")) not in {(s["lens"], s.get("market")) for s in skipped}
@@ -769,7 +1162,7 @@ class CampaignJob:
                      ["selection.lenses_skipped"] + [f"selection.lenses_skipped[{s['lens']}"
                                                      f"{'/' + s['market'] if 'market' in s else ''}]" for s in skipped],
                      [prompt.id] if prompt else [], fields_changed=["selection.lenses_skipped"],
-                     reasoning=self.select_reasoning(raw.get("grounds"), prompt, pairs, skipped, markets))
+                     reasoning=self.select_reasoning(raw.get("grounds"), prompt, pairs, skipped, markets, failed))
         by_lens = {}
         for l, m in pairs:
             by_lens.setdefault(l, []).append(m)
@@ -777,10 +1170,14 @@ class CampaignJob:
                 + "".join(f" {LENS_TITLES[s['lens']]} is skipped"
                           f"{' in ' + market_list([s['market']]) if 'market' in s else ''}: {s['reason']}"
                           for s in skipped))
+        if failed:
+            text += f" The model could not plan the research: {failed}. Every lens runs in every market, the default."
         self.add_chunk("select", {"selection": {"lenses_skipped": prior + skipped}}, [d], text=text)
+        with self.lock:
+            self.selected = (pairs, skipped)
         return True
 
-    def select_reasoning(self, raw, prompt, pairs, skipped, markets):
+    def select_reasoning(self, raw, prompt, pairs, skipped, markets, failed=None):
         """select's reasoning: the model's points, cite-checked against the
         prompt's material id; certainty from the rules — a skip whose reason
         is the prompt's own words is certain, one the model inferred is not."""
@@ -791,7 +1188,9 @@ class CampaignJob:
             spans = [reason] + re.findall(r'["\u201c]([^"\u201d]{8,})["\u201d]', reason)
             return bool(prompt) and any(find_quote(prompt.text, x) for x in spans)
         inferred = [s for s in skipped if not quotes_prompt(s["reason"])]
-        if not skipped:
+        if failed:
+            level, basis = "medium", "the model gave no plan, so the default plan runs"
+        elif not skipped:
             level, basis = "high", "every lens runs in every market, the default"
         elif inferred:
             level, basis = "medium", "a skip rests on the model's reading rather than the prompt's words"
@@ -808,6 +1207,8 @@ class CampaignJob:
                                     "research covers every lens unless the prompt limits it"))
         attention = (f"Skipped for a reason the prompt does not state: "
                      f"{'; '.join(LENS_TITLES[s['lens']] + where(s) for s in inferred)}." if inferred else None)
+        if failed:
+            attention = f"The model could not plan the research: {failed}. Every lens runs in every market."
         r, _ = rsn.from_model(
             raw, decided=f"Research {n} lens(es) across {market_list(markets)}; skip {len(skipped)}.",
             known=pid, certainty_=rsn.certainty(level, basis), fallback=fallback,
@@ -817,6 +1218,21 @@ class CampaignJob:
 
     def stage_research(self):
         pairs = self.selected[0] if self.selected else []
+        camp = self.W.get("campaign") or {}
+        if not pairs and not (camp.get("markets") or {}).get("value"):
+            with self.lock:
+                self.gaps.append({"stage": "research", "reason": "no_market"})
+            d = decision(self.doc, self.did("research"), "edit", self.handler, "research",
+                         "No market is settled: nothing to research.", [], reasoning=rsn.make(
+                             "Researched nothing: no market is settled.",
+                             [rsn.point("Research runs once per market, and the campaign names none")],
+                             rsn.certainty("high", "the campaign holds no market"),
+                             "the campaign is started again with its markets",
+                             rejected=[rsn.rej("pick a market", "the markets are the client's to name, never guessed")],
+                             attention="No research ran: no market is settled. Start the campaign again naming the "
+                                       "markets."))
+            self.add_chunk("research", {}, [d], text="Nothing to research: no market is settled.")
+            return True
         if not pairs:
             d = decision(self.doc, self.did("research"), "edit", self.handler, "research",
                          "Nothing selected: no lens x market to research.", [], reasoning=rsn.make(
@@ -828,10 +1244,14 @@ class CampaignJob:
                              attention="No research ran; the report will have nothing researched to show."))
             self.add_chunk("research", {}, [d], text="Nothing to research: every lens was skipped.")
             return True
-        camp = self.W.get("campaign") or {}
         lenses = [l for l in LENSES if any(p[0] == l for p in pairs)]
         markets = list(dict.fromkeys(m for _, m in pairs))
         cats = list((camp.get("categories") or {}).get("value") or [])[:2]
+        if not cats:  # research runs per category (gate research): every pair is a gap, named
+            with self.lock:
+                self.gaps.append({"stage": "research", "reason": "gated"})
+            self._research_gap(self.did("research", "gated"), "gated", "no category is settled", pairs)
+            return True
         r = Researcher(self.doc, self.W_version, self.wclan(), self.handler, self.caps, lenses, markets, cats,
                        pairs=set(pairs), reuse_days=self.settings.reuse_days,
                        concurrency=self.settings.research_concurrency, seed=self.id)
@@ -865,7 +1285,7 @@ class CampaignJob:
                              [rsn.point("A finding must cite pins, and the document holds none")],
                              rsn.certainty("high", "the document holds no pin"),
                              "research pins facts", only_option="without a pin there is nothing to cite"))
-            self.add_chunk("synthesise", {}, [d], text="Nothing to synthesise: research pinned no facts.")
+            self.add_chunk("synthesise", {}, [d], text="No points to work out: we found no facts for them to rest on.")
             return True
         self.hits += hits
         n = len(change["findings_append"])
@@ -881,9 +1301,37 @@ class CampaignJob:
         self.add_chunk("synthesise", change["data_patch"], decs, findings=change["findings_append"], text=text)
         return True
 
+    def working_clan(self):
+        """The document as it stands once every chunk of ours it lacks has
+        landed: what the report composes from when no poll brought them."""
+        with self.lock:
+            clan = self.latest_clan
+            known = known_ids(clan)
+            data = copy.deepcopy(ctx_data(clan))
+            facts, findings = copy.deepcopy(ctx_facts(clan)), copy.deepcopy(ctx_findings(clan))
+            for c in self.chunks:
+                if c.refused or c.ids <= known:
+                    continue
+                data = apply_patch(data, c.patch)
+                facts += [f for f in c.facts if f["id"] not in {x["id"] for x in facts}]
+                findings += [f for f in c.findings if f["id"] not in {x["id"] for x in findings}]
+        if isinstance(data.get("projection"), dict):
+            data["projection"].pop("built_from", None)  # the host's hashes describe the older members
+        return {**clan, "data": data, "facts": facts, "findings": findings}
+
     def stage_report(self):
-        clan = self.latest_clan  # the request's document, now holding every earlier stage
-        report, cites, hits, why = report_stage.compose(self.doc, clan, self.handler, self.caps)
+        working = self._report_from == "working"
+        # the request's document, now holding every earlier stage — or, when no
+        # poll brought them in time, the job's own copy of it
+        clan = self.working_clan() if working else self.latest_clan
+        try:
+            report, cites, hits, why = report_stage.compose(self.doc, clan, self.handler, self.caps)
+        except TaskError as e:  # nothing to cite: no report, and the reason, never a stalled job
+            return self.no_report(e.message)
+        if working:
+            note = ("Composed from the job's own copy of the document: no poll brought the earlier stages in time. "
+                    "Refresh report composes it from the document.")
+            why["attention"] = f"{why['attention']} {note}" if why.get("attention") else note
         d = decision(self.doc, self.did("report"), "edit", self.handler, "report",
                      "The report stage: structured blocks over the pins and findings the document held once the "
                      "earlier stages had landed. Every claim was checked against the document: it cites a pin or a "
@@ -892,6 +1340,30 @@ class CampaignJob:
         self.hits += hits
         self.add_chunk("report", {"report": report}, [d], base=clan.get("version"), read_from=ctx_data(clan),
                        text="Report ready. The short list under it is what to confirm before the brief.")
+        with self.lock:
+            self.reported = True
+        return True
+
+    def no_report(self, reason):
+        """A report must cite a pin or a finding (§8.5); with none there is no
+        report, and the job ends saying why and what it went on without."""
+        with self.lock:
+            self.gaps.append({"stage": "report", "reason": "nothing_to_cite"})
+            stages = list(dict.fromkeys(g["stage"] for g in self.gaps if g["stage"] != "report"))
+        without = f" It went on without: {', '.join(stages)}." if stages else ""
+        d = decision(self.doc, self.did("report", "none"), "edit", self.handler, "report", "", [], reasoning=rsn.make(
+            "Wrote no report: the document holds nothing to cite.",
+            [rsn.point("Every report claim cites a pin or a finding, and the document holds neither"),
+             rsn.point("What the campaign went without is named in the chat"
+                       + (f": {', '.join(stages)}" if stages else ""))],
+            rsn.certainty("high", "the document holds no pin and no finding"),
+            "research pins facts, then Refresh report composes one",
+            rejected=[rsn.rej("write a report without sources", "a claim nothing cites is never shown")],
+            attention=f"No report: {reason[:200]}.{without} Refresh report composes one once research lands."))
+        skipped = [DOING.get(st, st) for st in stages]
+        said = f" We couldn't finish {', '.join(skipped)}." if skipped else ""
+        self.add_chunk("report", {}, [d], text=f"There's no report: nothing was looked up that it could cite.{said} "
+                                               f"Refresh report writes one once there is.", gap=True)
         return True
 
 

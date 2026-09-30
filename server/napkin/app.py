@@ -101,7 +101,8 @@ class Middleware:
 
     def campaign_envelope(self, job, change):
         return self.envelope("start_campaign", job.handler, job.view(),
-                             {"summary": job.summary(), "messages": job.messages()}, change, job.caps,
+                             {"summary": job.summary(), "messages": job.messages(), "gaps": job.gap_list()},
+                             change, job.caps,
                              job.hits if job.state == "done" else [])
 
     # -- dispatch -----------------------------------------------------------

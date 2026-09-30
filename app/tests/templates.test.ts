@@ -138,6 +138,78 @@ test('a suggestion by the host’s matcher is Ellis’s', () => {
   assert.equal(f.crewKey({ handler: 'judge_brief@1' }), 'judge')
 })
 
+test('a carried item nothing here can settle is set aside, with a reason', () => {
+  type F = {
+    carriedAt(ref: string): { address: string }[]
+    setAsideOf(ref: string): unknown
+    carriedName(a: unknown): string
+    carriedBlock(items: unknown[]): string
+    asideForm(target: string): string
+  }
+  const UP = '3f2a9c1e'
+  const attention = [
+    { code: 'unmerged_branch', blocks_lock: true, can_set_aside: true, address: `${UP}#agents[u.drafter.t]`, label: 'Agent branch · u.drafter.t' },
+    { code: 'open_contest', blocks_lock: true, can_set_aside: true, address: `${UP}#merge-report[campaign.objective]` },
+    { code: 'flagged_field', blocks_lock: true, can_set_aside: true, address: `${UP}#campaign.in_market`, label: 'Campaign › In market' },
+    // Settled here, so not offered: a carried contest, the brief's own field.
+    { code: 'open_contest', blocks_lock: true, address: `${UP}#selection.contested[ct_abv]` },
+    { code: 'flagged_field', blocks_lock: true, address: 'brief#insight' },
+  ]
+  const decisions = [{ decision: { action: 'set_aside', rationale: 'The research settles it' },
+    targets: [{ address: `${UP}#merge-report[campaign.objective]`, here: false, label: 'Merge conflict · campaign.objective' }] }]
+  let locked = false
+  const CARRIED_WHY = new Function(`${obj(CLF, 'CARRIED_WHY')} return CARRIED_WHY;`)()
+  const env = {
+    VIEW: { attention, decisions }, arr, esc, CARRIED_WHY, TICK: '', upTitle: () => '“Lúnasa launch”',
+    trayNoun: () => 'brief', locked: () => locked, whoDid: () => 'You', dayMonth: (d: string) => d,
+  }
+  const f = lift<F>(CLF, ['refOfAddress', 'words', 'carriedAt', 'setAsideOf', 'carriedFrom', 'carriedName', 'carriedBlock', 'asideForm'], env)
+
+  // Found by the ref a tray or a view passes: the path, or the whole address.
+  assert.equal(f.carriedAt('agents[u.drafter.t]').length, 1)
+  assert.equal(f.carriedAt(`${UP}#campaign.in_market`).length, 1)
+  assert.equal(f.carriedAt('campaign.in_market').length, 1)
+  assert.equal(f.carriedAt('ct_abv').length, 0, 'a carried contest is picked, not set aside')
+  assert.equal(f.carriedAt('insight').length, 0, 'the brief’s own field is changed, not set aside')
+  assert.ok(f.setAsideOf('merge-report[campaign.objective]'))
+  assert.equal(f.setAsideOf('agents[u.drafter.t]'), null)
+
+  // In plain words.
+  assert.equal(f.carriedName(attention[0]), 'Work not brought back into “Lúnasa launch”')
+  assert.equal(f.carriedName(attention[1]), 'Agents disagree on objective')
+  assert.equal(f.carriedName({ code: 'open_contest', address: `${UP}#merge-report[decisions[d_x]]` }), 'Agents disagree on a call')
+  assert.equal(f.carriedName(attention[2]), 'Campaign › In market')
+
+  // One big button, naming the item; the reason is asked for, and required.
+  const block = f.carriedBlock([attention[0]])
+  assert.match(block, /<button type="button" class="clf-btn big primary" data-clf="aside" data-target="3f2a9c1e#agents\[u\.drafter\.t\]">Set aside, with a reason<\/button>/)
+  assert.match(block, /Carried over from “Lúnasa launch”/)
+  assert.match(block, /Nothing in “Lúnasa launch” changes/)
+  const form = f.asideForm(attention[0].address)
+  assert.match(form, /data-clf-form="aside" data-target="3f2a9c1e#agents\[u\.drafter\.t\]"/)
+  assert.match(form, /<textarea name="why" required><\/textarea>/)
+  assert.match(form, /<span class="req">needed<\/span>/)
+  locked = true
+  assert.doesNotMatch(f.carriedBlock([attention[0]]), /data-clf="aside"/, 'a locked brief sets nothing aside')
+
+  // It is sent as the item's address with the person's words, never without.
+  const submit = fn(CLF, 'onDrawerSubmit')
+  assert.ok(submit.indexOf("kind==='aside'?'Say why this can go ahead without it.'") < submit.indexOf("act('/acknowledge',{target:form.getAttribute('data-target'),rationale:why}"))
+  assert.match(fn(CLF, 'draw'), /carriedAt\(ref\)/)
+
+  // A carried contest with no value this copy can take is offered (the host
+  // marks it can_set_aside), in words about its sources, and its drawer
+  // offers the set-aside in place of a pick.
+  locked = false
+  const pinless = { code: 'open_contest', blocks_lock: true, can_set_aside: true, address: `${UP}#selection.contested[ct_nopin]`, label: 'Sources disagree on abv' }
+  attention.push(pinless)
+  assert.equal(f.carriedAt('ct_nopin').length, 1)
+  assert.equal(f.carriedName({ ...pinless, label: 'Contest · brand/orchard-hill:product.abv@IE' }), 'Sources disagree on abv')
+  assert.match(f.carriedBlock([pinless]), /The sources “Lúnasa launch” used disagree here, and this copy holds none of their values to pick from\./)
+  assert.match(f.carriedBlock([attention[1]]), /Two agents working on/)
+  assert.match(fn(CLF, 'draw'), /c\.status==='open'&&\(ca\.length\|\|sa\)/)
+})
+
 // ── the Research Tool ──────────────────────────────────────────────────────
 
 const RT = page('campaign-research/index.html')
@@ -180,6 +252,42 @@ test('the title is set over the tool’s name, never over one a person chose', a
     assert.deepEqual(r.calls, set ? ['Lunasa · Ireland'] : [], `over ${JSON.stringify(title)}`)
     assert.equal(r.document.title, 'Lunasa · Ireland · Research')
   }
+})
+
+test('a research that finished with nothing to cite says there is no report, never that it is ready', () => {
+  const { doneWords } = lift<{ doneWords(rep: boolean, gaps: unknown[]): string }>(RT, ['doneWords', 'notRun'], { arr })
+  const found = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `gap_${i}`, note: 'searched, nothing' }))
+  const failed = { id: 'gap_f', note: 'research failed: research unreachable (ConnectError)' }
+  const notRun = { id: 'gap_n', note: 'research did not run: it ran out of time (x)' }
+  assert.equal(doneWords(true, found(3)), 'We’re done. Your report is ready.')
+  assert.equal(doneWords(false, found(2)), 'We’re done, but there’s no report: nothing we found can be cited. What we couldn’t find is under Selection (2 gaps).')
+  assert.equal(doneWords(false, found(1)), 'We’re done, but there’s no report: nothing we found can be cited. What we couldn’t find is under Selection (1 gap).')
+  assert.equal(doneWords(false, []), 'We’re done, but there’s no report: nothing we found can be cited.')
+  // A look-up that never ran is not something we "couldn't find".
+  assert.equal(doneWords(false, [failed, notRun]), 'We’re done, but there’s no report: we couldn’t look it up, so there’s nothing to cite yet. What’s missing is under Selection (2 gaps).')
+  assert.equal(doneWords(false, [failed, ...found(1)]), 'We’re done, but there’s no report: we couldn’t look some of it up, so there’s nothing to cite yet. What’s missing is under Selection (2 gaps).')
+  assert.equal(doneWords(true, [failed]), 'We’re done. Your report is ready. We couldn’t look some of it up, so the report says less than it could. What’s missing is under Selection (1 gap).')
+  assert.doesNotMatch(doneWords(false, [failed]), /couldn’t find/)
+  assert.match(fn(RT, 'speech'), /sp\.text=doneWords\(rep, sel\(\)\.gaps\)/)
+})
+
+test('a step the job went on without reads Skipped, never Done', () => {
+  const STAGES = ['extract', 'identify', 'select', 'research', 'synthesise', 'report'].map((k, i) => ({ k, i }))
+  const STAGE = Object.fromEntries(STAGES.map(s => [s.k, s]))
+  const run = (job: unknown, S: unknown) => lift<{ stageStates(): Record<string, string> }>(RT, ['stageStates', 'skippedStages', 'notRun'], {
+    arr, isObj, STAGES, STAGE, CHAT: { job }, thread: () => [], D: () => ({}), sel: () => S,
+  }).stageStates()
+  // The job's reply names the gap.
+  let st = run({ state: 'done', gaps: [{ stage: 'synthesise', reason: 'timeout' }, { stage: 'identify', reason: 'unanswered' }] }, {})
+  assert.equal(st.synthesise, 'skip')
+  assert.equal(st.identify, 'done', 'an unanswered question went on with a default: the step finished')
+  assert.equal(st.report, 'done')
+  // No reply at hand (a reload): every look-up failed, so the look-up step was skipped.
+  st = run({ state: 'done' }, { lenses_run: [{ lens: 'consumer', market: 'IE' }], gaps: [{ lens: 'consumer', market: 'IE', note: 'research failed: research unreachable (ConnectError)' }] })
+  assert.equal(st.research, 'skip')
+  st = run({ state: 'done' }, { lenses_run: [{ lens: 'consumer', market: 'IE' }, { lens: 'media', market: 'IE' }], gaps: [{ lens: 'consumer', market: 'IE', note: 'research failed: x' }] })
+  assert.equal(st.research, 'done', 'one look-up ran')
+  assert.match(fn(RT, 'stepsHtml'), /skip:'Skipped'/)
 })
 
 type ReportFns = { reportStale(r: unknown): string[]; refreshBtn(stale: string[], title: string): string }

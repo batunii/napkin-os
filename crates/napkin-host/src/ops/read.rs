@@ -9,6 +9,7 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
+use clan_sdk::extract;
 use clan_sdk::hash::sha256_prefixed;
 use clan_sdk::{export_html, validate, ClanFile, DecisionChain, ExportOptions};
 use serde_json::{json, Value};
@@ -340,6 +341,10 @@ fn splice_text(doc: &Document, attachments: Option<&mut Value>, key: &str) {
 /// larger than the document itself — is sent as a small index instead
 /// ([`upstream_index`], `napkin.middleware/1` §1). The carried pins and
 /// findings arrive in `facts` and `findings`, where they were merged.
+///
+/// A document the brief tasks run on that carries research also gets
+/// `upstream_payload`: the research as the brief engine takes it
+/// ([`upstream_payload`], `napkin.middleware/1` §1, §10.13).
 pub fn clan_context_for_agent(doc: &Document) -> Value {
     let clan = doc.clan();
     let yaml_to_json = |p: &str| -> Value {
@@ -355,7 +360,8 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or(Value::Null);
     let m = clan.manifest();
-    serde_json::json!({
+    let pipeline = yaml_to_json("app/pipeline.yaml");
+    let mut context = serde_json::json!({
         "document_type": m.document_type,
         "app": m.app.as_ref().map(|a| serde_json::json!({ "name": a.name, "app_id": a.app_id, "version": a.version })),
         "schema": schema,
@@ -369,8 +375,73 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "facts": members::list_for_agent(clan, members::FACTS),
         "findings": members::list_for_agent(clan, members::FINDINGS),
         "edits": members::edits_map(clan),
-        "pipeline": yaml_to_json("app/pipeline.yaml"),
-    })
+        "pipeline": pipeline,
+    });
+    if runs_brief_tasks(doc, &context["pipeline"]) {
+        if let Some(up) = upstream_payload(doc) {
+            context["upstream_payload"] = up.payload;
+            if !up.skipped.is_empty() {
+                context["upstream_skipped"] = up
+                    .skipped
+                    .iter()
+                    .map(|s| json!({ "what": s.what, "why": s.why }))
+                    .collect();
+            }
+        }
+    }
+    context
+}
+
+/// The middleware tasks that read `clan.upstream_payload`.
+pub const BRIEF_TASKS: &[&str] = &["draft_brief", "regenerate_field"];
+
+/// Brief Maker's app id: its documents run the brief tasks whether or not
+/// they carry a pipeline (the middleware's built-in map, §1).
+pub const BRIEF_APP: &str = "ie.napkin.brief-maker";
+
+/// Whether the brief tasks run on `doc`: its pipeline declares one, or it is
+/// a Brief Maker document.
+fn runs_brief_tasks(doc: &Document, pipeline: &Value) -> bool {
+    let declared = pipeline
+        .get("tasks")
+        .and_then(Value::as_object)
+        .is_some_and(|t| BRIEF_TASKS.iter().any(|k| t.contains_key(*k)));
+    declared || doc.app_id() == Some(BRIEF_APP)
+}
+
+/// The people the host can name until accounts exist (clan-extract.md
+/// §3.1.2, OD9, P3): the local user, and the two people of the example
+/// research. `(actor, name, role)`. An actor it does not name reads "a person
+/// on the team"; a raw id is never printed.
+pub const DUMMY_ACCOUNT: &[(&str, &str, &str)] = &[
+    ("human:local", "Alex Doe", "planner"),
+    ("human:u_aoife", "Aoife", "planner"),
+    ("human:u_ciaran", "Ciarán", "planner"),
+];
+
+/// The names the extract is given: the dummy account's.
+pub fn account_people() -> extract::Context {
+    let mut ctx = extract::Context::default();
+    for (actor, name, role) in DUMMY_ACCOUNT {
+        ctx.people.insert(
+            actor.to_string(),
+            extract::Person {
+                name: name.to_string(),
+                role: Some(role.to_string()),
+                erased: false,
+            },
+        );
+    }
+    ctx
+}
+
+/// The research `doc` carries, as the brief engine's `upstream` input: the
+/// extract's `upstream` printer (clan-extract.md §1.1, §11.2) over the
+/// document's own bytes, with the account's names. `None` when it carries no
+/// research. Built at the call, sent and thrown away: never stored, logged or
+/// cached (§1.2).
+pub fn upstream_payload(doc: &Document) -> Option<extract::Upstream> {
+    extract::upstream(doc.clan(), &account_people())
 }
 
 /// `data` with its `upstream` replaced by [`upstream_index`]; unchanged when
@@ -692,4 +763,241 @@ fn build_clan_context(doc: &Document, data: &serde_yaml::Value) -> Value {
         "assets": Value::Object(assets),
         "edits": members::edits_map(clan),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::DocId;
+    use clan_sdk::{
+        create, make_template, spinoff, AppInfo, ClanBuilder, CreateOptions, FileEntry,
+        MakeTemplateOptions, SpinoffOptions, SpinoffSpec, MANIFEST_PATH,
+    };
+
+    const R: &str = "7c1e9a42-5b3d-4f8e-9a6c-2d1f0e8b4a17";
+    const EXAMPLE_DATA: &[u8] =
+        include_bytes!("../../../../app/templates/campaign-research/example/shared/data.yaml");
+    const EXAMPLE_CHAIN: &[u8] = include_bytes!(
+        "../../../../app/templates/campaign-research/example/agent/decision-chain.yaml"
+    );
+    const EXAMPLE_FACTS: &[u8] =
+        include_bytes!("../../../../app/templates/campaign-research/example/shared/facts.yaml");
+    const EXAMPLE_FINDINGS: &[u8] =
+        include_bytes!("../../../../app/templates/campaign-research/example/shared/findings.yaml");
+    const BRIEF_PIPELINE: &[u8] =
+        include_bytes!("../../../../app/templates/brief-maker/app/pipeline.yaml");
+    const RESEARCH_PIPELINE: &[u8] =
+        include_bytes!("../../../../app/templates/campaign-research/app/pipeline.yaml");
+
+    fn app(name: &str, app_id: &str, spinoff: Option<SpinoffSpec>) -> AppInfo {
+        AppInfo {
+            name: name.into(),
+            app_id: app_id.into(),
+            version: "0.6.0".into(),
+            icon: None,
+            entry: "human/index.html".into(),
+            schema: None,
+            prompt_templates: vec![],
+            data_seed: None,
+            spinoff,
+        }
+    }
+
+    fn member(path: &str, role: &str) -> FileEntry {
+        FileEntry {
+            id: role.into(),
+            path: path.into(),
+            role: role.into(),
+            content_type: "application/yaml".into(),
+            priority: None,
+            sha256: None,
+        }
+    }
+
+    /// A fresh document with `add` written, `app` set and, for the
+    /// research, the example's document id.
+    fn doc(
+        title: &str,
+        app: AppInfo,
+        document_id: Option<&str>,
+        add: &[(&str, &[u8], Option<FileEntry>)],
+    ) -> ClanFile {
+        let base = ClanFile::from_bytes(
+            create(CreateOptions {
+                title: title.into(),
+                brief: title.into(),
+                document_type: None,
+                no_render: false,
+                schema: None,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let mut manifest = base.manifest().clone();
+        manifest.app = Some(app);
+        if let Some(id) = document_id {
+            manifest.document_id = Some(id.into());
+        }
+        for (_, _, reg) in add {
+            if let Some(reg) = reg {
+                manifest.files.retain(|f| f.path != reg.path);
+                manifest.files.push(reg.clone());
+            }
+        }
+        let mut b = ClanBuilder::new(manifest);
+        for (p, v) in base.read_all_entries().unwrap() {
+            if p != MANIFEST_PATH && !add.iter().any(|(a, _, _)| *a == p) {
+                b.add_entry(p, v);
+            }
+        }
+        for (p, v, _) in add {
+            b.add_entry(*p, v.to_vec());
+        }
+        ClanFile::from_bytes(b.build().unwrap()).unwrap()
+    }
+
+    fn research() -> ClanFile {
+        doc(
+            "Lúnasa 0.0 launch",
+            app("Campaign Research", "ie.napkin.campaign-research", None),
+            Some(R),
+            &[
+                ("shared/data.yaml", EXAMPLE_DATA, None),
+                ("agent/decision-chain.yaml", EXAMPLE_CHAIN, None),
+                (
+                    "shared/facts.yaml",
+                    EXAMPLE_FACTS,
+                    Some(member("shared/facts.yaml", "pinned-facts")),
+                ),
+                (
+                    "shared/findings.yaml",
+                    EXAMPLE_FINDINGS,
+                    Some(member("shared/findings.yaml", "findings")),
+                ),
+                ("app/pipeline.yaml", RESEARCH_PIPELINE, None),
+            ],
+        )
+    }
+
+    fn brief_template() -> ClanFile {
+        let spec = SpinoffSpec {
+            accepts: vec!["ie.napkin.campaign-research".into()],
+            upstream: true,
+            ..Default::default()
+        };
+        let scaffold = doc(
+            "Brief Maker",
+            app("Brief Maker", BRIEF_APP, None),
+            None,
+            &[("app/pipeline.yaml", BRIEF_PIPELINE, None)],
+        );
+        ClanFile::from_bytes(
+            make_template(
+                &scaffold,
+                app("Brief Maker", BRIEF_APP, Some(spec)),
+                MakeTemplateOptions::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn open(clan: &ClanFile) -> Document {
+        Document::from_bytes(DocId::new("test.clan"), clan.raw_bytes().to_vec()).unwrap()
+    }
+
+    fn brief() -> Document {
+        let bytes = spinoff(&brief_template(), &research(), SpinoffOptions::default()).unwrap();
+        Document::from_bytes(DocId::new("brief.clan"), bytes).unwrap()
+    }
+
+    #[test]
+    fn a_research_fed_brief_sends_the_engines_upstream() {
+        let b = brief();
+        let ctx = clan_context_for_agent(&b);
+        let up = &ctx["upstream_payload"];
+        assert_eq!(up["brand"], "Lúnasa");
+        assert!(up["facts"].as_array().is_some_and(|f| !f.is_empty()));
+        assert!(up["decisions"].as_array().is_some_and(|d| !d.is_empty()));
+        // Only the example's categories (drinks.*, not taxonomy codes) map to
+        // none of the engine's, and that is named; nothing else was left out.
+        assert_eq!(
+            ctx["upstream_skipped"],
+            serde_json::json!([{ "what": "campaign.categories",
+                "why": "no category maps to one of the engine's; the engine chooses its own" }])
+        );
+        // It is the printer's output, exactly.
+        assert_eq!(*up, upstream_payload(&b).unwrap().payload);
+        // The people are named by the dummy account, never by a raw id.
+        let text = up.to_string();
+        assert!(text.contains("\"who\":\"Aoife\"") && text.contains("\"who\":\"Ciarán\""));
+        assert!(!text.contains("human:"));
+        // The rest of the context is unchanged: the frozen data is still an index.
+        assert_eq!(ctx["data"]["upstream"][R]["direct"], true);
+    }
+
+    #[test]
+    fn the_payload_is_the_same_on_every_read() {
+        let b = brief();
+        let one = clan_context_for_agent(&b)["upstream_payload"].clone();
+        assert_eq!(clan_context_for_agent(&b)["upstream_payload"], one);
+        assert_eq!(
+            clan_context_for_agent(&brief())["upstream_payload"],
+            one,
+            "a second spin-off of the same research"
+        );
+    }
+
+    #[test]
+    fn documents_the_brief_tasks_do_not_run_on_send_none() {
+        // The research itself carries nothing upstream.
+        assert!(clan_context_for_agent(&open(&research()))
+            .get("upstream_payload")
+            .is_none());
+        // A brief template carries no research.
+        assert!(clan_context_for_agent(&open(&brief_template()))
+            .get("upstream_payload")
+            .is_none());
+        // A document that carries research but runs no brief task.
+        let other = brief_template();
+        let mut m = other.manifest().clone();
+        m.app = Some(app("Deck", "ie.napkin.deck", None));
+        let mut bld = ClanBuilder::new(m);
+        for (p, v) in other.read_all_entries().unwrap() {
+            if p != MANIFEST_PATH && p != "app/pipeline.yaml" {
+                bld.add_entry(p, v);
+            }
+        }
+        let deckish = ClanFile::from_bytes(bld.build().unwrap()).unwrap();
+        let spec = SpinoffSpec {
+            accepts: vec!["ie.napkin.campaign-research".into()],
+            upstream: true,
+            ..Default::default()
+        };
+        let tpl = ClanFile::from_bytes(
+            make_template(
+                &deckish,
+                app("Deck", "ie.napkin.deck", Some(spec)),
+                MakeTemplateOptions::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let deck = spinoff(&tpl, &research(), SpinoffOptions::default()).unwrap();
+        let deck = Document::from_bytes(DocId::new("deck.clan"), deck).unwrap();
+        let ctx = clan_context_for_agent(&deck);
+        assert!(
+            ctx["data"]["upstream"].get(R).is_some(),
+            "it does carry the research"
+        );
+        assert!(ctx.get("upstream_payload").is_none());
+    }
+
+    #[test]
+    fn the_dummy_account_names_every_example_person() {
+        let people = account_people().people;
+        for (actor, name, _) in DUMMY_ACCOUNT {
+            assert_eq!(people[*actor].name, *name);
+        }
+    }
 }

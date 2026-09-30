@@ -17,6 +17,7 @@ pub mod create;
 pub mod decision;
 pub mod error;
 pub mod export;
+pub mod extract;
 pub mod hash;
 pub mod inject;
 pub mod instantiate;

@@ -364,6 +364,9 @@ unresolved: 1
     assert!(v.attention[1].text.contains("carried from upstream"));
     assert!(v.attention[2].text.contains("between drafter and judge"));
     assert_eq!(v.lock.blockers, 4);
+    // Its own merge and branch are its own to settle: nothing is set aside.
+    assert!(v.attention.iter().all(|a| !a.can_set_aside), "{:?}", v.attention);
+    assert!(v.attention[3].address.is_none());
 
     // A later resolve settles it.
     let resolved = format!(
@@ -662,7 +665,8 @@ upstream:
         opened_by: d_con
         values:
         - {{ value: 0.5, unit: percent_abv, fact_id: f_a, from: pinned }}
-        - {{ value: 0.4, unit: percent_abv, fact_id: f_b, from: brands_positioning/GB }}
+        - {{ value: 0.4, unit: percent_abv, fact_id: f_b, from: brands_positioning/GB,
+             pin: {{ id: f_b, entity: brand/orchard-hill, key: product.abv, value: 0.4, unit: percent_abv }} }}
       - id: ct_done
         key: category/cider:market.share@IE
         status: resolved
@@ -735,10 +739,14 @@ unresolved: 1
     // The carried contest once, at its upstream address and on the decision
     // that opened it; the one resolved upstream is not listed; the carried
     // merge conflict blocks. The frozen field citing the finding the brief
-    // rejected is not the brief's to revise.
+    // rejected blocks too: not the brief's to revise, so it is set aside.
     assert_eq!(
         codes(&v),
-        [("open_contest", Some("d_con")), ("open_contest", None)]
+        [
+            ("open_contest", Some("d_con")),
+            ("open_contest", None),
+            ("flagged_field", Some("d_rej")),
+        ]
     );
     let contest = &v.attention[0];
     assert_eq!(
@@ -752,6 +760,10 @@ unresolved: 1
         "labelled from the frozen copy"
     );
     assert!(v.attention[1].text.contains("settled there, in the parent"));
+    assert_eq!(
+        v.attention[2].address.as_deref(),
+        Some(format!("{UP}#campaign.in_market").as_str())
+    );
 
     // The parent's approve names the parent, whole; it is not a lock here.
     let lock = v
@@ -785,7 +797,10 @@ unresolved: 1
         (members::FINDINGS_PATH, REJECTED),
         (&merge, report),
     ]);
-    assert_eq!(codes(&decisions(&doc).unwrap()), [("open_contest", None)]);
+    assert_eq!(
+        codes(&decisions(&doc).unwrap()),
+        [("open_contest", None), ("flagged_field", Some("d_rej"))]
+    );
 }
 
 #[test]
@@ -881,9 +896,11 @@ fn a_field_whose_writing_decision_cites_a_rejected_finding_is_flagged() {
             (members::FINDINGS_PATH, REJECTED),
         ]))
         .unwrap();
+        // The brief's own fields; the frozen `in_market` citing it is a
+        // carried item, set aside rather than redrafted.
         v.attention
             .into_iter()
-            .filter(|a| a.code == "flagged_field")
+            .filter(|a| a.code == "flagged_field" && !a.can_set_aside)
             .map(|a| (a.address.unwrap_or_default(), a.decision))
             .collect::<Vec<_>>()
     };
@@ -912,4 +929,167 @@ fn a_field_whose_writing_decision_cites_a_rejected_finding_is_flagged() {
     assert!(flagged(&person, "").is_empty());
     // A superseded draft is not how the field stands.
     assert!(flagged("", "  superseded_by: d_other\n").is_empty());
+}
+
+/// [`doc_with`], spun off from `UP` with its upstream: the manifest records
+/// the hop (`lineage.carried`), as the SDK writes it.
+fn spun_off(entries: &[(&str, &str)]) -> Document {
+    let plain = doc_with(entries);
+    let clan = plain.clan();
+    let mut manifest = clan.manifest().clone();
+    manifest.lineage = Some(clan_sdk::Lineage {
+        parent_id: UP.into(),
+        parent_uri: format!("clan-store:{UP}"),
+        parent_sha256: None,
+        delta: "spun off".into(),
+        parents: Vec::new(),
+        merge: false,
+        carried: Some(clan_sdk::Carried {
+            document_id: UP.into(),
+            data_sha256: "sha256:0".into(),
+            facts_sha256: None,
+            findings_sha256: None,
+            sources_sha256: None,
+            last_decision: None,
+        }),
+    });
+    let mut b = ClanBuilder::new(manifest);
+    for (path, bytes) in clan.read_all_entries().unwrap() {
+        if path != clan_sdk::MANIFEST_PATH {
+            b.add_entry(path, bytes);
+        }
+    }
+    Document::from_bytes(DocId::new("t.clan"), b.build().unwrap()).unwrap()
+}
+
+#[test]
+fn what_a_child_cannot_settle_is_set_aside_with_a_reason_and_leaves_the_list() {
+    let base = format!(
+        "- id: d_rej
+  kind: verdict
+  agent: human
+  actor: human:u_a
+  action: reject_finding
+  polarity: bad
+  targets: ['{DOC}#findings[fi_rej]']
+  rationale: value not volume
+  timestamp: 2026-09-24T11:00:00Z
+- id: d_con
+  kind: contest
+  agent: research_lens@1
+  action: open_contest
+  targets: ['{UP}#selection.contested[ct_abv]']
+  rationale: Two values.
+  timestamp: 2026-09-24T10:00:00Z
+"
+    );
+    let report = "generated_by: test
+conflicts:
+- key: campaign.objective
+  winner: { value: a, agent: drafter }
+  losers: [{ value: b, agent: judge }]
+- key: decisions[d_x]
+  winner: { value: good, agent: judge }
+  losers: [{ value: bad, agent: drafter }]
+  decision: d_x
+unresolved: 2
+";
+    let data = carried_data();
+    let merge = format!("upstream/{UP}/merge-report.yaml");
+    let with = |newer: &str| {
+        let chain = format!("decisions:\n{newer}{base}");
+        decisions(&spun_off(&[
+            (CHAIN_PATH, &chain),
+            ("shared/data.yaml", &data),
+            (members::FINDINGS_PATH, REJECTED),
+            (&merge, report),
+            ("agents/u.drafter.t/data.yaml", "{}"),
+        ]))
+        .unwrap()
+    };
+    let aside = |v: &DecisionsView| -> Vec<(&'static str, String, String)> {
+        v.attention
+            .iter()
+            .filter(|a| a.can_set_aside)
+            .map(|a| (a.code, a.address.clone().unwrap_or_default(), a.label.clone().unwrap_or_default()))
+            .collect()
+    };
+    let objective = format!("{UP}#merge-report[campaign.objective]");
+    let judged = format!("{UP}#merge-report[decisions[d_x]]");
+    let branch = format!("{UP}#agents[u.drafter.t]");
+    let in_market = format!("{UP}#campaign.in_market");
+
+    // Each carried item nothing here can settle is offered, at its upstream
+    // address; the carried contest, which `/resolve` settles, is not.
+    let v = with("");
+    assert_eq!(
+        aside(&v),
+        [
+            ("open_contest", objective.clone(), "Merge conflict · campaign.objective".to_string()),
+            ("open_contest", judged.clone(), "Merge conflict · decisions[d_x]".to_string()),
+            ("unmerged_branch", branch.clone(), "Agent branch · u.drafter.t".to_string()),
+            ("flagged_field", in_market.clone(), "Campaign › In market".to_string()),
+        ]
+    );
+    let contest = v.attention.iter().find(|a| a.decision.as_deref() == Some("d_con")).unwrap();
+    assert!(!contest.can_set_aside);
+    assert_eq!(v.lock.blockers, 5);
+    assert!(v.attention[2].text.contains("sets it aside here with a reason"), "{}", v.attention[2].text);
+    let flagged = v.attention.iter().find(|a| a.code == "flagged_field").unwrap();
+    assert_eq!(flagged.finding.as_deref(), Some("fi_rej"));
+    // The view says so; the host's own note of the finding stays in.
+    let json = serde_json::to_value(flagged).unwrap();
+    assert_eq!(json["can_set_aside"], true);
+    assert!(json.get("finding").is_none());
+
+    let set_aside = |id: &str, target: &str, cites: &str, extra: &str| {
+        format!(
+            "- id: {id}
+  kind: verdict
+  agent: human:u_a
+  actor: human:u_a
+  action: set_aside
+  targets: ['{target}']
+  cites: [{cites}]
+  rationale: The parent settles it; this brief goes ahead.
+{extra}  timestamp: 2026-09-25T10:00:00Z
+"
+        )
+    };
+    // Set aside, each leaves the list; the rest stay.
+    let v = with(&set_aside("d_s1", &branch, &format!("'{branch}'"), ""));
+    assert!(!aside(&v).iter().any(|(_, a, _)| a == &branch));
+    assert_eq!(v.lock.blockers, 4);
+    let all = [
+        set_aside("d_s1", &branch, &format!("'{branch}'"), ""),
+        set_aside("d_s2", &objective, &format!("'{objective}'"), ""),
+        set_aside("d_s3", &judged, &format!("'{judged}', d_x"), ""),
+        set_aside("d_s4", &in_market, &format!("'{in_market}', fi_rej"), ""),
+    ]
+    .concat();
+    let v = with(&all);
+    assert!(aside(&v).is_empty(), "{:?}", aside(&v));
+    assert_eq!(codes(&v), [("open_contest", Some("d_con"))], "the carried contest is still open");
+
+    // A flagged field is set aside for the finding it cites: one naming
+    // another finding does not clear it. A superseded set-aside is not one.
+    let v = with(&set_aside("d_s4", &in_market, &format!("'{in_market}', fi_other"), ""));
+    assert!(aside(&v).iter().any(|(_, a, _)| a == &in_market));
+    let v = with(&set_aside("d_s1", &branch, "", "  superseded_by: d_later\n"));
+    assert!(aside(&v).iter().any(|(_, a, _)| a == &branch));
+    // A set-aside does not settle a contest: that is `/resolve`'s.
+    let ct = format!("{UP}#selection.contested[ct_abv]");
+    let v = with(&set_aside("d_s5", &ct, "", ""));
+    assert!(codes(&v).contains(&("open_contest", Some("d_con"))));
+
+    // Not spun off with its upstream: the branch is this document's own.
+    let chain = format!("decisions:\n{base}");
+    let own = decisions(&doc_with(&[
+        (CHAIN_PATH, &chain),
+        ("shared/data.yaml", &data),
+        ("agents/u.drafter.t/data.yaml", "{}"),
+    ]))
+    .unwrap();
+    let b = own.attention.iter().find(|a| a.code == "unmerged_branch").unwrap();
+    assert!(!b.can_set_aside && b.address.is_none());
 }

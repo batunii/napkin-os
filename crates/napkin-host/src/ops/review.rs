@@ -4,7 +4,8 @@
 
 //! A person's review decisions (Contract 4 §4, §7, §8): the typed operations
 //! behind the buttons on a field — mark it good or bad, mark it confidential,
-//! reject or verify a finding, pick between two sources, lock the document.
+//! reject or verify a finding, pick between two sources, set aside a carried
+//! item this document cannot settle, lock the document.
 //!
 //! Each is `(Ctx, Document@version, input) → Outcome`, like every other
 //! operation: it records one decision, attributed to the person in `Ctx`,
@@ -38,6 +39,11 @@ const CHAIN: &str = "agent/decision-chain.yaml";
 
 /// The polarity values a verdict may carry.
 pub const POLARITIES: &[&str] = &["good", "bad"];
+
+/// The action of a verdict that sets a carried item aside (Contract 4 §7.2):
+/// it carries no polarity — it says nothing of whether the item is right,
+/// only why this document goes ahead without settling it.
+pub const SET_ASIDE: &str = "set_aside";
 
 // ── inputs ──────────────────────────────────────────────────────────────────
 
@@ -153,10 +159,37 @@ pub fn parse_verify(raw: &str) -> HostResult<(String, String)> {
     Ok((required(&v, "finding")?, text(&v, "rationale")))
 }
 
-/// `POST /acknowledge`: `{decision, rationale?}`.
+/// `POST /acknowledge`: `{decision, rationale?}` — "Looks right" on a
+/// decision — or `{target, rationale}` — a carried item set aside (Contract 4
+/// §8.1, item 7). The first of the pair is the decision's id or the item's
+/// address; [`acknowledge`] tells them apart by the `#` only an address has.
 pub fn parse_acknowledge(raw: &str) -> HostResult<(String, String)> {
     let v = body(raw)?;
-    Ok((required(&v, "decision")?, text(&v, "rationale")))
+    let (decision, target) = (text(&v, "decision"), text(&v, "target"));
+    let rationale = text(&v, "rationale");
+    match (decision.is_empty(), target.is_empty()) {
+        (false, true) if decision.contains('#') => Err(HostError::bad_request(
+            "`decision` is a decision's id; a carried item is set aside by its `target`",
+        )),
+        (false, true) => Ok((decision, rationale)),
+        (true, false) if !target.contains('#') => Err(HostError::bad_request(
+            "`target` is the carried item's address: <document id>#<path>",
+        )),
+        (true, false) if rationale.is_empty() => Err(set_aside_needs_a_reason()),
+        (true, false) => Ok((target, rationale)),
+        (false, false) => Err(HostError::bad_request(
+            "give `decision` or `target`, not both",
+        )),
+        (true, true) => Err(HostError::bad_request(
+            "`decision` is required, or `target` to set a carried item aside",
+        )),
+    }
+}
+
+fn set_aside_needs_a_reason() -> HostError {
+    HostError::bad_request(
+        "setting a carried item aside needs a reason (`rationale`): say why this document can go ahead without settling it",
+    )
 }
 
 /// `POST /approve`: `{rationale?}`.
@@ -694,7 +727,7 @@ pub fn resolve(ctx: &Ctx, doc: &Document, input: Resolve) -> HostResult<Outcome>
         // research froze its pin beside the value for exactly this.
         let pin = chosen.get("pin").filter(|p| p.is_object()).ok_or_else(|| {
             HostError::conflict(format!(
-                "{} carries no pin to take; rerun the research for it",
+                "{} carries no pin to take; rerun the research for it, or set the contest aside with a reason",
                 input.chosen
             ))
         })?;
@@ -874,8 +907,14 @@ pub fn verify_finding(
 /// was, and accepts the call. Recorded as a good verdict that names the
 /// decision (Contract 4 §4), which is what clears it from what needs a person;
 /// the decision's own targets are untouched.
+///
+/// Given an address in place of a decision id, it sets a carried item aside
+/// instead ([`set_aside`]).
 pub fn acknowledge(ctx: &Ctx, doc: &Document, input: &(String, String)) -> HostResult<Outcome> {
     let (id, rationale) = input;
+    if id.contains('#') {
+        return set_aside(ctx, doc, id, rationale);
+    }
     let who = person(ctx, "accept an agent's call")?;
     not_locked(doc)?;
     let chain = chain_of(doc)?;
@@ -907,6 +946,108 @@ pub fn acknowledge(ctx: &Ctx, doc: &Document, input: &(String, String)) -> HostR
     );
     v.polarity = Some("good".into());
     commit(doc, data_of(clan)?, Members::of(clan)?, v, "a call accepted", &now)
+}
+
+/// Set aside, with a reason, a carried item this document cannot settle
+/// (Contract 4 §7.2): a field in an ancestor's frozen copy citing a finding
+/// rejected here, an agent branch carried from the parent, or a conflict in
+/// a carried merge report — each read-only here and settled, if at all, in
+/// the document it came from. One `set_aside` verdict, with no polarity,
+/// targets the item's upstream address and cites it (and, on a flagged
+/// field, the findings that flag it); the item leaves this document's lock
+/// list. Nothing else is written: not the frozen copy, not the parent.
+///
+/// Only what the lock list offers to set aside (`can_set_aside`) is taken. A
+/// carried contest with a value to take, or a carried bad verdict, can be
+/// settled here — `/resolve`, or `/verdict good` with a reason — so it is
+/// refused (`409`); a carried contest none of whose values is held here or
+/// carries a frozen pin cannot, and is offered. So is refused (`409`) an item
+/// already set aside; this document's own items are refused (`400`), and an
+/// address the list does not hold is `404`.
+pub fn set_aside(ctx: &Ctx, doc: &Document, target: &str, rationale: &str) -> HostResult<Outcome> {
+    let who = person(ctx, "set a carried item aside")?;
+    not_locked(doc)?;
+    let rationale = rationale.trim();
+    if rationale.is_empty() {
+        return Err(set_aside_needs_a_reason());
+    }
+    let clan = doc.clan();
+    let here = clan.document_id();
+    let (on, path) = target.split_once('#').ok_or_else(|| {
+        HostError::bad_request("`target` is the carried item's address: <document id>#<path>")
+    })?;
+    if on == here || on.is_empty() {
+        return Err(HostError::bad_request(format!(
+            "{target} is this document's own: settle it here; only an item carried from upstream is set aside"
+        )));
+    }
+    let data = data_of(clan)?;
+    if frozen(&data, on).is_none() {
+        return Err(HostError::bad_request(format!(
+            "target {target} is on document {on}, which this document does not carry"
+        )));
+    }
+    if path.is_empty() {
+        return Err(HostError::bad_request(format!(
+            "{target} names the whole document {on}; set aside one item it carried"
+        )));
+    }
+
+    let view = decisions::decisions(doc)?;
+    let listed: Vec<&decisions::Attention> = view
+        .attention
+        .iter()
+        .filter(|a| a.blocks_lock && a.address.as_deref() == Some(target))
+        .collect();
+    let items: Vec<&decisions::Attention> = listed.iter().copied().filter(|a| a.can_set_aside).collect();
+    if items.is_empty() {
+        let chain = chain_of(doc)?;
+        let earlier = chain.decisions.iter().find(|d| {
+            d.kind.as_deref() == Some("verdict")
+                && d.action == SET_ASIDE
+                && d.superseded_by.is_none()
+                && d.targets.iter().any(|t| t == target)
+        });
+        return Err(match (listed.first(), earlier) {
+            (Some(a), _) => HostError::conflict(format!(
+                "{target} can be settled here, so it is not set aside: {}",
+                match a.code {
+                    "open_contest" => "pick a value (`/resolve`)",
+                    "bad_verdict" => "override the verdict with a reason (`/verdict good`)",
+                    _ => "settle it",
+                }
+            )),
+            (None, Some(d)) => HostError::conflict(format!(
+                "{target} is already set aside in this document ({})",
+                d.id.as_deref().unwrap_or("a set_aside")
+            )),
+            (None, None) => HostError::not_found(format!(
+                "nothing carried at {target} is on this document's lock list"
+            )),
+        });
+    }
+
+    // Cite the item, and what it rests on: the findings that flag a field,
+    // or the decision a merge conflict names.
+    let mut cites = vec![target.to_string()];
+    for a in &items {
+        let extra = a.finding.clone().or_else(|| a.decision.clone());
+        if let Some(c) = extra.filter(|c| !cites.contains(c)) {
+            cites.push(c);
+        }
+    }
+    let now = now();
+    let d = decided(
+        ctx,
+        &who,
+        "verdict",
+        SET_ASIDE,
+        vec![target.to_string()],
+        cites,
+        rationale.to_string(),
+        &now,
+    );
+    commit(doc, data, Members::of(clan)?, d, "a carried item set aside", &now)
 }
 
 fn clip_line(s: &str) -> String {

@@ -18,6 +18,8 @@ see any of it.
   NAPKIN_RETRIEVAL_URL         retrieval service root; unset = drafters get no passages
   NAPKIN_RETRIEVAL_TOKEN       its bearer token
   NAPKIN_RETRIEVAL_TIMEOUT     seconds per retrieval call (120)
+  NAPKIN_BRIEF_ENGINE_URL      the brief engine's agent server (engine/agent-server); set, draft_brief
+                               is drafted by it (middleware-api.md §10.14); unset = the middleware's drafters
   NAPKIN_LAYERS_URL            the layers service root (required to serve)
   NAPKIN_LAYERS_TOKEN          its bearer token
   NAPKIN_LAYERS_TIMEOUT        seconds per layers call (30)
@@ -61,6 +63,8 @@ class Settings:
     retrieval_url: str | None = None
     retrieval_token: str | None = None
     retrieval_timeout: float = 120.0
+    brief_engine_url: str | None = None
+    brief_engine_loops37: bool = True
     layers_url: str | None = None
     layers_token: str | None = None
     layers_timeout: float = 30.0
@@ -98,6 +102,9 @@ class Settings:
                    retrieval_url=e("NAPKIN_RETRIEVAL_URL") or None,
                    retrieval_token=e("NAPKIN_RETRIEVAL_TOKEN") or None,
                    retrieval_timeout=float(e("NAPKIN_RETRIEVAL_TIMEOUT") or 120),
+                   brief_engine_url=e("NAPKIN_BRIEF_ENGINE_URL") or None,
+                   brief_engine_loops37=(e("NAPKIN_BRIEF_ENGINE_LOOPS37") or "1").strip().lower()
+                   not in ("0", "false", "off", "no"),
                    layers_url=e("NAPKIN_LAYERS_URL") or None,
                    layers_token=e("NAPKIN_LAYERS_TOKEN") or None,
                    layers_timeout=float(e("NAPKIN_LAYERS_TIMEOUT") or 30),
