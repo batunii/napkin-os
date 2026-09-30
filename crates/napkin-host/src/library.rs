@@ -162,6 +162,11 @@ pub fn scan_recent(store: &dyn DocStore) -> Vec<RecentDoc> {
         let Ok(clan) = ClanFile::from_bytes(bytes) else {
             continue;
         };
+        // Opening a tool makes its document at once; until someone works in
+        // it, it is not work to pick up.
+        if is_blank(&clan) {
+            continue;
+        }
         let m = clan.manifest();
         out.push(RecentDoc {
             title: m.title.clone(),
@@ -245,13 +250,61 @@ fn allocate(store: &dyn DocStore, app_id: &str, bytes: &[u8]) -> HostResult<DocI
     store.new_document(app_id, &id_short)
 }
 
+/// A document nobody has worked in: never written since it was made, with no
+/// decision and no data. Anything a person did — a field, an attachment, an
+/// answer — writes it, and it stops being blank.
+pub fn is_blank(clan: &ClanFile) -> bool {
+    let m = clan.manifest();
+    if m.document_type.as_deref() == Some("template") || m.updated_at != m.created_at {
+        return false;
+    }
+    if !chain_of(clan).decisions.is_empty() {
+        return false;
+    }
+    match clan.read_entry(DATA) {
+        Err(_) => true,
+        Ok(b) => match serde_yaml::from_slice::<serde_yaml::Value>(&b) {
+            Ok(serde_yaml::Value::Null) => true,
+            Ok(serde_yaml::Value::Mapping(m)) => m.is_empty(),
+            _ => false,
+        },
+    }
+}
+
+/// The newest blank document of `app_id`, to open again instead of making
+/// another each time the tool is opened and left.
+pub fn blank_instance(store: &dyn DocStore, app_id: &str) -> Option<DocId> {
+    let mut best: Option<(String, DocId)> = None;
+    for id in store.documents() {
+        let Ok(bytes) = store.read(&id) else { continue };
+        let Ok(clan) = ClanFile::from_bytes(bytes) else {
+            continue;
+        };
+        let m = clan.manifest();
+        if m.app.as_ref().map(|a| a.app_id.as_str()) != Some(app_id) || !is_blank(&clan) {
+            continue;
+        }
+        if best.as_ref().is_none_or(|(at, _)| m.created_at > *at) {
+            best = Some((m.created_at.clone(), id));
+        }
+    }
+    best.map(|(_, id)| id)
+}
+
 /// Instantiate a working document from an installed app and return its id.
 /// Shared by the shell's `new_document_from_app` and the `clan://launch` route.
+/// Without a title, a blank document of the app is opened again rather than
+/// another made.
 pub fn create_instance(
     store: &dyn DocStore,
     app_id: &str,
     title: Option<String>,
 ) -> HostResult<DocId> {
+    if title.as_deref().is_none_or(|t| t.trim().is_empty()) {
+        if let Some(id) = blank_instance(store, app_id) {
+            return Ok(id);
+        }
+    }
     let change = instance_change(store, app_id, title)?;
     store.apply(&change)?;
     Ok(change.doc)
@@ -995,6 +1048,43 @@ mod tests {
         let mut info = app_info("Iconic", "ie.napkin.iconic", None);
         info.icon = Some(icon_path.into());
         make_template(&clan, info, MtOpts::default()).unwrap()
+    }
+
+    #[test]
+    fn opening_a_tool_and_leaving_it_is_not_recent_work_and_makes_no_second_document() {
+        let store = MemStore::default();
+        install_template_app(&store, "Brief Maker", "ie.napkin.brief", None);
+        let first = create_instance(&store, "ie.napkin.brief", None).unwrap();
+        assert!(scan_recent(&store).is_empty(), "a blank document is not listed");
+        // Opened again: the same blank document, not another.
+        assert_eq!(create_instance(&store, "ie.napkin.brief", None).unwrap(), first);
+        assert_eq!(store.documents().len(), 1);
+
+        // Once someone works in it, it is listed, and the tool makes a new one.
+        let worked = source_document(&store, "ie.napkin.brief");
+        let listed: Vec<_> = scan_recent(&store).into_iter().map(|d| d.path).collect();
+        assert_eq!(listed, vec![worked.to_string()]);
+        let next = create_instance(&store, "ie.napkin.brief", None).unwrap();
+        assert_ne!(next, worked);
+        // A title asked for is always a new document.
+        let titled = create_instance(&store, "ie.napkin.brief", Some("Acme".into())).unwrap();
+        assert_ne!(titled, next);
+    }
+
+    #[test]
+    fn an_apps_home_block_is_listed_for_the_home_screen() {
+        let store = MemStore::default();
+        let mut info = app_info("Brief Maker", "ie.napkin.brief", None);
+        info.home = Some(AppHome {
+            colour: Some("#C98A1B".into()),
+            job: Some("Write a brief".into()),
+            crew: vec!["extract".into(), "drafter".into()],
+            ..Default::default()
+        });
+        let tpl = make_template(&blank("Brief Maker"), info.clone(), MtOpts::default()).unwrap();
+        let installed = install_app(&store, tpl).unwrap();
+        assert_eq!(installed.home, info.home);
+        assert_eq!(scan_apps(&store)[0].home, info.home);
     }
 
     #[test]
