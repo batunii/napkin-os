@@ -330,7 +330,9 @@ def test_clip_cuts_at_a_sentence_never_mid_word():
     assert sentence("no stop") == "no stop." and sentence("a stop.") == "a stop." and sentence("") == ""
 
 
-def test_failing_twice_is_not_written(tmp_path):
+def test_failing_twice_keeps_the_best_draft_flagged(tmp_path):
+    # An empty part helps nobody: the draft that still fails is written, low
+    # certainty, with the Judge's reasons, and the bad verdict asks a person.
     model = FakeModel()
     model.fail_checks[("judge_smp", "not_a_tagline")] = 2
     s = Server(tmp_path, model=model, retrieval=retrieval())
@@ -339,11 +341,15 @@ def test_failing_twice_is_not_written(tmp_path):
         replies = run(s, host)
     finally:
         s.stop()
-    assert "single_minded_proposition" not in host.data
-    assert replies[-1]["result"]["fields"]["single_minded_proposition"]["state"] == "failed"
+    assert host.data.get("single_minded_proposition"), "the best draft is kept"
+    assert replies[-1]["result"]["fields"]["single_minded_proposition"]["state"] == "done"
+    w = next(d for d in host.chain if d.get("action") == "draft" and f"{DOC}#single_minded_proposition" in d["targets"])
+    assert w["reasoning"]["certainty"]["level"] == "low"
+    assert "Jude's checks still fail" in w["reasoning"]["attention"] and "not_a_tagline" in w["reasoning"]["attention"]
     v = next(d for d in host.chain if d["kind"] == "verdict" and f"{DOC}#single_minded_proposition" in d["targets"]
              and d.get("action") == "judge" and d["polarity"] == "bad")
-    assert v["reason_code"] == "cliche" and "not written" in v["reasoning"]["attention"]
+    assert v["reason_code"] == "cliche" and "best draft is kept" in v["reasoning"]["attention"]
+    assert w["id"] in v["cites"], "the verdict is on the draft it failed"
     assert any(q.startswith("Agree the single-minded proposition.") for q in host.data["open_questions"])
     check_change_rules(host)
 
@@ -437,6 +443,19 @@ def test_retrieval_failure_does_not_fail_the_job(tmp_path):
     assert replies[-1]["job"]["state"] == "done" and host.data.get("insight")
     draft = next(d for d in host.chain if d.get("action") == "draft" and f"{DOC}#insight" in d["targets"])
     assert "retrieval failed" in draft["reasoning"]["attention"]
+
+
+
+def test_a_check_that_needs_another_part_asks_for_it_instead_of_failing(tmp_path):
+    # "ownable" cannot be judged without the competitors: with none given, the
+    # check is left for a person and the brief asks for them.
+    from napkin.brief.judge import judge_field
+    model = FakeModel()
+    res = judge_field(model, "smp", {"single_minded_proposition": "Oat is the everyday milk.",
+                                     "competitor_context": None}, [])
+    own = next(c for c in res["checks"] if c["check"] == "ownable")
+    assert own["status"] != "fail" and own.get("needs") == "competitor_context"
+    assert not any(p == "judge_smp" and "ownable" in [t["id"] for t in pl["tests"]] for p, pl, _ in model.calls)
 
 
 def test_a_drafter_model_failure_fails_only_its_field(tmp_path):
