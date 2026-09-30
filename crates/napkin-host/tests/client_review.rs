@@ -12,14 +12,14 @@
 use std::sync::Arc;
 
 use clan_sdk::{ClanFile, DecisionChain};
-use napkin_host::ops::client_review::{self as cr, ClientReview, Ellis};
+use napkin_host::ops::client_review::{self as cr, ClientReview};
 use napkin_host::ops::decisions::{decisions, DecisionsView};
 use napkin_host::ops::review;
 use napkin_host::{handle, Actor, Ctx, DocId, FsStore, HostRequest, NoConfig, Session};
 use serde_json::{json, Value};
 
 const SMP: &str = "single_minded_proposition";
-const SAID: &str = "Honestly this isn't the brief we talked about. The summer line doesn't feel like us.";
+const SAID: &str = "Honestly this isn't the brief we talked about. The proposition doesn't feel like us.";
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -36,6 +36,10 @@ fn locked() -> Fixture {
 }
 
 fn open() -> Fixture {
+    open_with(None)
+}
+
+fn open_with(schema: Option<String>) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let id = DocId::from(dir.path().join("brief.clan"));
     let bytes = clan_sdk::create(clan_sdk::CreateOptions {
@@ -43,7 +47,7 @@ fn open() -> Fixture {
         brief: "a brief".into(),
         document_type: None,
         no_render: false,
-        schema: None,
+        schema,
     })
     .unwrap();
     std::fs::write(id.as_str(), bytes).unwrap();
@@ -237,7 +241,7 @@ fn the_recorder_is_the_person_in_ctx_and_a_body_cannot_name_one() {
     let input = ClientReview::parse(&review_body("accepted", json!([])).to_string()).unwrap();
     let e = f
         .session
-        .perform(&job, |c, d| cr::record(c, d, input, Ellis::Unavailable(String::new())))
+        .perform(&job, |c, d| cr::record(c, d, input))
         .unwrap_err();
     assert_eq!(e.status, 403);
 }
@@ -330,41 +334,28 @@ fn a_rejected_part_blocks_locking_again_until_it_is_edited_with_a_reason() {
 }
 
 #[test]
-fn a_rejection_with_parts_unknown_blocks_until_a_part_is_confirmed_and_edited() {
+fn a_rejection_with_parts_unknown_blocks_until_a_suggestion_is_confirmed_and_edited() {
     let f = locked();
-    let input = ClientReview::parse(&review_body("rejected", json!([])).to_string()).unwrap();
-    let ask = f.session.read(|d| cr::request(f.session.ctx(), d, &input)).unwrap().expect("Ellis is asked");
-    assert_eq!(ask["task"], "find_client_parts");
-    assert_eq!(ask["input"]["proof"], SAID);
-    assert_eq!(ask["input"]["parts"][0]["value"], "Summer tastes better without the hangover.");
-    assert_eq!(ask["input"]["parts"][1]["value"], r#"{"commercial":"Grocery shoppers","primary":"Adults 25-40"}"#);
-    let smp = format!("{}#{SMP}", f.doc);
-    let reply = json!({
-        "api": "napkin.middleware/1", "task": "find_client_parts", "handler": "find_client_parts@1.0",
-        "job": { "id": "job_x", "state": "done" }, "change": null,
-        "result": { "summary": "two parts", "dropped": 0, "suggestions": [
-            { "address": smp, "answer": "rejected", "quote": "The summer  line doesn't\nfeel like us." },
-            { "address": "tone", "answer": "rejected", "quote": "It is too loud." },
-            { "address": "budget", "answer": "rejected", "quote": "The summer line" },
-            { "address": SMP, "answer": "accepted", "quote": "The summer line" },
-            { "address": "audience", "answer": "sideways", "quote": "Honestly" } ] },
-        "trace": { "backend": "mock-backend" }
-    });
-    let done = f
-        .session
-        .perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply)))
-        .unwrap();
-    let r = done.reply;
+    let r = f.post_ok("/client-review", review_body("rejected", json!([])));
     assert_eq!(r["suggestions"]["status"], "found");
-    assert_eq!(r["suggestions"]["dropped"], 4, "a quote not in the words, an unknown part, a second one on a part, a bad answer");
-    let s = &f.chain().decisions[0];
+    assert_eq!(r["suggestions"]["handler"], "client_parts_match@1");
+    let smp = format!("{}#{SMP}", f.doc);
+    let s = f.chain().decisions[0].clone();
     assert_eq!(s.action, "suggest_part");
-    assert_eq!(s.actor.as_deref(), Some("process:middleware"));
-    assert_eq!(s.handler.as_deref(), Some("find_client_parts@1.0"));
-    assert_eq!(s.backend.as_deref(), Some("mock-backend"));
+    assert_eq!(s.actor.as_deref(), Some("process:host"), "the process that made it");
+    assert_eq!(s.handler.as_deref(), Some("client_parts_match@1"));
+    assert_eq!(s.backend, None, "no model");
     assert_eq!(s.targets, vec![smp.clone()]);
+    assert_eq!(s.extra["quote"].as_str(), Some("The proposition doesn't feel like us."));
+    assert_eq!(s.extra["answer"].as_str(), Some("rejected"));
+    assert_eq!(serde_json::to_value(&s.extra["matched"]).unwrap(), json!({ "name": "proposition" }));
+    assert!(SAID.contains(s.extra["quote"].as_str().unwrap()), "verbatim from the words");
+    assert_eq!(r["suggestions"]["decisions"].as_array().unwrap().len(), 1, "no other part is named");
+    let v = f.json_view();
+    let block = v["decisions"].as_array().unwrap().iter().find(|b| b["decision"]["id"] == json!(s.id)).cloned().unwrap();
+    assert_eq!(block["who"]["name"], "Ellis", "shown as Ellis");
 
-    // Derived by the agent: it counts for nothing yet.
+    // A suggestion: it counts for nothing yet.
     assert_eq!(
         f.codes(),
         vec![("client_rejected_parts_unknown".into(), true), ("client_part_suggested".into(), false)]
@@ -375,23 +366,72 @@ fn a_rejection_with_parts_unknown_blocks_until_a_part_is_confirmed_and_edited() 
     assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": suggestion, "confirm": false })), 409);
     let p = f.part(SMP);
     assert_eq!(p["found_by"], "agent");
-    assert_eq!(p["quote"], "The summer  line doesn't\nfeel like us.");
+    assert_eq!(p["quote"], "The proposition doesn't feel like us.");
+    assert_eq!(p.get("said"), None, "no words typed under the part");
     assert_eq!(f.json_view()["client"]["answer"]["parts_known"], true);
     assert_eq!(f.codes(), vec![("client_rejected".into(), true)], "the part is known; now it wants an edit");
 
     let u = f.post_ok("/client-review/reopen", json!({ "answer": c["decision"] }));
-    assert_eq!(u["reason"], "Jane Murphy asked: The summer line doesn't feel like us.");
+    assert_eq!(u["reason"], format!("Jane Murphy asked: {SAID}"), "no words of its own: the document's words, not the quote");
     assert_eq!(f.refused("/approve", json!({})), 409);
     assert_eq!(f.edit(SMP, "Summer, but ours.", Some(c["decision"].as_str().unwrap())).0, 200);
     f.post_ok("/approve", json!({}));
 }
 
 #[test]
-fn without_ellis_the_answer_is_recorded_and_a_person_marks_the_parts() {
+fn the_match_is_deterministic_in_the_parts_order_and_reads_names_never_values() {
     let f = locked();
-    let r = f.post_ok("/client-review", review_body("rejected", json!([])));
-    assert_eq!(r["suggestions"]["status"], "unavailable");
-    assert!(r["suggestions"]["reason"].as_str().is_some_and(|s| !s.is_empty()));
+    let mut body = review_body("accepted_with_changes", json!([]));
+    // "Summer" is in the proposition's value, never in its names.
+    body["said"] = json!("Tone: love it. Summer is fine.\n\n- The voice is too loud for the audience\n- the audience is wrong");
+    body["parts"] = json!([
+        { "address": SMP, "label": "Single-minded proposition" },
+        { "address": "audience", "label": "Audience" },
+        { "address": "tone", "label": "Tone", "aliases": "voice, register" },
+    ]);
+    let first = f.post_ok("/client-review", body.clone());
+    let got = |ids: &Value| -> Vec<(String, String, String)> {
+        let chain = f.chain();
+        ids.as_array()
+            .unwrap()
+            .iter()
+            .map(|id| {
+                let d = chain.decisions.iter().find(|d| d.id.as_deref() == id.as_str()).unwrap();
+                (d.targets[0].clone(), d.extra["answer"].as_str().unwrap().into(), d.extra["quote"].as_str().unwrap().into())
+            })
+            .collect()
+    };
+    let a = got(&first["suggestions"]["decisions"]);
+    assert_eq!(
+        a,
+        vec![
+            (format!("{}#audience", f.doc), "accepted_with_changes".to_string(), "- The voice is too loud for the audience".to_string()),
+            (format!("{}#tone", f.doc), "accepted".to_string(), "Tone: love it.".to_string()),
+        ]
+    );
+    let chain = f.chain();
+    let answer = chain.decisions.iter().find(|d| d.id.as_deref() == first["decision"].as_str()).unwrap();
+    let seen = serde_json::to_value(&answer.extra["seen"]).unwrap();
+    assert_eq!(seen["parts"][2]["aliases"], json!(["voice", "register"]), "the aliases the match read are kept");
+    assert_eq!(seen["parts"][0].get("aliases"), None);
+
+    // The same words and parts, the same suggestions, in the same order.
+    let again = f.post_ok("/client-review", body);
+    assert_eq!(got(&again["suggestions"]["decisions"]), a);
+    // Parts marked by the recorder: nothing is suggested.
+    let marked = f.post_ok("/client-review", review_body("rejected", json!([{ "address": "tone", "answer": "rejected" }])));
+    assert_eq!(marked["suggestions"]["status"], "none");
+}
+
+#[test]
+fn with_no_part_named_the_answer_stands_for_the_document_and_a_person_marks_the_parts() {
+    let f = locked();
+    let mut body = review_body("rejected", json!([]));
+    body["said"] = json!("Not us at all. Start again.");
+    let r = f.post_ok("/client-review", body);
+    assert_eq!(r["suggestions"]["status"], "found");
+    assert_eq!(r["suggestions"]["decisions"], json!([]), "no part is named");
+    assert_eq!(f.chain().decisions[0].action, "client_answer", "the answer alone");
     assert_eq!(f.codes(), vec![("client_rejected_parts_unknown".into(), true)]);
 
     let review_id = r["decision"].clone();
@@ -406,6 +446,63 @@ fn without_ellis_the_answer_is_recorded_and_a_person_marks_the_parts() {
     let a = f.post_ok("/client-review", json!({ "answer": "accepted", "client": { "name": "Jane Murphy" }, "channel": "none", "parts": parts() }));
     assert_eq!(f.refused("/client-review/confirm", json!({ "review": a["decision"], "address": "tone", "answer": "rejected" })), 409);
     assert_eq!(f.part("tone")["state"], "accepted", "the newer acceptance is the part's current answer");
+}
+
+#[test]
+fn a_parts_own_words_are_kept_shown_and_are_its_reopen_reason() {
+    let f = locked();
+    let words = "  The line is\r\n  flat —   make it “sing”.  ";
+    let r = f.post_ok(
+        "/client-review",
+        review_body("rejected", json!([{ "address": SMP, "answer": "rejected", "said": words },
+                                       { "address": "tone", "answer": "accepted_with_changes", "said": " \n\t " }])),
+    );
+    let (smp, tone) = (r["parts"][0].as_str().unwrap().to_string(), r["parts"][1].as_str().unwrap().to_string());
+    let chain = f.chain();
+    let d = chain.decisions.iter().find(|d| d.id.as_deref() == Some(smp.as_str())).unwrap();
+    assert_eq!(d.extra["said"].as_str(), Some(words), "byte for byte");
+    let t = chain.decisions.iter().find(|d| d.id.as_deref() == Some(tone.as_str())).unwrap();
+    assert!(!t.extra.contains_key("said"), "all whitespace is no words");
+    assert_eq!(f.part(SMP)["said"], words, "shown on the part");
+    assert_eq!(f.part("tone").get("said"), None);
+
+    // The part's own words are the reason; without them, the document's.
+    let u = f.post_ok("/client-review/reopen", json!({ "answer": smp }));
+    assert_eq!(u["reason"], "Jane Murphy asked: The line is flat — make it “sing”.");
+    let u = f.post_ok("/client-review/reopen", json!({ "answer": tone }));
+    assert_eq!(u["reason"], format!("Jane Murphy asked: {SAID}"));
+}
+
+#[test]
+fn a_parts_words_are_never_compressed() {
+    let f = locked();
+    let words = "  Honestly?\r\n\tThe tone   is off — “too loud”.\n\n- 3,000 € #not a comment\nnull\n  ";
+    let r = f.post_ok("/client-review", review_body("rejected", json!([{ "address": "tone", "answer": "rejected", "said": words }])));
+    // Enough decisions after it that compression reaches it.
+    for _ in 0..6 {
+        f.post_ok("/client-review", json!({ "answer": "accepted", "client": { "name": "Jane Murphy" },
+                                            "channel": "none", "parts": parts() }));
+    }
+    let chain = f.chain();
+    let d = chain.decisions.iter().find(|d| d.id.as_deref() == r["parts"][0].as_str()).unwrap();
+    assert_eq!(d.extra["said"].as_str(), Some(words));
+    let again = DecisionChain::from_yaml(&chain.to_yaml().unwrap()).unwrap();
+    let d = again.decisions.iter().find(|d| d.id.as_deref() == r["parts"][0].as_str()).unwrap();
+    assert_eq!(d.extra["said"].as_str(), Some(words));
+}
+
+#[test]
+fn words_typed_when_confirming_or_marking_later_are_the_parts() {
+    let f = locked();
+    let r = f.post_ok("/client-review", review_body("rejected", json!([])));
+    let s = r["suggestions"]["decisions"][0].clone();
+    let c = f.post_ok("/client-review/confirm", json!({ "suggestion": s, "confirm": true, "said": "The proposition is not us." }));
+    assert_eq!(f.part(SMP)["said"], "The proposition is not us.");
+    f.post_ok("/client-review/confirm", json!({ "review": r["decision"], "address": "tone", "answer": "rejected",
+                                               "said": "Too loud." }));
+    assert_eq!(f.part("tone")["said"], "Too loud.");
+    let u = f.post_ok("/client-review/reopen", json!({ "answer": c["decision"] }));
+    assert_eq!(u["reason"], "Jane Murphy asked: The proposition is not us.", "its own words before the quote");
 }
 
 #[test]
@@ -465,42 +562,12 @@ fn parts_are_this_documents_dotted_paths_and_the_evidence_is_stated() {
 }
 
 #[test]
-fn a_value_marked_model_false_is_not_sent_to_ellis() {
-    let f = open();
-    f.post_ok("/classify", json!({ "target": "tone", "model": false, "export": true, "corpus": false,
-                                  "rationale": "The client's own words" }));
-    f.post_ok("/approve", json!({}));
-    let input = ClientReview::parse(&review_body("rejected", json!([])).to_string()).unwrap();
-    let ask = f.session.read(|d| cr::request(f.session.ctx(), d, &input)).unwrap().unwrap();
-    assert_eq!(ask["input"]["parts"][2]["address"], format!("{}#tone", f.doc));
-    assert_eq!(ask["input"]["parts"][2]["value"], Value::Null);
-    assert_eq!(ask["input"]["parts"][2]["label"], "Tone", "the part is still named");
-}
-
-#[test]
-fn a_part_holding_a_value_marked_model_false_is_not_sent_either() {
-    let f = open();
-    f.post_ok("/classify", json!({ "target": "audience.commercial", "model": false, "export": true, "corpus": false,
-                                  "rationale": "The client's own numbers" }));
-    f.post_ok("/approve", json!({}));
-    let input = ClientReview::parse(&review_body("rejected", json!([])).to_string()).unwrap();
-    let ask = f.session.read(|d| cr::request(f.session.ctx(), d, &input)).unwrap().unwrap();
-    assert_eq!(ask["input"]["parts"][1]["address"], format!("{}#audience", f.doc));
-    assert_eq!(ask["input"]["parts"][1]["value"], Value::Null, "the part's value carries the marked path");
-    assert!(!ask.to_string().contains("Grocery shoppers"));
-    assert_eq!(ask["input"]["parts"][2]["value"], "Warm, dry, a little wry", "other parts are sent");
-}
-
-#[test]
 fn a_suggestion_is_dismissed_by_a_person_and_the_edit_mode_reason_falls_back() {
     let f = locked();
     let mut body = review_body("rejected", json!([]));
     body["said"] = json!("Audience is wrong.");
-    let input = ClientReview::parse(&body.to_string()).unwrap();
-    let reply = json!({ "api": "napkin.middleware/1", "job": { "state": "done" }, "change": null,
-        "result": { "suggestions": [ { "address": "audience", "answer": "rejected", "quote": "Audience is wrong." } ] } });
-    let done = f.session.perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply))).unwrap();
-    let s = done.reply["suggestions"]["decisions"][0].clone();
+    let done = f.post_ok("/client-review", body);
+    let s = done["suggestions"]["decisions"][0].clone();
     f.post_ok("/client-review/confirm", json!({ "suggestion": s, "confirm": false, "rationale": "She means the tone." }));
     assert_eq!(f.chain().decisions[0].action, "dismiss_part");
     assert_eq!(f.json_view()["client"]["suggestions"], json!([]));
@@ -518,30 +585,15 @@ fn a_part_marked_by_hand_settles_ellis_suggestion_on_it() {
     let f = locked();
     let mut body = review_body("rejected", json!([]));
     body["said"] = json!("Audience is wrong.");
-    let input = ClientReview::parse(&body.to_string()).unwrap();
-    let reply = json!({ "api": "napkin.middleware/1", "job": { "state": "done" }, "change": null,
-        "result": { "suggestions": [ { "address": "audience", "answer": "rejected", "quote": "Audience is wrong." } ] } });
-    let done = f.session.perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply))).unwrap();
-    let s = done.reply["suggestions"]["decisions"][0].clone();
-    f.post_ok("/client-review/confirm", json!({ "review": done.reply["decision"], "address": "audience",
+    let done = f.post_ok("/client-review", body);
+    let s = done["suggestions"]["decisions"][0].clone();
+    f.post_ok("/client-review/confirm", json!({ "review": done["decision"], "address": "audience",
                                                 "answer": "accepted_with_changes" }));
     // Neither can be recorded now, so it is not left asking for either.
     assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": s, "confirm": true })), 409);
     assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": s, "confirm": false })), 409);
     assert_eq!(f.json_view()["client"]["suggestions"], json!([]));
     assert_eq!(f.codes(), vec![("client_change_asked".into(), false)]);
-}
-
-#[test]
-fn an_ellis_reply_that_is_not_an_answer_leaves_the_review_without_suggestions() {
-    let f = locked();
-    let input = ClientReview::parse(&review_body("rejected", json!([])).to_string()).unwrap();
-    let reply = json!({ "api": "napkin.middleware/1", "job": { "state": "done" },
-                        "change": { "data_patch": { "tone": "x" } }, "result": { "suggestions": [] } });
-    let done = f.session.perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply))).unwrap();
-    assert_eq!(done.reply["suggestions"]["status"], "unavailable");
-    assert_eq!(f.chain().decisions[0].action, "client_answer", "the answer is recorded; nothing else");
-    assert_eq!(serde_json::to_value(&f.chain().decisions[0].extra["said"]).unwrap(), json!(SAID));
 }
 
 #[test]
@@ -628,20 +680,16 @@ fn the_newest_approve_is_the_lock_whatever_its_stamp() {
     assert_eq!(shown, written);
 }
 
-// ── locking again closes Ellis's open suggestions ───────────────────────────
+// ── locking again closes open suggestions ───────────────────────────
 
 #[test]
 fn locking_again_closes_ellis_suggestions_nobody_confirmed() {
     let f = locked();
     let mut body = review_body("rejected", json!([]));
     body["said"] = json!("Audience is wrong. The tone is off.");
-    let input = ClientReview::parse(&body.to_string()).unwrap();
-    let reply = json!({ "api": "napkin.middleware/1", "job": { "state": "done" }, "change": null,
-        "result": { "suggestions": [
-            { "address": "audience", "answer": "rejected", "quote": "Audience is wrong." },
-            { "address": "tone", "answer": "rejected", "quote": "The tone is off." } ] } });
-    let done = f.session.perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply))).unwrap();
-    let ids = done.reply["suggestions"]["decisions"].as_array().unwrap().clone();
+    let done = f.post_ok("/client-review", body);
+    let ids = done["suggestions"]["decisions"].as_array().unwrap().clone();
+    assert_eq!(ids.len(), 2);
     let c = f.post_ok("/client-review/confirm", json!({ "suggestion": ids[0], "confirm": true }));
     let (open, part) = (ids[1].as_str().unwrap().to_string(), c["decision"].as_str().unwrap().to_string());
     f.post_ok("/client-review/reopen", json!({ "answer": part }));
@@ -664,4 +712,43 @@ fn locking_again_closes_ellis_suggestions_nobody_confirmed() {
     assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": open, "confirm": true })), 409);
     let report = clan_sdk::validate(&ClanFile::open(f.id.as_str()).unwrap());
     assert!(report.is_valid(), "{}", report.display());
+}
+
+// ── a bad verdict on an empty part (Contract 4 §7.2, item 5) ────────────────
+
+#[test]
+fn a_bad_verdict_on_an_empty_declared_part_is_overridden_with_a_reason() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            SMP: { "type": "string" },
+            "audience": { "$ref": "#/definitions/audience" },
+            "tone": { "type": "string" },
+            "why_now": { "type": "string" },
+        },
+        "definitions": { "audience": { "type": "object", "properties": {
+            "primary": { "type": "string" }, "commercial": { "type": "string" }, "age": { "type": "string" } } } },
+    });
+    let f = open_with(Some(schema.to_string()));
+    let blockers = |f: &Fixture| -> Vec<String> {
+        f.view().attention.iter().filter(|a| a.code == "bad_verdict").filter_map(|a| a.address.clone()).collect()
+    };
+    // Declared and empty: the document's part all the same.
+    for target in ["why_now", "audience.age"] {
+        f.post_ok("/verdict", json!({ "target": target, "polarity": "bad", "rationale": "Empty: the brief needs it." }));
+    }
+    assert_eq!(blockers(&f).len(), 2, "{:?}", blockers(&f));
+    assert!(!f.view().lock.can_lock);
+    // Not declared, and not in the data: still not in the document.
+    assert_eq!(f.refused("/verdict", json!({ "target": "budget", "polarity": "good", "rationale": "x" })), 404);
+    assert_eq!(f.refused("/verdict", json!({ "target": "audience.age.x", "polarity": "good", "rationale": "x" })), 404);
+    // Overriding what was said of an empty part says why.
+    assert_eq!(f.refused("/verdict", json!({ "target": "why_now", "polarity": "good" })), 400);
+    f.post_ok("/verdict", json!({ "target": "why_now", "polarity": "good",
+                                 "rationale": "No launch date yet: it stays empty until the client names one." }));
+    f.post_ok("/verdict", json!({ "target": format!("{}#audience.age", f.doc), "polarity": "good",
+                                 "rationale": "Age is not how this client segments." }));
+    assert_eq!(blockers(&f), Vec::<String>::new());
+    assert!(f.view().lock.can_lock);
+    f.post_ok("/approve", json!({}));
 }

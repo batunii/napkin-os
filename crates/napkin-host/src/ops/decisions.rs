@@ -244,6 +244,10 @@ pub struct ClientPart {
     pub found_by: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quote: Option<String>,
+    /// What the client said about this part, verbatim, when the recorder
+    /// typed it under the part.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub said: Option<String>,
     pub client: Value,
     pub at: String,
     /// The part's value changed since the answer.
@@ -1220,6 +1224,10 @@ fn client_review(ctx: &Lookup) -> ClientDerived {
     for (address, (i, from)) in current {
         let d = &chain[i];
         let path = address.split_once('#').map_or("", |(_, p)| p);
+        let said = match from {
+            Source::Part => extra_str(d, "said").map(String::from),
+            Source::Document { .. } => None,
+        };
         let (state, label, recorded, review, found_by, quote) = match from {
             Source::Part => (
                 extra_str(d, "answer").unwrap_or_default().to_string(),
@@ -1255,6 +1263,7 @@ fn client_review(ctx: &Lookup) -> ClientDerived {
             review,
             found_by,
             quote,
+            said,
             client: extra_json(d, "client"),
             at: d.timestamp.clone(),
         });
@@ -1653,7 +1662,9 @@ fn who(d: &Decision) -> Who {
     let id = raw.split(['@', '/']).next().unwrap_or(raw).to_string();
     Who {
         kind: "agent",
-        name: humanise(&id),
+        // The host's word match over a client's words is shown as Ellis, the
+        // crew member who reads what people send (Contract 4 §7.5.2a).
+        name: if id == cr::MATCHER { "Ellis".to_string() } else { humanise(&id) },
         id,
         you: false,
     }

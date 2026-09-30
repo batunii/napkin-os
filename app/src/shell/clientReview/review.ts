@@ -41,7 +41,10 @@ export interface Draft {
   email: string
 }
 
-/** A part the recorder marked on the document, with what they typed under it. */
+/**
+ * A part the recorder marked on the document, with what they typed under it
+ * ("What they said about it"): sent as the part's `said`, verbatim.
+ */
 export interface Mark {
   marked: boolean
   words: string
@@ -134,8 +137,10 @@ export function markedOf(d: Draft, parts: readonly ClientPartRef[], marks: Reado
   return parts
     .filter(p => marks[p.address]?.marked)
     .map(p => {
-      const words = marks[p.address]?.words ?? ''
-      return { address: p.address, answer: d.answer as ClientAnswerKind, ...(has(words) ? { words } : {}) }
+      // Verbatim, like the document's `said`: kept exactly as typed, and
+      // left out only when it is nothing but whitespace.
+      const said = marks[p.address]?.words ?? ''
+      return { address: p.address, answer: d.answer as ClientAnswerKind, ...(has(said) ? { said } : {}) }
     })
 }
 
@@ -163,7 +168,7 @@ export function bodyOf(
     answer: d.answer,
     client: { name: d.name.trim(), ...(email ? { email } : {}) },
     channel,
-    parts: parts.map(p => ({ address: p.address, label: p.label })),
+    parts: parts.map(p => ({ address: p.address, label: p.label, ...(p.aliases?.length ? { aliases: [...p.aliases] } : {}) })),
   }
   if (d.answer === 'rejected' && d.reasons.length) body.reasons = [...d.reasons]
   if (said !== undefined) body.said = said
@@ -173,28 +178,37 @@ export function bodyOf(
   return body
 }
 
-/**
- * Whether the host will ask Ellis which parts were meant (§8.2 item 1): not
- * accepted, nothing marked, parts declared, and words to read. Only for
- * saying "Ellis is reading"; the host decides.
- */
-export function asksEllis(d: Draft, parts: readonly ClientPartRef[], marks: Readonly<Record<string, Mark>>): boolean {
-  if (!d.answer || d.answer === 'accepted' || !parts.length) return false
-  if (markedOf(d, parts, marks).length) return false
-  const { channel } = channelOf(d)
-  return channel === 'pasted_email' || channel === 'call' || channel === 'file'
-}
-
 /** A part address the host takes (§7.5.1): dotted keys, not host-written. */
 const PART_PATH = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/
 const inside = (a: string, b: string) => a === b || a.startsWith(`${b}.`)
 
+/** At most this many aliases per part, each at most this long: words, not text. */
+const MAX_ALIASES = 12
+const MAX_ALIAS = 60
+
+/**
+ * A part's aliases (`data-clan-part-aliases="a, b"`, sent as a list or as
+ * that string): trimmed, inner whitespace one space, empty ones and repeats
+ * (ignoring case) left out, the app's order kept. The host matches them.
+ */
+export function aliasesFrom(raw: unknown): string[] {
+  const items = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : []
+  const out: string[] = []
+  for (const a of items) {
+    const w = typeof a === 'string' ? a.trim().replace(/\s+/g, ' ') : ''
+    if (!w || w.length > MAX_ALIAS || out.some(o => o.toLowerCase() === w.toLowerCase())) continue
+    if (out.length >= MAX_ALIASES) break
+    out.push(w)
+  }
+  return out
+}
+
 /**
  * The parts an app declared (`clan:parts`), as the host will take them: a
  * dotted data path each, a label of at most 80 characters, at most 100, none
- * inside another. One the host would refuse is left out here, with a word in
- * the console for the app's author, rather than refuse the client's whole
- * answer at Save.
+ * inside another, and the words the client may call it by. One the host would
+ * refuse is left out here, with a word in the console for the app's author,
+ * rather than refuse the client's whole answer at Save.
  */
 export function partsFrom(raw: unknown): ClientPartRef[] {
   const out: ClientPartRef[] = []
@@ -207,7 +221,8 @@ export function partsFrom(raw: unknown): ClientPartRef[] {
           : out.some(q => inside(q.address, address) || inside(address, q.address)) ? 'is, or holds, a part declared before it'
             : out.length >= 100 ? 'is past the 100 parts one review takes' : ''
     if (why) { console.warn(`client review: part ${JSON.stringify(address)} ${why}; left out`); continue }
-    out.push({ address, label })
+    const aliases = aliasesFrom(p?.aliases)
+    out.push(aliases.length ? { address, label, aliases } : { address, label })
   }
   return out
 }
@@ -263,18 +278,18 @@ export function modeLine(d: Draft, noun: string): Say {
   if (d.answer === 'accepted') return { agent: jude, state: 'needs-you', text: 'All accepted: just save. I’ll mark every part as accepted on this version.' }
   return {
     agent: jude, state: 'needs-you',
-    text: `If you know which parts, mark them on the ${noun}. If you don’t, add what they sent and ${AGENTS.extract.given} will find the parts.`,
+    text: `If you know which parts, mark them on the ${noun}. If you don’t, add what they sent and ${AGENTS.extract.given} will look for the parts it names.`,
   }
 }
 
 /**
- * What the crew says once an answer is recorded, from the host's view: Ellis
- * while reading, then Jude on what is left to do. Null when there is no
- * client answer to speak of.
+ * What the crew says once an answer is recorded, from the host's view: Jude
+ * on what is left to do. Null when there is no client answer to speak of.
+ * `noMatch`: the host looked in the client's words on Save and no part was
+ * named, so the answer stands for the whole document.
  */
-export function afterLine(view: DecisionsView | null, noun: string, reading: string | null): Say | null {
+export function afterLine(view: DecisionsView | null, noun: string, noMatch = false): Say | null {
   const c = view?.client
-  if (reading) return { agent: 'extract', state: 'working', text: `Reading what ${reading} sent, to find the parts they meant.` }
   const a = c?.answer
   if (!c || !a) return null
   const who = firstName(a.client.name) || 'The client'
@@ -284,6 +299,12 @@ export function afterLine(view: DecisionsView | null, noun: string, reading: str
   if (reopened) return { agent: 'judge', state: 'needs-you', text: `${reopened === 1 ? 'A part is' : `${reopened} parts are`} open for the change ${who} asked for. Lock it again when it’s done.` }
   if (c.suggestions.some(s => s.review === a.decision)) {
     return { agent: 'judge', state: 'needs-you', text: `${ellis} found the parts ${who} may have meant. Check each one: only the parts you confirm get the client’s answer.` }
+  }
+  if (!a.parts_known && noMatch) {
+    return {
+      agent: 'judge', state: 'needs-you',
+      text: `${ellis} found no part named in ${firstName(a.client.name) ? `${firstName(a.client.name)}’s` : 'the client’s'} words, so the answer stands for the whole ${noun}. If you know which parts they meant, mark them${a.answer === 'rejected' ? ' before it can be locked again' : ''}.`,
+    }
   }
   if (!a.parts_known) {
     return {

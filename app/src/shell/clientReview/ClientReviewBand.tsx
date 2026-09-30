@@ -7,6 +7,9 @@
 // left to do, and — when the answer did not name its parts — Ellis's
 // suggestions, each confirmed or turned down by a person, or the parts
 // marked by hand. Only a confirmed part counts (OS-layer contract §7.5.2).
+// The suggestions are the host's own matcher (the parts whose names the
+// client's sentences use), recorded as that process and shown as Ellis's;
+// they arrive with the Save's reply, so there is nothing to wait for.
 //
 // Everything here reads the host's view (`/decisions`, `client`); each
 // answer is one host route and the view is read again after it.
@@ -22,8 +25,12 @@ import { afterLine, bannerWords, firstName, reasonWords, recordedFrom, settledSu
 interface Props {
   view: DecisionsView
   noun: string
-  /** Why Ellis could not be asked on the last Save, in the host's words. */
-  unavailable: string | null
+  /**
+   * What the host's matcher said on the last Save: why it could not look
+   * (`reason`, in the host's words), or that it looked and no part was named
+   * (`none`). For the answer `review` only.
+   */
+  matched: { review: string; reason: string | null; none: boolean } | null
   /** The host wrote something: read the view again, and tell the app. */
   onChanged: () => void
 }
@@ -35,13 +42,14 @@ const PART_WORDS: Record<string, string> = {
   accepted: 'accepted', accepted_with_changes: 'needs a change', rejected: 'rejected',
 }
 
-export default function ClientReviewBand({ view, noun, unavailable, onChanged }: Props) {
+export default function ClientReviewBand({ view, noun, matched, onChanged }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [folded, setFolded] = useState(false)
   const c = view.client
   const a = c?.answer ?? null
-  const say = afterLine(view, noun, null)
+  const mine = matched && matched.review === a?.decision ? matched : null
+  const say = afterLine(view, noun, !!mine?.none)
   // An answer to an earlier lock is history, in "What happened"; the band is
   // for the version locked now.
   if (!c || !a || !a.current) return null
@@ -92,8 +100,8 @@ export default function ClientReviewBand({ view, noun, unavailable, onChanged }:
           )}
 
           {say && <Speak say={say} />}
-          {unavailable && !suggestions.length && !a.parts_known && a.answer !== 'accepted' && (
-            <p className="cr-hint">{AGENTS.extract.given} could not read it this time: {unavailable}</p>
+          {mine?.reason && !suggestions.length && !a.parts_known && a.answer !== 'accepted' && (
+            <p className="cr-hint">{AGENTS.extract.given} could not look for the parts this time: {mine.reason}</p>
           )}
 
           {suggestions.length + done.length > 0 && (

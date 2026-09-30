@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .capabilities import CAPABILITY_VERSION
 from .handlers import (answer_question, compose_report, draft_brief, extract_ask, regenerate_field, research_lens,
-                       start_campaign, synthesise_findings, verify_finding, correct_fact, find_client_parts)
+                       start_campaign, synthesise_findings, verify_finding, correct_fact)
 from .util import bad
 
 REGISTRY = {
@@ -29,7 +29,6 @@ REGISTRY = {
     "regenerate_field": {1: regenerate_field},
     "verify_finding": {1: verify_finding},
     "correct_fact": {1: correct_fact},
-    "find_client_parts": {1: find_client_parts},
 }
 # Used only when a document carries no pipeline: the declared built-in map.
 BUILTIN_PIPELINE = {
@@ -39,7 +38,6 @@ BUILTIN_PIPELINE = {
     "draft_brief": "draft_brief@1", "regenerate_field": "regenerate_field@1",
     "verify_finding": "verify_finding@1",
     "correct_fact": "correct_fact@1",
-    "find_client_parts": "find_client_parts@1",
 }
 TASKS = set(BUILTIN_PIPELINE) | {"job_status"}
 
@@ -67,10 +65,11 @@ def lookup(declared: str, task: str):
 
 
 # A person's review, asked by the host rather than the app (Contract 4 §8):
-# every document may be verified, corrected and answered by its client
-# (find_client_parts, §7.5), whatever pipeline it was made with. A pipeline
-# that declares one of these still decides its handler.
-REVIEW_TASKS = {"verify_finding", "correct_fact", "find_client_parts"}
+# every document may be verified and corrected, whatever pipeline it was made
+# with. A pipeline that declares one of these still decides its handler.
+# (Client review asks nothing of the middleware since 2026-09-30: the host
+# matches the client's words to the parts itself, middleware-api.md §11.)
+REVIEW_TASKS = {"verify_finding", "correct_fact"}
 
 
 def resolve(task: str, clan: dict):

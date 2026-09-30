@@ -179,18 +179,6 @@ class FakeModel:
         return {"findings": out, "audience": None}
 
     @staticmethod
-    def r_find_client_parts(p):
-        """As the stand-in does (middleware-api.md §11 item 7): a part whose
-        label is in a sentence of the proof, ignoring case; that sentence as
-        written; the document's answer."""
-        out = []
-        for sent in re.split(r"(?<=[.!?])\s+", p["proof"].strip()):
-            for part in p["parts"]:
-                if part["label"].lower() in sent.lower() and part["address"] not in [s["address"] for s in out]:
-                    out.append({"address": part["address"], "answer": p["answer"], "quote": sent})
-        return {"suggestions": out}
-
-    @staticmethod
     def r_layout(p):
         return fake_layout(p)
 

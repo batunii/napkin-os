@@ -13,7 +13,7 @@ import { test } from 'node:test'
 
 import type { ClientAnswerView, DecisionBlock, DecisionsView } from '../src/host/types.ts'
 import {
-  afterLine, asksEllis, assetNameOf, bodyOf, canReview, channelOf, emptyDraft, evidenceOf, knownClients, markedOf, modeLine,
+  afterLine, aliasesFrom, assetNameOf, bodyOf, canReview, channelOf, emptyDraft, evidenceOf, knownClients, markedOf, modeLine,
   partsFrom, problemOf, recordedFrom, settledSuggestions, strengthLine,
 } from '../src/shell/clientReview/review.ts'
 import type { Draft } from '../src/shell/clientReview/review.ts'
@@ -85,15 +85,23 @@ test('reasons go only with a rejection', () => {
 
 test('marked parts take the whole document’s answer; an acceptance marks none', () => {
   const marks = { audience: { marked: true, words: 'Too young.' }, single_minded_proposition: { marked: false, words: 'x' }, gone: { marked: true, words: '' } }
-  assert.deepEqual(markedOf(draft({ answer: 'rejected' }), PARTS, marks), [{ address: 'audience', answer: 'rejected', words: 'Too young.' }])
+  assert.deepEqual(markedOf(draft({ answer: 'rejected' }), PARTS, marks), [{ address: 'audience', answer: 'rejected', said: 'Too young.' }])
   assert.deepEqual(markedOf(draft({ answer: 'accepted' }), PARTS, marks), [])
   assert.ok(!('marked' in bodyOf(draft({ answer: 'accepted' }), PARTS, marks)))
-  // Ellis is asked only when nothing is marked and there are words to read.
-  assert.equal(asksEllis(draft({ answer: 'rejected', how: 'email', pasted: 'No.' }), PARTS, {}), true)
-  assert.equal(asksEllis(draft({ answer: 'rejected', how: 'email', pasted: 'No.' }), PARTS, marks), false)
-  assert.equal(asksEllis(draft({ answer: 'rejected', how: 'email', pasted: '' }), PARTS, {}), false)
-  assert.equal(asksEllis(draft({ answer: 'rejected', how: 'email', pasted: 'No.' }), [], {}), false)
-  assert.equal(asksEllis(draft({ answer: 'accepted', how: 'email', pasted: 'Yes.' }), PARTS, {}), false)
+})
+
+test('what the recorder typed under a part goes as that part’s said, verbatim', () => {
+  const words = '  Too young,\n\n  and too urban.  '
+  const marks = { audience: { marked: true, words }, single_minded_proposition: { marked: true, words: ' \n\t ' } }
+  const body = bodyOf(draft({ answer: 'accepted_with_changes', how: 'email', pasted: 'See notes.' }), PARTS, marks)
+  assert.deepEqual(body.marked, [
+    { address: 'single_minded_proposition', answer: 'accepted_with_changes' },
+    { address: 'audience', answer: 'accepted_with_changes', said: words },
+  ])
+  // Never under the old name: the host reads `said`.
+  assert.ok(body.marked!.every(m => !('words' in m)))
+  // The document's own words are still the document's.
+  assert.equal(body.said, 'See notes.')
 })
 
 test('Save waits for an answer and a name, and a typed email must be one', () => {
@@ -131,6 +139,36 @@ test('only parts the host takes are kept', () => {
     assert.deepEqual(got.map(p => p.address), ['insight', 'objectives.commercial', 'budget'])
     assert.equal(got[2].label.length, 80)
     assert.deepEqual(partsFrom(undefined), [])
+    // A part with no aliases carries no key for them.
+    assert.ok(!('aliases' in got[0]))
+  } finally {
+    console.warn = warn
+  }
+})
+
+test('a part’s aliases are words: trimmed, no repeats, the app’s order, sent with the part', () => {
+  assert.deepEqual(aliasesFrom(' budget,  Cost , spend,, BUDGET ,scope '), ['budget', 'Cost', 'spend', 'scope'])
+  assert.deepEqual(aliasesFrom(['proposition', ' the   line ', 7, '', 'idea']), ['proposition', 'the line', 'idea'])
+  assert.deepEqual(aliasesFrom(undefined), [])
+  assert.deepEqual(aliasesFrom('x'.repeat(61)), [])
+  assert.equal(aliasesFrom(Array.from({ length: 20 }, (_, i) => `w${i}`)).length, 12)
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    const parts = partsFrom([
+      { address: 'audience', label: 'Audience', aliases: ['audience', 'target', 'who'] },
+      { address: 'budget_and_scope', label: 'Budget & scope', aliases: 'budget, cost, spend, scope' },
+      { address: 'insight', label: 'Insight', aliases: '  ' },
+    ])
+    assert.deepEqual(parts, [
+      { address: 'audience', label: 'Audience', aliases: ['audience', 'target', 'who'] },
+      { address: 'budget_and_scope', label: 'Budget & scope', aliases: ['budget', 'cost', 'spend', 'scope'] },
+      { address: 'insight', label: 'Insight' },
+    ])
+    const body = bodyOf(draft({ answer: 'rejected', how: 'email', pasted: 'The budget is wrong.' }), parts, {})
+    assert.deepEqual(body.parts, parts)
+    // The body's parts are copies: the host's list is not the shell's.
+    assert.notEqual(body.parts[0].aliases, parts[0].aliases)
   } finally {
     console.warn = warn
   }
@@ -154,29 +192,33 @@ function viewWith(client: DecisionsView['client'], lock: Partial<DecisionsView['
 test('Jude asks for the whole answer, and Ellis is named from the crew', () => {
   assert.equal(modeLine(draft({}), 'brief').agent, 'judge')
   assert.match(modeLine(draft({}), 'brief').text, /about the brief as a whole/)
-  assert.match(modeLine(draft({ answer: 'rejected' }), 'brief').text, new RegExp(`${AGENTS.extract.given} will find the parts`))
-  const reading = afterLine(null, 'brief', 'Mary')
-  assert.equal(reading?.agent, 'extract')
-  assert.equal(reading?.state, 'working')
+  assert.match(modeLine(draft({ answer: 'rejected' }), 'brief').text, new RegExp(`${AGENTS.extract.given} will look for the parts it names`))
+  // Nothing to wait for: the host's matcher answers in Save's own reply.
+  assert.equal(afterLine(null, 'brief'), null)
 })
 
 test('after Save, Jude says what is left to do', () => {
   const noParts = viewWith({ available: true, answer: answerView({}), answers: [], parts: [], suggestions: [] })
-  assert.match(afterLine(noParts, 'brief', null)!.text, /don’t know which parts Mary meant yet\. Mark them before it can be locked again/)
+  assert.match(afterLine(noParts, 'brief')!.text, /don’t know which parts Mary meant yet\. Mark them before it can be locked again/)
+  // The host looked in her words and no part was named: the answer is for the whole brief.
+  assert.equal(afterLine(noParts, 'brief', true)!.text,
+    `${AGENTS.extract.given} found no part named in Mary’s words, so the answer stands for the whole brief. If you know which parts they meant, mark them before it can be locked again.`)
+  const changesNoParts = viewWith({ available: true, answer: answerView({ answer: 'accepted_with_changes' }), answers: [], parts: [], suggestions: [] })
+  assert.match(afterLine(changesNoParts, 'brief', true)!.text, /stands for the whole brief\. If you know which parts they meant, mark them\.$/)
   const suggested = viewWith({ available: true, answer: answerView({}), answers: [], parts: [],
     suggestions: [{ decision: 'd_S', review: 'd_A', address: 'doc#audience', label: 'Audience', answer: 'rejected', quote: 'q' }] })
-  assert.match(afterLine(suggested, 'brief', null)!.text, new RegExp(`^${AGENTS.extract.given} found the parts`))
+  assert.match(afterLine(suggested, 'brief')!.text, new RegExp(`^${AGENTS.extract.given} found the parts`))
   const part = { address: 'doc#audience', label: 'Audience', state: 'rejected' as const, decision: 'd_P', review: 'd_A',
     found_by: 'person' as const, client: { name: 'Mary Kelly' }, at: '', stale: false, answered: false, reopened: false }
   const open = viewWith({ available: true, answer: answerView({ parts_known: true }), answers: [], parts: [part], suggestions: [] })
-  assert.match(afterLine(open, 'brief', null)!.text, /Mary rejected 1 part\. /)
+  assert.match(afterLine(open, 'brief')!.text, /Mary rejected 1 part\. /)
   const changes = viewWith({ available: true, answer: answerView({ parts_known: true, answer: 'accepted_with_changes' }), answers: [], parts: [{ ...part, state: 'accepted_with_changes' as const }], suggestions: [] })
-  assert.match(afterLine(changes, 'brief', null)!.text, /Mary asked for changes on 1 part\. /)
+  assert.match(afterLine(changes, 'brief')!.text, /Mary asked for changes on 1 part\. /)
   const done = viewWith({ available: true, answer: answerView({ parts_known: true }), answers: [], parts: [{ ...part, answered: true }], suggestions: [] })
-  assert.match(afterLine(done, 'brief', null)!.text, /Every change Mary asked for is made/)
+  assert.match(afterLine(done, 'brief')!.text, /Every change Mary asked for is made/)
   const accepted = viewWith({ available: true, answer: answerView({ answer: 'accepted' }), answers: [], parts: [], suggestions: [] })
-  assert.match(afterLine(accepted, 'brief', null)!.text, /Mary accepted the whole brief/)
-  assert.equal(afterLine(viewWith({ available: true, answer: null, answers: [], parts: [], suggestions: [] }), 'brief', null), null)
+  assert.match(afterLine(accepted, 'brief')!.text, /Mary accepted the whole brief/)
+  assert.equal(afterLine(viewWith({ available: true, answer: null, answers: [], parts: [], suggestions: [] }), 'brief'), null)
 })
 
 test('the saved record says where its evidence came from, and who recorded it', () => {
@@ -233,6 +275,11 @@ test('Ellis’s suggestion is signed Ellis, and a confirmation names the client 
   const e = block({ id: 'd_E', kind: 'edit', action: 'edit_field', answers: 'd_P' }, you)
   const view = viewWith(undefined, {}, [e, u, p, s, a])
   assert.equal(whoOf(s).name, AGENTS.extract.given)
+  // The host's matcher, which replaced the middleware call: Ellis too.
+  const h = block({ id: 'd_S2', kind: 'client_review', action: 'suggest_part', handler: 'client_parts_match@1', review: 'd_A',
+    label: 'Audience', answer: 'rejected', actor: 'process:host' }, { kind: 'agent', id: 'client_parts_match', name: 'Client parts match' })
+  assert.equal(whoOf(h).name, AGENTS.extract.given)
+  assert.match(didWhat(h, view), /^thinks Mary Kelly’s answer is about Audience/)
   assert.match(didWhat(s, view), /^thinks Mary Kelly’s answer is about Audience/)
   assert.equal(didWhat(p, view), `confirmed ${AGENTS.extract.given}’s suggestion: Mary Kelly rejected Audience`)
   assert.equal(didWhat(u, view), 'reopened Audience to make the change: Mary Kelly asked: The audience is wrong.')

@@ -17,6 +17,9 @@ serde_yaml = { workspace = true }
 chrono = { workspace = true }
 # An app's icon member, handed to the home screen inline as a data: URI.
 base64 = { workspace = true }
+# The client-review match folds text to NFC before it compares words
+# (os-layer §7.5.2a); pure Rust, so the browser build keeps it.
+unicode-normalization = "0.1"
 
 # Everything below is native-only. A browser build drops all of it: there is no
 # filesystem to write a temp file to, no process to spawn a renderer in, and the

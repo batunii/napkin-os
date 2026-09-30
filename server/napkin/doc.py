@@ -147,10 +147,12 @@ def human_owned(data: dict, decisions: list, doc: str, fname: str) -> str | None
     if env and env.get("origin") in ("confirmed", "stated"):
         return f"origin {env['origin']}: the field belongs to a human"
     addr = f"{doc}#campaign.{fname}"
-    for v in decisions:
+    # `decisions` is the chain as the host sends it, newest first: an edit that
+    # answers the verdict sits before it in the list. Which came first is the
+    # chain's order, never the stamps (Contract 4 §3): a clock can be wrong.
+    for i, v in enumerate(decisions):
         if v.get("kind") == "verdict" and v.get("polarity") == "bad" and addr in (v.get("targets") or []):
-            answered = any(d.get("kind") == "edit" and addr in (d.get("targets") or [])
-                           and str(d.get("timestamp", "")) > str(v.get("timestamp", "")) for d in decisions)
+            answered = any(d.get("kind") == "edit" and addr in (d.get("targets") or []) for d in decisions[:i])
             if not answered:
                 return "an unanswered bad verdict stands on it"
     return None

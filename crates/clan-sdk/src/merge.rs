@@ -422,21 +422,28 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
             .insert(key.clone(), merged);
     }
 
-    // Fold branch decision logs into the shared chain: branch entries land
-    // newest-first above the (identical) base chain, ordered by timestamp.
+    // Fold branch decision logs into the shared chain. What came first is
+    // the chain's order, and parallel branches are runs with no order between
+    // them: each branch's decisions land as one contiguous run, in the
+    // branch's own order, never interleaved with another's and never sorted
+    // by their stamps (a clock can be wrong, and two agents' clocks say
+    // nothing about which decided first). The runs sit above the (identical)
+    // base chain in branch (argument) order — the first branch's run oldest,
+    // the last branch's nearest the head — the same order the data fold uses,
+    // so under `last-write` the run nearest the head is the winning writer's.
+    // The merge marker names every run (`parallel`).
     let mut branch_decisions: Vec<(String, Decision)> = Vec::new();
+    let mut runs: Vec<(String, Vec<Decision>)> = Vec::new();
     for (branch, fork) in branches.iter().zip(&forks) {
         let path = format!("{}decisions.yaml", fork.namespace);
+        let mut run = Vec::new();
         if branch.has_entry(&path) {
             if let Ok(chain) = DecisionChain::from_yaml(&branch.read_entry(&path)?) {
-                branch_decisions.extend(
-                    chain
-                        .decisions
-                        .into_iter()
-                        .map(|d| (fork.agent_id.clone(), d)),
-                );
+                run = chain.decisions;
             }
         }
+        branch_decisions.extend(run.iter().cloned().map(|d| (fork.agent_id.clone(), d)));
+        runs.push((fork.agent_id.clone(), run));
     }
     let mut chain = DecisionChain::from_yaml(&base.read_entry("agent/decision-chain.yaml")?)?;
     // Verdicts are judgements, not values: two branches judging one decision
@@ -449,9 +456,16 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
         conflicts,
     };
 
-    branch_decisions.sort_by(|a, b| b.1.timestamp.cmp(&a.1.timestamp));
-    for (_, decision) in branch_decisions.into_iter().rev() {
-        chain.prepend(decision);
+    // Each run is newest-first, as a branch's chain is: prepending it from
+    // its oldest keeps its order, and the next branch's run goes on top.
+    let parallel: Vec<serde_json::Value> = runs
+        .iter()
+        .map(|(agent, run)| serde_json::json!({ "branch": agent, "count": run.len() }))
+        .collect();
+    for (_, run) in runs {
+        for decision in run.into_iter().rev() {
+            chain.prepend(decision);
+        }
     }
     let agents: Vec<String> = forks.iter().map(|f| f.agent_id.clone()).collect();
     let mut merged = Decision::new(
@@ -464,6 +478,13 @@ pub fn merge(branches: &[ClanFile], opts: MergeOptions) -> Result<MergeOutcome> 
         now.clone(),
     );
     merged.fields_changed = writes.keys().cloned().collect();
+    // The runs from the base up, in branch (argument) order: the first entry's
+    // `count` decisions sit just above the base chain, the last entry's just
+    // below this marker. No order holds between two runs.
+    merged.extra.insert(
+        "parallel".into(),
+        serde_yaml::to_value(&parallel).map_err(|e| Error::Merge(e.to_string()))?,
+    );
     chain.prepend(merged);
 
     // --- Merged manifest ---
@@ -887,6 +908,98 @@ mod tests {
         let agents: Vec<&str> = chain.decisions.iter().map(|d| d.agent.as_str()).collect();
         assert!(agents.contains(&"alpha"), "{agents:?}");
         assert!(agents.contains(&"beta"), "{agents:?}");
+    }
+
+    /// `branch` with decisions `actions` recorded in its namespace, in that
+    /// order, then stamped `stamps` (oldest first) as clocks might have: the
+    /// order they were written in is left alone.
+    fn with_decisions(branch: ClanFile, agent: &str, actions: &[&str], stamps: &[&str]) -> Vec<u8> {
+        let mut file = branch;
+        for action in actions {
+            let entry = crate::pack::DecisionEntry {
+                agent_name: agent.into(),
+                action: (*action).into(),
+                rationale: "r".into(),
+                pinned: false,
+                fields_changed: None,
+                typed: None,
+            };
+            file = ClanFile::from_bytes(crate::pack::patch_decision(&file, entry, None).unwrap()).unwrap();
+        }
+        let path = format!("agents/{agent}/decisions.yaml");
+        let mut chain = DecisionChain::from_yaml(&file.read_entry(&path).unwrap()).unwrap();
+        let n = chain.decisions.len();
+        for (i, d) in chain.decisions.iter_mut().enumerate() {
+            d.timestamp = stamps[n - 1 - i].into();
+        }
+        let mut b = ClanBuilder::new(file.manifest().clone());
+        for (p, bytes) in file.read_all_entries().unwrap() {
+            if p == crate::container::MANIFEST_PATH {
+                continue;
+            }
+            if p == path {
+                b.add_entry(p, chain.to_yaml().unwrap());
+            } else {
+                b.add_entry(p, bytes);
+            }
+        }
+        b.build().unwrap()
+    }
+
+    #[test]
+    fn branch_decisions_keep_their_own_order_as_runs_whatever_their_stamps() {
+        let (a, b) = forked_pair();
+        // Both branches write key K, so the default last-write fold picks one.
+        let a = with_namespace_data(&a, serde_json::json!({"k": "from-alpha"}));
+        let b = with_namespace_data(&b, serde_json::json!({"k": "from-beta"}));
+        // Stamps that interleave, and a clock that runs backwards in beta.
+        let a = with_decisions(a, "alpha", &["a1", "a2", "a3"], &["2026-01-01T00:00:01Z", "2026-01-01T00:00:03Z", "2026-01-01T00:00:05Z"]);
+        let b = with_decisions(b, "beta", &["b1", "b2"], &["2026-01-01T00:00:04Z", "2026-01-01T00:00:02Z"]);
+        let open = |bytes: &Vec<u8>| ClanFile::from_bytes(bytes.clone()).unwrap();
+        let chain_len = |f: &ClanFile| {
+            DecisionChain::from_yaml(&f.read_entry("agent/decision-chain.yaml").unwrap())
+                .unwrap()
+                .decisions
+                .len()
+        };
+
+        // One order for the chain and the fold: the argument order. The last
+        // branch's run sits nearest the head, and its value is the one kept.
+        let cases: [([ClanFile; 2], [&str; 5], &str, &str, serde_json::Value); 2] = [
+            (
+                [open(&a), open(&b)],
+                ["b2", "b1", "a3", "a2", "a1"],
+                "from-beta",
+                "beta",
+                serde_json::json!([{ "branch": "alpha", "count": 3 }, { "branch": "beta", "count": 2 }]),
+            ),
+            (
+                [open(&b), open(&a)],
+                ["a3", "a2", "a1", "b2", "b1"],
+                "from-alpha",
+                "alpha",
+                serde_json::json!([{ "branch": "beta", "count": 2 }, { "branch": "alpha", "count": 3 }]),
+            ),
+        ];
+        for (branches, want, kept, winner, parallel_want) in cases {
+            let base_len = chain_len(&branches[0]);
+            let outcome = merge(&branches, MergeOptions::default()).unwrap();
+            let merged = ClanFile::from_bytes(outcome.bytes).unwrap();
+            let chain = DecisionChain::from_yaml(&merged.read_entry("agent/decision-chain.yaml").unwrap()).unwrap();
+            let actions: Vec<&str> = chain.decisions.iter().map(|d| d.action.as_str()).collect();
+            // Newest first: the marker, the last branch's run, the first's, the base.
+            assert_eq!(&actions[1..6], &want, "{actions:?}");
+            assert_eq!(chain.decisions.len(), 6 + base_len);
+            let marker = &chain.decisions[0];
+            assert_eq!(marker.agent, "clan-merge");
+            let parallel = serde_json::to_value(&marker.extra["parallel"]).unwrap();
+            assert_eq!(parallel, parallel_want);
+            // The data agrees with the chain: the head-most run's branch won.
+            let data: serde_json::Value =
+                serde_yaml::from_str(&merged.read_entry_string("shared/data.yaml").unwrap()).unwrap();
+            assert_eq!(data["k"], serde_json::json!(kept), "{data}");
+            assert_eq!(outcome.report.conflicts[0].winner.agent, winner);
+        }
     }
 
     #[test]

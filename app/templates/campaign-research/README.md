@@ -112,11 +112,17 @@ row in *Your request*.
 `contest` blocks, the confirm list (each item jumps to its field's Confirm,
 or confirms in place), and `not_researched`. Every string is escaped. It is marked out of
 date when `based_on`'s hashes differ from `projection.built_from`, or a
-decision newer than `built_at` touches `campaign.*` / `selection.*`;
-**Refresh report** sends `compose_report`.
+decision after the one that wrote the report, in the chain's order (never
+by the clock), touches `campaign.*` / `selection.*`; **Refresh report**
+sends `compose_report`. A locked report is the version agreed to: it is never
+marked out of date, and Refresh report is not offered.
 
-The document title follows `campaign.name` (`clan.setTitle`) when the name
-first appears, or while the title is still the app's default. The export
+The document title (`clan.setTitle`) is the subject brand and its markets
+("Lunasa · Ireland and Great Britain"), else the working name
+(`campaign.name`), else the brand. It is set while the title is one nobody
+chose (the app's default, "Untitled…", the working name, or one this rule
+made); a title a person gave it is left alone. A brief spun off from the
+research names the research by that title. The export
 (`clan:export`, Path B) carries the report, the request with its answers and
 the progress, and drops the start screen, the open question and every control.
 

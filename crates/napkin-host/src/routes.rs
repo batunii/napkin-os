@@ -214,13 +214,6 @@ pub async fn dispatch_async(
         };
     }
     #[cfg(feature = "native")]
-    if req.path == "/client-review" {
-        return match crate::proxy::client_review(ctx, session, cfg, &req.body_str()).await {
-            Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
-            Err(e) => e.into(),
-        };
-    }
-    #[cfg(feature = "native")]
     if req.path == "/api-proxy" {
         return match api_proxy(ctx, session, cfg, &req.body_str()).await {
             Ok((v, events)) => HostResponse::json(200, &v).with_events(events),
@@ -411,25 +404,12 @@ pub fn dispatch(
             "Verifying needs the middleware, to write the finding to the agency's knowledge; this build has none.",
         ),
 
-        // A client's answer to the locked document (Contract 4 §8.2). Ellis is
-        // asked which parts the words were about only on the asynchronous
-        // route, which can reach the middleware; here the answer is recorded
-        // without suggestions, the reply says why, and a person marks parts.
-        "/client-review" => {
-            let why = if cfg!(feature = "native") {
-                "Ellis is asked only when the request is dispatched asynchronously; mark the parts by hand"
-            } else {
-                "this build has no middleware, so Ellis was not asked; mark the parts by hand"
-            };
-            review(session, ctx, |c, d| {
-                crate::ops::client_review::record(
-                    c,
-                    d,
-                    crate::ops::client_review::ClientReview::parse(&req.body_str())?,
-                    crate::ops::client_review::Ellis::Unavailable(why.to_string()),
-                )
-            })
-        }
+        // A client's answer to the locked document (Contract 4 §8.2). Which
+        // parts the words were about is the host's own word match — no
+        // middleware, so every build answers it the same way.
+        "/client-review" => review(session, ctx, |c, d| {
+            crate::ops::client_review::record(c, d, crate::ops::client_review::ClientReview::parse(&req.body_str())?)
+        }),
         "/client-review/confirm" => review(session, ctx, |c, d| {
             crate::ops::client_review::confirm(c, d, crate::ops::client_review::parse_confirm(&req.body_str())?)
         }),

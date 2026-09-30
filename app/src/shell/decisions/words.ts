@@ -24,9 +24,10 @@ export interface WhoIs {
 export function agentOf(block: DecisionBlock): AgentKey | null {
   if (block.who.kind !== 'agent') return null
   const d = block.decision
-  // The middleware's find_client_parts is Ellis reading the client's words
-  // (napkin.middleware/1 §11): the shell's rule, not yet the snippet's copy.
-  if (d.kind === 'client_review' || /^find_client_parts\b/.test(d.handler ?? block.who.id)) return 'extract'
+  // A suggestion of which parts a client meant is Ellis's: the host's
+  // matcher (process:host, client_parts_match, os-layer §7.5.2), or, in an
+  // older chain, the middleware's find_client_parts it replaced.
+  if (d.kind === 'client_review' || /^(client_parts_match|find_client_parts)\b/.test(d.handler ?? block.who.id)) return 'extract'
   // The step's own agent ("draft_brief@1.0/extract" is Ellis), as the apps'
   // fields read it; who.id is only the job that ran it.
   return agentOfDecision({

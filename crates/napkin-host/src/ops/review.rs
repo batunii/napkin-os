@@ -313,6 +313,7 @@ fn target_path(doc: &Document, target: &str) -> HostResult<Aim> {
             "{path} is inside the frozen upstream copy: address it as <document id>#<path>"
         )));
     }
+    let own = copy.is_none();
     let data = copy.unwrap_or(&data);
     let found = if let Some(id) = keyed(path, "materials") {
         data.get("materials").and_then(|m| m.get(id)).is_some()
@@ -322,6 +323,11 @@ fn target_path(doc: &Document, target: &str) -> HostResult<Aim> {
         path.split('.')
             .try_fold(data, |v, k| v.get(k))
             .is_some()
+            // A field the document's schema declares is the document's even
+            // while it is empty: a Judge's bad verdict on an empty part must
+            // be answerable (Contract 4 §7.2, item 5). Own data only — a
+            // frozen copy is what it is.
+            || (own && declared(clan, path))
     };
     if !found {
         return Err(HostError::not_found(match copy {
@@ -333,6 +339,56 @@ fn target_path(doc: &Document, target: &str) -> HostResult<Aim> {
         address: format!("{on}#{path}"),
         path: path.to_string(),
     })
+}
+
+/// `path`, in dotted keys, names a property `agent/output-schema.json`
+/// declares: each key is in the `properties` of the schema at that depth,
+/// following local `$ref`s (`#/definitions/…`, `#/$defs/…`) and the branches
+/// of `allOf` / `anyOf` / `oneOf`. `additionalProperties` declares no name,
+/// so it does not count. False with no schema.
+pub(crate) fn declared(clan: &clan_sdk::ClanFile, path: &str) -> bool {
+    let Some(schema) = clan
+        .read_entry("agent/output-schema.json")
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    else {
+        return false;
+    };
+    if path.is_empty() || path.contains(['[', ']', '#']) {
+        return false;
+    }
+    fn resolve<'s>(root: &'s Value, node: &'s Value, depth: usize) -> Vec<&'s Value> {
+        if depth > 16 {
+            return Vec::new();
+        }
+        let mut out = vec![node];
+        if let Some(r) = node.get("$ref").and_then(Value::as_str) {
+            if let Some(target) = r.strip_prefix('#').and_then(|p| root.pointer(p)) {
+                out.extend(resolve(root, target, depth + 1));
+            }
+        }
+        for key in ["allOf", "anyOf", "oneOf"] {
+            for branch in node.get(key).and_then(Value::as_array).into_iter().flatten() {
+                out.extend(resolve(root, branch, depth + 1));
+            }
+        }
+        out
+    }
+    let mut here: Vec<&Value> = vec![&schema];
+    for key in path.split('.') {
+        if key.is_empty() {
+            return false;
+        }
+        here = here
+            .into_iter()
+            .flat_map(|n| resolve(&schema, n, 0))
+            .filter_map(|n| n.get("properties")?.get(key))
+            .collect();
+        if here.is_empty() {
+            return false;
+        }
+    }
+    true
 }
 
 fn contest_index(data: &Value, id: &str) -> Option<usize> {
@@ -468,6 +524,17 @@ pub fn verdict(ctx: &Ctx, doc: &Document, input: Verdict) -> HostResult<Outcome>
         return commit(doc, data_of(clan)?, m, d, "a finding rejected", &now);
     }
 
+    // A field the schema declares but the data does not hold yet: marking it
+    // good overrides what was said of an empty part, so it says why.
+    let data = data_of(clan)?;
+    let empty = aim.address.starts_with(&format!("{}#", clan.document_id()))
+        && !aim.path.contains('[')
+        && aim.path.split('.').try_fold(&data, |v, k| v.get(k)).is_none();
+    if empty && input.rationale.is_empty() {
+        return Err(HostError::bad_request(
+            "the field is empty: marking it good needs a reason, saying why it may stay empty",
+        ));
+    }
     let rationale = if input.rationale.is_empty() {
         "Marked good.".to_string()
     } else {
@@ -485,7 +552,7 @@ pub fn verdict(ctx: &Ctx, doc: &Document, input: Verdict) -> HostResult<Outcome>
     );
     d.polarity = Some(input.polarity.clone());
     d.reason_code = input.reason_code;
-    commit(doc, data_of(clan)?, m, d, "a verdict", &now)
+    commit(doc, data, m, d, "a verdict", &now)
 }
 
 /// A confidentiality mark: whether the target may reach a model, appear in an

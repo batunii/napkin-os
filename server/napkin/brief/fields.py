@@ -167,10 +167,10 @@ def wrote(d: dict, doc: str, key: str) -> bool:
 def holder(doc: str, data: dict, decisions: list, key: str) -> str | None:
     """Why a person holds `key` — the middleware proposes instead of writing —
     or None (§10.5)."""
-    last = None
-    for d in decisions:
-        if d.get("kind") in ("edit", "resolve") and wrote(d, doc, key):
-            last = d
+    # `decisions` is the chain as the host sends it, newest first: the latest
+    # writer is the first match. Which came first is the chain's order, never
+    # the stamps (Contract 4 §3).
+    last = next((d for d in decisions if d.get("kind") in ("edit", "resolve") and wrote(d, doc, key)), None)
     if last is not None and _is_human(last):
         return "a person wrote it last"
     if last is None and filled(get(data, key)):
@@ -179,17 +179,15 @@ def holder(doc: str, data: dict, decisions: list, key: str) -> str | None:
     for i, v in enumerate(decisions):
         if v.get("kind") == "verdict" and v.get("polarity") == "bad" and _is_human(v) \
                 and addr in (v.get("targets") or []):
-            if not any(d.get("kind") == "edit" and wrote(d, doc, key) for d in decisions[i + 1:]):
+            if not any(d.get("kind") == "edit" and wrote(d, doc, key) for d in decisions[:i]):
                 return "a person's bad verdict on it is unanswered"
     return None
 
 
 def last_writer(doc: str, decisions: list, key: str) -> str | None:
-    last = None
-    for d in decisions:
-        if d.get("kind") in ("edit", "resolve") and wrote(d, doc, key) and d.get("action") != "propose":
-            last = d.get("id")
-    return last
+    # Newest first (see holder): the first match is the latest writer.
+    return next((d.get("id") for d in decisions
+                 if d.get("kind") in ("edit", "resolve") and wrote(d, doc, key) and d.get("action") != "propose"), None)
 
 
 # ---------------------------------------------------------------------------

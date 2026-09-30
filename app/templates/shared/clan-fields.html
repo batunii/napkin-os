@@ -191,6 +191,8 @@ clan-tray{display:block}
 .clf-sec > h3{font-size:15px;font-weight:700;color:var(--clf-ink);margin:0}
 .clf-sec > h3.ask{font-size:19px;letter-spacing:-.01em}
 .clf-q{margin:0;padding:14px 16px 14px 18px;background:var(--clf-soft);border-left:3px solid var(--clf-ink3);border-radius:4px 12px 12px 4px;font-size:16px;line-height:1.5}
+/* A client's words are shown as typed: their line breaks and spaces kept. */
+.clf-q.said{white-space:pre-wrap;overflow-wrap:anywhere}
 .clf-q.said::before{content:"\201C"}
 .clf-q.said::after{content:"\201D"}
 .clf-q mark{background:color-mix(in srgb,var(--clf-amber) 40%,transparent);color:inherit;border-radius:3px;padding:0 2px}
@@ -448,13 +450,14 @@ var ClanFields=(function(){
   // extra namespaces map as it maps them).
   var NS_EXTRA={share:'market_structure',awareness:'brands_positioning',launch:'brands_positioning',product:'brands_positioning'};
   function crew(){ return typeof NapkinAgents==='object'&&NapkinAgents?NapkinAgents:null; }
-  // The crew member a decision is by. The middleware records a client-review
-  // suggestion as process:middleware with handler find_client_parts: that is
-  // the extract agent's reading of the client's words.
+  // The crew member a decision is by. A client-review suggestion is the host's
+  // matcher (process:host, handler client_parts_match; in an older chain the
+  // middleware's find_client_parts): shown as the extract agent's reading of
+  // the client's words.
   function ellisKey(){ var A=crew(); return A?A.forWork('read')||'':''; }
   function crewKey(d){
     var A=crew(); d=d||{}; if(!A) return null;
-    if(/^find_client_parts\b/.test(d.handler||'')||d.agent==='find_client_parts'||d.action==='suggest_part') return ellisKey()||null;
+    if(/^(client_parts_match|find_client_parts)\b/.test(d.handler||'')||d.agent==='find_client_parts'||d.agent==='client_parts_match'||d.action==='suggest_part') return ellisKey()||null;
     return A.ofDecision?A.ofDecision(d):null;
   }
   function lensOfKey(key){
@@ -1393,7 +1396,10 @@ var ClanFields=(function(){
 
   // ── client review: the parts an app declares ──────────────────────────
   // An app marks each part a client can answer about: data-clan-part="<data
-  // path>" data-clan-part-label="<plain label>". The shell owns the mode
+  // path>" data-clan-part-label="<plain label>", and optionally
+  // data-clan-part-aliases="a, b": other words a client calls it by, which
+  // the host's matcher looks for in the client's sentences (with the label
+  // and its last word, which it adds itself). The shell owns the mode
   // (clan:clientmode) and records the answer (Contract 4 §7.5, §8.2); here
   // the parts are collected and sent up (clan:parts), each gets "+ This part"
   // while the mode asks for parts, and after, the client's answer beside it.
@@ -1410,15 +1416,25 @@ var ClanFields=(function(){
       var a=String(el.getAttribute('data-clan-part')||'').trim(), l=String(el.getAttribute('data-clan-part-label')||'').trim()||words(a);
       if(!isPath(a)){ if(window.console) console.warn('data-clan-part must be a data path in dotted keys:',a); return; }
       if(seen[a]) return; seen[a]=1;
-      out.push({address:a, label:l.length>80?l.slice(0,79)+'…':l, el:el});
+      out.push({address:a, label:l.length>80?l.slice(0,79)+'…':l, aliases:aliasesOf(el), el:el});
     });
     return out.filter(function(p){ return !out.some(function(q){ return q!==p&&p.address.indexOf(q.address+'.')===0; }); });
   }
+  // "a, b" as a list: trimmed, one space inside, no empties or repeats (ignoring case).
+  function aliasesOf(el){
+    var out=[];
+    String(el.getAttribute('data-clan-part-aliases')||'').split(',').forEach(function(w){
+      w=w.trim().replace(/\s+/g,' ');
+      if(w&&w.length<=60&&out.length<12&&!out.some(function(o){ return o.toLowerCase()===w.toLowerCase(); })) out.push(w);
+    });
+    return out;
+  }
+  function partRef(p){ var r={address:p.address, label:p.label}; if(p.aliases&&p.aliases.length) r.aliases=p.aliases.slice(); return r; }
   // Reduced motion: scrolls jump instead of gliding (the CSS rule only stops transitions).
   function calm(){ try{ return !!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(e){ return false; } }
   function toShell(m){ if(window.parent&&window.parent!==window) window.parent.postMessage(m,'*'); }
   function postParts(force){
-    var ps=declaredParts().map(function(p){ return {address:p.address, label:p.label}; }), sig=JSON.stringify(ps);
+    var ps=declaredParts().map(partRef), sig=JSON.stringify(ps);
     if(!force&&sig===SENT_PARTS) return;
     SENT_PARTS=sig; toShell({type:'clan:parts', parts:ps});
   }
@@ -1429,6 +1445,21 @@ var ClanFields=(function(){
   function herePath(a){ var s=String(a||''), i=s.indexOf('#'); return i===-1?s:s.slice(0,i)===docId()?s.slice(i+1):null; }
   function clientPart(path){ return arr(cview().parts).filter(function(p){ return herePath(p.address)===path; })[0]||null; }
   function clientSugg(path){ return arr(cview().suggestions).filter(function(x){ return herePath(x.address)===path; }); }
+  // A part answer's own words (`said`, typed under the part when it was
+  // marked): from the view, else from its decision. Never trimmed or clipped.
+  function partSaid(p){
+    var s=p&&typeof p.said==='string'?p.said:'', b=!s&&p?blockOf(p.decision):null;
+    if(!s&&b&&typeof b.decision.said==='string') s=b.decision.said;
+    return s.trim()?s:'';
+  }
+  // "<client> asked: …" for the edit, when the host's reply gives none: the
+  // part's own words, else the document's words (os-layer §8.2, item 3).
+  function askedReason(path){
+    var p=clientPart(path); if(!p) return '';
+    var an=clientAnswerOf(p.review)||{}, w=partSaid(p)||an.said||'';
+    w=String(w).replace(/\s+/g,' ').trim(); if(!w) return '';
+    var r=clientName(p.client||an.client)+' asked: '+w; return r.length>300?r.slice(0,299)+'…':r;
+  }
   function clientAnswerOf(id){ var c=cview(); return arr(c.answers).filter(function(a){ return a.decision===id; })[0]||(c.answer&&c.answer.decision===id?c.answer:null); }
   function reopenedOf(path){ path=String(path||''); return reopenedParts().filter(function(r){ var p=herePath(r.address); return p!=null&&(path===p||path.indexOf(p+'.')===0); })[0]||null; }
   // A value may be changed: the document is open, or the path is at or inside
@@ -1469,7 +1500,10 @@ var ClanFields=(function(){
     if(p){
       var an=clientAnswerOf(p.review)||{}, fn=firstName(p.client||an.client), pb=blockOf(p.decision), by=pb&&pb.who&&pb.who.you?'you':pb?whoDid(pb):'someone';
       h='<b>'+esc(ANSWER_WORD[p.state]||p.state)+'</b>';
-      if(p.quote) h+='<blockquote class="clf-q said">'+esc(p.quote)+'</blockquote>';
+      var ps=partSaid(p);
+      // What the client said about this part, as typed under it: verbatim.
+      if(ps) h+='<p class="clf-muted">'+esc(an.channel==='call'?'Noted from the call, about this part:':'What '+fn+' said about this part:')+'</p><blockquote class="clf-q said">'+esc(ps)+'</blockquote>';
+      else if(p.quote) h+='<blockquote class="clf-q said">'+esc(p.quote)+'</blockquote>';
       else if(an.said) h+=(an.channel==='call'?'<p class="clf-muted">'+esc(recorderOf(an)==='you'?'Your':possessive(recorderOf(an)).replace(/^./,function(c){ return c.toUpperCase(); }))+' note of what '+esc(fn)+' said on a call:</p>':'<p class="clf-muted">What '+esc(fn)+' said about the whole '+esc(trayNoun())+':</p>')+'<blockquote class="clf-q said">'+esc(an.said)+'</blockquote>';
       else if(p.found_by!=='document') h+='<p class="clf-muted">No words for this part.</p>';
       if(arr(an.reasons).length) h+='<p class="clf-ex">Reason: '+esc(arr(an.reasons).map(function(r){ return REASON_WORD[r]||r; }).join(', '))+'</p>';
@@ -1538,7 +1572,7 @@ var ClanFields=(function(){
       if(ms.every(function(m){ var ns=Array.prototype.slice.call(m.addedNodes).concat(Array.prototype.slice.call(m.removedNodes));
         return m.type==='attributes'?false:ours(m.target)||(ns.length>0&&ns.every(function(n){ return n.nodeType!==1||ours(n); })); })) return;
       soon();
-    }).observe(document.body,{childList:true, subtree:true, attributes:true, attributeFilter:['data-clan-part','data-clan-part-label']});
+    }).observe(document.body,{childList:true, subtree:true, attributes:true, attributeFilter:['data-clan-part','data-clan-part-label','data-clan-part-aliases']});
   }
   function setClientMode(on,answer){
     var was=CLIENT.on;
@@ -1558,7 +1592,7 @@ var ClanFields=(function(){
     if(btn) btn.disabled=true;
     post('/client-review/reopen',{answer:answer}).then(function(res){
       if(!res||!res.ok){ if(btn) btn.disabled=false; toast(errorOf(res)||'That did not go through. Please try again.'); return; }
-      return loadView().then(function(){ OPEN_PART=null; refresh(); editPart(herePath(res.address)||path,res.reason||'',res.answers||answer); });
+      return loadView().then(function(){ OPEN_PART=null; refresh(); editPart(herePath(res.address)||path,res.reason||askedReason(path),res.answers||answer); });
     },function(){ if(btn) btn.disabled=false; toast(OFFLINE); });
   }
   // Edit one part: the app's own editor when it takes it (it cancels
@@ -1696,6 +1730,6 @@ var ClanFields=(function(){
           // The host's decision view as last read (null until it is), and the lock.
           view:function(){ return VIEW; }, locked:lockDecision,
           // The parts this page declares for client review, as sent to the shell.
-          parts:function(){ return declaredParts().map(function(p){ return {address:p.address, label:p.label}; }); }};
+          parts:function(){ return declaredParts().map(partRef); }};
 })();
 </script>

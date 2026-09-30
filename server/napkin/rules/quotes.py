@@ -16,12 +16,12 @@ _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": 
                          "—": "-", " ": " "})
 
 
-def _norm_with_map(text: str, fold: bool = True):
-    """Collapse whitespace runs and (with `fold`) fold quote marks; return
-    (normalised, index map from normalised position to original position)."""
+def _norm_with_map(text: str):
+    """Collapse whitespace runs and fold quote marks; return (normalised,
+    index map from normalised position to original position)."""
     out, idx = [], []
     prev_space = False
-    for i, ch in enumerate(text.translate(_QUOTES) if fold else text):
+    for i, ch in enumerate(text.translate(_QUOTES)):
         if ch.isspace():
             if prev_space:
                 continue
@@ -63,21 +63,6 @@ def verbatim(text: str, quote: str) -> str | None:
     """The text's own rendering of `quote`, or None when it is not there."""
     span = find_quote(text, quote)
     return text[span[0]:span[1]] if span else None
-
-
-def verbatim_ws(text: str, quote: str) -> str | None:
-    """The text's own rendering of `quote` when the two match exactly after
-    one normalisation only: every whitespace run, on both sides, is one space.
-    No case folding, no quote-mark or dash folding (a client's words, Contract
-    4 §7.5: "In the proof" means this and nothing looser). None otherwise."""
-    if not isinstance(quote, str) or not isinstance(text, str):
-        return None
-    nt, idx = _norm_with_map(text, fold=False)
-    nq = _norm_with_map(quote, fold=False)[0].strip()
-    j = nt.find(nq) if nq else -1
-    if j < 0:
-        return None
-    return text[idx[j]:idx[j + len(nq) - 1] + 1]
 
 
 def contains_word(text: str, word: str) -> bool:

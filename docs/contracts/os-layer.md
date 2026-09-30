@@ -145,6 +145,18 @@ Existing fields (`agent`, `action`, `timestamp`, `fields_changed`, `pinned`,
 `trace_ref`) stay. Every new field is optional, so every existing file still
 validates. Struct work is W1P-I5.
 
+**What came first is the chain's order** (owner, 2026-09-30). The chain is
+newest first; a decision nearer the head came after one further down, and no
+rule anywhere — host, SDK, middleware or view — compares `timestamp`s to
+order decisions: a stamp is for showing, and a clock can be wrong. Parallel
+branches are runs with no order between them: `clan merge` appends each
+branch's decisions as one contiguous run in the branch's own order, the runs
+in branch (argument) order above the base chain (the first branch's run
+oldest) — the same order the data fold uses, so under `last-write` the run
+nearest the head is the winning writer's — and the merge marker (`agent:
+clan-merge`) lists them as `parallel: [{branch, count}]`, from the base up. A
+reader must not infer that one run's decision came before another's.
+
 #### `reasoning` — the spec's decision discipline, on every agent decision
 
 ```yaml
@@ -559,7 +571,10 @@ default, 2026-09-29; may be reversed):
    since, or the verdict overridden since by a good verdict with a written
    reason (`/verdict good`) on the same address. A carried
    bad verdict on an upstream address can only be overridden: the frozen field
-   is read-only.
+   is read-only. A field the document's schema declares
+   (`agent/output-schema.json`) is the document's while it is still empty, so
+   a bad verdict on an empty part is overridden the same way (*2026-09-30*;
+   §8, `/verdict`).
 6. **A client's rejection not yet answered** — a rejected part not edited
    since, or a rejected document whose parts are not known yet (§7.5.4). It
    can only arise on a locked document, so it bears on locking again.
@@ -671,10 +686,14 @@ email, attached as a file, or noted from a call.
 6. **Confidential is not a filter here** (owner, 2026-09-29: confidential
    means only "kept out of RAG and the corpus"). Clients see everything, so
    nothing in client review — the records, `/decisions`, the extract's
-   rendering (§7.5.8) — filters by a `classify` mark. One rule that is not
-   about clients still holds: a part whose value is marked `model: false` is
-   sent to Ellis without its value (`napkin.middleware/1` §11), as every
-   model call withholds it (`napkin.middleware/1` §10.13, item 6).
+   rendering (§7.5.8) — filters by a `classify` mark. Nothing in client review
+   reaches a model or the middleware (*2026-09-30*: the parts are found by the
+   host's own word match, §7.5.2a), so `model: false` has nothing to
+   withhold here.
+7. **Ellis, shown; the host, recorded.** The shell shows the suggestions as
+   Ellis's (the crew member who reads what people send). The chain records the
+   process that made them: `actor: process:host`, `handler:
+   client_parts_match@1` (§7.5.2a).
 
 #### 7.5.1 Parts and hashes
 
@@ -692,6 +711,11 @@ email, attached as a file, or noted from a call.
   allowed: the client can reject a field left empty.
 - **`label`**: non-empty, at most 80 characters — what the chip and the
   extract call the part. At most 100 parts per review.
+- **`aliases`** (optional, *2026-09-30*): other words the client may use for
+  the part, from the app's declaration `data-clan-part-aliases="a, b"`. A
+  list of words, or that attribute's text as written (split at commas); each
+  trimmed, empties dropped, at most 20, each at most 80 characters. The match
+  reads them (§7.5.2a); the document answer records them in `seen.parts`.
 - **Part hash**: `clan_sdk::hash::sha256_prefixed` of the canonical JSON of
   the value at the address — object keys sorted by code point, no
   insignificant whitespace, strings escaped as `serde_json` writes them. A
@@ -708,8 +732,8 @@ recorded. Another part changing does not stale it.
 
 One `POST /client-review` writes, in one change: one **document answer**,
 one **part answer** per part the recorder marked, and — when parts were not
-marked and there is proof text — one **suggestion** per part Ellis found
-(§8.2). Confirming a suggestion writes a part answer; dismissing it writes a
+marked and there is proof text — one **suggestion** per part the match found
+(§7.5.2a, §8.2). Confirming a suggestion writes a part answer; dismissing it writes a
 dismissal. "Make this change" writes an `unlock` (§7.5.6).
 
 ```yaml
@@ -733,35 +757,37 @@ dismissal. "Make this change" writes an `unlock` (§7.5.6).
     doc_hash: "sha256:…"
     parts:                             # every part the app declared, as the client saw it
     - { address: "3f2a…#single_minded_proposition", label: Single-minded proposition, part_hash: "sha256:…" }
-    - { address: "3f2a…#audience", label: Audience, part_hash: "sha256:…" }
+    - { address: "3f2a…#audience", label: Audience, aliases: [who it is for], part_hash: "sha256:…" }
   rationale: Jane Murphy rejected the document (off brief, tone), from an attached file; recorded by aoife.
 
-# A suggestion — the agent's, counts for nothing until a person confirms it
+# A suggestion — the host's word match (§7.5.2a), shown as Ellis's; counts for nothing until a person confirms it
 - id: d_01K…S
   kind: client_review
   action: suggest_part
-  agent: find_client_parts
-  actor: process:middleware
-  handler: find_client_parts@1.0
-  backend: …
+  agent: client_parts_match
+  actor: process:host
+  handler: client_parts_match@1
   targets: ["3f2a…#single_minded_proposition"]
   cites: [d_01K…A]
   covers: part
   review: d_01K…A
   label: Single-minded proposition
   answer: rejected
-  quote: "The summer line doesn't feel like us."
+  quote: "The proposition doesn't feel like us."
+  matched: { name: proposition }       # the name that matched; `cue` too when one set the answer
   found_by: agent
   seen: { version: "sha256:…", doc_hash: "sha256:…", part_hash: "sha256:…" }
-  rationale: "Derived by the agent: Jane Murphy may mean Single-minded proposition (rejected): “The summer line doesn't feel like us.”"
+  rationale: "Suggested by matching the client's words: Jane Murphy may mean Single-minded proposition (rejected): “The proposition doesn't feel like us.”"
   reasoning:
     decided: Suggested that Jane Murphy's answer is about Single-minded proposition.
-    because: [{ point: "The client's words name it: “The summer line doesn't feel like us.”", cites: [d_01K…A] }]
+    because:
+    - { point: "The client's words name it (“proposition”): “The proposition doesn't feel like us.”", cites: [d_01K…A] }
+    - { point: The client rejected the document, so the part is suggested rejected., cites: [d_01K…A] }
     rejected: []
-    only_option: the words are the client's and the part list is the app's; a person confirms or dismisses it
-    certainty: { level: medium, why: found by the agent in the client's words; not yet confirmed }
+    only_option: a fixed word match over the client's words and the app's part names; a person confirms or dismisses it
+    certainty: { level: medium, why: a part's name is in the client's sentence; a word match, not yet confirmed }
     would_change_if: a person dismisses it
-    attention: Derived by the agent. Confirm or dismiss it; only a confirmed part counts.
+    attention: Found by matching words. Confirm or dismiss it; only a confirmed part counts.
 
 # A part answer — a person's: marked in the review, marked later, or a confirmed suggestion
 - id: d_01K…P
@@ -778,7 +804,8 @@ dismissal. "Make this change" writes an `unlock` (§7.5.6).
   client: { name: Jane Murphy, email: jane@acme.ie }   # copied from the document answer
   found_by: agent                      # person, when the recorder marked it
   suggestion: d_01K…S                  # found_by agent only: this decision is the confirmation
-  quote: "The summer line doesn't feel like us."        # found_by agent only
+  quote: "The proposition doesn't feel like us."        # found_by agent only
+  said: "The line is flat, make it sing."              # optional: what they said about this part, verbatim
   seen: { version: "sha256:…", doc_hash: "sha256:…", part_hash: "sha256:…" }
   rationale: aoife confirmed that Jane Murphy rejected Single-minded proposition.
 
@@ -793,16 +820,17 @@ dismissal. "Make this change" writes an `unlock` (§7.5.6).
 | `covers` | `document` \| `part` | The owner's `scope`, spelled `covers`: `scope` on a decision is the org and brand from `Ctx` (§3, `DecisionScope`), and a string there would not parse — the whole chain would fail to read |
 | `answer` | `accepted` \| `accepted_with_changes` \| `rejected` | Required on a document answer, a suggestion and a part answer. A part's answer may differ from the document's ("love the proposition, the audience is wrong") |
 | `reasons` | list of `off_brief` · `wrong_audience` · `tone` · `facts_wrong` · `budget` · `other` | Document answer only, `rejected` only (`400` otherwise). Optional; no repeats, the recorder's order. Absent when empty |
-| `said` | string | The client's words, **verbatim**: stored exactly as sent, never trimmed inside, summarised, rewritten or compressed (`compress_chain` rewrites `rationale` only; `decision.rs`, the `rationale` field). All-whitespace is absent. At most 20,000 characters. With `call` it is the recorder's note of what the client said, and every reader says so |
+| `said` | string | The client's words, **verbatim**: stored exactly as sent, never trimmed inside, summarised, rewritten or compressed (`compress_chain` rewrites `rationale` only; `decision.rs`, the `rationale` field). All-whitespace is absent. At most 20,000 characters. With `call` it is the recorder's note of what the client said, and every reader says so. On a document answer, the whole answer's words. On a part answer (*2026-09-30*), optional: what the client said about that part, typed under it ("What they said about it") when the recorder marks it, confirms a suggestion or marks it later — by the same rule. The part's popover shows it, and "Make this change" takes it first (§8.2, item 3) |
 | `client` | `{name, email?}` | Required on a document answer, copied onto each part answer. `name` non-empty, at most 120 characters. `email`, when given, lower-cased, one `@` with something either side. Data, not identity |
 | `channel` | `pasted_email` \| `file` \| `call` \| `none` | `pasted_email` and `call` need `said`; `file` needs an asset; `none` takes neither. An asset means `file` |
 | `evidence` | `{asset?, sha256?, strength}` | Host-written; the body sends `asset` only. `asset` is `human/assets/<name>` in this document, a `.eml` or `.pdf`, stored first with `/upload-asset` (which a lock does not refuse); `sha256` is of its bytes. `strength` is `strong` with an asset, `weaker` without — pasted text, a call note, or nothing |
 | `seen` | `{version, doc_hash, parts[]}` on the document answer; `{version, doc_hash, part_hash}` on a part record | `version` is the one the lock's `approve` names: every answer is tied to the locked version. `parts[]` is `{address, label, part_hash}` for every part the app declared |
 | `review` | decision id | Part records: the document answer they belong to |
 | `label` | string | Part records: the part's label as the app declared it |
-| `found_by` | `person` \| `agent` | Part answers and suggestions. `agent` on a part answer means a person confirmed a suggestion: the part answer is itself the confirming decision, and `suggestion` names what it confirmed |
+| `found_by` | `person` \| `agent` | Part answers and suggestions. `agent` on a part answer means a person confirmed a suggestion (the match's, shown as Ellis's): the part answer is itself the confirming decision, and `suggestion` names what it confirmed. The value keeps its name from when a model suggested; it means "suggested", not "a model" |
 | `suggestion` | decision id | A part answer with `found_by: agent`, and a dismissal |
-| `quote` | string | Suggestions, and part answers confirming one: the sentence Ellis found, a verbatim substring of the proof (`napkin.middleware/1` §11), at most 500 characters. Never compressed |
+| `quote` | string | Suggestions, and part answers confirming one: the sentence the match found, a verbatim substring of the proof (§7.5.2a, item 5), at most 500 characters. Never compressed |
+| `matched` | `{name, cue?}` | Suggestions: the part name the sentence holds (label, alias or the label's last word) and the change cue that set `accepted_with_changes`, when one did — what the match read, so a person can see why |
 | `recorded_by` | — | Not stored. It is the decision's `actor`, from `Ctx`, like every decision's; reads show it as `recorded_by` (§8.2). Never from the body |
 
 What counts: a document answer, and part answers. A suggestion or a
@@ -810,6 +838,54 @@ dismissal is never an answer — "derived by the agent" until a person
 confirms it, and a confirmed one is a part answer like any other. The
 document answer and the client's words always count, whatever happens to the
 suggestions.
+
+#### 7.5.2a The match
+
+*Added 2026-09-30* (owner: no extra model call). Which parts the client's
+words were about is found by the host, deterministically, with no model and
+no middleware; it replaced the middleware's `find_client_parts`
+(`napkin.middleware/1` §11). The code is `crates/napkin-host/src/ops/client_match.rs`.
+
+It runs inside `POST /client-review` when the document answer is not
+`accepted`, no part was marked, the app declared parts, and there are words
+— the proof: `said`, else the attached file's extracted text, at most 24,000
+characters. It reads the parts' labels and aliases, never their values.
+
+1. **Sentences.** A sentence ends after a run of `.` `!` `?` `…`, with any
+   closing quote or bracket (`"` `'` `”` `’` `)` `]` `»`) after it, when
+   whitespace or the end of the text follows; and at a line break followed by
+   a blank line, by a list bullet (`-` `*` `•` `–` `—`, then whitespace) or
+   by a numbered item (one to three digits, then `.` or `)`, then
+   whitespace). A numbered item's marker starts its sentence, as a bullet
+   does, and ends none. A single line break ends nothing (email is often
+   hard-wrapped). A sentence is the proof's own text, trimmed of the
+   whitespace around it.
+2. **Names.** A part's names are its label, each of its aliases, and the last
+   word of its label (stripped of anything but letters and digits at its
+   ends), in that order, repeats dropped.
+3. **Match.** A sentence matches a part when it holds one of the part's
+   names as whole words, ignoring case: both sides lower-cased, each run of
+   whitespace one space, `’` read as `'`, in Unicode NFC (an accent typed as
+   one character or as two matches alike), and the characters either side of
+   the name, if any, neither letters nor digits. A part takes the first
+   sentence, in the proof's order, that matches it. One sentence may match
+   several parts.
+4. **Answer.** The document answer `rejected`: the part is suggested
+   `rejected`. `accepted_with_changes`: `accepted_with_changes` when the
+   sentence holds a change cue by the rule of item 3 — `wrong` `flat`
+   `change` `not` `instead` `rather` `too` `should` `don't` `doesn't` `less`
+   `more` `prefer` `missing` `remove` `replace` — else `accepted`.
+5. **Quote.** The matched sentence as it appears in the proof; its first 500
+   characters when longer, still a verbatim substring.
+6. **Order.** One suggestion per matched part, in the order the app declared
+   the parts. The same words and parts give the same suggestions, in the same
+   order.
+7. **No match.** No suggestion: the answer stands for the whole document. A
+   rejection then blocks as parts unknown (§7.5.4 b) until a person marks a
+   part.
+
+Suggestions stay suggestions: a person confirms or dismisses each one
+(§8.2, item 2), and only a confirmed one is a part answer.
 
 #### 7.5.3 The state of each part
 
@@ -944,7 +1020,8 @@ not in this one) renders client reviews. The rules it must keep:
 - **Part lines only for part answers** — marked by a person, or a suggestion a
   person confirmed. Never an unconfirmed suggestion, a dismissal, or the parts
   an `accepted` document answer implies (the overall line says "accepted").
-  Each part line says whether it is stale and whether it was answered.
+  Each part line says whether it is stale and whether it was answered, and
+  quotes the part's own words (`said`), verbatim, when it has them.
 - Evidence strength in words: `strong` — "from an attached file (<name>)";
   `weaker` — "from pasted email text, not verified", "on a call, as noted by
   <recorder>", or "no evidence attached; recorded by <recorder>".
@@ -962,7 +1039,7 @@ when the client said it (`said_at`), as against when it was recorded; DKIM
 checking of an attached `.eml`, which would make "strong" mean more than
 "attached"; and text extraction of `.eml` attachments — the host extracts
 PDF and plain text only today (`ops/mod.rs`, `extract_text`), so an `.eml`'s
-words reach Ellis only when the recorder pastes them as `said`.
+words reach the match (§7.5.2a) only when the recorder pastes them as `said`.
 
 ---
 
@@ -992,7 +1069,14 @@ freely, never redefine.
   `/edit` and locking again excepted, §8.2):
   - `/verdict {target, polarity: good|bad, rationale, reason_code?}` — on a
     finding, `bad` rejects it (`status: rejected`, `rejection`), `good` is
-    refused: a finding is verified. A bad verdict needs its rationale.
+    refused: a finding is verified. A bad verdict needs its rationale. A
+    target on this document's data is in the document when the data holds it
+    or when `agent/output-schema.json` declares it (each key in `properties`
+    at its depth, local `$ref`s and `allOf`/`anyOf`/`oneOf` followed;
+    `additionalProperties` names nothing): an empty part can be judged and a
+    bad verdict on it overridden (*2026-09-30*). A good verdict on a part the
+    data does not hold needs its rationale too (`400`): it says why the part
+    may stay empty. Neither holds: `404`, as before.
   - `/classify {target, model, export, corpus, rationale}` — the mark is
     recorded; taking it to the fact's licence in the layer (§4) is not built.
   - `/resolve {contest, chosen, rationale}` — the contest resolved; a chosen
@@ -1152,8 +1236,8 @@ process), records as the person in `Ctx`, and writes one change.
      "said": "…",
      "asset": "human/assets/re-brief.eml",
      "parts": [ { "address": "single_minded_proposition", "label": "Single-minded proposition" },
-                { "address": "audience", "label": "Audience" } ],
-     "marked": [ { "address": "audience", "answer": "rejected" } ]
+                { "address": "audience", "label": "Audience", "aliases": ["who it is for"] } ],
+     "marked": [ { "address": "audience", "answer": "rejected", "said": "…what they said about it…" } ]
    }
    ```
 
@@ -1166,37 +1250,41 @@ process), records as the person in `Ctx`, and writes one change.
    - `parts` is the app's whole list, every time: it is what `seen.parts`
      records. It may be empty — an app that declares no parts gets the
      document answer alone.
-   - **Asking Ellis.** When `answer` is not `accepted`, `marked` is empty,
-     `parts` is not, and there is proof text, the host asks the middleware's
-     `find_client_parts` before it writes (`napkin.middleware/1` §11), as
-     `/verify` asks `verify_finding`: `client_review_request` builds the ask,
-     the shell sends it, and `client_review` writes the answer with what came
-     back. The proof text is `said` when there is one, else the asset's
-     extracted text (`human/assets/.extracted/<name>.txt`). The host checks
-     every suggestion again — its address is one of `parts`, its answer one of
-     the three, its quote a verbatim substring of that proof text by the §11
-     rule, one per address — and drops any that fails. No middleware, a
-     middleware error, or a call over its bound: the answer is recorded without
-     suggestions, and the reply says so. The recorder can still mark parts by
-     hand (item 2).
+   - A `marked` entry's `said` is what the client said about that part, kept
+     verbatim on its part answer (§7.5.2, `said`). Optional.
+   - **The match.** When `answer` is not `accepted`, `marked` is empty,
+     `parts` is not, and there is proof text, the host finds the parts the
+     words name itself, by §7.5.2a — no model, no middleware, the same in
+     every build (desktop, server, wasm). The proof text is `said` when there
+     is one, else the asset's extracted text
+     (`human/assets/.extracted/<name>.txt`). *Changed 2026-09-30*: it asked the
+     middleware's `find_client_parts` before; nothing in client review calls
+     the middleware now. The recorder can still mark parts by hand (item 2).
    - Writes the document answer, a part answer per `marked` entry
-     (`found_by: person`), and a suggestion per surviving suggestion, in that
-     order, in one change.
+     (`found_by: person`), and a suggestion per matched part, in that order,
+     in one change.
 
    ```json
    { "ok": true, "decision": "d_…", "parts": ["d_…"],
-     "suggestions": { "status": "none | found | unavailable", "decisions": ["d_…"], "dropped": 0,
-                      "reason": "why unavailable, when it is" } }
+     "suggestions": { "status": "none | found", "decisions": ["d_…"], "dropped": 0,
+                      "handler": "client_parts_match@1" } }
    ```
 
-   `none`: nothing was asked (accepted, parts marked, no parts, no proof).
+   `none`: the match did not run (accepted, parts marked, no parts, no
+   proof). `found`: it ran; `decisions` may be empty — no part named, the
+   answer stands for the whole document. `dropped` is always `0` and
+   `unavailable` is no longer sent; both stay for readers written before.
 2. **`POST /client-review/confirm`** — confirm or dismiss a suggestion, or
    mark a part by hand after the fact.
 
    ```json
-   { "suggestion": "d_…", "confirm": true, "answer": "rejected", "rationale": "…" }
-   { "review": "d_…", "address": "audience", "answer": "accepted_with_changes" }
+   { "suggestion": "d_…", "confirm": true, "answer": "rejected", "said": "…", "rationale": "…" }
+   { "review": "d_…", "address": "audience", "answer": "accepted_with_changes", "said": "…" }
    ```
+
+   - `said`, optional either way, is what the client said about the part,
+     kept verbatim on the part answer. A dismissal takes none (`400`): its
+     `rationale` says why.
 
    - With `suggestion`: it must be a `suggest_part` in this chain that no part
      answer or dismissal names yet (`409` otherwise). `confirm: true` writes a
@@ -1219,9 +1307,12 @@ process), records as the person in `Ctx`, and writes one change.
      "reason": "Jane Murphy asked: The summer line doesn't feel like us." }
    ```
 
-   `reason` is "<client name> asked: " and then the part answer's `quote`,
-   else the document answer's `said`, else its reasons in words, else "a
-   change", clipped to 300 characters. It is the `unlock`'s rationale too.
+   `reason` is "<client name> asked: " and then the part answer's own
+   `said` (*2026-09-30*), else the document answer's `said`, else its reasons
+   in words, else "a change" — the words on one line, the whole clipped to 300
+   characters. A confirmed suggestion's `quote` is not a step: it is shown on
+   the part, and the reason is what the client said. It is the `unlock`'s
+   rationale too.
 4. **`/edit {path, value, gate?, rationale, answers?}`.** On a locked
    document, allowed only for a path at or inside a reopened part (§7.5.6,
    item 2). `answers`, when given, must be the part answer that part was
@@ -1247,7 +1338,7 @@ process), records as the person in `Ctx`, and writes one change.
      "answers": [ "… every document answer, newest first, in the shape of `answer`" ],
      "parts": [ { "address": "3f2a…#single_minded_proposition", "label": "Single-minded proposition",
                   "state": "rejected", "decision": "d_…P", "review": "d_…A", "found_by": "agent",
-                  "quote": "The summer line doesn't feel like us.",
+                  "quote": "The proposition doesn't feel like us.", "said": "…what they said about it…",
                   "client": { "name": "Jane Murphy" }, "at": "2026-09-30T10:21:40Z",
                   "stale": false, "answered": false, "reopened": true } ],
      "suggestions": [ { "decision": "d_…S2", "review": "d_…A", "address": "3f2a…#audience", "label": "Audience",
@@ -1264,9 +1355,13 @@ process), records as the person in `Ctx`, and writes one change.
    - `client.parts`: one entry per address that has a current answer
      (§7.5.3), sorted by address. `found_by: document` (a read value; no record carries it)
      marks a part whose current answer is an `accepted` document answer; it
-     has no `quote`.
+     has no `quote`. `said` is the part answer's own words, verbatim, absent
+     when none were typed; the part's popover shows it.
    - `client.suggestions`: suggestions nobody has confirmed or dismissed yet,
      oldest first.
+   - A suggestion's block in `decisions` names its maker `Ellis` (`who`:
+     `{kind: agent, id: client_parts_match, name: Ellis}`); the decision says
+     `process:host`.
    - The §7.5.4 items are in `attention` with their codes, `address` the
      part's, `decision` the answer's; an open suggestion's item names the
      suggestion.

@@ -231,49 +231,6 @@ pub async fn correct(
     Ok((reply, applied.events))
 }
 
-/// `POST /client-review` — a client's answer to the locked document
-/// (Contract 4 §8.2, item 1). When the parts are not marked and there are
-/// words to read, the middleware's `find_client_parts` (Ellis) is asked first
-/// which parts they were about, as `/verify` asks `verify_finding`; the host
-/// then checks every suggestion again and records the answer with what
-/// survives. No middleware, or one that fails, and the answer is recorded
-/// without suggestions — the reply says why.
-pub async fn client_review(
-    ctx: &Ctx,
-    session: &Session,
-    cfg: &dyn HostConfig,
-    body: &str,
-) -> HostResult<(Value, Vec<HostEvent>)> {
-    use crate::ops::client_review::{self as cr, Ellis};
-    let input = cr::ClientReview::parse(body)?;
-    let ask = session.read(|d| cr::request(ctx, d, &input))?;
-    let ellis = match ask {
-        None => Ellis::Unavailable(String::new()),
-        Some(payload) => {
-            let outgoing = serde_json::json!({
-                "request_kind": middleware::REQUEST_KIND,
-                "payload": payload,
-                "clan": session.clan_context_for_agent(),
-            });
-            let reply = proxy_call(cfg, middleware::REQUEST_KIND, outgoing).await;
-            if reply.get("ok").and_then(Value::as_bool) == Some(true) {
-                Ellis::Answered(reply.get("data").cloned().unwrap_or(Value::Null))
-            } else {
-                let why = match reply.get("error") {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(e) => e.get("message").and_then(Value::as_str).unwrap_or("the middleware refused").to_string(),
-                    None => "the middleware refused".to_string(),
-                };
-                Ellis::Unavailable(format!("Ellis could not be asked which parts were meant ({why})"))
-            }
-        }
-    };
-    let applied = session.perform(ctx, |c, d| cr::record(c, d, input, ellis))?;
-    let mut reply = applied.reply;
-    reply["clan"] = session.document_now().unwrap_or(Value::Null);
-    Ok((reply, applied.events))
-}
-
 /// Home-screen prompt → the unified proxy with `request_kind = "agent"`.
 pub async fn agent_prompt(cfg: &dyn HostConfig, text: &str) -> Value {
     proxy_call(cfg, "agent", serde_json::json!({ "input": text })).await

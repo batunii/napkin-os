@@ -829,17 +829,17 @@ async fn an_export_is_composed_once_and_claimed_once() {
 // ── Client review, through the sandbox ───────────────────────────────────────
 //
 // The server serves the host's own routes behind the token (Contract 4 §8.1
-// item 6, §8.2): `/client-review` takes the asynchronous path that asks the
-// middleware's `find_client_parts` (Ellis), and every decision is the
-// tenant's — its person as the recorder, its workspace as the scope.
+// item 6, §8.2): which parts a client's words were about is the host's own
+// word match — the middleware is never asked — and every decision is the
+// tenant's: its person as the recorder, its workspace as the scope.
 
 const SMP: &str = "single_minded_proposition";
 const SAID: &str =
-    "Honestly this isn't the brief we talked about. The summer line doesn't feel like us.";
+    "Honestly this isn't the brief we talked about. The proposition doesn't feel like us.";
 
-/// A middleware that answers `find_client_parts` with one suggestion: the
-/// first part it is given, quoting the client's last sentence. What it was
-/// asked is kept in memory for the test to read, and nowhere else.
+/// A middleware that counts what it is asked, and answers nothing useful.
+/// What it was asked is kept in memory for the test to read, and nowhere
+/// else.
 async fn ellis() -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
     let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
     let seen = asked.clone();
@@ -848,17 +848,8 @@ async fn ellis() -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
         axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
             let seen = seen.clone();
             async move {
-                let address = body["payload"]["input"]["parts"][0]["address"].clone();
                 seen.lock().unwrap().push(body);
-                axum::Json(serde_json::json!({
-                    "api": "napkin.middleware/1", "task": "find_client_parts",
-                    "handler": "find_client_parts@1.0",
-                    "job": { "id": "job_e", "state": "done" }, "change": null,
-                    "result": { "summary": "one part", "dropped": 0, "suggestions": [
-                        { "address": address, "answer": "rejected",
-                          "quote": "The summer line doesn't feel like us." } ] },
-                    "trace": { "backend": "mock-backend" }
-                }))
+                axum::Json(serde_json::json!({ "error": { "type": "unknown_task", "message": "no" } }))
             }
         }),
     );
@@ -939,7 +930,7 @@ fn client_parts() -> Value {
 }
 
 #[tokio::test]
-async fn a_clients_rejection_asks_ellis_and_is_made_good_through_the_sandbox() {
+async fn a_clients_rejection_is_matched_by_the_host_and_made_good_through_the_sandbox() {
     let (url, asked) = ellis().await;
     let s = server_with(Arc::new(WithMiddleware(url)));
     let b = browser(&s).await;
@@ -960,13 +951,7 @@ async fn a_clients_rejection_asks_ellis_and_is_made_good_through_the_sandbox() {
         true,
         "the reply carries the document now"
     );
-    {
-        let asked = asked.lock().unwrap();
-        assert_eq!(asked.len(), 1, "Ellis is asked once");
-        assert_eq!(asked[0]["request_kind"], "middleware");
-        assert_eq!(asked[0]["payload"]["task"], "find_client_parts");
-        assert_eq!(asked[0]["payload"]["input"]["proof"], SAID);
-    }
+    assert_eq!(asked.lock().unwrap().len(), 0, "the middleware is never asked");
 
     // Every decision is the tenant's: its person records, its workspace scopes.
     let chain = get(&s, &format!("/s/{token}/chain"), None).await.json();
@@ -977,8 +962,12 @@ async fn a_clients_rejection_asks_ellis_and_is_made_good_through_the_sandbox() {
     assert_eq!(answer["scope"]["org"], tenant.as_str());
     assert_eq!(answer["said"], SAID, "verbatim");
     assert_eq!(suggestion["action"], "suggest_part");
-    assert_eq!(suggestion["actor"], "process:middleware");
-    assert_eq!(suggestion["handler"], "find_client_parts@1.0");
+    assert_eq!(suggestion["actor"], "process:host");
+    assert_eq!(suggestion["handler"], "client_parts_match@1");
+    assert_eq!(
+        suggestion["quote"],
+        "The proposition doesn't feel like us."
+    );
     assert_eq!(suggestion["scope"]["org"], tenant.as_str());
 
     let view = get(&s, &format!("/s/{token}/decisions"), None).await.json();
@@ -1007,9 +996,10 @@ async fn a_clients_rejection_asks_ellis_and_is_made_good_through_the_sandbox() {
         serde_json::json!({ "answer": part }),
     )
     .await;
+    // No words typed under the part: the document's words, not the quote.
     assert_eq!(
         u["reason"],
-        "Jane Murphy asked: The summer line doesn't feel like us."
+        "Jane Murphy asked: Honestly this isn't the brief we talked about. The proposition doesn't feel like us."
     );
     let path = u["address"]
         .as_str()
@@ -1037,7 +1027,7 @@ async fn a_clients_rejection_asks_ellis_and_is_made_good_through_the_sandbox() {
 }
 
 #[tokio::test]
-async fn without_a_middleware_the_answer_is_still_recorded_and_parts_are_marked_by_hand() {
+async fn without_a_middleware_the_answer_is_recorded_with_its_suggestions_and_parts_are_marked_by_hand() {
     let s = server(40);
     let b = browser(&s).await;
     let (_doc, token) = a_locked_brief(&s, &b).await;
@@ -1049,10 +1039,8 @@ async fn without_a_middleware_the_answer_is_still_recorded_and_parts_are_marked_
                             "channel": "pasted_email", "said": SAID, "parts": client_parts() }),
     )
     .await;
-    assert_eq!(r["suggestions"]["status"], "unavailable");
-    assert!(r["suggestions"]["reason"]
-        .as_str()
-        .is_some_and(|s| !s.is_empty()));
+    assert_eq!(r["suggestions"]["status"], "found", "the match needs no middleware");
+    assert_eq!(r["suggestions"]["decisions"].as_array().unwrap().len(), 1);
     let m = clan_ok(
         &s,
         &token,

@@ -207,6 +207,11 @@ export interface ClientWho {
 export interface ClientPartRef {
   address: string
   label: string
+  /**
+   * Other words the client may call it by (`data-clan-part-aliases`), for the
+   * host's matcher. The host adds the label and its last word itself.
+   */
+  aliases?: string[]
 }
 
 export interface ReopenedPart {
@@ -246,6 +251,8 @@ export interface ClientPartView {
   /** `document`: an accepted document answer marks every part. */
   found_by: 'person' | 'agent' | 'document'
   quote?: string
+  /** What the client said about this part, as the recorder typed it under it: verbatim. */
+  said?: string
   client: ClientWho
   at: string
   stale: boolean
@@ -286,10 +293,10 @@ export interface ClientReviewBody {
   /** The app's whole list, every time. */
   parts: ClientPartRef[]
   /**
-   * The parts the recorder marked. `words` is what the recorder typed under
-   * the part; §8.2 has no field for it yet, so the host does not keep it.
+   * The parts the recorder marked. `said` is what they typed under the part
+   * ("What they said about it"), verbatim; absent when it is only whitespace.
    */
-  marked?: { address: string; answer: ClientAnswerKind; words?: string }[]
+  marked?: { address: string; answer: ClientAnswerKind; said?: string }[]
 }
 
 export interface ClientReviewReply {
@@ -297,7 +304,11 @@ export interface ClientReviewReply {
   decision: string
   parts: string[]
   suggestions: {
-    /** `none`: nothing was asked (accepted, parts marked, no parts, no words). */
+    /**
+     * From the host's own matcher, in the same reply: `none`, nothing was
+     * looked for (accepted, parts marked, no parts, no words); `found`, it
+     * looked (`decisions` may be empty: no part is named in the words).
+     */
     status: 'none' | 'found' | 'unavailable'
     decisions: string[]
     dropped: number
@@ -307,8 +318,8 @@ export interface ClientReviewReply {
 
 /** `POST /client-review/confirm`: settle a suggestion, or mark a part after the fact. */
 export type ClientConfirmBody =
-  | { suggestion: string; confirm: boolean; answer?: ClientAnswerKind; rationale?: string }
-  | { review: string; address: string; answer: ClientAnswerKind; rationale?: string }
+  | { suggestion: string; confirm: boolean; answer?: ClientAnswerKind; rationale?: string; /** confirm only: the part's words, verbatim */ said?: string }
+  | { review: string; address: string; answer: ClientAnswerKind; rationale?: string; /** the part's words, verbatim */ said?: string }
 
 export interface ClientConfirmReply {
   ok: boolean
@@ -431,9 +442,8 @@ export interface Host {
   // ── Client review (OS-layer contract §7.5) ────────────────────────────────
   /**
    * Record a client's answer to the locked document: `POST /client-review`.
-   * Ellis is asked which parts it was about only where the host can reach the
-   * middleware; elsewhere the reply's `suggestions.status` is `unavailable`
-   * and says why.
+   * The host's matcher suggests which parts it was about in the same reply
+   * (shown as Ellis's; nothing waits on a model).
    */
   clientReview(body: ClientReviewBody): Promise<ClientReviewReply>
   /** Confirm or dismiss one of Ellis's suggestions, or mark a part after the fact. */

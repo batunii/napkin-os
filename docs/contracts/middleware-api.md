@@ -30,7 +30,7 @@ name the stand-in, its port, or branch on which implementation answered.
 ```json
 {
   "request_kind": "middleware",
-  "payload": { "task": "extract_ask | research_lens | synthesise_findings | start_campaign | answer_question | compose_report | draft_brief | regenerate_field | find_client_parts | job_status",
+  "payload": { "task": "extract_ask | research_lens | synthesise_findings | start_campaign | answer_question | compose_report | draft_brief | regenerate_field | job_status",
                "input": { "...": "task-specific, below" } },
   "clan": { "id": "<document_id>", "revision": "<manifest id>",
             "version": "<doc version the host holds>",
@@ -74,8 +74,8 @@ name the stand-in, its port, or branch on which implementation answered.
   declared built-in map is used (`extract_ask@1`, `research_lens@1`,
   `synthesise_findings@1`, `start_campaign@1`, `answer_question@1`,
   `compose_report@1`, `draft_brief@1`, `regenerate_field@1`, and the review
-  tasks `verify_finding@1`, `correct_fact@1` and `find_client_parts@1`, which
-  resolve from this map even for a pipeline that does not declare them, §11).
+  tasks `verify_finding@1` and `correct_fact@1`, which resolve from this map
+  even for a pipeline that does not declare them).
   Any other task the pipeline does not declare, an
   unregistered handler, a handler registered for a different task, or a major
   the middleware does not implement is a hard error (M4) — never a
@@ -102,7 +102,6 @@ name the stand-in, its port, or branch on which implementation answered.
 | `compose_report` | `{}` | Short. Re-composes `data.report` from the document as it stands (§8.5) |
 | `draft_brief` | `{ "prompt"?: "...", "attachments": [{ "name", "sha256", "media_type"?, "asset"?, "text"?, "image"?: { "media_type", "data" } }] }` | Brief Maker (§10). Long. `image` is base64 bytes of a picture attachment (§10.1). Nothing to read at all is `400 invalid_input` |
 | `regenerate_field` | `{ "field": "<dotted field key>", "guidance"?: "..." }` | Brief Maker (§10.10). Long. `field` one of the eighteen keys of §10.4 |
-| `find_client_parts` | `{ "answer": "accepted_with_changes \| rejected", "proof": "...", "parts": [{ "address", "label", "value" }] }` | Client review (§11). Short. Asked by the host, never by an app. Output: suggestions `[{address, answer, quote}]`, each quote a verbatim substring of `proof` |
 | `job_status` | `{ "job_id": "..." }` | Free: never charged to quota (§9) |
 
 Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
@@ -151,7 +150,7 @@ Lens ids, in taxonomy order: `market_structure`, `brands_positioning`,
 
 ### Jobs
 
-- **Short tasks** (`extract_ask`, `compose_report`, `find_client_parts`) answer `job.state: done`
+- **Short tasks** (`extract_ask`, `compose_report`) answer `job.state: done`
   and a `change` in one response.
 - **Long tasks** (`research_lens`, `synthesise_findings`, `start_campaign`,
   `draft_brief`, `regenerate_field`)
@@ -1184,81 +1183,12 @@ decision cites an id marked `model: false`; every `fi_` cite resolves in
 
 ---
 
-## 11. Client review — `find_client_parts`
+## 11. Client review — no middleware task
 
-*Added 2026-09-30.* Ellis (the extract agent) reads a client's answer and
-suggests which parts of the document it was about (Contract 4 §7.5). It
-writes nothing: the host records each suggestion as "derived by the agent",
-and a person confirms or dismisses it. Only a confirmed part counts.
-
-1. **Who asks.** The host, inside `POST /client-review` (Contract 4 §8.2),
-   when the answer is `accepted_with_changes` or `rejected`, no part was
-   marked, the app declared parts, and there is proof text. Like
-   `verify_finding` and `correct_fact` it is a review task: it resolves for
-   any document, whatever pipeline it was made with (`find_client_parts@1`
-   from the built-in map when the pipeline does not declare it). A short task:
-   `job.state: done` in one response.
-2. **Input.**
-
-   ```json
-   { "task": "find_client_parts",
-     "input": {
-       "answer": "rejected",
-       "proof": "Honestly this isn't the brief we talked about. The summer line doesn't feel like us.",
-       "parts": [ { "address": "3f2a…#single_minded_proposition", "label": "Single-minded proposition",
-                    "value": "Summer tastes better without the hangover." },
-                  { "address": "3f2a…#audience", "label": "Audience", "value": null } ] } }
-   ```
-
-   - `answer`: the document-level answer, `accepted_with_changes` or
-     `rejected`.
-   - `proof`: the client's words — the review's `said` when it has one, else
-     the attached file's extracted text — at most 24,000 characters (the
-     host's extraction limit).
-   - `parts`: every part the app declared, 1 to 100, each `{address, label,
-     value}`. `value` is the part's value as the client saw it, as plain
-     text (a string as it is, anything else as compact JSON; a field
-     envelope's `value` only), clipped to 2,000 characters. It is `null` when
-     the part is empty, or marked `model: false` (§10.13, item 6: that mark
-     withholds a value from every model call; it is not a confidentiality
-     filter on what the client sees).
-3. **Output.** `result.suggestions: [{address, answer, quote}]`, plus
-   `result.summary` and `result.dropped` (how many it dropped by item 4).
-   `change` is `null`. **No other text**: no rationale, reasoning or
-   comment, on the reply or on a suggestion; any other key on a suggestion
-   is dropped. An empty list is a valid answer — the words may name no part.
-   - `address`: one of the input's.
-   - `answer`: `accepted`, `accepted_with_changes` or `rejected` — a part's
-     answer may differ from the document's ("the proposition is right, the
-     audience is wrong").
-   - `quote`: the sentence of the proof that says so, **a verbatim substring
-     of `proof`**, at most 500 characters.
-4. **Checked, and dropped if not.** The middleware drops a suggestion whose
-   address is not an input part, whose answer is not one of the three, whose
-   quote is empty, too long or not in the proof, or whose address an earlier
-   suggestion already took (the first one stays). "In the proof" is exact
-   after one normalisation only: every run of whitespace, on both sides, is
-   one space. No case folding, no quote-mark or dash normalisation, no
-   ellipsis joining. The host checks the same again before it records
-   anything (Contract 4 §8.2), and its check is the one that counts.
-5. **Bounded.** One model call: no tools, no retrieval, no layer read, no
-   second pass, a small output cap (1,024 tokens). The prompt is built from
-   `input` alone. The handler reads nothing else from the document — not
-   `clan.data`, the members, the chain or the context, which the host still
-   sends for transport (§1). A call that fails is an error (§4), never a
-   partial or invented list; the host then records the answer without
-   suggestions.
-6. **It writes nothing.** No `change`, no layer row, no source, no corpus
-   entry. The client's words enter no index through this task.
-7. **The stand-in** (`mock-middleware/`) answers without a model: a part is
-   suggested when its label appears, ignoring case, in a sentence of the
-   proof; the quote is that sentence as written; the answer is the
-   document's.
-8. **Errors.** `400 invalid_input`: `answer` missing, `accepted` or
-   unknown; `proof` empty or over the limit; `parts` empty, over 100, or an
-   entry without `address` or `label`; two parts with one address.
-
-When built, §10.12's suite gains: every returned quote is a substring of
-the proof under item 4's rule; no suggestion names an address outside
-`parts`; no suggestion carries a key but `address`, `answer` and `quote`;
-the reply's `change` is `null`; an input with `answer: accepted` is `400`.
+*Removed 2026-09-30* (owner: no extra model call). `find_client_parts`, the
+task that asked a model which parts of a document a client's answer was
+about, is gone: no handler, no registry entry, no built-in map entry, no
+stand-in. The host finds the parts itself, deterministically, from the
+client's words and the app's part names (Contract 4 §7.5.2a), and nothing in
+client review calls the middleware. A request for `find_client_parts` is
+`400 unknown_task`.

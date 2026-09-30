@@ -781,6 +781,29 @@
   // A person may write the part now: not locked, or locked with it reopened.
   function canWrite(key){ return !approveLocked()||!!reopenedOf(key); }
   // A part as the client review and its chips name it (os-layer §7.5.1).
+  // Other words a client calls a part by, for the host's matcher in client
+  // review (data-clan-part-aliases): it finds a part in the client's sentence
+  // by its label, the label's last word, or one of these, as whole words.
+  var PART_ALIASES={
+    project_name:'project name, project, working title',
+    client:'client, brand',
+    background:'background, context, situation',
+    'objectives.commercial':'commercial objective, commercial, sales, revenue',
+    'objectives.behavioural':'behavioural objective, behavioural, behaviour',
+    'objectives.attitudinal':'attitudinal objective, attitudinal, attitude, perception',
+    audience:'audience, target, who',
+    competitor_context:'competitor context, competitors, competitor, competition',
+    insight:'insight, truth',
+    single_minded_proposition:'proposition, line, idea, smp',
+    reasons_to_believe:'reasons to believe, reasons, rtb, rtbs, proof points',
+    'desired_response.think':'what they should think',
+    'desired_response.feel':'what they should feel',
+    'desired_response.do':'what they should do, call to action',
+    tone_and_world:'tone, voice, feel',
+    budget_and_scope:'budget, cost, spend, scope',
+    mandatories:'mandatories, mandatory, must include',
+    open_questions:'open questions, questions'
+  };
   function partLabel(f){
     if(f.sec==='Objectives') return f.label+' objective';
     if(f.sec==='Desired response') return 'What they should '+f.label.toLowerCase();
@@ -840,8 +863,9 @@
   // it cannot place in Brief Maker is drafting, the one open-ended job here.
   function agentKeyOf(d){
     if(!d) return '';
-    // The middleware's find_client_parts is Ellis reading the client's words.
-    if(/^find_client_parts\b/.test(String(d.handler||d.agent||''))) return 'extract';
+    // The host's client_parts_match (and, in an older chain, the middleware's
+    // find_client_parts it replaced) is Ellis reading the client's words.
+    if(/^(client_parts_match|find_client_parts)\b/.test(String(d.handler||d.agent||''))) return 'extract';
     return (CREW_OK&&NapkinAgents.ofDecision(d))||'drafter';
   }
   function whoName(d){ return isHuman(d)?'You':(AGENT_NAME[agentKeyOf(d)]||d.agent); }
@@ -1062,7 +1086,10 @@
   function refreshWhy(){
     document.querySelectorAll('#fields .row').forEach(function(row){
       var f=FIELDS[+row.getAttribute('data-i')]; if(!f) return;
-      var p=row.querySelector('.prov'); if(p) p.outerHTML=provHtml(f);
+      // An empty part drew no mark before the chain came; one judged since
+      // gets its mark now, after its label.
+      var ph=provHtml(f), p=row.querySelector('.prov'), lab=row.querySelector('.lab > span');
+      if(p) p.outerHTML=ph; else if(ph&&lab) lab.insertAdjacentHTML('afterend',ph);
       var b=row.querySelector('.prov'); if(b) b.addEventListener('click',function(){ toggleWhy(row,f); });
       var w=row.querySelector('.why'); if(w) w.innerHTML=whyHtml(f);
       var n=row.querySelector('.notes'); if(n){ n.innerHTML=notesHtml(f); bindNotes(n,f); }
@@ -1073,9 +1100,12 @@
     var v=CHAIN.state==='ok'?verdictOf(f.key):null;
     if(!hasVal(get(f.key))&&!v) return '';
     var d=CHAIN.state==='ok'?decisionsFor(f.key)[0]:null, open=!!OPEN_WHY[f.key];
-    var who=d?whoMark(d):(v?fig('judge',{decorative:true}):'');
+    // An empty part shows who judged it: the Judge, or the person whose
+    // verdict (a doubt, or an override with a reason) is the latest on it.
+    var by=d||(v&&isHuman(v.d)?v.d:null);
+    var who=by?whoMark(by):(v?fig('judge',{decorative:true}):'');
     return '<button type="button" class="prov act-why" aria-expanded="'+open+'" title="Where did this come from?">'
-      +who+(d?esc(whoName(d)):v?esc(JUDE):'')+'<span class="q">why?</span></button>';
+      +who+(by?esc(whoName(by)):v?esc(JUDE):'')+'<span class="q">why?</span></button>';
   }
   function toggleWhy(row,f){
     OPEN_WHY[f.key]=!OPEN_WHY[f.key];
@@ -1095,11 +1125,17 @@
     crossVerdictsOf(f.key).forEach(function(c){ if(c.open) h+=crossNoteHtml(c,f); });
     if(v&&v.open){
       var r=hasReasoning(v.d)?v.d.reasoning:null, say=r?plainJudge(r.attention,1)||(arr(r.because).length?'':plainJudge(r.decided)):(v.d.rationale||'');
-      h+='<div class="note-v"'+(v.d.reason_code?' title="'+esc(v.d.reason_code)+'"':'')+'>'+fig('judge',{state:'needs-you',decorative:true})
-        +'<div><b>'+esc(JUDE)+': this part needs another look</b>'
+      // A person's doubt is theirs, not the Judge's.
+      var byYou=isHuman(v.d);
+      h+='<div class="note-v"'+(v.d.reason_code?' title="'+esc(v.d.reason_code)+'"':'')+'>'+(byYou?whoMark(v.d):fig('judge',{state:'needs-you',decorative:true}))
+        +'<div><b>'+(byYou?esc(whoName(v.d))+' said this part needs another look':esc(JUDE)+': this part needs another look')+'</b>'
         +(say?'<p>'+esc(say)+'</p>':'')
         +(r&&arr(r.because).length?'<ul>'+arr(r.because).slice(0,3).map(function(b){ return '<li>'+esc(plainJudge(b.point))+'</li>'; }).join('')+'</ul>':'')
-        +'<span class="muted">Change it, or ask '+esc(DARA)+' to write it again.</span></div></div>';
+        +'<span class="muted">Change it, or ask '+esc(DARA)+' to write it again.</span>'
+        // Or answer it with a reason, empty or not: the OS's drawer holds the
+        // override (a reasoned good verdict on the part).
+        +(!locked&&OSF()?'<div class="editrow"><button type="button" class="cancel act-override">'+(hasVal(get(f.key))?'Keep it as it is, and say why':'Leave it empty, and say why')+'</button></div>':'')
+        +'</div></div>';
     }
     if(p&&!locked){
       var k=agentKeyOf(p.d), pv=f.type==='list'?'<ul>'+arr(Array.isArray(p.value)?p.value:[p.value]).map(function(x){ return '<li>'+esc(String(x))+'</li>'; }).join('')+'</ul>':esc(String(p.value));
@@ -1136,6 +1172,7 @@
   }
   function bindNotes(el,f){
     el.querySelectorAll('.act-goto').forEach(function(g){ g.addEventListener('click',function(e){ e.preventDefault(); gotoField(g.getAttribute('data-k')); }); });
+    var o=el.querySelector('.act-override'); if(o) o.addEventListener('click',function(){ var F=OSF(); if(F) F.open(f.key); });
     var a=el.querySelector('.act-accept'), x=el.querySelector('.act-dismiss');
     if(a) a.addEventListener('click',function(){ acceptProposal(f); });
     if(x) x.addEventListener('click',function(){ dismissProposal(f); });
@@ -1749,15 +1786,20 @@
   function directUpId(){ var ks=upKeys(), c=UP.res&&UP.res.carried&&UP.res.carried.document_id; return c&&ks.indexOf(c)!==-1?c:ks[0]||''; }
   function upData(){ var id=directUpId(), u=get('upstream')||{}; return id&&u[id]&&typeof u[id]==='object'?u[id]:{}; }
   function envVal(v){ return v&&typeof v==='object'&&!Array.isArray(v)&&'value' in v?v.value:v; }
-  // The research's name: its campaign name, else its title unless that is only
-  // the tool's own name (a report nobody named), else its brand's research.
+  // The research's name, as the research calls itself: its title, unless that
+  // is only the tool's own name (a report nobody named); else what the
+  // Research Tool titles it by (its brand and markets, else its working
+  // name), read from the frozen copy; else its brand's research.
+  var UP_MARKET={IE:'Ireland', GB:'Great Britain', UK:'the UK', US:'the US', FR:'France', DE:'Germany', ES:'Spain', IT:'Italy', NL:'the Netherlands'};
   function upStoreTitle(){ var e=upEntry(); return String(e&&e.title||'').trim(); }
   function upTitle(){
-    var c=upData().campaign||{}, n=envVal(c.name), t=upStoreTitle(), br=envVal(c.brand)||envVal(c.client_org);
+    var c=upData().campaign||{}, n=envVal(c.name), t=upStoreTitle(), br=envVal(c.brand)||envVal(c.client_org), ms=arr(envVal(c.markets));
     if(br&&typeof br==='object') br=br.name;   // a brand is {name, ref}
-    if(typeof n==='string'&&n.trim()) return n.trim();
-    if(t&&!/^(untitled.*|research( tool)?|campaign research)$/i.test(t)) return t;
-    return typeof br==='string'&&br.trim()?br.trim()+' research':t;
+    br=typeof br==='string'?br.trim():''; n=typeof n==='string'?n.trim():'';
+    if(t&&!/^(untitled.*|research( tool)?|campaign[ -]research.*)$/i.test(t)) return t;
+    if(envVal(c.brand)&&br&&ms.length) return br+' · '+listWords(ms.map(function(m){ return UP_MARKET[m]||String(m); }));
+    if(n) return n;
+    return br?br+' research':t;
   }
   function upHeadline(){
     var r=upData().report||{}, h=r.headline; h=h&&typeof h==='object'?h.text:h;
@@ -1909,6 +1951,7 @@
     // A part the client review can name (the shared protocol: the snippet
     // collects these in document order and hands them to the shell).
     row.setAttribute('data-clan-part', f.key); row.setAttribute('data-clan-part-label', partLabel(f));
+    if(PART_ALIASES[f.key]) row.setAttribute('data-clan-part-aliases', PART_ALIASES[f.key]);
     var v=get(f.key); var has=hasVal(v);
     var st=fieldStyle(f.key); var sa=st?' style="'+st+'"':'';
     var cls='val'+(f.hero?' spp':'');

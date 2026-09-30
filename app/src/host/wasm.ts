@@ -254,9 +254,9 @@ export const wasmHost: Host = {
 
   upstream: () => route<UpstreamView>('/upstream', '', new Uint8Array()),
 
-  // Answered by the route table in the page. There is no middleware here, so
-  // Ellis is never asked: the reply says so (`suggestions.status:
-  // unavailable`) and a person marks the parts.
+  // Answered by the route table in the page, as on every host: the parts
+  // the client's words name are found by the host's own matcher, in the
+  // same reply, so offline finds them too.
   clientReview: body => post<ClientReviewReply>('/client-review', body),
   clientReviewConfirm: body => post<ClientConfirmReply>('/client-review/confirm', body),
   clientReviewReopen: answer => post<ClientReopenReply>('/client-review/reopen', { answer }),

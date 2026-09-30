@@ -218,9 +218,8 @@ impl NapkinHost {
     /// table the desktop reaches through a custom URI scheme and the server
     /// reaches over HTTP. `/api-proxy` is the one route that does not arrive
     /// here: the page holds the credentials and answers it before we are asked.
-    /// `/client-review` is answered here too, without asking Ellis which parts
-    /// were meant — there is no middleware behind this build — and says so;
-    /// a person marks the parts (`/client-review/confirm`).
+    /// `/client-review` is answered here as everywhere: which parts the
+    /// client's words were about is the host's own word match, no middleware.
     pub fn handle(&self, path: &str, query: &str, body: &[u8]) -> JsValue {
         let resp = napkin_host::handle(
             &self.session,

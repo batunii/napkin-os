@@ -9,8 +9,9 @@
 //!
 //! Four records, all `kind: client_review`, told apart by `action`: the
 //! document answer ([`CLIENT_ANSWER`]), a part answer ([`CLIENT_ANSWER_PART`]),
-//! Ellis's suggestion of a part the words were about ([`SUGGEST_PART`]), and a
-//! person dismissing one ([`DISMISS_PART`]). "Make this change" writes an
+//! a suggestion of a part the words were about ([`SUGGEST_PART`]) — found by
+//! the host's own word match ([`client_match`](super::client_match)), shown as
+//! Ellis's — and a person dismissing one ([`DISMISS_PART`]). "Make this change" writes an
 //! `unlock` that reopens one part ([`REOPEN_PART`]) and nothing else, so the
 //! part can be edited while every other part stays exactly as the client saw
 //! it; the next `approve` closes it.
@@ -24,8 +25,6 @@
 //! it was answered, whether it is reopened — is derived by
 //! [`decisions`](super::decisions), from the chain and the data, never stored.
 
-use std::collections::BTreeSet;
-
 use clan_sdk::decision::new_decision_id;
 use clan_sdk::hash::sha256_prefixed;
 use clan_sdk::{Certainty, Decision, DecisionChain, ReasonPoint, Reasoning};
@@ -37,10 +36,10 @@ use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
 
 use super::assemble::{assemble, data_of, Members};
+use super::client_match;
 use super::decisions;
 use super::edit::{attributed, UPSTREAM_KEY};
 use super::members::PROJECTION_KEY;
-use super::middleware;
 use super::review::{body, chain_of, lock_index, now, person, required, text, to_json, to_yaml};
 use super::{sanitize_asset_name, Outcome, MAX_EXTRACT_CHARS};
 
@@ -62,18 +61,15 @@ pub const REASONS: &[&str] = &["off_brief", "wrong_audience", "tone", "facts_wro
 /// How the answer reached the agency.
 pub const CHANNELS: &[&str] = &["pasted_email", "file", "call", "none"];
 
-/// The middleware task that finds which parts the words were about
-/// (`napkin.middleware/1` §11), and the handler recorded when its reply does
-/// not name one this host accepts.
-pub const TASK: &str = "find_client_parts";
-pub const HANDLER: &str = "find_client_parts@1.0";
+/// The agent a suggestion is recorded as: the host's word match, which the
+/// shell shows as Ellis (§7.5.2a).
+pub const MATCHER: &str = "client_parts_match";
 
 const MAX_PARTS: usize = 100;
 const MAX_LABEL: usize = 80;
+const MAX_ALIASES: usize = 20;
 const MAX_NAME: usize = 120;
 const MAX_SAID: usize = 20_000;
-const MAX_QUOTE: usize = 500;
-const MAX_VALUE: usize = 2_000;
 const MAX_REOPEN_REASON: usize = 300;
 
 // ── inputs ──────────────────────────────────────────────────────────────────
@@ -83,6 +79,27 @@ const MAX_REOPEN_REASON: usize = 300;
 pub struct Client {
     pub name: String,
     pub email: Option<String>,
+}
+
+/// One part as the app declared it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartIn {
+    /// As sent.
+    pub address: String,
+    pub label: String,
+    /// Other words the client may use for it (`data-clan-part-aliases`).
+    pub aliases: Vec<String>,
+}
+
+/// One part the recorder marked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Marked {
+    /// As sent.
+    pub address: String,
+    pub answer: String,
+    /// What the client said about this part ("What they said about it"),
+    /// verbatim; `None` when absent or all whitespace.
+    pub said: Option<String>,
 }
 
 /// `POST /client-review`: the document-level answer, the app's parts, and any
@@ -97,39 +114,30 @@ pub struct ClientReview {
     /// compressed. `None` when absent or all whitespace.
     pub said: Option<String>,
     pub asset: Option<String>,
-    /// `(address as sent, label)`, the app's whole list.
-    pub parts: Vec<(String, String)>,
-    /// `(address as sent, answer)`.
-    pub marked: Vec<(String, String)>,
+    /// The app's whole list.
+    pub parts: Vec<PartIn>,
+    pub marked: Vec<Marked>,
 }
 
 /// `POST /client-review/confirm`: settle one of Ellis's suggestions, or mark a
-/// part by hand after the review was recorded.
+/// part by hand after the review was recorded. `said` is what the client said
+/// about the part, verbatim, when the recorder typed it.
 #[derive(Debug, Clone)]
 pub enum Confirm {
     Suggestion {
         id: String,
         confirm: bool,
         answer: Option<String>,
+        said: Option<String>,
         rationale: String,
     },
     Mark {
         review: String,
         address: String,
         answer: String,
+        said: Option<String>,
         rationale: String,
     },
-}
-
-/// What Ellis (the middleware's `find_client_parts`) said, when the host
-/// asked it.
-#[derive(Debug, Clone)]
-pub enum Ellis {
-    /// It was not asked, or could not answer: why, in words the reply
-    /// carries. Ignored when there was nothing to ask.
-    Unavailable(String),
-    /// The `napkin.middleware/1` response body it answered with.
-    Answered(Value),
 }
 
 fn bad(msg: impl Into<String>) -> HostError {
@@ -186,6 +194,44 @@ fn client_of(v: &Value) -> HostResult<Client> {
     Ok(Client { name, email })
 }
 
+/// The client's words under `key`, verbatim (§7.5.2, `said`): stored exactly
+/// as sent, never trimmed inside, rewritten or compressed; only a body of
+/// nothing but whitespace counts as no words.
+fn words(v: &Value, key: &str) -> HostResult<Option<String>> {
+    match v.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
+        Some(Value::String(s)) if s.chars().count() > MAX_SAID => {
+            Err(bad(format!("`{key}` is at most {MAX_SAID} characters")))
+        }
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(bad(format!("`{key}` is the client's words, as text"))),
+    }
+}
+
+/// A part's aliases: a list of words, or the app's attribute as written
+/// (`"a, b"`). Trimmed; empty ones dropped.
+fn aliases_of(p: &Value, address: &str) -> HostResult<Vec<String>> {
+    let raw: Vec<String> = match p.get("aliases") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::String(s)) => s.split(',').map(String::from).collect(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .map(|x| x.as_str().map(String::from))
+            .collect::<Option<_>>()
+            .ok_or_else(|| bad(format!("part {address}'s aliases are words")))?,
+        Some(_) => return Err(bad(format!("part {address}'s aliases are a list of words"))),
+    };
+    let out: Vec<String> = raw.iter().map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
+    if out.len() > MAX_ALIASES {
+        return Err(bad(format!("part {address} has at most {MAX_ALIASES} aliases")));
+    }
+    if let Some(a) = out.iter().find(|a| a.chars().count() > MAX_LABEL) {
+        return Err(bad(format!("part {address}'s alias {a:?} is over {MAX_LABEL} characters")));
+    }
+    Ok(out)
+}
+
 fn list<'v>(v: &'v Value, key: &str) -> HostResult<&'v [Value]> {
     match v.get(key) {
         None | Some(Value::Null) => Ok(&[]),
@@ -219,17 +265,7 @@ impl ClientReview {
             return Err(bad("reasons are for a rejection"));
         }
 
-        // Verbatim: the words are stored as sent, and only a body of nothing
-        // but whitespace counts as no words.
-        let said = match v.get("said") {
-            None | Some(Value::Null) => None,
-            Some(Value::String(s)) if s.trim().is_empty() => None,
-            Some(Value::String(s)) if s.chars().count() > MAX_SAID => {
-                return Err(bad(format!("`said` is at most {MAX_SAID} characters")))
-            }
-            Some(Value::String(s)) => Some(s.clone()),
-            Some(_) => return Err(bad("`said` is the client's words, as text")),
-        };
+        let said = words(&v, "said")?;
         let asset = Some(text(&v, "asset")).filter(|a| !a.is_empty());
         let channel = required(&v, "channel")?;
         if !CHANNELS.contains(&channel.as_str()) {
@@ -268,11 +304,16 @@ impl ClientReview {
             if label.chars().count() > MAX_LABEL {
                 return Err(bad(format!("part {address}'s label is at most {MAX_LABEL} characters")));
             }
-            parts.push((address, label));
+            let aliases = aliases_of(p, &address)?;
+            parts.push(PartIn { address, label, aliases });
         }
         let mut marked = Vec::new();
         for m in list(&v, "marked")? {
-            marked.push((required(m, "address")?, answer_of(m, "answer")?));
+            marked.push(Marked {
+                address: required(m, "address")?,
+                answer: answer_of(m, "answer")?,
+                said: words(m, "said")?,
+            });
         }
         if answer == "accepted" && !marked.is_empty() {
             return Err(bad("an accepted document marks every part accepted already: mark no parts"));
@@ -296,7 +337,11 @@ pub fn parse_confirm(raw: &str) -> HostResult<Confirm> {
             None | Some(Value::Null) => None,
             Some(_) => Some(answer_of(&v, "answer")?),
         };
-        return Ok(Confirm::Suggestion { id: suggestion, confirm, answer, rationale });
+        let said = words(&v, "said")?;
+        if !confirm && said.is_some() {
+            return Err(bad("a dismissal records no words about the part: say why in `rationale`"));
+        }
+        return Ok(Confirm::Suggestion { id: suggestion, confirm, answer, said, rationale });
     }
     if text(&v, "review").is_empty() {
         return Err(bad("`suggestion`, or `review` and `address`, is required"));
@@ -305,6 +350,7 @@ pub fn parse_confirm(raw: &str) -> HostResult<Confirm> {
         review: required(&v, "review")?,
         address: required(&v, "address")?,
         answer: answer_of(&v, "answer")?,
+        said: words(&v, "said")?,
         rationale,
     })
 }
@@ -404,41 +450,6 @@ fn canonical(v: &Value, out: &mut String) {
         }
         other => out.push_str(&other.to_string()),
     }
-}
-
-/// The value as Ellis is sent it (`napkin.middleware/1` §11, item 2): plain
-/// text, clipped; `None` when the part is empty.
-fn value_text(v: &Value) -> Option<String> {
-    let s = match v {
-        Value::Null => return None,
-        Value::String(s) => s.clone(),
-        Value::Array(a) if a.is_empty() => return None,
-        Value::Object(m) if m.is_empty() => return None,
-        other => other.to_string(),
-    };
-    (!s.trim().is_empty()).then(|| s.chars().take(MAX_VALUE).collect())
-}
-
-/// A `classify` mark says the address may not reach a model: the newest one
-/// on it, or on a path it is inside, has `model: false` — or that holds for a
-/// path inside it, since a part's value carries everything under it (a mark on
-/// `audience.commercial` withholds `audience` whole). Every model call
-/// withholds such a value (`napkin.middleware/1` §10.13, item 6); it is not a
-/// filter on what the client sees.
-fn withheld(chain: &DecisionChain, address: &str) -> bool {
-    let marks = || {
-        chain
-            .decisions
-            .iter()
-            .filter(|d| d.kind.as_deref() == Some("classify") && d.superseded_by.is_none())
-    };
-    let at = |a: &str| {
-        marks()
-            .find(|d| d.targets.iter().any(|t| inside(a, t)))
-            .and_then(|d| d.licence.as_ref()?.model)
-            .is_some_and(|model| !model)
-    };
-    at(address) || marks().flat_map(|d| d.targets.iter()).any(|t| t != address && inside(t, address) && at(t))
 }
 
 // ── chain reads ─────────────────────────────────────────────────────────────
@@ -575,22 +586,24 @@ struct Seen {
     address: String,
     path: String,
     label: String,
+    aliases: Vec<String>,
     hash: String,
 }
 
-/// A review checked against the document, before anything is asked or
-/// written.
+/// A review checked against the document, before anything is written.
 struct Prepared {
     who: String,
     lock: String,
     version: String,
     doc_hash: String,
     parts: Vec<Seen>,
-    /// Index into `parts`, and the answer.
-    marked: Vec<(usize, String)>,
+    /// Index into `parts`, the answer, and the client's words about it.
+    marked: Vec<(usize, String, Option<String>)>,
     evidence: Value,
+    /// The words the match reads, when it is run: the answer is not
+    /// `accepted`, no part was marked, the app declared parts, and there are
+    /// words.
     proof: Option<String>,
-    ask: Option<Value>,
 }
 
 fn prepare(ctx: &Ctx, doc: &Document, input: &ClientReview) -> HostResult<Prepared> {
@@ -611,28 +624,34 @@ fn prepare(ctx: &Ctx, doc: &Document, input: &ClientReview) -> HostResult<Prepar
     let data = data_of(clan)?;
 
     let mut parts: Vec<Seen> = Vec::new();
-    for (raw, label) in &input.parts {
-        let (address, path) = part_address(&here, raw)?;
-        if let Some(p) = parts.iter().find(|p| inside(&path, &p.path) || inside(&p.path, &path)) {
-            return Err(bad(if p.path == path {
+    for p in &input.parts {
+        let (address, path) = part_address(&here, &p.address)?;
+        if let Some(q) = parts.iter().find(|q| inside(&path, &q.path) || inside(&q.path, &path)) {
+            return Err(bad(if q.path == path {
                 format!("part {path} is given twice")
             } else {
-                format!("parts {} and {path} overlap: one is inside the other, so a change to it would be ambiguous", p.path)
+                format!("parts {} and {path} overlap: one is inside the other, so a change to it would be ambiguous", q.path)
             }));
         }
-        parts.push(Seen { hash: part_hash(&data, &path), address, path, label: label.clone() });
+        parts.push(Seen {
+            hash: part_hash(&data, &path),
+            address,
+            path,
+            label: p.label.clone(),
+            aliases: p.aliases.clone(),
+        });
     }
-    let mut marked: Vec<(usize, String)> = Vec::new();
-    for (raw, answer) in &input.marked {
-        let (address, _) = part_address(&here, raw)?;
+    let mut marked: Vec<(usize, String, Option<String>)> = Vec::new();
+    for m in &input.marked {
+        let (address, _) = part_address(&here, &m.address)?;
         let i = parts
             .iter()
             .position(|p| p.address == address)
-            .ok_or_else(|| bad(format!("marked part {raw} is not one of `parts`")))?;
-        if marked.iter().any(|(j, _)| *j == i) {
-            return Err(bad(format!("part {raw} is marked twice")));
+            .ok_or_else(|| bad(format!("marked part {} is not one of `parts`", m.address)))?;
+        if marked.iter().any(|(j, _, _)| *j == i) {
+            return Err(bad(format!("part {} is marked twice", m.address)));
         }
-        marked.push((i, answer.clone()));
+        marked.push((i, m.answer.clone(), m.said.clone()));
     }
 
     let mut evidence = json!({ "strength": "weaker" });
@@ -658,29 +677,10 @@ fn prepare(ctx: &Ctx, doc: &Document, input: &ClientReview) -> HostResult<Prepar
             .and_then(|b| String::from_utf8(b).ok())
             .filter(|t| !t.trim().is_empty());
     }
-    let proof = input
-        .said
-        .clone()
-        .or(extracted)
-        .map(|p| p.chars().take(MAX_EXTRACT_CHARS).collect::<String>());
-
-    let ask = (input.answer != "accepted" && input.marked.is_empty() && !parts.is_empty())
-        .then_some(proof.as_ref())
+    let proof = (input.answer != "accepted" && input.marked.is_empty() && !parts.is_empty())
+        .then(|| input.said.clone().or(extracted))
         .flatten()
-        .map(|proof| {
-            let parts: Vec<Value> = parts
-                .iter()
-                .map(|p| {
-                    let value = if withheld(&chain, &p.address) {
-                        None
-                    } else {
-                        value_text(&part_value(&data, &p.path))
-                    };
-                    json!({ "address": p.address, "label": p.label, "value": value })
-                })
-                .collect();
-            json!({ "task": TASK, "input": { "answer": input.answer, "proof": proof, "parts": parts } })
-        });
+        .map(|p| p.chars().take(MAX_EXTRACT_CHARS).collect::<String>());
 
     Ok(Prepared {
         who,
@@ -691,17 +691,7 @@ fn prepare(ctx: &Ctx, doc: &Document, input: &ClientReview) -> HostResult<Prepar
         marked,
         evidence,
         proof,
-        ask,
     })
-}
-
-/// What the middleware is asked before a client review is written
-/// (`napkin.middleware/1` §11), or `None` when there is nothing to ask: the
-/// answer is accepted, parts were marked, the app declared none, or there
-/// are no words to read. Refuses whatever [`record`] would refuse, so the
-/// middleware is not asked for nothing.
-pub fn request(ctx: &Ctx, doc: &Document, input: &ClientReview) -> HostResult<Option<Value>> {
-    Ok(prepare(ctx, doc, input)?.ask)
 }
 
 /// A decision by the person `who`, of the client review kind.
@@ -729,79 +719,11 @@ fn client_json(c: &Client) -> Value {
     }
 }
 
-/// A suggestion that survived the host's check.
-struct Found {
-    part: usize,
-    answer: String,
-    quote: String,
-}
-
-/// Ellis's reply, checked again by the host (§8.2, item 1): an address among
-/// the parts, one of the three answers, a quote that is a verbatim substring
-/// of the proof once every run of whitespace is one space, one per address
-/// (the first stays). Anything else is dropped and counted. `Err` says why
-/// nothing can be taken from the reply at all.
-fn check(p: &Prepared, data: &Value) -> Result<(Vec<Found>, usize), String> {
-    middleware::check_api(data).map_err(|e| e.message)?;
-    if let Some(state) = data.pointer("/job/state").and_then(Value::as_str).filter(|s| *s != "done") {
-        return Err(format!("Ellis did not finish in one response (the job is {state})"));
-    }
-    if data.get("change").is_some_and(|c| !c.is_null()) {
-        return Err("Ellis answered with a change, and finding the parts writes nothing".into());
-    }
-    let list = data
-        .pointer("/result/suggestions")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "Ellis answered without a list of suggestions".to_string())?;
-    let proof = one_line(p.proof.as_deref().unwrap_or_default());
-    let mut taken = BTreeSet::new();
-    let mut out = Vec::new();
-    let mut dropped = 0;
-    for s in list {
-        let part = s
-            .get("address")
-            .and_then(Value::as_str)
-            .and_then(|a| p.parts.iter().position(|x| x.address == a || x.path == a));
-        let answer = s.get("answer").and_then(Value::as_str).filter(|a| ANSWERS.contains(a));
-        let quote = s
-            .get("quote")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|q| !q.is_empty() && q.chars().count() <= MAX_QUOTE && proof.contains(&one_line(q)));
-        match (part, answer, quote) {
-            (Some(i), Some(a), Some(q)) if taken.insert(i) => out.push(Found {
-                part: i,
-                answer: a.to_string(),
-                quote: q.to_string(),
-            }),
-            _ => dropped += 1,
-        }
-    }
-    Ok((out, dropped))
-}
-
-/// The handler a suggestion is recorded under: the reply's, when it names
-/// this task in the `name@major.minor` form; the built-in one otherwise.
-fn handler_of(data: &Value) -> String {
-    data.get("handler")
-        .and_then(Value::as_str)
-        .filter(|h| {
-            h.strip_prefix(TASK)
-                .and_then(|r| r.strip_prefix('@'))
-                .is_some_and(|v| {
-                    let mut it = v.split('.');
-                    let whole = |s: Option<&str>| s.is_some_and(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()));
-                    whole(it.next()) && it.next().map_or(true, |m| whole(Some(m))) && it.next().is_none()
-                })
-        })
-        .unwrap_or(HANDLER)
-        .to_string()
-}
-
 /// Record a client's answer to the locked document: the document answer, a
-/// part answer per part the recorder marked, and a suggestion per part Ellis
-/// found that survives the host's check — in that order, in one change.
-pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview, ellis: Ellis) -> HostResult<Outcome> {
+/// part answer per part the recorder marked, and a suggestion per part the
+/// host's word match found in the client's words (§7.5.2a) — in that order,
+/// in one change.
+pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview) -> HostResult<Outcome> {
     let p = prepare(ctx, doc, &input)?;
     let here = doc.clan().document_id().to_string();
     let now = now();
@@ -847,7 +769,13 @@ pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview, ellis: Ellis) -> H
     let seen_parts: Vec<Value> = p
         .parts
         .iter()
-        .map(|s| json!({ "address": s.address, "label": s.label, "part_hash": s.hash }))
+        .map(|s| {
+            let mut e = json!({ "address": s.address, "label": s.label, "part_hash": s.hash });
+            if !s.aliases.is_empty() {
+                e["aliases"] = json!(s.aliases);
+            }
+            e
+        })
         .collect();
     put(&mut a, "seen", json!({ "version": p.version, "doc_hash": p.doc_hash, "parts": seen_parts }))?;
     let a_id = a.id.clone().unwrap_or_default();
@@ -855,7 +783,7 @@ pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview, ellis: Ellis) -> H
 
     let mut written = vec![a];
     let mut part_ids = Vec::new();
-    for (i, answer) in &p.marked {
+    for (i, answer, said) in &p.marked {
         let s = &p.parts[*i];
         let mut d = by_person(
             ctx,
@@ -870,6 +798,9 @@ pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview, ellis: Ellis) -> H
         put(&mut d, "review", json!(a_id))?;
         put(&mut d, "label", json!(s.label))?;
         put(&mut d, "answer", json!(answer))?;
+        if let Some(said) = said {
+            put(&mut d, "said", json!(said))?;
+        }
         put(&mut d, "client", client.clone())?;
         put(&mut d, "found_by", json!("person"))?;
         put(&mut d, "seen", seen_part(s))?;
@@ -877,53 +808,64 @@ pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview, ellis: Ellis) -> H
         written.push(d);
     }
 
-    let (status, found, dropped, reason, reply_data) = match (&p.ask, ellis) {
-        (None, _) => ("none", Vec::new(), 0, None, Value::Null),
-        (Some(_), Ellis::Unavailable(why)) => ("unavailable", Vec::new(), 0, Some(why), Value::Null),
-        (Some(_), Ellis::Answered(data)) => match check(&p, &data) {
-            Ok((found, dropped)) => ("found", found, dropped, None, data),
-            Err(why) => ("unavailable", Vec::new(), 0, Some(why), Value::Null),
-        },
+    let found = match &p.proof {
+        None => None,
+        Some(proof) => {
+            let parts: Vec<client_match::Part> = p
+                .parts
+                .iter()
+                .map(|s| client_match::Part { label: &s.label, aliases: &s.aliases })
+                .collect();
+            Some(client_match::suggest(&input.answer, proof, &parts))
+        }
     };
-    let handler = handler_of(&reply_data);
-    let backend = reply_data.pointer("/trace/backend").and_then(Value::as_str).map(String::from);
     let mut suggestion_ids = Vec::new();
-    for f in &found {
+    for f in found.iter().flatten() {
         let s = &p.parts[f.part];
         let mut d = attributed(ctx, "", KIND);
-        d.actor = Some(Actor::process(middleware::JOB)?.to_string());
-        d.handler = Some(handler.clone());
-        d.backend = backend.clone();
+        d.actor = Some(Actor::process(client_match::PROCESS)?.to_string());
+        d.handler = Some(client_match::HANDLER.to_string());
         d.id = Some(new_decision_id());
-        d.agent = TASK.to_string();
+        d.agent = MATCHER.to_string();
         d.action = SUGGEST_PART.to_string();
         d.targets = vec![s.address.clone()];
         d.cites = vec![a_id.clone()];
         d.timestamp = now.clone();
         d.rationale = format!(
-            "Derived by the agent: {name} may mean {} ({}): “{}”",
+            "Suggested by matching the client's words: {name} may mean {} ({}): “{}”",
             s.label,
-            answer_words(&f.answer),
+            answer_words(f.answer),
             f.quote
         );
+        let mut because = vec![ReasonPoint {
+            point: format!("The client's words name it (“{}”): “{}”", f.name, f.quote),
+            cites: vec![a_id.clone()],
+            ..Default::default()
+        }];
+        because.push(ReasonPoint {
+            point: match (f.answer, f.cue) {
+                ("rejected", _) => "The client rejected the document, so the part is suggested rejected.".to_string(),
+                (_, Some(cue)) => format!("The sentence asks for a change (“{cue}”)."),
+                _ => "The sentence asks for no change.".to_string(),
+            },
+            cites: vec![a_id.clone()],
+            ..Default::default()
+        });
         d.reasoning = Some(Reasoning {
             decided: format!("Suggested that {name}'s answer is about {}.", s.label),
-            because: vec![ReasonPoint {
-                point: format!("The client's words name it: “{}”", f.quote),
-                cites: vec![a_id.clone()],
-                ..Default::default()
-            }],
+            because,
             rejected: Vec::new(),
             only_option: Some(
-                "the words are the client's and the part list is the app's; a person confirms or dismisses it".into(),
+                "a fixed word match over the client's words and the app's part names; a person confirms or dismisses it"
+                    .into(),
             ),
             certainty: Certainty {
                 level: "medium".into(),
-                why: "found by the agent in the client's words; not yet confirmed".into(),
+                why: "a part's name is in the client's sentence; a word match, not yet confirmed".into(),
                 ..Default::default()
             },
             would_change_if: "a person dismisses it".into(),
-            attention: Some("Derived by the agent. Confirm or dismiss it; only a confirmed part counts.".into()),
+            attention: Some("Found by matching words. Confirm or dismiss it; only a confirmed part counts.".into()),
             ..Default::default()
         });
         put(&mut d, "covers", json!("part"))?;
@@ -931,18 +873,21 @@ pub fn record(ctx: &Ctx, doc: &Document, input: ClientReview, ellis: Ellis) -> H
         put(&mut d, "label", json!(s.label))?;
         put(&mut d, "answer", json!(f.answer))?;
         put(&mut d, "quote", json!(f.quote))?;
+        let mut matched = json!({ "name": f.name });
+        if let Some(cue) = f.cue {
+            matched["cue"] = json!(cue);
+        }
+        put(&mut d, "matched", matched)?;
         put(&mut d, "found_by", json!("agent"))?;
         put(&mut d, "seen", seen_part(s))?;
         suggestion_ids.push(d.id.clone().unwrap_or_default());
         written.push(d);
     }
 
-    let mut suggestions = json!({ "status": status, "decisions": suggestion_ids, "dropped": dropped });
-    if let Some(r) = reason {
-        suggestions["reason"] = json!(r);
-    }
+    let status = if found.is_some() { "found" } else { "none" };
     let reply = json!({
-        "ok": true, "kind": KIND, "decision": a_id, "parts": part_ids, "suggestions": suggestions,
+        "ok": true, "kind": KIND, "decision": a_id, "parts": part_ids,
+        "suggestions": { "status": status, "decisions": suggestion_ids, "dropped": 0, "handler": client_match::HANDLER },
     });
     commit(doc, written, "a client's answer", &now, reply)
 }
@@ -981,7 +926,7 @@ pub fn confirm(ctx: &Ctx, doc: &Document, input: Confirm) -> HostResult<Outcome>
     };
 
     match input {
-        Confirm::Suggestion { id, confirm, answer, rationale } => {
+        Confirm::Suggestion { id, confirm, answer, said, rationale } => {
             let s = find(&chain, &id)?;
             if !is(s, SUGGEST_PART) || !on_here(s) {
                 return Err(HostError::conflict(format!("{id} is not a suggestion on this document")));
@@ -1042,6 +987,9 @@ pub fn confirm(ctx: &Ctx, doc: &Document, input: Confirm) -> HostResult<Outcome>
             put(&mut d, "label", json!(label))?;
             put(&mut d, "answer", json!(answer))?;
             put(&mut d, "client", extra_json(r, "client"))?;
+            if let Some(said) = &said {
+                put(&mut d, "said", json!(said))?;
+            }
             put(&mut d, "found_by", json!("agent"))?;
             put(&mut d, "suggestion", json!(id))?;
             if let Some(q) = extra_str(s, "quote") {
@@ -1051,7 +999,7 @@ pub fn confirm(ctx: &Ctx, doc: &Document, input: Confirm) -> HostResult<Outcome>
             let reply = json!({ "ok": true, "kind": KIND, "decision": d.id, "targets": d.targets });
             commit(doc, vec![d], "a suggestion confirmed", &now, reply)
         }
-        Confirm::Mark { review, address, answer, rationale } => {
+        Confirm::Mark { review, address, answer, said, rationale } => {
             let r = review_of(&review)?;
             if extra_str(r, "answer") == Some("accepted") {
                 return Err(HostError::conflict(
@@ -1086,6 +1034,9 @@ pub fn confirm(ctx: &Ctx, doc: &Document, input: Confirm) -> HostResult<Outcome>
             put(&mut d, "review", json!(review))?;
             put(&mut d, "label", json!(label))?;
             put(&mut d, "answer", json!(answer))?;
+            if let Some(said) = &said {
+                put(&mut d, "said", json!(said))?;
+            }
             put(&mut d, "client", extra_json(r, "client"))?;
             put(&mut d, "found_by", json!("person"))?;
             put(
@@ -1099,7 +1050,7 @@ pub fn confirm(ctx: &Ctx, doc: &Document, input: Confirm) -> HostResult<Outcome>
     }
 }
 
-/// Ellis's suggestions still open when the document is locked again, each
+/// Suggestions still open when the document is locked again, each
 /// closed by one dismissal written after the new lock (Contract 4 §7.5.3).
 /// They were about the version the client read, which the new lock replaces,
 /// so nobody can confirm them any more; left open they would ask for a look
@@ -1182,7 +1133,10 @@ pub fn reopen(ctx: &Ctx, doc: &Document, answer: &str) -> HostResult<Outcome> {
         .flatten()
         .filter_map(|v| v.as_str().map(reason_words))
         .collect();
-    let what = extra_str(a, "quote")
+    // The part's own words when it has them, else the document's words
+    // (owner 2026-09-30; §8.2, item 3). The matched quote is not a step: it
+    // is shown on the part, but the reason is what the client said.
+    let what = extra_str(a, "said")
         .map(String::from)
         .or(said)
         .map(|s| one_line(&s))
@@ -1250,11 +1204,30 @@ mod tests {
     }
 
     #[test]
-    fn only_this_tasks_handler_is_recorded() {
-        assert_eq!(handler_of(&json!({ "handler": "find_client_parts@1.2" })), "find_client_parts@1.2");
-        assert_eq!(handler_of(&json!({ "handler": "find_client_parts@2" })), "find_client_parts@2");
-        assert_eq!(handler_of(&json!({ "handler": "draft_brief@1.0" })), HANDLER);
-        assert_eq!(handler_of(&json!({ "handler": "find_client_parts@1.x" })), HANDLER);
-        assert_eq!(handler_of(&Value::Null), HANDLER);
+    fn aliases_are_a_list_or_the_attribute_as_written() {
+        let p = |a: Value| aliases_of(&json!({ "aliases": a }), "audience");
+        assert_eq!(p(json!("who, the people ,, ")).unwrap(), vec!["who", "the people"]);
+        assert_eq!(p(json!([" who ", ""])).unwrap(), vec!["who"]);
+        assert_eq!(p(Value::Null).unwrap(), Vec::<String>::new());
+        assert_eq!(p(json!([1])).unwrap_err().status, 400);
+        assert_eq!(p(json!("x".repeat(81))).unwrap_err().status, 400);
+        assert_eq!(p(json!(vec!["a"; 21])).unwrap_err().status, 400);
+    }
+
+    #[test]
+    fn a_parts_words_are_kept_verbatim_and_all_whitespace_is_none() {
+        let said = "  The tone\r\n  is   off.  ";
+        let m = ClientReview::parse(
+            &json!({ "answer": "rejected", "client": { "name": "J" }, "channel": "none",
+                     "parts": [{ "address": "tone", "label": "Tone" }],
+                     "marked": [{ "address": "tone", "answer": "rejected", "said": said }] })
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(m.marked[0].said.as_deref(), Some(said));
+        let c = parse_confirm(&json!({ "review": "d_1", "address": "tone", "answer": "rejected", "said": " \n " }).to_string());
+        assert!(matches!(c.unwrap(), Confirm::Mark { said: None, .. }));
+        let d = parse_confirm(&json!({ "suggestion": "d_1", "confirm": false, "said": "x" }).to_string());
+        assert_eq!(d.unwrap_err().status, 400, "a dismissal takes no words about the part");
     }
 }

@@ -31,8 +31,8 @@ interface Props {
   /** Clients already on record, most recent first (knownClients). */
   known: readonly ClientWho[]
   noun: string
-  /** `reading`: saved, and Ellis is reading the client's words before it is written. */
-  saving: 'no' | 'saving' | 'reading'
+  /** The parts the words name are found by the host in the same reply: nothing else to wait for. */
+  saving: 'no' | 'saving'
   error: string | null
   onSave: () => void
 }
@@ -84,9 +84,7 @@ export default function ClientReviewPanel({ draft, onDraft, parts, marked, known
     )
   }
 
-  const say = saving === 'reading'
-    ? { agent: 'extract' as const, state: 'working' as const, text: `Reading what ${draft.name.trim().split(/\s+/)[0] || 'the client'} sent, to find the parts they meant.` }
-    : modeLine(draft, noun)
+  const say = modeLine(draft, noun)
 
   return (
     <aside className={`cr-panel${folded ? ' cr-folded' : ''}`} aria-labelledby={`${id}-q`}>
@@ -142,7 +140,7 @@ export default function ClientReviewPanel({ draft, onDraft, parts, marked, known
                   value={draft.pasted}
                   disabled={busy}
                   onChange={e => set({ pasted: e.target.value })}
-                  placeholder={`Paste the client’s reply. It stays in the document, word for word, and ${AGENTS.extract.given} reads it to find the parts they meant.`}
+                  placeholder={`Paste the client’s reply. It stays in the document, word for word, and ${AGENTS.extract.given} looks in it for the parts it names.`}
                 />
               </div>
             )}
@@ -215,7 +213,7 @@ export default function ClientReviewPanel({ draft, onDraft, parts, marked, known
 
             <p className="cr-hint">
               {parts.length
-                ? <>Know which parts? Mark them on the {noun}. If not, leave it: {AGENTS.extract.given} will find them.
+                ? <>Know which parts? Mark them on the {noun}. If not, leave it: {AGENTS.extract.given} will look for the parts their words name.
                   {marked > 0 && <b> {marked} part{marked === 1 ? '' : 's'} marked.</b>}</>
                 : <>This {noun} names no parts, so the answer is for the whole of it.</>}
             </p>
@@ -283,7 +281,7 @@ export default function ClientReviewPanel({ draft, onDraft, parts, marked, known
         <div className="cr-save cr-keep">
           {problem && draft.answer && <span className="cr-hint">{problem}</span>}
           <button type="button" className="cr-btn-go" disabled={busy || !!problem} onClick={onSave}>
-            {saving === 'reading' ? `${AGENTS.extract.given} is reading…` : saving === 'saving' ? 'Saving…'
+            {saving === 'saving' ? 'Saving…'
               : draft.answer === 'accepted' ? 'Save: the client accepted it' : draft.answer ? 'Save the client’s answer' : 'Save'}
           </button>
         </div>

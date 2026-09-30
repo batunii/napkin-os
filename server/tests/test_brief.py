@@ -69,7 +69,9 @@ class Host:
             return
         self.changes.append(change)
         self.data = apply_patch(self.data, change["data_patch"])
-        self.chain += new
+        # The host's chain is newest first: it prepends each decision it
+        # appends, in the order the change lists them.
+        self.chain = list(reversed(new)) + self.chain
         self.version += 1
 
 
@@ -522,7 +524,7 @@ def test_regenerate_a_captured_field_rederives_from_the_capture(bserver):
     host = Host()
     run(bserver, host)
     host.data["audience"] = "scribbled over"
-    host.chain.append({"id": "d_HUMAN00002", "kind": "edit", "actor": "human:shrey", "action": "edit",
+    host.chain.insert(0, {"id": "d_HUMAN00002", "kind": "edit", "actor": "human:shrey", "action": "edit",
                        "targets": [f"{DOC}#audience"], "timestamp": "2026-09-24T10:00:00Z"})
     replies = run(bserver, host, task="regenerate_field", inp={"field": "audience"})
     # the latest decision that wrote it is a person's: proposed, not written
@@ -539,7 +541,7 @@ def test_regenerate_open_questions_recomposes_without_judging(tmp_path):
         host = Host()
         run(s, host)
         host.data["open_questions"] = ["wiped by a person"]
-        host.chain.append({"id": "d_HUMAN00003", "kind": "edit", "actor": "process:middleware", "action": "x",
+        host.chain.insert(0, {"id": "d_HUMAN00003", "kind": "edit", "actor": "process:middleware", "action": "x",
                            "targets": [f"{DOC}#open_questions"], "timestamp": "2026-09-24T10:00:00Z"})
         n = len(model.calls)
         replies = run(s, host, task="regenerate_field", inp={"field": "open_questions"})

@@ -615,6 +615,26 @@ class Suite:
             check("markets" not in (ch["data_patch"].get("campaign") or {}), "re-extraction overwrote a confirmed field")
         self.case("extract_ask: never overwrites a confirmed field", extract_human_owned)
 
+        def extract_chain_order_not_stamps():
+            # The chain arrives newest first. Here the bad verdict is the newest
+            # decision, but the edit before it carries the LATER stamp (a wrong
+            # clock). Which came first is the chain's order, never the stamps
+            # (os-layer §3), so the verdict stands unanswered and the field is withheld.
+            clan = doc_clan()
+            addr = f"{DOC}#campaign.markets"
+            clan["decision_chain"]["decisions"] = [
+                {"id": "d_TESTVERD01", "kind": "verdict", "polarity": "bad", "targets": [addr],
+                 "actor": "human:u_test", "reason": "wrong markets", "timestamp": "2026-01-01T00:00:00Z"},
+                {"id": "d_TESTEDIT01", "kind": "edit", "targets": [addr],
+                 "actor": "human:u_test", "timestamp": "2026-12-31T00:00:00Z"},
+            ]
+            st, body = c.task("extract_ask", extract_input(), clan)
+            body = self.envelope(st, body, "extract_ask", states={"done"})
+            ch, _, _ = self.change(body, clan)
+            check("markets" not in (ch["data_patch"].get("campaign") or {}),
+                  "an older edit with a later stamp was taken as answering the newer bad verdict")
+        self.case("extract_ask: what came first is the chain's order, not the stamps", extract_chain_order_not_stamps)
+
         # ---- research_lens ----
         def research():
             clan = research_clan()

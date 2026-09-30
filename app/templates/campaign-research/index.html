@@ -940,7 +940,6 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   }
   function decs(){ return CHAIN.decisions; }
   function decById(id){ var d=decs(); for(var i=0;i<d.length;i++) if(d[i].id===id) return d[i]; return null; }
-  function ts(d){ return Date.parse(d&&d.timestamp)||0; }
   // Which of two decisions came first is their place in the chain, stored
   // newest first (owner's rule, 2026-09-30); a stamp can tie or run behind.
   function newer(a, b){ var d=decs(); return d.indexOf(a)<d.indexOf(b); }
@@ -1189,7 +1188,13 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   // layout. Declared on the field, filled or not: a client can reject a field
   // left empty, and the list stays the same from one render to the next.
   var PARTS=['name','problem','objective','audience_stated','markets','campaign_type','deliverables','channels_mandated'];
-  function partAttrs(f){ return PARTS.indexOf(f.k)===-1||!OS_EDITABLE[f.type]?'':' data-clan-part="campaign.'+f.k+'" data-clan-part-label="'+esc(f.label)+'"'; }
+  // Other words a client calls a part by, for the host's matcher in client
+  // review: it finds a part by its label, the label's last word, or one of these.
+  var PART_ALIASES={name:'name, working name, title', problem:'problem, challenge', objective:'objective, goal, aim',
+    audience_stated:'audience, target, who', markets:'market, markets, country', campaign_type:'campaign type',
+    deliverables:'deliverables, deliverable, formats', channels_mandated:'channels, channel, media'};
+  function partAttrs(f){ return PARTS.indexOf(f.k)===-1||!OS_EDITABLE[f.type]?'':' data-clan-part="campaign.'+f.k+'" data-clan-part-label="'+esc(f.label)+'"'
+    +(PART_ALIASES[f.k]?' data-clan-part-aliases="'+esc(PART_ALIASES[f.k])+'"':''); }
   function osField(f){ return '<clan-field ref="campaign.'+f.k+'" as="block" gate="'+esc(f.gate)+'" caption="'+esc(f.label)+'"></clan-field>'; }
   function renderField(f){
     var env=camp()[f.k], p='campaign.'+f.k, A=addr(p);
@@ -2011,7 +2016,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
             job:null, live:{}, answering:null, qdraft:{}, open:false, sheetOpen:false, showName:false, focusedQ:null,
             reportBusy:false, reportErr:''};
   var POLL={t:null, delay:1000};
-  var TITLE={done:'', hadName:null};
+  var TITLE={done:'', last:''};
 
   // ── small helpers ──────────────────────────────────────────────────────────
   var CROCK='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -2727,18 +2732,39 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(arr(d.targets).length) return arr(d.targets).some(function(a){ return re.test(pathOf(a)); });
     return arr(d.fields_changed).some(function(f){ return re.test(String(f)); });
   }
+  // The decision that wrote the report: the newest in the chain naming it.
+  function reportWriter(){
+    var re=/^report(\.|\[|$)/, d=decs();
+    for(var i=0;i<d.length;i++){
+      var x=d[i]; if(arr(x.targets).some(function(a){ return re.test(pathOf(a)); })||arr(x.fields_changed).some(function(f){ return re.test(String(f)); })) return i;
+    }
+    return -1;
+  }
   // Out of date (Contract 3 §17): the member hashes it was composed from are
-  // not the projection's, or a campaign/selection decision is newer than it.
+  // not the projection's, or a campaign/selection decision came after it —
+  // after the decision that wrote it, in the chain's order (newest first),
+  // never by the clock. A locked report is the version agreed to: it is
+  // never out of date, and there is nothing to refresh (the host refuses
+  // jobs on a locked document).
+  function reportLocked(){ return !!(window.ClanFields&&ClanFields.locked&&ClanFields.locked()); }
   function reportStale(r){
     var out=[], p=proj(), b=isObj(r.based_on)?r.based_on:{};
+    if(reportLocked()) return out;
     if(p&&isObj(p.built_from)){
       if(b.facts_sha256&&p.built_from.facts_sha256&&b.facts_sha256!==p.built_from.facts_sha256) out.push('The pinned facts have changed since.');
       if(b.findings_sha256&&p.built_from.findings_sha256&&b.findings_sha256!==p.built_from.findings_sha256) out.push('The findings have changed since (verified, rejected or new).');
     }
-    var bt=Date.parse(r.built_at)||0;
-    var newer=decs().filter(function(d){ return ts(d)>bt&&touchesAsk(d); });
+    var w=reportWriter();
+    var newer=w<0?[]:decs().slice(0,w).filter(touchesAsk);
     if(newer.length) out.push(newer.length+' decision'+(newer.length===1?'':'s')+' about the ask or the selection since ('+newer.slice(0,3).map(function(d){ return (d.action||d.kind||'edit')+' by '+human(d.actor||d.agent); }).join('; ')+(newer.length>3?'; …':'')+').');
     return out;
+  }
+  // Refresh report: highlighted only when the report is out of date; on a
+  // locked report it is not offered to press (it would be refused).
+  function refreshBtn(stale, title){
+    var lk=reportLocked(), off=CHAT.reportBusy||lk;
+    return '<button type="button" class="btn sm'+(stale.length&&!lk?' primary':'')+'" data-act="report-refresh"'+(off?' disabled':'')
+      +((lk||title)?' title="'+esc(lk?'The report is locked: this version is the one agreed to.':title)+'"':'')+'>'+(CHAT.reportBusy?'Refreshing…':'Refresh report')+'</button>';
   }
   var MOUNTED=null;
   function renderReport(){
@@ -2752,7 +2778,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       var bar='<div class="rep-bar no-print"><span class="derived">'+ICON.agent+(r.layout_by==='agent'?'laid out by '+esc(given('drafter')):'laid out from the report')+'</span><span>written '+esc(fmtWhen(r.built_at))+'</span><span class="sp"></span>'
         +(stale.length?'<span style="color:var(--create-ink)">The document has moved on since.</span>':'')
         +'<button type="button" class="btn sm ghost" data-act="show-run">How it ran</button>'
-        +'<button type="button" class="btn sm'+(stale.length?' primary':'')+'" data-act="report-refresh"'+(CHAT.reportBusy?' disabled':'')+'>'+(CHAT.reportBusy?'Refreshing…':'Refresh report')+'</button></div>'
+        +refreshBtn(stale, '')+'</div>'
         +(CHAT.reportErr?'<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>':'');
       var key=r.built_at+'|'+r.layout.length;
       if(MOUNTED!==key){
@@ -2766,7 +2792,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var stale=reportStale(r), hl=isObj(r.headline)?r.headline:{};
     var h='<div class="rep"><div class="rep-top"><span class="eyebrow">Report</span><span class="derived">'+ICON.agent+'written by '+esc(given('drafter'))+'</span><span class="sp"></span>'
       +'<span class="srcline">'+esc(fmtWhen(r.built_at))+'</span>'
-      +'<button type="button" class="btn sm'+(stale.length?' primary':'')+'" data-act="report-refresh"'+(CHAT.reportBusy?' disabled':'')+' title="compose_report: re-compose from the document as it stands">'+(CHAT.reportBusy?'Refreshing…':'Refresh report')+'</button></div>';
+      +refreshBtn(stale, 'compose_report: re-compose from the document as it stands')+'</div>';
     if(stale.length) h+='<div class="rep-stale" role="status"><div><b>Out of date.</b> The document has moved on since this report was composed.<ul>'+stale.map(function(s){ return '<li>'+esc(s)+'</li>'; }).join('')+'</ul></div></div>';
     if(CHAT.reportErr) h+='<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>';
     h+='<div class="rep-hl"><h2 class="headline" id="h-report">'+esc(hl.text)+'</h2>'+citeChips(hl.cites)+'</div>';
@@ -2795,6 +2821,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function doRefreshReport(){
     if(!(window.clan&&window.clan.apiProxy)){ toast('Refreshing the report runs through the host.'); return; }
     if(CHAT.reportBusy) return;
+    if(reportLocked()){ toast('The report is locked: this version is the one agreed to.'); return; }
     CHAT.reportBusy=true; CHAT.reportErr=''; renderReport();
     window.clan.apiProxy('middleware', {task:'compose_report', input:{}}).then(function(res){
       CHAT.reportBusy=false;
@@ -3128,19 +3155,48 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
   }
 
-  // ── title: from campaign.name, once known ──────────────────────────────────
-  // Set when the name first appears in this session, or when the document still
-  // wears a generic title; a title the person chose later is left alone.
+  // ── title: the brand and its markets, else the working name ─────────────────
+  // "Lunasa · Ireland and Great Britain": what the research is about, so the
+  // home, the bar and a brief started from it never call it "Untitled
+  // research" or "Research Tool". Without a brand yet, the working name.
+  // The document's title is set to it while the title is one nobody chose
+  // (generic, the working name, or one this rule made); a title the person
+  // gave it is left alone.
+  function brandName(){ var b=camp().brand&&camp().brand.value; b=isObj(b)?b.name:b; return typeof b==='string'?b.trim():''; }
+  function workName(){ var n=camp().name&&camp().name.value; return typeof n==='string'?n.trim():''; }
+  function researchTitle(){
+    var b=brandName(), ms=marketNames(), n=workName();
+    if(b&&ms.length) return b+' · '+listJoin(ms);
+    return n||b;
+  }
+  // "Ireland", "Ireland and Great Britain", "France, Spain and PL": a list
+  // this rule could have made — each item a market name or a market code.
+  function isMarketList(s){
+    var names={}; Object.keys(MARKET).forEach(function(k){ names[MARKET[k]]=1; });
+    function one(x){ return !!names[x]||/^[A-Z]{2}$/.test(x); }
+    var parts=String(s||'').split(', '), last=parts.pop();
+    if(!parts.every(one)) return false;
+    if(one(last)&&!parts.length) return true;
+    // The last item is "<name> and <name>"; a name may hold " and " itself.
+    for(var i=last.indexOf(' and '); i>=0; i=last.indexOf(' and ',i+1))
+      if(one(last.slice(0,i))&&one(last.slice(i+5))) return true;
+    return false;
+  }
+  // Ours: generic, the working name, the brand, or brand · markets exactly as
+  // the rule writes it — never "Lunasa · Summer push", which a person chose.
+  function titleIsOurs(t){
+    t=String(t||'').trim(); var b=brandName();
+    return !t||/^(untitled.*|new .*|campaign[ -]research.*|research( tool)?|x)$/i.test(t)||t===TITLE.last||t===workName()
+      ||(!!b&&(t===b||(t.indexOf(b+' · ')===0&&isMarketList(t.slice(b.length+3)))));
+  }
   function syncTitle(){
-    var n=camp().name&&camp().name.value, m=(window.__CLAN__||{}).manifest||{};
-    if(TITLE.hadName===null) TITLE.hadName=typeof n==='string'&&!!n.trim();
-    if(typeof n!=='string'||!n.trim()) return;
-    document.title=n+' · Research';
-    if(TITLE.done===n||m.title===n||!(window.clan&&window.clan.setTitle)) return;
-    var generic=!m.title||/^(untitled.*|new .*|campaign[ -]research.*|research( tool)?|x)$/i.test(String(m.title).trim());
-    if(TITLE.hadName&&!generic) return;
-    TITLE.done=n;
-    window.clan.setTitle(n).then(function(res){ if(res&&res.ok!==false) m.title=n; else TITLE.done=''; }, function(){ TITLE.done=''; });
+    var t=researchTitle(), m=(window.__CLAN__||{}).manifest||{};
+    if(!t) return;
+    document.title=t+' · Research';
+    if(TITLE.done===t||m.title===t||!(window.clan&&window.clan.setTitle)) return;
+    if(!titleIsOurs(m.title)) return;
+    TITLE.done=t;
+    window.clan.setTitle(t).then(function(res){ if(res&&res.ok!==false){ m.title=t; TITLE.last=t; } else TITLE.done=''; }, function(){ TITLE.done=''; });
   }
 
   // ── wiring for the intake (delegated: it re-renders) ──────────────────────
@@ -3189,7 +3245,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     clone.querySelectorAll('details').forEach(function(n){ n.setAttribute('open',''); });
     clone.querySelectorAll('[hidden]').forEach(function(n){ n.remove(); });
     var css=$('cr-style').textContent;
-    var title=(camp().name&&camp().name.value)||'Campaign research';
+    var title=researchTitle()||'Campaign research';
     return '<!DOCTYPE html><html lang="en" data-theme="light" data-color-scheme="light"><head><meta charset="UTF-8"><title>'+esc(title)+'</title>'
       +'<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">'
       +'<style>'+css+'<\/style><\/head><body><main id="doc">'+clone.innerHTML+'<\/main><\/body><\/html>';
@@ -3251,6 +3307,9 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   window.addEventListener('clan:dataupdated', render);
   // The OS's fields have read what needs a person again (clan://decisions).
   window.addEventListener('clan:viewloaded', renderChecks);
+  // The lock is read with the host's view: the report's bar follows it.
+  var REPORT_LOCK=null;
+  window.addEventListener('clan:viewloaded', function(){ var l=reportLocked(); if(l!==REPORT_LOCK){ REPORT_LOCK=l; renderReport(); } });
   // The OS's decision panel may ask for a step again. These are the tasks it
   // may ask for; each runs as it does from this view, with its job card.
   var RUNNABLE=['research_lens','synthesise_findings','compose_report'];

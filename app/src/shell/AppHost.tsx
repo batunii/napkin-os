@@ -11,7 +11,7 @@ import DecisionPanel from './decisions/DecisionPanel'
 import { useDecisions } from './decisions/useDecisions'
 import ClientReviewPanel from './clientReview/ClientReviewPanel'
 import ClientReviewBand from './clientReview/ClientReviewBand'
-import { assetNameOf, asksEllis, bodyOf, canReview, emptyDraft, knownClients, markedOf, nounOf, problemOf } from './clientReview/review'
+import { assetNameOf, bodyOf, canReview, emptyDraft, knownClients, markedOf, nounOf, problemOf } from './clientReview/review'
 import type { Draft, Mark } from './clientReview/review'
 import { refreshApp } from './appExport'
 import { host } from '../host'
@@ -56,9 +56,11 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
   // document it was for, so another document never sees it.
   const [review, setReview] = useState<{ docPath: string; draft: Draft; marks: Record<string, Mark>; known: ClientWho[] } | null>(null)
   const [declared, setDeclared] = useState<{ docPath: string; parts: ClientPartRef[] }>({ docPath, parts: [] })
-  const [saving, setSaving] = useState<'no' | 'saving' | 'reading'>('no')
+  const [saving, setSaving] = useState<'no' | 'saving'>('no')
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [unavailable, setUnavailable] = useState<{ docPath: string; reason: string } | null>(null)
+  // What the host's matcher said on the last Save here: why it could not
+  // look, or that it looked and no part was named.
+  const [matched, setMatched] = useState<{ docPath: string; review: string; reason: string | null; none: boolean } | null>(null)
   // Who answered last, per document, for this session: the next review starts
   // from them, or from the client the document last recorded. Memory only.
   const lastWho = useRef(new Map<string, ClientWho>())
@@ -103,7 +105,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
   const save = useCallback(async () => {
     if (!review || review.docPath !== docPath || problemOf(review.draft)) return
     const { draft, marks } = review
-    setSaving(asksEllis(draft, parts, marks) ? 'reading' : 'saving')
+    setSaving('saving')
     setSaveError(null)
     try {
       // The client's file is stored only now, under a name of its own.
@@ -114,8 +116,12 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
       const reply = await host.clientReview(bodyOf(draft, parts, marks, asset))
       const email = draft.email.trim()
       lastWho.current.set(docPath, { name: draft.name.trim(), ...(email ? { email } : {}) })
-      setUnavailable(reply.suggestions?.status === 'unavailable' && reply.suggestions.reason
-        ? { docPath, reason: reply.suggestions.reason } : null)
+      const sg = reply.suggestions
+      setMatched(sg ? {
+        docPath, review: reply.decision,
+        reason: sg.status === 'unavailable' && sg.reason ? sg.reason : null,
+        none: sg.status === 'found' && !sg.decisions?.length,
+      } : null)
       setReview(null)
       changed()
     } catch (e) {
@@ -171,7 +177,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
             <ClientReviewBand
               view={decisions.view}
               noun={noun}
-              unavailable={unavailable?.docPath === docPath ? unavailable.reason : null}
+              matched={matched?.docPath === docPath ? matched : null}
               onChanged={changed}
             />
           )}
