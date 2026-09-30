@@ -24,6 +24,7 @@ use crate::ctx::Ctx;
 use crate::document::{Change, Document, Version};
 use crate::error::{HostError, HostResult};
 use crate::event::HostEvent;
+use crate::library::{self, Backref, BackrefWritten};
 use crate::ops::{edit, middleware, read, Outcome};
 use crate::store::{DocId, DocStore};
 use crate::view::{self, ViewSource};
@@ -343,6 +344,35 @@ impl Session {
             .as_ref()
             .map(read::clan_context_for_agent)
             .unwrap_or(Value::Null)
+    }
+
+    /// `GET /upstream` — what changed in each ancestor the open document
+    /// carries (Contract 4 §8.1, item 6), the ancestors as the store holds
+    /// them for `ctx`.
+    pub fn upstream_as(&self, ctx: &Ctx) -> HostResult<Value> {
+        self.read(|d| Ok(library::upstream_status(&*self.store, ctx, d)))
+    }
+
+    /// Tell the open document's parents what its decision `decision` did
+    /// with something it carried (Contract 4 §7.4), as the person in `ctx`.
+    /// Called after the decision is written: the snapshot holds it. Writes
+    /// only to the parents, never to the open document.
+    pub fn write_backrefs_as(
+        &self,
+        ctx: &Ctx,
+        decision: &str,
+        backref: &Backref,
+    ) -> Vec<BackrefWritten> {
+        self.read(|d| {
+            Ok(library::write_backrefs(
+                &*self.store,
+                ctx,
+                d,
+                decision,
+                backref,
+            ))
+        })
+        .unwrap_or_default()
     }
 
     // ── Transient view state ────────────────────────────────────────────────

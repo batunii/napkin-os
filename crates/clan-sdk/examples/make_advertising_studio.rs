@@ -98,6 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 map: Some("brief".into()),
                 lift,
                 pin_source_decisions: true,
+                upstream: false,
             }),
         },
         MakeTemplateOptions::default(),

@@ -25,6 +25,19 @@
 //! app may add rules of its own (the campaign's gated fields are one), which
 //! this does not know about.
 //!
+//! A spun-off document carries its ancestors whole (Contract 4 §5): their
+//! data frozen under `upstream.<document id>`, their chain in this one, their
+//! findings and pins merged into this document's members. Everything carried
+//! is on the lock list too (§7.2) — a contest open in a frozen copy until a
+//! `resolve` here names it, a merge report carried beside it — and an address
+//! on an ancestor is labelled and resolved from its frozen copy.
+//!
+//! A client's answer to the locked document (Contract 4 §7.5) is derived
+//! here too: each part's current answer, whether it went stale (its own value
+//! changed since), whether an edit answered it, whether it is reopened; and
+//! what it asks of a person — an unanswered rejection blocks locking again, a
+//! change asked or one of Ellis's suggestions is attention.
+//!
 //! A read of one snapshot: nothing here writes.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,7 +50,10 @@ use serde_json::Value;
 use crate::document::Document;
 use crate::error::HostResult;
 
-use super::{members, read};
+use super::client_review::{self as cr, extra_json, extra_str};
+use super::edit::UPSTREAM_KEY;
+use super::middleware::PROPOSE_ACTION;
+use super::{members, read, review};
 
 const CHAIN_PATH: &str = "agent/decision-chain.yaml";
 const SCHEMA_PATH: &str = "agent/output-schema.json";
@@ -56,6 +72,8 @@ pub struct DecisionsView {
     /// Every id a decision cites, resolved once.
     pub cites: BTreeMap<String, Cite>,
     pub lock: LockState,
+    /// Client review (Contract 4 §7.5, §8.2 item 6).
+    pub client: ClientView,
     /// Set when the chain could not be read; the rest is then empty.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
@@ -119,8 +137,8 @@ pub struct Attention {
 /// What a cite names, in words.
 #[derive(Debug, Serialize, PartialEq, Default)]
 pub struct Cite {
-    /// `fact`, `finding`, `source`, `material`, `decision`, `person`,
-    /// `address` or `unknown`.
+    /// `fact`, `finding`, `source`, `material`, `passage`, `capture`,
+    /// `decision`, `person`, `address` or `unknown`.
     pub kind: &'static str,
     pub label: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,6 +171,96 @@ pub struct LockState {
     /// Nothing on the OS lock list is open. An app may still refuse.
     pub can_lock: bool,
     pub blockers: usize,
+    /// The document is locked (Contract 4 §7.1).
+    pub locked: bool,
+    /// The parts reopened for a client's request since the lock (§7.5.6).
+    pub reopened: Vec<ReopenedPart>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Clone)]
+pub struct ReopenedPart {
+    pub address: String,
+    pub label: String,
+    /// The `unlock`.
+    pub decision: String,
+    /// The part answer it was reopened for.
+    pub answers: String,
+}
+
+/// What `/decisions` says of client review.
+#[derive(Debug, Serialize, Default)]
+pub struct ClientView {
+    /// `POST /client-review` would be accepted now: locked, nothing reopened.
+    pub available: bool,
+    /// The newest document answer.
+    pub answer: Option<ClientAnswer>,
+    /// Every document answer, newest first.
+    pub answers: Vec<ClientAnswer>,
+    /// One per address with a current answer, by address.
+    pub parts: Vec<ClientPart>,
+    /// Ellis's suggestions nobody has confirmed or dismissed, oldest first.
+    pub suggestions: Vec<ClientSuggestion>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientAnswer {
+    pub decision: String,
+    pub answer: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
+    /// The client's words, verbatim.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub said: Option<String>,
+    pub client: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    pub evidence: Value,
+    pub recorded_by: RecordedBy,
+    pub at: String,
+    pub seen: Value,
+    /// It answers the version the lock names now.
+    pub current: bool,
+    /// A part answer names it as its review.
+    pub parts_known: bool,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct RecordedBy {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientPart {
+    pub address: String,
+    pub label: String,
+    /// `accepted`, `accepted_with_changes` or `rejected`.
+    pub state: String,
+    /// The current answer: a part answer, or an `accepted` document answer.
+    pub decision: String,
+    pub review: String,
+    /// `person`, `agent` (a confirmed suggestion), or `document` (an accepted
+    /// document answer marks every part).
+    pub found_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote: Option<String>,
+    pub client: Value,
+    pub at: String,
+    /// The part's value changed since the answer.
+    pub stale: bool,
+    /// A person edited the part since the answer asked for a change.
+    pub answered: bool,
+    pub reopened: bool,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientSuggestion {
+    pub decision: String,
+    pub review: String,
+    pub address: String,
+    pub label: String,
+    pub answer: String,
+    pub quote: String,
 }
 
 /// `GET /decisions` — see the module docs.
@@ -174,7 +282,10 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
         lock: LockState {
             can_lock: true,
             blockers: 0,
+            locked: false,
+            reopened: Vec::new(),
         },
+        client: ClientView::default(),
         problem: None,
     };
 
@@ -224,8 +335,11 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
     let mut order: Vec<usize> = (0..chain.decisions.len()).collect();
     order.sort_by_key(|&i| (std::cmp::Reverse(ctx.at(i)), i));
 
+    let client = client_review(&ctx);
     let mut attention = lock_blockers(&ctx, clan);
+    attention.extend(client.blockers);
     attention.extend(asked_for(&ctx));
+    attention.extend(client.attention);
 
     for &i in &order {
         let d = &chain.decisions[i];
@@ -284,7 +398,10 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
     view.lock = LockState {
         can_lock: blockers == 0,
         blockers,
+        locked: client.locked,
+        reopened: client.reopened,
     };
+    view.client = client.view;
     view.attention = attention;
     Ok(view)
 }
@@ -300,7 +417,7 @@ struct Lookup<'a> {
     chain: &'a DecisionChain,
 }
 
-impl Lookup<'_> {
+impl<'a> Lookup<'a> {
     /// When decision `i` was made, in milliseconds; 0 when it does not parse.
     fn at(&self, i: usize) -> i64 {
         stamp(&self.chain.decisions[i].timestamp)
@@ -320,12 +437,41 @@ impl Lookup<'_> {
     }
 
     /// An address with its document made explicit: a bare path is this
-    /// document's.
+    /// document's, and a bare document id — what an `approve` targets — is
+    /// that document, whole.
     fn qualify(&self, address: &str) -> String {
         match address.split_once('#') {
             Some(_) => address.to_string(),
+            None if self.data_for(address).is_some() => format!("{address}#"),
             None => format!("{}#{address}", self.doc_id),
         }
+    }
+
+    /// The data an address on `doc` is read from: this document's, or the
+    /// frozen copy of an ancestor it carries (Contract 4 §5.2). `None` for a
+    /// document it does not carry.
+    fn data_for(&self, doc: &str) -> Option<&'a Value> {
+        if doc == self.doc_id {
+            return Some(self.data);
+        }
+        self.data.get(UPSTREAM_KEY)?.get(doc).filter(|v| v.is_object())
+    }
+
+    /// Each frozen ancestor, by document id, in key order.
+    fn upstream(&self) -> impl Iterator<Item = (&'a str, &'a Value)> {
+        self.data
+            .get(UPSTREAM_KEY)
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(_, v)| v.is_object())
+            .map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// This document's data, then each frozen ancestor's: where a cite that
+    /// is not a member entry is looked for, first match.
+    fn every_data(&self) -> impl Iterator<Item = &'a Value> {
+        std::iter::once(self.data).chain(self.upstream().map(|(_, v)| v))
     }
 
     fn address(&self, path: &str) -> String {
@@ -374,7 +520,7 @@ impl Lookup<'_> {
         let full = self.qualify(address);
         let (doc, path) = full.split_once('#').unwrap_or(("", full.as_str()));
         let here = doc == self.doc_id;
-        let (label, kind) = self.label(path, here);
+        let (label, kind) = self.label(doc, path);
         Target {
             address: full.clone(),
             path: path.to_string(),
@@ -384,13 +530,20 @@ impl Lookup<'_> {
         }
     }
 
-    /// A readable name for a path, and what kind of thing it is.
-    fn label(&self, path: &str, here: bool) -> (String, &'static str) {
+    /// A readable name for a path on `doc`, and what kind of thing it is.
+    ///
+    /// A finding, pin or source is looked up in this document's members
+    /// whatever the prefix — an ancestor's are merged into them (Contract 4
+    /// §8.1, item 1); anything else in the data the address is on: this
+    /// document's, or an ancestor's frozen copy.
+    fn label(&self, doc: &str, path: &str) -> (String, &'static str) {
+        let data = self.data_for(doc);
+        let carried = data.is_some();
         let segs = segments(path);
         match segs.as_slice() {
             [] => ("The document".into(), "document"),
             [Seg::Name("findings"), Seg::Key(id)] => {
-                let text = here
+                let text = carried
                     .then(|| self.findings.get(*id))
                     .flatten()
                     .and_then(|f| f.get("statement")?.as_str().map(|s| clip(s, 90)))
@@ -398,7 +551,7 @@ impl Lookup<'_> {
                 (format!("Finding · {text}"), "finding")
             }
             [Seg::Name("facts"), Seg::Key(id)] => {
-                let text = here
+                let text = carried
                     .then(|| self.facts.get(*id))
                     .flatten()
                     .map(fact_label)
@@ -406,9 +559,8 @@ impl Lookup<'_> {
                 (format!("Fact · {text}"), "fact")
             }
             [Seg::Name("selection"), Seg::Name("contested"), Seg::Key(id)] => {
-                let key = here
-                    .then(|| contest_entry(self.data, id))
-                    .flatten()
+                let key = data
+                    .and_then(|d| contest_entry(d, id))
                     .and_then(|c| c.get("key")?.as_str().map(String::from))
                     .unwrap_or_else(|| id.to_string());
                 (format!("Contest · {key}"), "contest")
@@ -419,9 +571,8 @@ impl Lookup<'_> {
             ),
             [Seg::Name("decisions"), Seg::Key(id)] => (self.decision_label(id), "decision"),
             [Seg::Name("materials"), Seg::Key(id)] => {
-                let name = here
-                    .then(|| self.data.get("materials")?.get(*id))
-                    .flatten()
+                let name = data
+                    .and_then(|d| d.get("materials")?.get(*id))
                     .and_then(|m| str_of(m, "name"))
                     .unwrap_or(id);
                 (format!("Material · {name}"), "field")
@@ -503,8 +654,9 @@ impl Lookup<'_> {
             return cite("finding", statement, Some(join(&detail)));
         }
         // A value held in a contest points at a layer row nobody pinned; the
-        // contest entry is what the document knows of it.
-        let held = data_contests(self.data).find_map(|c| {
+        // contest entry is what the document knows of it — its own, or one
+        // carried in an ancestor's frozen copy.
+        let held = self.every_data().flat_map(data_contests).find_map(|c| {
             let v = c
                 .get("values")?
                 .as_array()?
@@ -521,7 +673,10 @@ impl Lookup<'_> {
             ];
             return cite("fact", label, Some(join(&detail)));
         }
-        if let Some(m) = self.data.get("materials").and_then(|m| m.get(id)) {
+        let material = self
+            .every_data()
+            .find_map(|d| d.get("materials").and_then(|m| m.get(id)));
+        if let Some(m) = material {
             let label = str_of(m, "name").unwrap_or(id).to_string();
             let detail = [
                 str_of(m, "kind").map(String::from),
@@ -529,6 +684,67 @@ impl Lookup<'_> {
                 str_of(m, "licence").map(|l| l.replace('-', " ")),
             ];
             return cite("material", label, Some(join(&detail)));
+        }
+        // A passage a drafter read (napkin.middleware/1 §10.4): precedent,
+        // not the document's evidence, named by its citation.
+        let passage = id
+            .starts_with("psg_")
+            .then(|| self.every_data().find_map(|d| d.get("passages")?.get(id)))
+            .flatten();
+        if let Some(p) = passage {
+            let label = str_of(p, "citation")
+                .or_else(|| str_of(p, "source"))
+                .unwrap_or(id)
+                .to_string();
+            let detail = [
+                str_of(p, "source").filter(|s| Some(*s) != str_of(p, "citation")).map(String::from),
+                str_of(p, "pack").map(|k| format!("pack {k}")),
+                str_of(p, "scope").map(|s| match s {
+                    "house" => "house knowledge".to_string(),
+                    other => other.replace("agency:", "agency "),
+                }),
+                str_of(p, "licence").map(|l| l.replace('-', " ")),
+                str_of(p, "retrieved_at").map(|r| format!("retrieved {}", r.get(..10).unwrap_or(r))),
+            ];
+            return Cite {
+                quote: str_of(p, "text").map(|t| clip(t, 400)),
+                uri: str_of(p, "uri").map(String::from),
+                ..cite("passage", label, Some(join(&detail)))
+            };
+        }
+        // An item the capture read from the client's material: a fact with
+        // its verbatim quote, or an assumption.
+        let captured = id
+            .starts_with("cap_")
+            .then(|| {
+                self.every_data()
+                    .find_map(|d| d.get("capture")?.get("items")?.get(id))
+            })
+            .flatten();
+        if let Some(c) = captured {
+            let label = c
+                .get("value")
+                .map(|v| clip(&format_value(v, None), 140))
+                .unwrap_or_else(|| id.to_string());
+            let material = str_of(c, "material_id").map(|m| {
+                self.every_data()
+                    .find_map(|d| str_of(d.get("materials")?.get(m)?, "name"))
+                    .unwrap_or(m)
+                    .to_string()
+            });
+            let detail = [
+                str_of(c, "key").map(humanise),
+                match str_of(c, "status") {
+                    Some("assumption") => Some("assumed".to_string()),
+                    Some("fact") => Some("from your material".to_string()),
+                    _ => None,
+                },
+                material.map(|m| format!("in {m}")),
+            ];
+            return Cite {
+                quote: str_of(c, "quote").map(String::from),
+                ..cite("capture", label, Some(join(&detail)))
+            };
         }
         if let Some(i) = self.index_of(id) {
             let d = &self.chain.decisions[i];
@@ -591,7 +807,8 @@ impl Lookup<'_> {
         }
         if id.contains('#') || id.contains('.') || id.contains('[') {
             let t = self.target(id);
-            let node = t.here.then(|| lookup(self.data, &t.path)).flatten();
+            let doc = t.address.split_once('#').map_or("", |(d, _)| d);
+            let node = self.data_for(doc).and_then(|d| lookup(d, &t.path));
             let quote = node.and_then(|n| {
                 n.get("source")
                     .and_then(|s| s.get("quote"))
@@ -610,6 +827,50 @@ impl Lookup<'_> {
         }
         cite("unknown", id.to_string(), None)
     }
+}
+
+/// This document's fields that cite each of `findings`, by the lock list's
+/// rule (Contract 4 §7.2, item 4): an envelope's `finding_ids`, or the
+/// field's current writing decision. Each field as a full address on this
+/// document. What `GET /upstream` reports as a finding's `cited_by`; the
+/// frozen copies are skipped, as the lock list skips them.
+pub(crate) fn fields_citing(
+    doc: &Document,
+    findings: &BTreeSet<String>,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let clan = doc.clan();
+    let doc_id = clan.document_id().to_string();
+    let chain = clan
+        .read_entry(CHAIN_PATH)
+        .ok()
+        .and_then(|b| DecisionChain::from_yaml(&b).ok())
+        .unwrap_or_default();
+    let data = read::data_json(doc);
+    let ctx = Lookup {
+        doc_id: &doc_id,
+        data: &data,
+        schema: &Value::Null,
+        facts: BTreeMap::new(),
+        findings: BTreeMap::new(),
+        sources: BTreeMap::new(),
+        chain: &chain,
+    };
+    let wanted: BTreeMap<&str, &Value> = findings
+        .iter()
+        .map(|id| (id.as_str(), &Value::Null))
+        .collect();
+    let mut by_field: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+    citing_findings(&data, &mut Vec::new(), &wanted, &mut by_field);
+    written_citing_findings(&ctx, &wanted, &mut by_field);
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (field, ids) in by_field {
+        for id in ids {
+            out.entry(id.to_string())
+                .or_default()
+                .insert(ctx.address(&field));
+        }
+    }
+    out
 }
 
 /// The lock list (Contract 3 §11, items 1–5; Contract 4 §7).
@@ -663,6 +924,35 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
             Some(address),
         ));
     }
+    // A contest carried open in an ancestor's frozen copy: the copy never
+    // changes, so it is open until a `resolve` in this chain names it
+    // (Contract 4 §7.2, item 1).
+    for (up, frozen) in ctx.upstream() {
+        for c in data_contests(frozen) {
+            let Some(id) = str_of(c, "id") else { continue };
+            let address = format!("{up}#selection.contested[{id}]");
+            contests_seen.insert(address.clone());
+            if str_of(c, "status") != Some("open") || resolved_here(ctx, &address) {
+                continue;
+            }
+            let n = c
+                .get("values")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let key = str_of(c, "key").unwrap_or(id);
+            out.push(blocker(
+                "open_contest",
+                format!(
+                    "Open contest on {key}: {} and nothing picked. It was carried from upstream; a person has to resolve it here before lock.",
+                    plural(n, "value")
+                ),
+                str_of(c, "opened_by")
+                    .filter(|d| ctx.index_of(d).is_some())
+                    .map(String::from),
+                Some(address),
+            ));
+        }
+    }
     for (i, d) in ctx.chain.decisions.iter().enumerate() {
         if !is_kind(d, "contest") || d.superseded_by.is_some() {
             continue;
@@ -697,22 +987,43 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
             ));
         }
     }
-    if let Some(report) = clan
-        .read_entry(MERGE_REPORT_PATH)
-        .ok()
-        .and_then(|b| MergeReport::from_yaml(&b).ok())
-    {
+    // This document's merge report, and each one carried beside an
+    // ancestor's frozen copy (`upstream/<id>/merge-report.yaml`, §5.2). A
+    // carried conflict is settled only upstream, so here it blocks.
+    let paths = clan.entry_paths().unwrap_or_default();
+    let carried_reports = paths.iter().filter(|p| {
+        p.strip_prefix("upstream/")
+            .and_then(|rest| rest.strip_suffix("/merge-report.yaml"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+    });
+    for path in std::iter::once(MERGE_REPORT_PATH).chain(carried_reports.map(String::as_str)) {
+        let Some(report) = clan
+            .read_entry(path)
+            .ok()
+            .and_then(|b| MergeReport::from_yaml(&b).ok())
+        else {
+            continue;
+        };
+        let carried = path != MERGE_REPORT_PATH;
         for c in &report.conflicts {
             let agents: Vec<&str> = std::iter::once(c.winner.agent.as_str())
                 .chain(c.losers.iter().map(|l| l.agent.as_str()))
                 .collect();
             out.push(blocker(
                 "open_contest",
-                format!(
-                    "The merge left {} contested between {}. A person has to settle it before lock.",
-                    c.key,
-                    agents.join(" and ")
-                ),
+                if carried {
+                    format!(
+                        "The merge upstream left {} contested between {}. It was carried from upstream and is settled there, in the parent; until then it blocks the lock.",
+                        c.key,
+                        agents.join(" and ")
+                    )
+                } else {
+                    format!(
+                        "The merge left {} contested between {}. A person has to settle it before lock.",
+                        c.key,
+                        agents.join(" and ")
+                    )
+                },
                 c.decision.clone(),
                 None,
             ));
@@ -720,10 +1031,8 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
     }
 
     // 2. Unmerged agent branches.
-    let branches: BTreeSet<String> = clan
-        .entry_paths()
-        .unwrap_or_default()
-        .into_iter()
+    let branches: BTreeSet<String> = paths
+        .iter()
         .filter_map(|p| {
             let rest = p.strip_prefix("agents/")?;
             let (id, _) = rest.split_once('/')?;
@@ -759,7 +1068,9 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
         ));
     }
 
-    // 4. Fields that cite a rejected finding.
+    // 4. Fields that cite a rejected finding: through an envelope's
+    //    `finding_ids`, or — a bare value, like a brief's — through the
+    //    decision that wrote it as it stands.
     let rejected: BTreeMap<&str, &Value> = ctx
         .findings
         .iter()
@@ -769,6 +1080,7 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
     if !rejected.is_empty() {
         let mut flagged: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
         citing_findings(ctx.data, &mut Vec::new(), &rejected, &mut flagged);
+        written_citing_findings(ctx, &rejected, &mut flagged);
         for (path, ids) in flagged {
             for id in ids {
                 let by = rejected[id]
@@ -824,13 +1136,393 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
     out
 }
 
+/// Client review as derived from the snapshot, and what it asks of a person.
+struct ClientDerived {
+    view: ClientView,
+    locked: bool,
+    reopened: Vec<ReopenedPart>,
+    blockers: Vec<Attention>,
+    attention: Vec<Attention>,
+}
+
+/// Contract 4 §7.5.3 and §7.5.4, over this document's own records. A carried
+/// `client_review` targets a parent's address: it is the parent's record,
+/// shown in the history and counted in nothing here.
+fn client_review(ctx: &Lookup) -> ClientDerived {
+    let chain = &ctx.chain.decisions;
+    let here = ctx.doc_id;
+    let is = |d: &Decision, action: &str| d.kind.as_deref() == Some(cr::KIND) && d.action == action;
+    // A part record's address, when it is on this document.
+    let part_here = |d: &Decision| {
+        let a = ctx.qualify(d.targets.first()?);
+        let (on, path) = a.split_once('#')?;
+        (on == here && !path.is_empty()).then_some(a)
+    };
+    let newest_first = |mut v: Vec<usize>| {
+        v.sort_by_key(|&i| (std::cmp::Reverse(ctx.at(i)), i));
+        v
+    };
+    let id = |d: &Decision| d.id.clone().unwrap_or_default();
+
+    let lock = review::lock_of(ctx.chain, here);
+    let reopened_now = cr::reopened(ctx.chain, here);
+    let label_of = |address: &str, fallback: Option<&str>| {
+        fallback.map(String::from).unwrap_or_else(|| ctx.target(address).label)
+    };
+    let reopened: Vec<ReopenedPart> = reopened_now
+        .iter()
+        .map(|r| ReopenedPart {
+            label: label_of(
+                &r.address,
+                ctx.index_of(&r.answers).and_then(|i| extra_str(&chain[i], "label")),
+            ),
+            address: r.address.clone(),
+            decision: r.decision.clone(),
+            answers: r.answers.clone(),
+        })
+        .collect();
+
+    let documents = newest_first(
+        (0..chain.len())
+            .filter(|&i| is(&chain[i], cr::CLIENT_ANSWER) && chain[i].targets.iter().any(|t| t == here))
+            .collect(),
+    );
+    let part_answers: Vec<usize> = (0..chain.len())
+        .filter(|&i| is(&chain[i], cr::CLIENT_ANSWER_PART) && part_here(&chain[i]).is_some())
+        .collect();
+
+    // Each address's current answer: the newest part answer on it, or
+    // `accepted` document answer that saw it.
+    enum Source {
+        Part,
+        Document { label: String, hash: String },
+    }
+    let mut current: BTreeMap<String, (usize, Source)> = BTreeMap::new();
+    let mut offer = |address: String, i: usize, from: Source| {
+        if current.get(&address).map_or(true, |(j, _)| ctx.after(i, *j)) {
+            current.insert(address, (i, from));
+        }
+    };
+    for &i in &documents {
+        if extra_str(&chain[i], "answer") != Some("accepted") {
+            continue;
+        }
+        let seen = extra_json(&chain[i], "seen");
+        for e in seen.get("parts").and_then(Value::as_array).into_iter().flatten() {
+            let Some(address) = e.get("address").and_then(Value::as_str) else { continue };
+            let text = |k| e.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+            offer(ctx.qualify(address), i, Source::Document { label: text("label"), hash: text("part_hash") });
+        }
+    }
+    for &i in &part_answers {
+        if let Some(address) = part_here(&chain[i]) {
+            offer(address, i, Source::Part);
+        }
+    }
+
+    let mut parts = Vec::new();
+    for (address, (i, from)) in current {
+        let d = &chain[i];
+        let path = address.split_once('#').map_or("", |(_, p)| p);
+        let (state, label, recorded, review, found_by, quote) = match from {
+            Source::Part => (
+                extra_str(d, "answer").unwrap_or_default().to_string(),
+                label_of(&address, extra_str(d, "label")),
+                extra_json(d, "seen").get("part_hash").and_then(Value::as_str).unwrap_or_default().to_string(),
+                extra_str(d, "review").unwrap_or_default().to_string(),
+                extra_str(d, "found_by").unwrap_or("person").to_string(),
+                extra_str(d, "quote").map(String::from),
+            ),
+            Source::Document { label, hash } => (
+                "accepted".to_string(),
+                label_of(&address, Some(label.as_str()).filter(|l| !l.is_empty())),
+                hash,
+                id(d),
+                "document".to_string(),
+                None,
+            ),
+        };
+        // Every `/edit` says why, so any person's edit of the part since the
+        // answer is "edited with a reason".
+        let answered = state != "accepted"
+            && (0..chain.len()).any(|j| {
+                ctx.after(j, i) && is_person(&chain[j]) && is_edit(&chain[j]) && ctx.touches(j, &address)
+            });
+        parts.push(ClientPart {
+            stale: cr::part_hash(ctx.data, path) != recorded,
+            reopened: reopened_now.iter().any(|r| r.address == address),
+            answered,
+            address,
+            label,
+            state,
+            decision: id(d),
+            review,
+            found_by,
+            quote,
+            client: extra_json(d, "client"),
+            at: d.timestamp.clone(),
+        });
+    }
+
+    let lock_version = lock.and_then(|l| l.version.as_deref());
+    let answer_of = |i: usize| {
+        let d = &chain[i];
+        let seen = extra_json(d, "seen");
+        let w = who(d);
+        ClientAnswer {
+            decision: id(d),
+            answer: extra_str(d, "answer").unwrap_or_default().to_string(),
+            reasons: d
+                .extra
+                .get("reasons")
+                .and_then(|v| v.as_sequence())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect(),
+            said: extra_str(d, "said").map(String::from),
+            client: extra_json(d, "client"),
+            channel: extra_str(d, "channel").map(String::from),
+            evidence: extra_json(d, "evidence"),
+            recorded_by: RecordedBy { id: w.id, name: w.name },
+            at: d.timestamp.clone(),
+            current: lock_version.is_some() && seen.get("version").and_then(Value::as_str) == lock_version,
+            parts_known: part_answers
+                .iter()
+                .any(|&j| extra_str(&chain[j], "review") == d.id.as_deref()),
+            seen,
+        }
+    };
+    let answers: Vec<ClientAnswer> = documents.iter().map(|&i| answer_of(i)).collect();
+
+    let named: BTreeSet<&str> = chain
+        .iter()
+        .filter(|d| is(d, cr::CLIENT_ANSWER_PART) || is(d, cr::DISMISS_PART))
+        .filter_map(|d| extra_str(d, "suggestion"))
+        .collect();
+    // A part marked by hand for the same review settles its suggestion too:
+    // neither confirming nor dismissing it could be recorded any more (§8.2,
+    // item 2), so it is not left open.
+    let marked: BTreeSet<(&str, String)> = part_answers
+        .iter()
+        .filter_map(|&j| Some((extra_str(&chain[j], "review")?, part_here(&chain[j])?)))
+        .collect();
+    let mut open: Vec<usize> = (0..chain.len())
+        .filter(|&i| {
+            let d = &chain[i];
+            is(d, cr::SUGGEST_PART)
+                && !d.id.as_deref().is_some_and(|x| named.contains(x))
+                && part_here(d).is_some_and(|a| {
+                    !extra_str(d, "review").is_some_and(|r| marked.contains(&(r, a)))
+                })
+        })
+        .collect();
+    open = newest_first(open);
+    open.reverse();
+    let suggestions: Vec<ClientSuggestion> = open
+        .iter()
+        .map(|&i| {
+            let d = &chain[i];
+            let address = part_here(d).unwrap_or_default();
+            ClientSuggestion {
+                decision: id(d),
+                review: extra_str(d, "review").unwrap_or_default().to_string(),
+                label: label_of(&address, extra_str(d, "label")),
+                address,
+                answer: extra_str(d, "answer").unwrap_or_default().to_string(),
+                quote: extra_str(d, "quote").unwrap_or_default().to_string(),
+            }
+        })
+        .collect();
+
+    // §7.5.4: what the next lock needs, and what only asks for a look.
+    let name = |client: &Value| {
+        client.get("name").and_then(Value::as_str).unwrap_or("The client").to_string()
+    };
+    let item = |code, text: String, blocks_lock, decision: String, address: Option<String>, label: Option<String>| Attention {
+        code,
+        text,
+        blocks_lock,
+        decision: Some(decision),
+        address,
+        label,
+    };
+    let mut blockers = Vec::new();
+    let mut attention = Vec::new();
+    for p in parts.iter().filter(|p| !p.answered) {
+        let who = name(&p.client);
+        match p.state.as_str() {
+            "rejected" => blockers.push(item(
+                "client_rejected",
+                format!("{who} rejected {}. Edit it, saying why, before locking again.", p.label),
+                true,
+                p.decision.clone(),
+                Some(p.address.clone()),
+                Some(p.label.clone()),
+            )),
+            "accepted_with_changes" => attention.push(item(
+                "client_change_asked",
+                format!("{who} asked for a change to {}.", p.label),
+                false,
+                p.decision.clone(),
+                Some(p.address.clone()),
+                Some(p.label.clone()),
+            )),
+            _ => {}
+        }
+    }
+    if let Some(a) = answers.first().filter(|a| a.answer == "rejected" && !a.parts_known) {
+        blockers.push(item(
+            "client_rejected_parts_unknown",
+            format!(
+                "{} rejected the document and which parts is not known yet. Mark or confirm them, then edit them, before locking again.",
+                name(&a.client)
+            ),
+            true,
+            a.decision.clone(),
+            None,
+            None,
+        ));
+    }
+    for s in &suggestions {
+        let who = answers
+            .iter()
+            .find(|a| a.decision == s.review)
+            .map(|a| name(&a.client))
+            .unwrap_or_else(|| "The client".to_string());
+        attention.push(item(
+            "client_part_suggested",
+            format!("Ellis thinks {who}'s answer is about {}. Confirm or dismiss it.", s.label),
+            false,
+            s.decision.clone(),
+            Some(s.address.clone()),
+            Some(s.label.clone()),
+        ));
+    }
+
+    ClientDerived {
+        view: ClientView {
+            available: lock.is_some() && reopened.is_empty(),
+            answer: answers.first().cloned(),
+            answers,
+            parts,
+            suggestions,
+        },
+        locked: lock.is_some(),
+        reopened,
+        blockers,
+        attention,
+    }
+}
+
+/// A `resolve` in this chain, not superseded, names `address`: how a contest
+/// carried open in a frozen copy is settled (Contract 4 §7.2, item 1).
+fn resolved_here(ctx: &Lookup, address: &str) -> bool {
+    ctx.chain.decisions.iter().enumerate().any(|(i, d)| {
+        d.kind.as_deref() == Some("resolve") && d.superseded_by.is_none() && ctx.touches(i, address)
+    })
+}
+
+/// A decision that writes a field's value: an edit or a resolve, not a
+/// proposal (which asks a person to write it) and not superseded.
+fn writes(d: &Decision) -> bool {
+    (is_edit(d) || d.kind.as_deref() == Some("resolve"))
+        && d.action != PROPOSE_ACTION
+        && d.superseded_by.is_none()
+}
+
+/// Did `d` write `key` on this document — `napkin.middleware/1` §10.5's
+/// rule, the one the middleware holds a field by: its targets name the key
+/// or its top-level key; with no targets, its `fields_changed` names the
+/// top-level key and its action names no other field under it.
+fn wrote(ctx: &Lookup, d: &Decision, key: &str) -> bool {
+    let top = key.split(['.', '[']).next().unwrap_or(key);
+    if !d.targets.is_empty() {
+        return d
+            .targets
+            .iter()
+            .map(|t| ctx.qualify(t))
+            .any(|t| t == ctx.address(key) || t == ctx.address(top));
+    }
+    if !d.fields_changed.iter().any(|f| f == top) {
+        return false;
+    }
+    if key == top {
+        return true;
+    }
+    // `top.<leaf>` the action names, as the view writes it.
+    let prefix = format!("{top}.");
+    let mut named = d.action.match_indices(&prefix).filter_map(|(at, _)| {
+        let before = d.action[..at].chars().next_back();
+        if before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+            return None;
+        }
+        let rest = &d.action[at + prefix.len()..];
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        (end > 0).then(|| format!("{top}.{}", &rest[..end]))
+    });
+    named.all(|n| n == key)
+}
+
+/// Every field of this document whose current writing decision — the newest
+/// decision that wrote it ([`writes`], [`wrote`]) — cites a rejected finding
+/// (Contract 4 §7.2, item 4). A brief's fields are bare values with no
+/// envelope to carry `finding_ids`; the drafter's decision is where it says
+/// what it rests on. A redraft that no longer cites the finding answers it.
+fn written_citing_findings<'r>(
+    ctx: &Lookup,
+    rejected: &BTreeMap<&'r str, &Value>,
+    out: &mut BTreeMap<String, BTreeSet<&'r str>>,
+) {
+    for (i, d) in ctx.chain.decisions.iter().enumerate() {
+        if !writes(d) {
+            continue;
+        }
+        let because = d
+            .reasoning
+            .iter()
+            .flat_map(|r| r.because.iter().flat_map(|p| p.cites.iter()));
+        let cited: BTreeSet<&'r str> = d
+            .cites
+            .iter()
+            .chain(because)
+            .filter_map(|c| rejected.get_key_value(c.as_str()).map(|(k, _)| *k))
+            .collect();
+        if cited.is_empty() {
+            continue;
+        }
+        for t in &d.targets {
+            let full = ctx.qualify(t);
+            let Some(key) = full
+                .strip_prefix(ctx.doc_id)
+                .and_then(|r| r.strip_prefix('#'))
+                .filter(|k| !k.is_empty())
+            else {
+                continue;
+            };
+            let rewritten = ctx.chain.decisions.iter().enumerate().any(|(j, e)| {
+                j != i && ctx.after(j, i) && writes(e) && wrote(ctx, e, key)
+            });
+            if !rewritten {
+                out.entry(key.to_string())
+                    .or_default()
+                    .extend(cited.iter().copied());
+            }
+        }
+    }
+}
+
 /// What deciders asked a person to look at, and the calls they were unsure
 /// of — until a person has decided something about the same target since.
 fn asked_for(ctx: &Lookup) -> Vec<Attention> {
     let mut out = Vec::new();
     for (i, d) in ctx.chain.decisions.iter().enumerate() {
         let Some(r) = &d.reasoning else { continue };
-        if d.superseded_by.is_some() {
+        // Ellis's suggestions ask for a person as client review does
+        // (`client_part_suggested`), once.
+        if d.superseded_by.is_some() || d.kind.as_deref() == Some(cr::KIND) {
             continue;
         }
         // A person has looked when they have since decided about the decision
@@ -1035,7 +1727,9 @@ fn contest_entry<'v>(data: &'v Value, id: &str) -> Option<&'v Value> {
 /// Every place in the data that cites a rejected finding through
 /// `finding_ids` (or `synthesis_finding_ids`), reported at the field that
 /// holds it: the path stops before `value`, the field envelope's payload
-/// (Contract 3 §2.1). The host's own projection is skipped.
+/// (Contract 3 §2.1). The host's own projection is skipped, and so are the
+/// ancestors' frozen copies: a field there cannot be revised here, and is its
+/// own document's to answer for (`GET /upstream` names what cites it).
 fn citing_findings<'r>(
     v: &Value,
     path: &mut Vec<String>,
@@ -1060,7 +1754,7 @@ fn citing_findings<'r>(
                 }
             }
             for (k, child) in m {
-                if path.is_empty() && k == members::PROJECTION_KEY {
+                if path.is_empty() && (k == members::PROJECTION_KEY || k == UPSTREAM_KEY) {
                     continue;
                 }
                 path.push(format!(".{k}"));
@@ -1088,7 +1782,7 @@ fn citing_findings<'r>(
 /// `market.private_label_share` → "Private label share · IE"; a one-word
 /// leaf keeps its namespace (`awareness.prompted` → "Awareness prompted").
 /// A synthesis fact is named by what it says.
-fn fact_label(f: &Value) -> String {
+pub(crate) fn fact_label(f: &Value) -> String {
     let key = str_of(f, "key").unwrap_or_default();
     let words = if str_of(f, "method") == Some("synthesis") {
         f.get("value")
@@ -1232,9 +1926,12 @@ fn clip(s: &str, max: usize) -> String {
     out
 }
 
-fn stamp(ts: &str) -> i64 {
+/// When, to the second. The chain mixes precisions — a packed entry is stamped
+/// to the nanosecond, a review decision to the second — so within one second
+/// the stamps say nothing and chain order (prepend-only, newest first) decides.
+pub(crate) fn stamp(ts: &str) -> i64 {
     chrono::DateTime::parse_from_rfc3339(ts.trim())
-        .map(|t| t.timestamp_millis())
+        .map(|t| t.timestamp() * 1000)
         .unwrap_or(0)
 }
 

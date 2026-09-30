@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 /// and `validate` reports it rather than the parser refusing the file.
 pub const DECISION_KINDS: &[&str] = &[
     "edit", "contest", "resolve", "verdict", "classify", "pin", "finding", "verify", "approve",
-    "lease", "backref",
+    "lease", "backref", "client_review", "unlock",
 ];
 
 /// Prefix every generated decision id carries.

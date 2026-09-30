@@ -4,7 +4,10 @@
 # speak. This is a DECLARATION (decision M2): each task names a handler,
 # name@major, which the middleware resolves against its registry. An unknown
 # handler, task or version is a hard error, never a fall-through (M4).
-# Contract: docs/contracts/middleware-api.md §10.
+# Contract: docs/contracts/middleware-api.md §10. A brief spun off from a
+# Research Tool document carries it whole (os-layer.md §5): its data frozen at
+# upstream.<research id>, its pins and findings in shared/facts.yaml and
+# shared/findings.yaml, its chain. Which of that reaches which loop is §10.13.
 pipeline: napkin-briefing
 version: 2
 request_kind: middleware
@@ -15,10 +18,19 @@ tasks:
     handler: draft_brief@1
     job: long
     stages: [extract, draft, judge]
+    reads:
+      - materials, with host-extracted text (the client's words, the only thing capture reads)
+      - the retrieval port, per drafter, for the packs of its loop
+      - shared/facts.yaml and shared/findings.yaml, per drafter, the selection of §10.13 only
+    never:
+      - feeds a pin, finding, contest, report or upstream value to capture, or cites one from a captured field
+      - sends an item whose newest classify mark has model false to any model call (§10.13 item 6)
+      - writes upstream or projection (host-written, read-only)
   regenerate_field:
     handler: regenerate_field@1
     job: long
     stages: [draft, judge]
+    reads: as draft_brief's draft stage, for the one field
 
 fields:                      # app key -> how it is filled; the handler reads this map
   project_name:              { class: captured }
@@ -46,6 +58,9 @@ merge_policies:
   capture: last-write
   review: last-write
   "*": ask
+  # `projection` and `upstream` are deliberately absent: neither is merged. The
+  # host rebuilds projection from the members after a merge commits, and
+  # upstream is the frozen copy a spin-off wrote, which nothing changes.
 
 # R1 (Contract 4 §3): which middleware decisions must carry reasoning. The host
 # requires it on every pin, contest, finding and verdict, and every proposal,

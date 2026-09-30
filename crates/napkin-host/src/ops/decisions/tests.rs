@@ -638,3 +638,279 @@ fn the_viewer_sees_their_own_decisions_as_you() {
     assert!(!v.decisions[1].who.you);
     assert_eq!(v.decisions[1].who.name, "ana");
 }
+
+// ── A spun-off document: its ancestors frozen under `upstream` ──────────────
+
+const UP: &str = "3f2a9c1e-7b4d-4e8a-9c6f-0a1b2c3d4e5f";
+
+/// A brief's data carrying one ancestor, frozen, with an open contest and a
+/// resolved one, a field citing a finding through its envelope, and the
+/// brief's own passages and capture.
+fn carried_data() -> String {
+    format!(
+        "insight: Midweek is a habit
+upstream:
+  {UP}:
+    materials:
+      mat_brief01: {{ name: Client brief, kind: client_brief, received_at: '2026-09-20' }}
+    campaign:
+      in_market: {{ value: Retail only, finding_ids: [fi_rej] }}
+    selection:
+      contested:
+      - id: ct_abv
+        key: brand/orchard-hill:product.abv@IE
+        status: open
+        opened_by: d_con
+        values:
+        - {{ value: 0.5, unit: percent_abv, fact_id: f_a, from: pinned }}
+        - {{ value: 0.4, unit: percent_abv, fact_id: f_b, from: brands_positioning/GB }}
+      - id: ct_done
+        key: category/cider:market.share@IE
+        status: resolved
+        values: []
+passages:
+  psg_3b9f0c2e7a41: {{ citation: IPA Effectiveness 2024, source: IPA, pack: effectiveness, scope: house,
+                      licence: open, text: Brands grow by reaching light buyers., uri: 'https://ipa.example/1',
+                      retrieved_at: '2026-09-20T10:00:00Z' }}
+capture:
+  items:
+    cap_1a2b3c4d5e6f: {{ key: business_problem, value: Midweek sales fall, status: fact,
+                        quote: sales fall midweek, material_id: mat_brief01 }}
+"
+    )
+}
+
+const REJECTED: &str = "findings:
+- id: fi_rej
+  statement: Frozen is growing fast from a small share
+  status: rejected
+  rejection: { decision: d_rej, by: 'human:u_a', reason: value not volume }
+";
+
+#[test]
+fn carried_items_are_on_the_lock_list_and_a_carried_approve_is_history() {
+    let chain = format!(
+        "decisions:
+- id: d_up_lock
+  kind: approve
+  agent: human
+  actor: human:u_a
+  action: lock
+  targets: ['{UP}']
+  rationale: Accepted.
+  timestamp: 2026-09-24T12:00:00Z
+- id: d_rej
+  kind: verdict
+  agent: human
+  actor: human:u_a
+  action: reject_finding
+  polarity: bad
+  targets: ['{DOC}#findings[fi_rej]']
+  rationale: value not volume
+  timestamp: 2026-09-24T11:00:00Z
+- id: d_con
+  kind: contest
+  agent: research_lens@1
+  action: open_contest
+  targets: ['{UP}#selection.contested[ct_abv]']
+  rationale: Two values.
+  timestamp: 2026-09-24T10:00:00Z
+"
+    );
+    let report = "generated_by: test
+conflicts:
+- key: campaign.objective
+  winner: { value: a, agent: drafter }
+  losers: [{ value: b, agent: judge }]
+unresolved: 1
+";
+    let data = carried_data();
+    let merge = format!("upstream/{UP}/merge-report.yaml");
+    let doc = doc_with(&[
+        (CHAIN_PATH, &chain),
+        ("shared/data.yaml", &data),
+        (members::FINDINGS_PATH, REJECTED),
+        (&merge, report),
+    ]);
+    let v = decisions(&doc).unwrap();
+    // The carried contest once, at its upstream address and on the decision
+    // that opened it; the one resolved upstream is not listed; the carried
+    // merge conflict blocks. The frozen field citing the finding the brief
+    // rejected is not the brief's to revise.
+    assert_eq!(
+        codes(&v),
+        [("open_contest", Some("d_con")), ("open_contest", None)]
+    );
+    let contest = &v.attention[0];
+    assert_eq!(
+        contest.address.as_deref(),
+        Some(format!("{UP}#selection.contested[ct_abv]").as_str())
+    );
+    assert!(contest.text.contains("carried from upstream"), "{}", contest.text);
+    assert_eq!(
+        contest.label.as_deref(),
+        Some("Contest · brand/orchard-hill:product.abv@IE"),
+        "labelled from the frozen copy"
+    );
+    assert!(v.attention[1].text.contains("settled there, in the parent"));
+
+    // The parent's approve names the parent, whole; it is not a lock here.
+    let lock = v
+        .decisions
+        .iter()
+        .find(|b| b.decision.id.as_deref() == Some("d_up_lock"))
+        .unwrap();
+    assert_eq!(lock.targets[0].kind, "document");
+    assert_eq!(lock.targets[0].address, format!("{UP}#"));
+    assert!(!lock.targets[0].here);
+
+    // A resolve in this chain settles the carried contest; the frozen entry
+    // never changes.
+    let resolved = format!(
+        "decisions:
+- id: d_res
+  kind: resolve
+  agent: human
+  actor: human:u_a
+  action: resolve_contest
+  targets: ['{UP}#selection.contested[ct_abv]', '{DOC}#facts[f_b]']
+  cites: [f_b, d_con]
+  rationale: Picked the GB panel.
+  timestamp: 2026-09-24T13:00:00Z
+{}",
+        chain.trim_start_matches("decisions:\n")
+    );
+    let doc = doc_with(&[
+        (CHAIN_PATH, &resolved),
+        ("shared/data.yaml", &data),
+        (members::FINDINGS_PATH, REJECTED),
+        (&merge, report),
+    ]);
+    assert_eq!(codes(&decisions(&doc).unwrap()), [("open_contest", None)]);
+}
+
+#[test]
+fn passages_capture_and_frozen_addresses_resolve_as_cites() {
+    let chain = format!(
+        "decisions:
+- id: d_draft
+  kind: edit
+  agent: draft_brief@1/drafter
+  actor: process:middleware
+  action: draft
+  targets: ['{DOC}#insight']
+  cites: [psg_3b9f0c2e7a41, cap_1a2b3c4d5e6f, mat_brief01, f_b, '{UP}#campaign.in_market']
+  rationale: Drafted.
+  timestamp: 2026-09-24T10:00:00Z
+"
+    );
+    let data = carried_data();
+    let v = decisions(&doc_with(&[(CHAIN_PATH, &chain), ("shared/data.yaml", &data)])).unwrap();
+
+    let p = &v.cites["psg_3b9f0c2e7a41"];
+    assert_eq!(p.kind, "passage");
+    assert_eq!(p.label, "IPA Effectiveness 2024");
+    assert_eq!(p.uri.as_deref(), Some("https://ipa.example/1"));
+    assert_eq!(p.quote.as_deref(), Some("Brands grow by reaching light buyers."));
+    let detail = p.detail.as_deref().unwrap();
+    assert!(detail.contains("house knowledge") && detail.contains("retrieved 2026-09-20"), "{detail}");
+
+    let c = &v.cites["cap_1a2b3c4d5e6f"];
+    assert_eq!(c.kind, "capture");
+    assert_eq!(c.label, "Midweek sales fall");
+    assert_eq!(c.quote.as_deref(), Some("sales fall midweek"));
+    assert_eq!(
+        c.detail.as_deref(),
+        Some("Business problem · from your material · in Client brief")
+    );
+
+    // The research's material and contest value, from its frozen copy.
+    assert_eq!(v.cites["mat_brief01"].kind, "material");
+    assert_eq!(v.cites["mat_brief01"].label, "Client brief");
+    assert_eq!(v.cites["f_b"].label, "brand/orchard-hill:product.abv@IE = 0.4% ABV");
+
+    let a = &v.cites[&format!("{UP}#campaign.in_market")];
+    assert_eq!(a.kind, "address");
+    assert_eq!(a.detail.as_deref(), Some("Retail only"));
+}
+
+#[test]
+fn a_field_whose_writing_decision_cites_a_rejected_finding_is_flagged() {
+    let draft = |extra: &str| {
+        format!(
+            "- id: d_draft
+  kind: edit
+  agent: draft_brief@1/drafter
+  actor: process:middleware
+  action: draft
+  targets: ['{DOC}#insight']
+  cites: [psg_3b9f0c2e7a41]
+  rationale: Drafted.
+  reasoning:
+    decided: Drafted the insight.
+    because:
+    - point: frozen is growing
+      cites: [fi_rej]
+    only_option: one insight is drafted
+    certainty: {{ level: medium, why: rests on a finding }}
+    would_change_if: the finding is rejected
+{extra}  timestamp: 2026-09-24T10:00:00Z
+"
+        )
+    };
+    let reject = format!(
+        "- id: d_rej
+  kind: verdict
+  agent: human
+  actor: human:u_a
+  action: reject_finding
+  polarity: bad
+  targets: ['{DOC}#findings[fi_rej]']
+  rationale: value not volume
+  timestamp: 2026-09-24T11:00:00Z
+"
+    );
+    let later = |id: &str, body: &str| {
+        format!("- id: {id}\n  kind: edit\n{body}  rationale: Later.\n  timestamp: 2026-09-24T12:00:00Z\n")
+    };
+    let flagged = |newer: &str, extra: &str| {
+        let chain = format!("decisions:\n{newer}{reject}{}", draft(extra));
+        let data = carried_data();
+        let v = decisions(&doc_with(&[
+            (CHAIN_PATH, &chain),
+            ("shared/data.yaml", &data),
+            (members::FINDINGS_PATH, REJECTED),
+        ]))
+        .unwrap();
+        v.attention
+            .into_iter()
+            .filter(|a| a.code == "flagged_field")
+            .map(|a| (a.address.unwrap_or_default(), a.decision))
+            .collect::<Vec<_>>()
+    };
+    let insight = format!("{DOC}#insight");
+
+    // The drafter's decision is how the field stands, and it rests on the
+    // finding a person rejected.
+    assert_eq!(flagged("", ""), [(insight.clone(), Some("d_rej".to_string()))]);
+    // A proposal does not change how the field stands.
+    let propose = later(
+        "d_prop",
+        &format!("  agent: draft_brief@1/drafter\n  action: propose\n  targets: ['{DOC}#insight']\n"),
+    );
+    assert_eq!(flagged(&propose, "").len(), 1);
+    // A redraft that no longer cites it answers it, as does a person's edit
+    // of the field (a patch-data names only the key it wrote).
+    let redraft = later(
+        "d_regen",
+        &format!("  agent: regenerate_field@1/drafter\n  action: regenerate\n  targets: ['{DOC}#insight']\n  cites: [psg_3b9f0c2e7a41]\n"),
+    );
+    assert!(flagged(&redraft, "").is_empty());
+    let person = later(
+        "d_person",
+        "  agent: human\n  actor: human:u_a\n  action: patch-data\n  fields_changed: [insight]\n",
+    );
+    assert!(flagged(&person, "").is_empty());
+    // A superseded draft is not how the field stands.
+    assert!(flagged("", "  superseded_by: d_other\n").is_empty());
+}

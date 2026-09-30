@@ -127,8 +127,15 @@ impl NapkinHost {
             .session
             .current_id()
             .ok_or_else(|| err("no file open"))?;
-        let id =
-            library::spinoff_document(&*self.store, &source, app_id, title, map).map_err(err)?;
+        let id = library::spinoff_document_as(
+            &*self.store,
+            self.session.ctx(),
+            &source,
+            app_id,
+            title,
+            map,
+        )
+        .map_err(err)?;
         self.session.open(id).map(|o| to_js(&o)).map_err(err)
     }
 
@@ -211,6 +218,9 @@ impl NapkinHost {
     /// table the desktop reaches through a custom URI scheme and the server
     /// reaches over HTTP. `/api-proxy` is the one route that does not arrive
     /// here: the page holds the credentials and answers it before we are asked.
+    /// `/client-review` is answered here too, without asking Ellis which parts
+    /// were meant — there is no middleware behind this build — and says so;
+    /// a person marks the parts (`/client-review/confirm`).
     pub fn handle(&self, path: &str, query: &str, body: &[u8]) -> JsValue {
         let resp = napkin_host::handle(
             &self.session,

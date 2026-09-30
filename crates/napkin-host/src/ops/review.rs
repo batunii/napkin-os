@@ -30,8 +30,8 @@ use crate::event::HostEvent;
 
 use super::assemble::{assemble, data_of, Members};
 use super::decisions;
-use super::edit::attributed;
-use super::members::{self, FACTS, FINDINGS};
+use super::edit::{attributed, upstream_read_only, UPSTREAM_KEY};
+use super::members::{self, FACTS, FINDINGS, SOURCES};
 use super::Outcome;
 
 const CHAIN: &str = "agent/decision-chain.yaml";
@@ -70,7 +70,7 @@ pub struct Resolve {
     pub rationale: String,
 }
 
-fn body(raw: &str) -> HostResult<Value> {
+pub(super) fn body(raw: &str) -> HostResult<Value> {
     let v: Value = serde_json::from_str(raw)
         .map_err(|e| HostError::bad_request(format!("invalid JSON: {e}")))?;
     if !v.is_object() {
@@ -79,7 +79,7 @@ fn body(raw: &str) -> HostResult<Value> {
     Ok(v)
 }
 
-fn text(v: &Value, key: &str) -> String {
+pub(super) fn text(v: &Value, key: &str) -> String {
     v.get(key)
         .and_then(Value::as_str)
         .map(str::trim)
@@ -87,7 +87,7 @@ fn text(v: &Value, key: &str) -> String {
         .to_string()
 }
 
-fn required(v: &Value, key: &str) -> HostResult<String> {
+pub(super) fn required(v: &Value, key: &str) -> HostResult<String> {
     let t = text(v, key);
     if t.is_empty() {
         return Err(HostError::bad_request(format!("`{key}` is required")));
@@ -172,7 +172,7 @@ pub fn parse_approve(raw: &str) -> HostResult<String> {
 // ── shared checks ───────────────────────────────────────────────────────────
 
 /// The actor, when it is a person.
-fn person(ctx: &Ctx, what: &str) -> HostResult<String> {
+pub(super) fn person(ctx: &Ctx, what: &str) -> HostResult<String> {
     if !ctx.actor.is_human() {
         return Err(HostError::new(
             403,
@@ -182,7 +182,7 @@ fn person(ctx: &Ctx, what: &str) -> HostResult<String> {
     Ok(ctx.actor.to_string())
 }
 
-fn chain_of(doc: &Document) -> HostResult<DecisionChain> {
+pub(super) fn chain_of(doc: &Document) -> HostResult<DecisionChain> {
     let clan = doc.clan();
     Ok(if clan.has_entry(CHAIN) {
         DecisionChain::from_yaml(&clan.read_entry(CHAIN)?)?
@@ -191,21 +191,35 @@ fn chain_of(doc: &Document) -> HostResult<DecisionChain> {
     })
 }
 
-/// The lock that holds, if one does: an `approve` nothing has superseded.
-fn lock_of(chain: &DecisionChain) -> Option<&Decision> {
-    chain
-        .decisions
-        .iter()
-        .find(|d| d.kind.as_deref() == Some("approve") && d.superseded_by.is_none())
+/// The lock that holds, if one does: an `approve` nothing has superseded
+/// whose targets include this document's id (Contract 4 §7.1). A carried
+/// `approve` targets the parent it accepted; it does not lock this document.
+/// When more than one does — a document locked again after a part was
+/// reopened (§7.5.6) — the newest is the lock.
+pub fn lock_of<'c>(chain: &'c DecisionChain, doc_id: &str) -> Option<&'c Decision> {
+    lock_index(chain, doc_id).map(|i| &chain.decisions[i])
+}
+
+/// Where [`lock_of`]'s decision is in the (newest-first) chain.
+pub fn lock_index(chain: &DecisionChain, doc_id: &str) -> Option<usize> {
+    chain.decisions.iter().position(|d| {
+        d.kind.as_deref() == Some("approve")
+            && d.superseded_by.is_none()
+            && d.targets.iter().any(|t| t == doc_id)
+    })
+}
+
+fn locked(d: &Decision) -> HostError {
+    HostError::conflict(format!(
+        "the document was locked by {} at {}; changes make a new version",
+        d.actor.as_deref().unwrap_or(&d.agent),
+        d.timestamp
+    ))
 }
 
 fn not_locked(doc: &Document) -> HostResult<()> {
-    match lock_of(&chain_of(doc)?) {
-        Some(d) => Err(HostError::conflict(format!(
-            "the document was locked by {} at {}; changes make a new version",
-            d.actor.as_deref().unwrap_or(&d.agent),
-            d.timestamp
-        ))),
+    match lock_of(&chain_of(doc)?, doc.clan().document_id()) {
+        Some(d) => Err(locked(d)),
         None => Ok(()),
     }
 }
@@ -226,44 +240,99 @@ fn keyed<'a>(path: &'a str, name: &str) -> Option<&'a str> {
         .strip_suffix(']')
 }
 
-/// The path part of a target, and a check that it names something the
-/// document holds: a pin, a finding, a material, a contest, or a data path.
-fn target_path(doc: &Document, target: &str) -> HostResult<String> {
+/// The frozen copy of ancestor `id` this document carries, if it carries one.
+fn frozen<'v>(data: &'v Value, id: &str) -> Option<&'v Value> {
+    data.get(UPSTREAM_KEY)?.get(id).filter(|v| v.is_object())
+}
+
+/// A target, checked against the document.
+struct Aim {
+    /// What the decision records as its target (Contract 4 §8.1, item 1): it
+    /// targets what it changes, and where it changes nothing — an ancestor's
+    /// frozen copy — the upstream address.
+    address: String,
+    /// The path part.
+    path: String,
+}
+
+/// Check that a target names something the document holds — a pin, a
+/// finding, a source, a material, a contest, or a data path — and say what
+/// the decision about it targets.
+///
+/// A target is `<id>#<path>`, or a bare path on this document. `<id>` is this
+/// document or an ancestor it carries in `data.upstream` (§8.1); any other is
+/// refused. On an ancestor, `facts[…]`, `findings[…]` and `sources[…]` are
+/// still this document's members — the ancestor's entries were merged into
+/// them, and the copy that changes is this one — so the decision targets this
+/// document; any other path is looked up in the frozen copy, which nothing
+/// here writes, and the decision targets the ancestor's address.
+fn target_path(doc: &Document, target: &str) -> HostResult<Aim> {
     let clan = doc.clan();
-    let path = match target.split_once('#') {
-        Some((d, p)) if d == clan.document_id() => p,
-        Some((d, _)) => {
-            return Err(HostError::bad_request(format!(
-                "target {target} is on document {d}, not this one"
-            )))
-        }
-        None => target,
-    }
-    .to_string();
+    let here = clan.document_id();
     let data = data_of(clan)?;
-    let found = if let Some(id) = keyed(&path, "facts") {
-        members::read_list(clan, FACTS)?
+    let (on, path) = match target.split_once('#') {
+        Some((d, p)) => (d, p),
+        None => (here, target),
+    };
+    let copy = if on == here {
+        None
+    } else {
+        Some(frozen(&data, on).ok_or_else(|| {
+            HostError::bad_request(format!(
+                "target {target} is on document {on}, which this document does not carry"
+            ))
+        })?)
+    };
+    let in_member = |m, id: &str| -> HostResult<bool> {
+        Ok(members::read_list(clan, m)?
             .iter()
-            .any(|e| members::entry_id(e) == Some(id))
-    } else if let Some(id) = keyed(&path, "findings") {
-        members::read_list(clan, FINDINGS)?
-            .iter()
-            .any(|e| members::entry_id(e) == Some(id))
-    } else if let Some(id) = keyed(&path, "materials") {
+            .any(|e| members::entry_id(e) == Some(id)))
+    };
+    let member = if let Some(id) = keyed(path, "facts") {
+        Some(in_member(FACTS, id)?)
+    } else if let Some(id) = keyed(path, "findings") {
+        Some(in_member(FINDINGS, id)?)
+    } else if let Some(id) = keyed(path, "sources") {
+        Some(in_member(SOURCES, id)?)
+    } else {
+        None
+    };
+    if let Some(found) = member {
+        if !found {
+            return Err(HostError::not_found(format!(
+                "target {path} is not in this document"
+            )));
+        }
+        return Ok(Aim {
+            address: format!("{here}#{path}"),
+            path: path.to_string(),
+        });
+    }
+    if copy.is_none() && path.split(['.', '[']).next() == Some(UPSTREAM_KEY) {
+        return Err(HostError::bad_request(format!(
+            "{path} is inside the frozen upstream copy: address it as <document id>#<path>"
+        )));
+    }
+    let data = copy.unwrap_or(&data);
+    let found = if let Some(id) = keyed(path, "materials") {
         data.get("materials").and_then(|m| m.get(id)).is_some()
-    } else if let Some(id) = keyed(&path, "selection.contested") {
-        contest_index(&data, id).is_some()
+    } else if let Some(id) = keyed(path, "selection.contested") {
+        contest_index(data, id).is_some()
     } else {
         path.split('.')
-            .try_fold(&data, |v, k| v.get(k))
+            .try_fold(data, |v, k| v.get(k))
             .is_some()
     };
     if !found {
-        return Err(HostError::not_found(format!(
-            "target {path} is not in this document"
-        )));
+        return Err(HostError::not_found(match copy {
+            Some(_) => format!("target {path} is not in the copy of {on} this document carries"),
+            None => format!("target {path} is not in this document"),
+        }));
     }
-    Ok(path)
+    Ok(Aim {
+        address: format!("{on}#{path}"),
+        path: path.to_string(),
+    })
 }
 
 fn contest_index(data: &Value, id: &str) -> Option<usize> {
@@ -296,11 +365,11 @@ fn decided(
     d
 }
 
-fn to_yaml(v: &Value) -> HostResult<serde_yaml::Value> {
+pub(super) fn to_yaml(v: &Value) -> HostResult<serde_yaml::Value> {
     serde_yaml::to_value(v).map_err(|e| HostError::internal(e.to_string()))
 }
 
-fn to_json(v: &serde_yaml::Value) -> Value {
+pub(super) fn to_json(v: &serde_yaml::Value) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
 }
 
@@ -348,13 +417,12 @@ fn commit(
 pub fn verdict(ctx: &Ctx, doc: &Document, input: Verdict) -> HostResult<Outcome> {
     let who = person(ctx, "mark a field good or bad")?;
     not_locked(doc)?;
-    let path = target_path(doc, &input.target)?;
+    let aim = target_path(doc, &input.target)?;
     let clan = doc.clan();
-    let doc_id = clan.document_id().to_string();
     let now = now();
     let mut m = Members::of(clan)?;
 
-    if let Some(id) = keyed(&path, "findings") {
+    if let Some(id) = keyed(&aim.path, "findings") {
         if input.polarity == "good" {
             return Err(HostError::bad_request(
                 "a finding is not marked good: verify it, so it is written to the layer as reviewed",
@@ -369,7 +437,7 @@ pub fn verdict(ctx: &Ctx, doc: &Document, input: Verdict) -> HostResult<Outcome>
             &who,
             "verdict",
             "reject_finding",
-            vec![address(&doc_id, &path)],
+            vec![aim.address.clone()],
             vec![id.to_string()],
             input.rationale.clone(),
             &now,
@@ -394,7 +462,7 @@ pub fn verdict(ctx: &Ctx, doc: &Document, input: Verdict) -> HostResult<Outcome>
         &who,
         "verdict",
         &format!("mark_{}", input.polarity),
-        vec![address(&doc_id, &path)],
+        vec![aim.address],
         Vec::new(),
         rationale,
         &now,
@@ -409,7 +477,7 @@ pub fn verdict(ctx: &Ctx, doc: &Document, input: Verdict) -> HostResult<Outcome>
 pub fn classify(ctx: &Ctx, doc: &Document, input: Classify) -> HostResult<Outcome> {
     let who = person(ctx, "mark something confidential")?;
     not_locked(doc)?;
-    let path = target_path(doc, &input.target)?;
+    let aim = target_path(doc, &input.target)?;
     let clan = doc.clan();
     let now = now();
     let mut d = decided(
@@ -417,7 +485,7 @@ pub fn classify(ctx: &Ctx, doc: &Document, input: Classify) -> HostResult<Outcom
         &who,
         "classify",
         "classify",
-        vec![address(clan.document_id(), &path)],
+        vec![aim.address],
         Vec::new(),
         input.rationale,
         &now,
@@ -431,9 +499,62 @@ pub fn classify(ctx: &Ctx, doc: &Document, input: Classify) -> HostResult<Outcom
     commit(doc, data_of(clan)?, Members::of(clan)?, d, "a classify mark", &now)
 }
 
+/// Where a contest is: this document's `selection.contested`, or the frozen
+/// one of an ancestor it carries (`None` or the ancestor's id), with the
+/// contest's id and its entry.
+fn find_contest(data: &Value, here: &str, contest: &str) -> HostResult<(Option<String>, String, Value)> {
+    let missing = || HostError::not_found(format!("contest {contest} is not in this document"));
+    let (on, id) = match contest.split_once('#') {
+        Some((d, p)) => {
+            let id = keyed(p, "selection.contested").ok_or_else(|| {
+                HostError::bad_request(format!("{contest} is not a contest's address"))
+            })?;
+            (Some(d), id)
+        }
+        None => (None, keyed(contest, "selection.contested").unwrap_or(contest)),
+    };
+    let entry = |d: &Value| contest_index(d, id).map(|i| d["selection"]["contested"][i].clone());
+    let in_copy = |up: &str| -> HostResult<Option<(Option<String>, String, Value)>> {
+        let copy = frozen(data, up).ok_or_else(|| {
+            HostError::bad_request(format!(
+                "contest {contest} is on document {up}, which this document does not carry"
+            ))
+        })?;
+        Ok(entry(copy).map(|c| (Some(up.to_string()), id.to_string(), c)))
+    };
+    match on {
+        Some(d) if d == here => entry(data).map(|c| (None, id.to_string(), c)).ok_or_else(missing),
+        Some(up) => in_copy(up)?.ok_or_else(missing),
+        None => {
+            if let Some(c) = entry(data) {
+                return Ok((None, id.to_string(), c));
+            }
+            // Then each carried copy, in key order.
+            let ups: Vec<String> = data
+                .get(UPSTREAM_KEY)
+                .and_then(Value::as_object)
+                .map(|o| o.keys().cloned().collect())
+                .unwrap_or_default();
+            for up in ups {
+                if let Some(found) = in_copy(&up)? {
+                    return Ok(found);
+                }
+            }
+            Err(missing())
+        }
+    }
+}
+
 /// Pick one value of an open contest. The chosen value is pinned when it is
 /// not already; a pin it replaces stays in the facts member, marked
 /// `replaced_by`, so every decision that cited it still resolves.
+///
+/// A contest carried open in an ancestor's frozen copy (Contract 4 §8.1,
+/// item 2) is settled here, in this document: the chosen pin comes from the
+/// frozen value and goes into this document's facts, and the decision targets
+/// the contest's upstream address. The frozen entry is left as it was — the
+/// chain is where a carried contest is settled — so a second resolve of it is
+/// refused by the chain, not by the entry.
 pub fn resolve(ctx: &Ctx, doc: &Document, input: Resolve) -> HostResult<Outcome> {
     let who = person(ctx, "resolve a contest")?;
     not_locked(doc)?;
@@ -441,15 +562,27 @@ pub fn resolve(ctx: &Ctx, doc: &Document, input: Resolve) -> HostResult<Outcome>
     let doc_id = clan.document_id().to_string();
     let now = now();
     let mut data = data_of(clan)?;
-    let i = contest_index(&data, &input.contest).ok_or_else(|| {
-        HostError::not_found(format!("contest {} is not in this document", input.contest))
-    })?;
-    let contest = data["selection"]["contested"][i].clone();
+    let (upstream, ct, contest) = find_contest(&data, &doc_id, &input.contest)?;
+    let on = upstream.as_deref().unwrap_or(&doc_id);
+    let contest_address = format!("{on}#selection.contested[{ct}]");
     if contest.get("status").and_then(Value::as_str) != Some("open") {
-        return Err(HostError::conflict(format!(
-            "contest {} is already resolved",
-            input.contest
-        )));
+        return Err(HostError::conflict(match upstream {
+            Some(_) => format!("contest {ct} was already resolved upstream, before it was carried here"),
+            None => format!("contest {} is already resolved", input.contest),
+        }));
+    }
+    if upstream.is_some() {
+        let chain = chain_of(doc)?;
+        if let Some(d) = chain.decisions.iter().find(|d| {
+            d.kind.as_deref() == Some("resolve")
+                && d.superseded_by.is_none()
+                && d.targets.contains(&contest_address)
+        }) {
+            return Err(HostError::conflict(format!(
+                "contest {ct} is already resolved in this document ({})",
+                d.id.as_deref().unwrap_or("a resolve")
+            )));
+        }
     }
     let values = contest
         .get("values")
@@ -468,7 +601,7 @@ pub fn resolve(ctx: &Ctx, doc: &Document, input: Resolve) -> HostResult<Outcome>
 
     let mut m = Members::of(clan)?;
     let d_id = new_decision_id();
-    let mut targets = vec![address(&doc_id, &format!("selection.contested[{}]", input.contest))];
+    let mut targets = vec![contest_address];
     let held = m
         .facts
         .iter()
@@ -512,11 +645,14 @@ pub fn resolve(ctx: &Ctx, doc: &Document, input: Resolve) -> HostResult<Outcome>
         targets.push(address(&doc_id, &format!("facts[{}]", input.chosen)));
     }
 
-    let entry = &mut data["selection"]["contested"][i];
-    entry["status"] = "resolved".into();
-    entry["chosen"] = input.chosen.clone().into();
-    entry["reason"] = input.rationale.clone().into();
-    entry["decided_by"] = d_id.clone().into();
+    if upstream.is_none() {
+        let i = contest_index(&data, &ct).expect("found above");
+        let entry = &mut data["selection"]["contested"][i];
+        entry["status"] = "resolved".into();
+        entry["chosen"] = input.chosen.clone().into();
+        entry["reason"] = input.rationale.clone().into();
+        entry["decided_by"] = d_id.clone().into();
+    }
 
     let mut cites = vec![input.chosen.clone()];
     if let Some(o) = contest.get("opened_by").and_then(Value::as_str) {
@@ -533,8 +669,17 @@ pub fn resolve(ctx: &Ctx, doc: &Document, input: Resolve) -> HostResult<Outcome>
         &now,
     );
     d.id = Some(d_id);
-    d.fields_changed = vec!["selection.contested".into()];
-    commit(doc, data, m, d, "a contest resolved", &now)
+    if upstream.is_none() {
+        d.fields_changed = vec!["selection.contested".into()];
+    }
+    commit(
+        doc,
+        data,
+        m,
+        d,
+        if upstream.is_some() { "a carried contest resolved" } else { "a contest resolved" },
+        &now,
+    )
 }
 
 /// What the middleware is asked before a finding is verified: the finding,
@@ -690,15 +835,62 @@ fn clip_line(s: &str) -> String {
     }
 }
 
-/// `POST /edit`: `{path, value, gate?, rationale}` — an edit says why.
-pub fn parse_edit(raw: &str) -> HostResult<(String, Value, Option<String>, String)> {
+/// `POST /edit`: `{path, value, gate?, rationale, answers?}`.
+#[derive(Debug, Clone)]
+pub struct Edit {
+    pub path: String,
+    pub value: Value,
+    pub gate: Option<String>,
+    /// Why — every edit says.
+    pub rationale: String,
+    /// The client's part answer this edit answers (Contract 4 §7.5.5): the
+    /// one the part was reopened for.
+    pub answers: Option<String>,
+}
+
+/// `POST /edit`: `{path, value, gate?, rationale, answers?}` — an edit says why.
+pub fn parse_edit(raw: &str) -> HostResult<Edit> {
     let v = body(raw)?;
     let value = v.get("value").cloned().ok_or_else(|| HostError::bad_request("`value` is required"))?;
     let rationale = text(&v, "rationale");
     if rationale.is_empty() {
         return Err(HostError::bad_request("say why you changed it (`rationale`)"));
     }
-    Ok((required(&v, "path")?, value, Some(text(&v, "gate")).filter(|g| !g.is_empty()), rationale))
+    Ok(Edit {
+        path: required(&v, "path")?,
+        value,
+        gate: Some(text(&v, "gate")).filter(|g| !g.is_empty()),
+        rationale,
+        answers: Some(text(&v, "answers")).filter(|a| !a.is_empty()),
+    })
+}
+
+/// An edit of `path` may go ahead: the document is not locked, or `path` is
+/// at or inside a part a client's request reopened (Contract 4 §7.5.6, item
+/// 2) — `not_locked`'s one exception. `answers`, when given, must be the part
+/// answer that part was reopened for.
+fn open_for_edit(doc: &Document, path: &str, answers: Option<&str>) -> HostResult<()> {
+    let chain = chain_of(doc)?;
+    let here = doc.clan().document_id();
+    let Some(lock) = lock_of(&chain, here) else {
+        return match answers {
+            Some(a) => Err(HostError::bad_request(format!(
+                "no part is reopened for {a}: `answers` names the client's request a reopened part is edited for"
+            ))),
+            None => Ok(()),
+        };
+    };
+    let open = super::client_review::reopened(&chain, here);
+    let Some(part) = open.iter().find(|r| super::client_review::inside(path, &r.path)) else {
+        return Err(locked(lock));
+    };
+    match answers {
+        Some(a) if a != part.answers => Err(HostError::bad_request(format!(
+            "{} was reopened for {}, not {a}",
+            part.path, part.answers
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// A person edits a value in the document (edit mode). The edit is theirs:
@@ -706,16 +898,24 @@ pub fn parse_edit(raw: &str) -> HostResult<(String, Value, Option<String>, Strin
 /// becomes `origin: stated`, `by` the person — so no job writes over it
 /// (Contract 3 §2.2). Its old provenance (a quote, the pins it was inferred
 /// from) no longer describes the value and is dropped; the decision chain
-/// keeps the history. A path the host owns (`projection`), a member (facts,
+/// keeps the history. A path the host owns (`projection`, or `upstream`, the
+/// frozen copy of what the document was spun off from), a member (facts,
 /// findings — corrected with `/correct`, verified with `/verify`), or an
 /// unchanged value is refused.
-pub fn edit(ctx: &Ctx, doc: &Document, input: (String, Value, Option<String>, String)) -> HostResult<Outcome> {
-    let (path, value, gate, rationale) = input;
+///
+/// On a locked document only a part reopened for a client's request can be
+/// edited (Contract 4 §7.5.6); the edit then records the request it answers
+/// (`answers`) and cites it.
+pub fn edit(ctx: &Ctx, doc: &Document, input: Edit) -> HostResult<Outcome> {
+    let Edit { path, value, gate, rationale, answers } = input;
     let who = person(ctx, "edit the document")?;
-    not_locked(doc)?;
+    open_for_edit(doc, &path, answers.as_deref())?;
     let segs: Vec<&str> = path.split('.').collect();
     if segs.is_empty() || segs.iter().any(|s| s.is_empty() || s.contains('[') || s.contains('#')) {
         return Err(HostError::bad_request(format!("{path} is not a data path (dotted keys only)")));
+    }
+    if segs[0] == UPSTREAM_KEY {
+        return Err(upstream_read_only(doc.clan(), segs.get(1).copied()));
     }
     if segs[0] == super::members::PROJECTION_KEY {
         return Err(HostError::bad_request("the projection is the host's; edit the value it is built from"));
@@ -771,6 +971,10 @@ pub fn edit(ctx: &Ctx, doc: &Document, input: (String, Value, Option<String>, St
     d.id = Some(d_id);
     d.pinned = true;
     d.fields_changed = vec![path.clone()];
+    if let Some(a) = answers {
+        d.cites.push(a.clone());
+        d.extra.insert("answers".into(), serde_yaml::Value::String(a));
+    }
     let shown = |v: &Value| match v {
         Value::String(s) => s.clone(),
         Value::Array(a) => a.iter().map(|x| x.as_str().map(String::from).unwrap_or_else(|| x.get("name").and_then(Value::as_str).unwrap_or_default().to_string())).collect::<Vec<_>>().join(", "),
@@ -995,9 +1199,20 @@ pub fn correct_fact(
 /// Lock: accept the document as it stands (D7). Refused while anything on the
 /// lock list is open; otherwise one `approve` decision records the exact
 /// version it accepted. After it, the review operations refuse.
+///
+/// A locked document with a part reopened for a client's request locks again
+/// (Contract 4 §7.5.6, item 3): the whole list is run, a client's unanswered
+/// rejection included, and the new `approve` — now the lock — closes every
+/// reopened part. The older one is not rewritten.
 pub fn approve(ctx: &Ctx, doc: &Document, rationale: &str) -> HostResult<Outcome> {
     let who = person(ctx, "lock the document")?;
-    not_locked(doc)?;
+    let chain = chain_of(doc)?;
+    let here = doc.clan().document_id();
+    if let Some(lock) = lock_of(&chain, here) {
+        if super::client_review::reopened(&chain, here).is_empty() {
+            return Err(locked(lock));
+        }
+    }
     let view = decisions::decisions(doc)?;
     if !view.lock.can_lock {
         let open: Vec<String> = view
@@ -1035,7 +1250,7 @@ pub fn approve(ctx: &Ctx, doc: &Document, rationale: &str) -> HostResult<Outcome
 }
 
 /// Now, in the one shape the campaign schema's `datetime` accepts.
-fn now() -> String {
+pub(super) fn now() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 

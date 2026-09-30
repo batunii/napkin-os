@@ -28,6 +28,38 @@ use crate::store::DocStore;
 use super::members::{self, PROJECTION_KEY};
 use super::{extract_text, json_merge, sanitize_asset_name, Outcome};
 
+/// The block in `shared/data.yaml` that holds each ancestor's data, frozen, by
+/// its document id (Contract 4 §5.2). The spin-off writes it; nothing else does.
+pub const UPSTREAM_KEY: &str = "upstream";
+
+/// The refusal for a write that names `upstream`, or anything under it
+/// (Contract 4 §8.1, item 4). `named` is the ancestor the write named, when it
+/// named one; otherwise the document's own ancestors are named.
+pub fn upstream_read_only(clan: &clan_sdk::ClanFile, named: Option<&str>) -> HostError {
+    let held: Vec<String> = super::assemble::data_of(clan)
+        .ok()
+        .and_then(|d| d.get(UPSTREAM_KEY)?.as_object().map(|o| o.keys().cloned().collect()))
+        .unwrap_or_default();
+    let of = match named {
+        Some(id) => id.to_string(),
+        None if held.is_empty() => "its parent documents".to_string(),
+        None => held.join(", "),
+    };
+    HostError::bad_request(format!(
+        "upstream is the frozen copy of {of}; it is read-only"
+    ))
+}
+
+/// The ancestor a patch writes under `upstream`, when it names one.
+fn upstream_named(patch: &Value) -> Option<&str> {
+    patch
+        .get(UPSTREAM_KEY)?
+        .as_object()?
+        .keys()
+        .next()
+        .map(String::as_str)
+}
+
 /// The decision an attributed write records.
 ///
 /// `agent` keeps what the caller *claimed* — `human`, `analysis-model` — because
@@ -208,6 +240,11 @@ pub fn patch_data(ctx: &Ctx, doc: &Document, input: PatchData) -> HostResult<Out
         return Err(HostError::bad_request(
             "`projection` is written by the host from the facts and findings members; patch those instead",
         ));
+    }
+    // A spun-off document holds its ancestors' data frozen under `upstream`
+    // (Contract 4 §5.2): what it was spun off from, never edited in the child.
+    if input.keys.iter().any(|k| k == UPSTREAM_KEY) {
+        return Err(upstream_read_only(doc.clan(), upstream_named(&input.patch)));
     }
     // No-op guard: if applying the patch changes nothing, skip entirely — no
     // rewrite, no decision-chain entry. Stops redundant "edits" (e.g. opening

@@ -12,8 +12,10 @@ OS keeps every figure traceable and reviewable.
 tag's.** An agent chooses how a thing looks (`as="big"`, where it sits, what it
 is next to). Whether it needs a person's check, shows two disagreeing sources,
 is struck through or is confidential comes from the document: the projection
-(`projection.pins`, `.findings`, `.sources`), `selection.contested` and
-`selection.gaps`, and the host's decision view (`clan://decisions`). A plain
+(`projection.pins`, `.findings`, `.sources`), `selection.contested`,
+`selection.gaps`, `passages`, `capture.items`, `materials`, and the host's
+decision view (`clan://decisions`). A document spun off from another also
+reads each `upstream.<id>.selection.contested` (Contract 4 §5). A plain
 `<clan-field>` around an unverified finding still asks for a check.
 
 What needs a person is the host's list (`/decisions`, `attention` with
@@ -24,13 +26,40 @@ layout leaves out is listed as such and opens in the drawer.
 
 | Element | Attributes | Shows |
 |---|---|---|
-| `<clan-field ref>` | `as`: `inline` (default) · `big` · `stat` · `cell` · `claim`; `caption` | A pin (`f_…`): its value, formatted from its unit, and its source. A finding (`fi_…`): its statement. A contest (`ct_…`): both values while open, the pick once resolved. |
+| `<clan-field ref>` | `as`: `inline` (default) · `big` · `stat` · `cell` · `claim`; `caption` | A pin (`f_…`): its value, formatted from its unit, and its source. A finding (`fi_…`): its statement. A contest (`ct_…`): both values while open, the pick once resolved. A passage, capture item or material (§2.1). A data path: its value and where it came from (§6). |
 | `<clan-cite refs>` | | A sentence's evidence when it states no figure of its own: who says so ("Retail Pulse +1"); opens the list of what it rests on. |
 | `<clan-chart refs kind>` | `kind`: `bar` · `line` · `stack`; `title`, `labels` (comma list), `rest` (stack: the unmeasured remainder, drawn without a number), `compact` | Only pins with a number. A ref that is not one is named in the footer, never drawn. |
 | `<clan-quote ref>` | `source` (a `src_` id; default the pin's first) | The pin's verbatim quote from that source. |
 | `<clan-gap ref>` | | A `selection.gaps` entry: what was looked for and where. |
 | `<clan-sources>` | `title` | Every source the document carries, with how many facts each backs. |
-| `<clan-tray>` | | What needs a person, and the lock. |
+| `<clan-tray>` | `noun`: what the lock button names (default `report`: "Lock report"; `noun="brief"`: "Lock brief") | What needs a person, and the lock. |
+
+### 2.1 Refs
+
+*Changed 2026-09-29.* Brief Maker's parts are bare values in
+`shared/data.yaml` (`insight`, not `campaign.insight`), cited by passages,
+capture items and materials as well as pins and findings, and a brief can
+carry its research's contests. The ref grammar did not cover any of these: a
+path needed a dot, and `psg_`, `cap_`, `mat_` and carried contests did not
+resolve. A ref is read in this order, first match:
+
+1. By prefix: `f_` pin · `fi_` finding · `ct_` contest · `gap_` gap · `src_`
+   source · `psg_` passage · `cap_` capture item · `mat_` material · `cite:`
+   a cite list.
+2. Otherwise a **data path**: `^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$` — one
+   segment or more (`insight`, `objectives.commercial`). A path whose first
+   segment is `projection` or `upstream` is host-written, not a field, and is
+   shown as missing.
+3. Anything else is shown as missing.
+
+What the new refs show:
+
+| Ref | Resolves in | Shows | Drawer | Decisions |
+|---|---|---|---|---|
+| `psg_…` | `data.passages` | Its `citation` | The text, source, pack, scope (house or agency), licence and when it was retrieved | None: a passage is precedent, not the document's evidence |
+| `cap_…` | `data.capture.items` | Its value; a `fact` with its verbatim `quote`, an `assumption` marked "assumed" | The quote, and the material it is from | None: a person edits the field that uses it |
+| `mat_…` | `data.materials` | Its name and kind | When it arrived, its licence, whether it was read or transcribed | Confidential… (`/classify` on `materials[<id>]`) |
+| `ct_…` | `data.selection.contested`, then each `data.upstream.<id>.selection.contested` | As before | A carried contest says **carried from upstream** | Use this value: `/resolve`, which settles it in this document (Contract 4 §8.1) |
 
 Every element opens the evidence drawer: the value, the verbatim quote with the
 figure marked, the source's record and link, the decisions recorded on it, and
@@ -49,9 +78,16 @@ now stands, which replaces `window.__CLAN__.data` and fires `clan:dataupdated`.
 | Reject (a finding) | `/verdict` bad on `findings[id]` (reason required) |
 | Use this value (a contest) | `/resolve` (reason required) |
 | Confidential… | `/classify` — model, export, corpus, and why |
-| Lock report (the tray) | `/approve` — disabled while the tray lists anything |
+| Use the proposal (a data path, §6) | `/edit {path, value: <proposed_value>, rationale: "Used proposal <decision id>"}` |
+| Lock <noun> (the tray) | `/approve` — disabled while the tray lists anything |
 
-A locked document offers no decisions.
+A locked document offers no decisions. **Locked** means an `approve` in
+`/decisions`, not superseded, whose targets include this document's id
+(Contract 4 §7.1). A carried `approve` — the parent's, it targets the parent —
+is history, not the lock: a brief spun off from a locked research document
+is born open. *Changed 2026-09-29:* the tray counted any live `approve`, so
+every such child was shown locked, and its button said "Lock report" in every
+app; `noun` names the thing locked.
 
 ## 4. What an agent may write
 
@@ -79,11 +115,33 @@ view first; `.open(ref)` opens the drawer; `.format(pin)`, `.label(pin)`.
 The shell's **Edit** button (every authored app) turns edit mode on; the edit
 bridge announces it in the frame as `clan:editmode`. Then:
 
-- A `<clan-field ref="campaign.problem">` — any data path — is a value a
-  person owns. It shows its value and where it came from ("from your
-  material", "proposed", "you said"); in edit mode a click edits it in place
-  (text, a comma-separated list, a named thing), saved through `/edit`.
-  Values with more structure keep the app's own rendering.
+- A `<clan-field ref="campaign.problem">` — any data path, `insight`
+  included — is a value a person owns. It shows its value and where it came
+  from ("from your material", "proposed", "you said"); in edit mode a click
+  edits it in place (text, a comma-separated list, a named thing), saved
+  through `/edit`. Values with more structure keep the app's own rendering.
+- **Where it came from.** An envelope (`{value, origin, …}`) says so itself,
+  as today. A bare value takes it from the path's **current writing
+  decision**: the newest decision in `/decisions` that wrote the path
+  (`napkin.middleware/1` §10.5's rule), not superseded and not a `propose`.
+
+  | Current writing decision | Shown |
+  |---|---|
+  | action `extract` | from your material |
+  | action `draft` or `regenerate` | drafted by the agent |
+  | action `seed` | from upstream |
+  | a person's (`actor` `human:…`) | you said (the viewer) · <name> said |
+  | none | nothing |
+
+  *Changed 2026-09-29:* only envelopes carried provenance, so a brief field
+  showed none.
+- **A proposal.** When a `propose` decision on the path, not superseded, is
+  newer than its current writing decision and its `proposed_value` differs
+  from the value, the field is marked "proposed" and the drawer shows the
+  proposal with its reasoning and **Use the proposal** (§3). Ignoring it
+  writes nothing; the offer stays until the field is next written.
+  *Changed 2026-09-29:* the middleware recorded proposals for human-held
+  fields (`napkin.middleware/1` §10.5) and no field offered them.
 - A pin is **corrected**, never overwritten: "Correct it…" takes the right
   value, where it comes from and why, through `/correct`. The field then
   shows the new value, marked updated; the old one stays on record.
