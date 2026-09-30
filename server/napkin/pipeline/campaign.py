@@ -404,7 +404,7 @@ class CampaignJob:
                 {"materials": extract_stage.material_payload(self.materials()),
                  "category_tree": [{"code": l["code"], "name": l["name"], "vertical": l["vertical_name"]}
                                    for l in leaves]},
-                identify_schema([l["code"] for l in leaves]), max_tokens=4000)
+                identify_schema([l["code"] for l in leaves]), max_tokens=8000)
             brands = []
             for b in raw.get("brands") or []:
                 name = (b.get("name") or "").strip()
@@ -772,7 +772,7 @@ class CampaignJob:
              "categories": [{"code": c, "name": (leaves.get(c) or {}).get("name", c),
                              "regulated": (leaves.get(c) or {}).get("regulated")} for c in cats],
              "lenses": [{"lens": l, "title": LENS_TITLES[l], "question": LENS_QUESTIONS[l][0]} for l in LENSES]},
-            SELECT_SCHEMA, max_tokens=2000)
+            SELECT_SCHEMA, max_tokens=4000)
         skip = {}
         for item in raw.get("lenses") or []:
             l, reason = item.get("lens"), (item.get("reason") or "").strip()

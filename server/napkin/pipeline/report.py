@@ -136,7 +136,7 @@ def compose(doc, clan, handler, caps):
             payload["person_wording"] = person_wording
         try:
             raw = caps.model.structured("report", SYSTEM, payload, schema(sorted(pin_by) + sorted(fi_by), lenses_with),
-                                        max_tokens=16000)
+                                        max_tokens=32000)
         except Exception as e:  # the structure still composes; the prose falls back to lines built here
             log.warning("report prose unavailable: %s", e)
             dropped.append(f"model: {e}")

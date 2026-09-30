@@ -96,7 +96,7 @@ def run_synthesis(doc, base, clan, inp, handler, caps, seed=None, with_audience=
                          "as_of": f.get("as_of")} for f in facts]}
     if rejected:
         payload["rejected"] = rejected
-    raw = caps.model.structured("synthesise", SYSTEM, payload, schema(sorted(by_id)), max_tokens=6000)
+    raw = caps.model.structured("synthesise", SYSTEM, payload, schema(sorted(by_id)), max_tokens=16000)
     findings, decs, dropped, reason_notes = [], [], [], []
     t = iso()
     seen = set()
