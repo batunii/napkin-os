@@ -9,6 +9,7 @@ import { PoweredByClan } from '../brand/PoweredByClan'
 import { AgentFigure } from '../studio/AgentFigure'
 import { AGENTS, type AgentKey } from '../studio/model'
 import type { InstalledApp } from './types'
+import { docTitle } from './docTitle'
 import '../components/chrome.css'
 import './Launcher.css'
 
@@ -71,6 +72,14 @@ function lastTouched(iso: string, now = new Date()): string {
     day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
   })
 }
+
+/**
+ * What a recent document is called (docTitle). The listing (`/recent`)
+ * carries only the manifest's title, not the document's data, so the shell
+ * cannot derive a working title (brand and market, client) itself; the apps'
+ * own titles are the working titles.
+ */
+const recentTitle = (d: RecentDoc, appName?: string) => docTitle(d.title, d.app_id, appName)
 
 /** "Ellis, Dara and Jude": the crew by the names they introduce themselves by. */
 function names(crew: readonly AgentKey[]): string {
@@ -144,14 +153,15 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
             // document's open checks, so it shows no state it cannot back.
             const who = TOOLS[d.app_id ?? '']?.crew[0]
             const app = appName(d.app_id)
-            const meta = [app && app !== d.title ? app : '', lastTouched(d.updated_at)].filter(Boolean).join(' · ')
+            const title = recentTitle(d, app)
+            const meta = [app ?? '', lastTouched(d.updated_at)].filter(Boolean).join(' · ')
             return (
               <button key={d.path} className="ln-item" onClick={() => onOpenDocument(d.path)}>
                 {who
                   ? <span className="ln-item-fig" aria-hidden><AgentFigure agent={who} size={42} /></span>
-                  : <span className="ch-monogram ln-item-mono" aria-hidden>{(app || d.title || '?').slice(0, 1).toUpperCase()}</span>}
+                  : <span className="ch-monogram ln-item-mono" aria-hidden>{(app || title.text).slice(0, 1).toUpperCase()}</span>}
                 <span className="ln-item-text">
-                  <b>{d.title || 'Untitled'}</b>
+                  <b className={title.untitled ? 'ln-item-untitled' : undefined}>{title.text}</b>
                   {meta && <small>{meta}</small>}
                 </span>
                 <span className="ln-item-go" aria-hidden>→</span>

@@ -200,6 +200,9 @@ function deliverExport(kind: string, filename: string, html: string) {
 }
 
 export const wasmHost: Host = {
+  // One person, on their own machine: the host runs as Ctx::local()
+  // (napkin-host ctx.rs, LOCAL_HUMAN), which the decision view shows as "You".
+  whoAmI: async () => ({ actor: 'human:local', id: 'local', name: null }),
   openClan: async path => (await boot()).open(path) as OpenResult,
   openHome: async () => (await boot()).openHome() as OpenResult,
   newDocumentFromApp: async (appId, title) =>

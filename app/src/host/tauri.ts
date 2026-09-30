@@ -33,6 +33,9 @@ function clanScheme(): string {
 }
 
 export const tauriHost: Host = {
+  // One person, on their own machine: the host runs as Ctx::local()
+  // (napkin-host ctx.rs, LOCAL_HUMAN), which the decision view shows as "You".
+  whoAmI: async () => ({ actor: 'human:local', id: 'local', name: null }),
   openClan: path => invoke<OpenResult>('open_clan', { path }),
   openHome: () => invoke<OpenResult>('open_home'),
   newDocumentFromApp: (appId, title) =>

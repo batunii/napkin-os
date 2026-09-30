@@ -11,13 +11,15 @@
 //   picked. The panel does not verify a second time.
 // - Worth a look: what agents flagged or were unsure of. Nothing waits on it.
 //   A person can accept the call here ("Looks right"), or open the value.
-// - What happened: who did what and why, newest first, grouped by run or by
-//   section. A line opens to the decision, its reasons with what each rests
+// - Who did what: who did what and why, newest first, grouped by time or by
+//   part of the document. A line opens to the decision, its reasons with what each rests
 //   on, the sources, what was set aside and how sure the agent was. Machine
 //   detail sits last, behind "Technical details".
 //
 // Everything here is the host's view of the chain (`/decisions`); the store
-// behind it keeps far more than this shows.
+// behind it keeps far more than this shows. The panel is called "What
+// happened", in the words of the people it is for: a "decision" is the
+// chain's word, not theirs.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../../host'
@@ -87,10 +89,10 @@ export default function DecisionPanel({ docPath }: Props) {
         type="button"
         className="dp-rail"
         onClick={() => setOpen(true)}
-        aria-label={needs.length ? `Decisions, ${needs.length} need you` : 'Decisions'}
-        title={needs.length ? `${needs.length} need you` : 'Decisions'}
+        aria-label={needs.length ? `What happened: ${needs.length} need${needs.length === 1 ? 's' : ''} you` : 'What happened'}
+        title={needs.length ? `${needs.length} need${needs.length === 1 ? 's' : ''} you` : 'What happened'}
       >
-        <span className="dp-rail-label">Decisions</span>
+        <span className="dp-rail-label">What happened</span>
         {needs.length > 0 && <span className="dp-count">{needs.length}</span>}
       </button>
     )
@@ -102,21 +104,21 @@ export default function DecisionPanel({ docPath }: Props) {
     <aside className="dp-panel" aria-labelledby="dp-title">
       <div className="dp-head">
         <div className="dp-head-t">
-          <h2 id="dp-title" className="dp-title">Decisions</h2>
+          <h2 id="dp-title" className="dp-title">What happened</h2>
           {view && <span className="dp-sum">{needs.length ? `${needs.length} need${needs.length === 1 ? 's' : ''} you` : 'nothing needs you'}</span>}
         </div>
-        <button className="ch-btn ch-btn-icon ch-btn-quiet" onClick={() => setOpen(false)} aria-label="Close decisions">✕</button>
+        <button className="ch-btn ch-btn-icon ch-btn-quiet" onClick={() => setOpen(false)} aria-label="Close what happened">✕</button>
       </div>
       {view && !view.problem && (
         <p className={`dp-lock ${view.lock.can_lock ? 'dp-lock-ok' : ''}`}>
           <span className="dp-dot" aria-hidden />
-          {view.lock.can_lock ? 'Nothing blocks the lock.' : `It can be locked once ${needs.length === 1 ? 'this is' : 'these are'} settled.`}
+          {view.lock.can_lock ? 'Nothing stops you locking it.' : `You can lock it once ${needs.length === 1 ? 'this is' : 'these are'} settled.`}
         </p>
       )}
 
       <div className="dp-scroll">
-        {error && <div className="ch-empty">The decisions could not be read: {error}</div>}
-        {!error && !view && <div className="dp-loading"><LogoSpinner label="Reading the decisions" /></div>}
+        {error && <div className="ch-empty">What happened could not be read: {error}</div>}
+        {!error && !view && <div className="dp-loading"><LogoSpinner label="Reading what happened" /></div>}
         {view?.problem && <div className="ch-empty">{view.problem}</div>}
         {actError && <div className="dp-err" role="alert">{actError}</div>}
         {view && !view.problem && (
@@ -135,7 +137,7 @@ export default function DecisionPanel({ docPath }: Props) {
                 <details className="dp-quiet" open={quietOpen} onToggle={e => setQuietOpen((e.target as HTMLDetailsElement).open)}>
                   <summary>
                     <span className="dp-sec dp-sec-inline">Worth a look <span className="dp-n dp-n-quiet">{quiet.length}</span></span>
-                    <span className="dp-hint">agents flagged these; nothing is blocked</span>
+                    <span className="dp-hint">the crew noticed these; nothing waits on them</span>
                   </summary>
                   {quiet.map(q => (
                     <QuietItem key={q.block.decision.id} block={q.block} text={q.text}
@@ -145,15 +147,15 @@ export default function DecisionPanel({ docPath }: Props) {
               </section>
             )}
 
-            <section aria-label="What happened">
+            <section aria-label="Who did what">
               <div className="dp-hist-h">
-                <h3 className="dp-sec">What happened</h3>
-                <div className="ch-seg dp-by" role="group" aria-label="Group the history">
-                  <button aria-pressed={by === 'run'} onClick={() => setBy('run')}>By run</button>
-                  <button aria-pressed={by === 'section'} onClick={() => setBy('section')}>By section</button>
+                <h3 className="dp-sec">Who did what</h3>
+                <div className="ch-seg dp-by" role="group" aria-label="Show it">
+                  <button aria-pressed={by === 'run'} onClick={() => setBy('run')}>By time</button>
+                  <button aria-pressed={by === 'section'} onClick={() => setBy('section')}>By part</button>
                 </div>
               </div>
-              {groups.length === 0 && <div className="dp-done">No decisions yet.</div>}
+              {groups.length === 0 && <div className="dp-done">Nothing has happened yet.</div>}
               {groups.map(g => (
                 <div className="dp-run" key={g.key}>
                   <div className="dp-run-h">

@@ -6,14 +6,17 @@
 // did, where in the document, and what it rests on. Never a raw id, a handler
 // version or a model name — those stay in "Technical details".
 
-import { AGENTS, agentOfDecision } from '../../studio/model'
+import { AGENTS, agentForWork, agentOfDecision } from '../../studio/model'
 import type { AgentKey } from '../../studio/model'
 import type { CiteInfo, DecisionBlock, DecisionsView } from '../../host'
 
 export interface WhoIs {
   /** The agent's figure, when an agent decided. */
   agent: AgentKey | null
+  /** What the line calls them: an agent's own name ("Jude"), "You", or a person's name. */
   name: string
+  /** An agent's job in plain words, for its signature ("Jude · checks"); empty for a person. */
+  job: string
   person: boolean
 }
 
@@ -28,26 +31,37 @@ export function agentOf(block: DecisionBlock): AgentKey | null {
 }
 
 export function whoOf(block: DecisionBlock): WhoIs {
-  if (block.who.kind === 'person') return { agent: null, name: block.who.you ? 'You' : block.who.name, person: true }
-  const a = agentOf(block)
-  if (a) {
-    const ag = AGENTS[a]
-    return { agent: a, name: ag.lens ? (RESEARCHER[a] ?? `${ag.name} researcher`) : ag.name, person: false }
+  if (block.who.kind === 'person') {
+    return { agent: null, name: block.who.you ? 'You' : personName(block.who.name), job: '', person: true }
   }
-  // Research that names no lens (the merge across lenses) is the researchers'.
-  if (/^research/.test(block.decision.action)) return { agent: 'market_structure', name: 'The researchers', person: false }
-  return { agent: null, name: block.who.name, person: false }
+  const a = agentOf(block)
+  if (a) return { agent: a, name: AGENTS[a].given, job: AGENTS[a].job, person: false }
+  // Research that names no lens (the merge across lenses) is the researchers',
+  // together: no one of them did it.
+  if (/^research/.test(block.decision.action)) return { agent: 'market_structure', name: 'The researchers', job: '', person: false }
+  return { agent: null, name: block.who.name, job: '', person: false }
+}
+
+/**
+ * A person as the line names them. The host knows a person only by their id;
+ * on the web that is an opaque session id, which is nobody's name. An id an
+ * app made from a typed name reads as the name again: hyphens were spaces, and
+ * a word held wholly as letter codes (another script) is spelt out.
+ */
+function personName(name: string): string {
+  const n = String(name ?? '').trim()
+  if (!n || n === 'someone' || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(n)) return 'Someone'
+  return n.split('-').map(w => (/^(\.[0-9a-f]{2,4})+$/.test(w)
+    ? w.slice(1).split('.').map(h => String.fromCharCode(parseInt(h, 16))).join('') : w)).join(' ')
+}
+
+/** "Jude · checks": an agent's signature, or just the name. */
+export function signOf(w: WhoIs): string {
+  return w.job ? `${w.name} · ${w.job}` : w.name
 }
 
 const fixPlurals = (s: string) =>
   s.replace(/(\d+) (\w+)\((e?s)\)/g, (_, n: string, w: string, suf: string) => `${n} ${w}${n === '1' ? '' : suf}`)
-
-/** A short name per lens researcher. */
-const RESEARCHER: Record<string, string> = {
-  market_structure: 'Market researcher', positioning: 'Brands researcher', culture: 'Culture researcher',
-  codes: 'Codes researcher', rhythm: 'Timing researcher', media: 'Media researcher',
-  regulation: 'Regulation researcher', effectiveness: 'Effectiveness researcher',
-}
 
 /**
  * An agent's own words, said of what it did. The chain holds them as the
@@ -56,8 +70,8 @@ const RESEARCHER: Record<string, string> = {
  */
 function pastTense(s: string): string {
   const m = /^Research (\d+) lens(?:\(es\)|es)? (?:across|in) (.+?); skip (\d+)/i.exec(s)
-  if (m) return `chose ${m[1]} lens${m[1] === '1' ? '' : 'es'} to research in ${m[2]} and skipped ${m[3]}`
-  let out = s.replace(/\bthe person\b/g, 'you')
+  if (m) return `chose ${m[1]} thing${m[1] === '1' ? '' : 's'} to look into in ${m[2]} and left out ${m[3]}`
+  let out = s.replace(/\bthe person\b/g, 'you').replace(/^ran (?=\S)/i, 'looked into ')
   const first = out.split(' ')[0].toLowerCase()
   const past = /ed$/.test(first) || ['ran', 'read', 'set', 'found', 'wrote', 'made', 'took', 'chose', 'kept', 'left', 'held', 'gave'].includes(first)
   if (!past) out = `decided to ${lower(out)}`
@@ -65,8 +79,49 @@ function pastTense(s: string): string {
 }
 
 const lower = (s: string) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s)
+/** A line that starts a sentence: "Proposed …" under a signature. */
+export const upper = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s)
 const strip = (label: string) => label.replace(/^(Finding|Fact|Contest|Decision) · /, '')
+
+let REGIONS: Intl.DisplayNames | null | undefined
+/** "IE" → "Ireland"; the code itself where the browser has no name for it. */
+export function countryOf(code: string): string {
+  if (REGIONS === undefined) {
+    try { REGIONS = new Intl.DisplayNames(['en'], { type: 'region' }) } catch { REGIONS = null }
+  }
+  try { return REGIONS?.of(code) ?? code } catch { return code }
+}
+
+/** A label's closing market code in words: "Private label share · IE" → "… · Ireland". */
+export const withCountry = (label: string) => label.replace(/ · ([A-Z]{2})$/, (_, c: string) => ` · ${countryOf(c)}`)
+
+/**
+ * Where a decision landed, as its link reads: "Your request" for what the
+ * person sent, a lens run by the researcher on it ("Cam · the shoppers"),
+ * market codes as countries, no ids, and a long label cut with an ellipsis.
+ */
+export function whereOf(label: string): string | null {
+  if (/^Intake\b/.test(label)) return 'Your request'
+  const run = /^Selection › Lenses run · ([a-z_]+)\/([A-Z]{2})$/.exec(label)
+  if (run) { const a = AGENTS[agentForWork('research', run[1])]; return `${a.given} · ${a.job}` }
+  if (/^Selection › Lenses skipped/.test(label)) return 'What was left out'
+  if (/^Selection › Lenses/.test(label)) return 'What to look into'
+  return clip(plain(withCountry(label.replace(/ · [a-z]+_[0-9A-Za-z]{6,}$/, ''))), 60)
+}
+
+/**
+ * A part of the document inside a sentence: "the campaign’s name", "the
+ * private label share in Ireland". An id-like key on the end is dropped.
+ */
+function partOf(label: string): string {
+  const s = strip(label).replace(/ · [a-z]+_[0-9A-Za-z]{6,}$/, '')
+  const fact = /^(.+) · ([A-Z]{2})$/.exec(s)
+  if (fact) return `the ${lower(fact[1])} in ${countryOf(fact[2])}`
+  const parts = s.split(' › ')
+  if (parts.length > 1) return `the ${lower(parts[parts.length - 2])}’s ${lower(parts[parts.length - 1])}`
+  return lower(s)
+}
 
 /** The first place in this document a decision is about. */
 export function mainTarget(block: DecisionBlock) {
@@ -85,9 +140,9 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
   const what = t ? strip(t.label) : 'the document'
   if (block.who.kind === 'person') {
     switch (d.action) {
-      case 'verify_finding': return `verified “${clip(what, 90)}”`
-      case 'reject_finding': return `rejected “${clip(what, 90)}”`
-      case 'looks_right': return `accepted an agent’s call: ${lower(clip(what, 80))}`
+      case 'verify_finding': return `said “${clip(what, 90)}” is right`
+      case 'reject_finding': return `turned down “${clip(what, 90)}”`
+      case 'looks_right': return `agreed with the crew: ${lower(clip(what, 80))}`
       case 'resolve_contest': {
         const chosen = (d.cites ?? []).map(c => view.cites[c]).find(c => c?.kind === 'fact')
         return chosen?.value ? `chose ${chosen.value} for ${what}` : `settled ${what}`
@@ -95,25 +150,25 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
       case 'classify': return `marked ${what} confidential`
       case 'lock': return 'locked the document'
       case 'start_campaign': case 'create': return 'started the research'
-      case 'answer_question': return 'answered a question from the agents'
+      case 'answer_question': return 'answered a question from the crew'
       case 'edit_text': {
         const part = typeof d.part === 'string' && d.part ? d.part : 'wording'
         return `rewrote the ${/^Report/.test(what) ? `report’s ${part}` : part}`
       }
       case 'restore_text': return 'put the original wording back'
-      case 'edit_field': return `changed ${what}`
-      case 'correct_fact': return `corrected ${what}`
+      case 'edit_field': return `changed ${t ? partOf(t.label) : what}`
+      case 'correct_fact': return `corrected ${t ? partOf(t.label) : what}`
     }
     if (d.kind === 'verdict') return `marked ${what} ${d.polarity === 'bad' ? 'wrong' : 'right'}`
-    return `changed ${what}`
+    return `changed ${t ? partOf(t.label) : what}`
   }
   if (d.action === 'research_merge') {
     const facts = (d.cites ?? []).filter(c => view.cites[c]?.kind === 'fact').length
     const n = sourcesOf(block, view).length
-    return `pinned ${facts} fact${facts === 1 ? '' : 's'}${n ? ` from ${n} source${n === 1 ? '' : 's'}` : ''}`
+    return `found ${facts} fact${facts === 1 ? '' : 's'}${n ? ` in ${n} source${n === 1 ? '' : 's'}` : ''}`
   }
   const said = d.reasoning?.decided || d.rationale.split(/\. Because/)[0] || d.action.replace(/_/g, ' ')
-  return lower(pastTense(fixPlurals(said.replace(/\.$/, ''))))
+  return lower(pastTense(plain(said.replace(/\.$/, ''))))
 }
 
 const LENS_WORDS: Record<string, string> = {
@@ -124,13 +179,20 @@ const LENS_WORDS: Record<string, string> = {
 
 /**
  * An agent's sentence without the machine in it: lens ids in words, material
- * and decision ids dropped (the chips carry them), "(s)" plurals settled.
+ * and decision ids dropped (the chips carry them), "(s)" plurals settled, and
+ * the crew's working words said the way a person would ("pins" are facts).
  */
 export function plain(text: string): string {
   return fixPlurals(String(text ?? ''))
     .replace(/\s*\((?:from |in )?(?:mat|d|msg|src|f|fi)_[0-9A-Za-z]{6,}\)/g, '')
     .replace(/\b(?:mat|msg)_[0-9A-Z]{8,}\b/g, 'your request')
     .replace(/\b([a-z]+_[a-z]+)\b/g, (w: string) => LENS_WORDS[w] ?? w)
+    .replace(/\bfinding for (?:a person|the person|you) to (?:verify|check)\b/g, 'point for you to check')
+    .replace(/\bfor (?:a person|the person) to (?:verify|check)\b/g, 'for you to check')
+    .replace(/\b(?:the )?client org\b/g, 'the client')
+    .replace(/\bcoverage (?:was )?thin\b/g, 'found little')
+    .replace(/\bpins\b/g, 'facts')
+    .replace(/\bpin\b/g, 'fact')
     .replace(/\s{2,}/g, ' ')
     .trim()
 }
@@ -233,12 +295,19 @@ export function runsOf(view: DecisionsView): Group[] {
   for (const g of out) {
     const b0 = g.blocks[0], bn = g.blocks[g.blocks.length - 1]
     const person = b0.who.kind === 'person'
-    g.title = person ? (b0.who.you ? 'Your review' : `${b0.who.name}’s review`)
-      : /campaign|research/i.test(b0.decision.handler ?? b0.who.id) ? 'Research run' : `${b0.who.name} run`
+    g.title = person ? (b0.who.you ? 'Your review' : `${whoOf(b0).name}’s review`) : crewOf(g.blocks)
     const from = hhmm(bn.decision.timestamp), to = hhmm(b0.decision.timestamp)
     g.sub = `${dayOf(b0.decision.timestamp)} ${from === to ? from : `${from} → ${to}`} · ${g.blocks.length} step${g.blocks.length === 1 ? '' : 's'}`
   }
   return out
+}
+
+/** "Ellis, Max and 3 more": who worked in a run, in the order they started. */
+function crewOf(blocks: DecisionBlock[]): string {
+  const n = [...new Set([...blocks].reverse().map(b => whoOf(b).name))]
+  if (n.length < 2) return n.join('')
+  if (n.length > 3) return `${n.slice(0, 2).join(', ')} and ${n.length - 2} more`
+  return `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`
 }
 
 /** By where in the document each decision landed, the latest section first. */
@@ -256,7 +325,7 @@ export function sectionsOf(view: DecisionsView): Group[] {
     g.blocks.push(b)
   }
   const out = [...by.values()]
-  for (const g of out) g.sub = `${g.blocks.length} decision${g.blocks.length === 1 ? '' : 's'}`
+  for (const g of out) g.sub = `${g.blocks.length} thing${g.blocks.length === 1 ? '' : 's'} done`
   return out
 }
 
@@ -280,30 +349,40 @@ const LENS_NAME: Record<string, string> = {
   regulation_clearance: 'Regulation', effectiveness_evidence: 'Effectiveness',
 }
 
+/** The name of the agent who does a kind of work, for "Ask Sam again". */
+const givenFor = (work: Parameters<typeof agentForWork>[0], lens?: string) => AGENTS[agentForWork(work, lens)].given
+
 /**
  * The step again, as the app's own task: a lens's research for its market,
  * synthesis, the audience without the rejected findings, the report. `null`
- * for a step no task reruns (reading the request, choosing lenses).
+ * for a step no task reruns (reading the request, choosing lenses). The button
+ * asks the agent who does that work, by name.
  */
 export function redoOf(block: DecisionBlock): Redo | null {
   const d = block.decision
   if (block.who.kind !== 'agent') return null
   if (d.action === 'research_run') {
     const m = (d.targets ?? []).map(t => /lenses_run\[([a-z_]+)\/([A-Z]{2})\]/.exec(t)).find(Boolean)
-    return m ? { label: 'Research again', task: 'research_lens', input: { lenses: [m[1]], markets: [m[2]] } } : null
+    return m ? { label: `Ask ${givenFor('research', m[1])} to look again`, task: 'research_lens', input: { lenses: [m[1]], markets: [m[2]] } } : null
   }
-  if (d.action === 'propose_audience') return { label: 'Redo the audience', task: 'synthesise_findings', input: { redo: 'audience' } }
-  if (d.action === 'synthesise_finding' || d.kind === 'finding') return { label: 'Ask Synthesis again', task: 'synthesise_findings', input: {} }
-  if (d.action === 'report' || d.action === 'compose_report') return { label: 'Write the report again', task: 'compose_report', input: {} }
+  if (d.action === 'propose_audience') return { label: `Ask ${givenFor('synthesise')} to redo the audience`, task: 'synthesise_findings', input: { redo: 'audience' } }
+  if (d.action === 'synthesise_finding' || d.kind === 'finding') return { label: `Ask ${givenFor('synthesise')} again`, task: 'synthesise_findings', input: {} }
+  if (d.action === 'report' || d.action === 'compose_report') return { label: `Ask ${givenFor('draft')} to write the report again`, task: 'compose_report', input: {} }
   return null
 }
 
-/** The lenses a Judge's selection skipped, each researchable on its own. */
+/**
+ * The lenses a Judge's selection skipped, each researchable on its own, by the
+ * researcher who would look: "Remy · the timing".
+ */
 export function skippedOf(block: DecisionBlock): { lens: string; name: string }[] {
   if (block.decision.action !== 'select') return []
   return [...new Set((block.decision.targets ?? [])
     .map(t => /lenses_skipped\[([a-z_]+)\]/.exec(t)?.[1]).filter((x): x is string => !!x))]
-    .map(lens => ({ lens, name: LENS_NAME[lens] ?? lens }))
+    .map(lens => {
+      const a = AGENTS[agentForWork('research', lens)]
+      return { lens, name: a.lens === lens ? `${a.given} · ${a.job}` : LENS_NAME[lens] ?? lens }
+    })
 }
 
 /**

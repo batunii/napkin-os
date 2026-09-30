@@ -92,6 +92,23 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
+  // Who is signed in, for an app that asks ("clan:me?"): read-only, and only
+  // for our own frame. The host records a person's writes under this actor
+  // whatever the app says, so an app uses it to write the same `by` and to say
+  // "You" — never to prove who someone is.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const frame = iframeRef.current?.contentWindow
+      if (!frame || e.source !== frame || (e.data as { type?: string })?.type !== 'clan:me?') return
+      host.whoAmI().then(
+        me => frame.postMessage({ type: 'clan:me', actor: me.actor, id: me.id, name: me.name }, '*'),
+        () => frame.postMessage({ type: 'clan:me', actor: null, id: null, name: null }, '*'),
+      )
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
   const [iframeSrc, setIframeSrc] = useState<string>('')
 
   // Composing the page is a pure derivation of the view, the render model and

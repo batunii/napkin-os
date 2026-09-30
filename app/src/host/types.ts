@@ -203,7 +203,23 @@ export interface HostEvents {
 
 export type Unlisten = () => void
 
+/**
+ * Who this page is signed in as: the actor the host records a person's writes
+ * under (`Ctx.actor`), which is what the decision view calls "You". Nobody
+ * gives the host a name yet, so `name` is null until an account system does.
+ */
+export interface Person {
+  /** `human:<id>`, as the chain records it. */
+  actor: string
+  id: string
+  name: string | null
+}
+
 export interface Host {
+  // ── Who is here ───────────────────────────────────────────────────────────
+  /** The signed-in person, as the host acts for them. Read-only. */
+  whoAmI(): Promise<Person>
+
   // ── Documents ─────────────────────────────────────────────────────────────
   openClan(path: string): Promise<OpenResult>
   openHome(): Promise<OpenResult>

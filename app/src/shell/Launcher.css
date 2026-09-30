@@ -109,6 +109,7 @@
 .ln-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ln-item-text b { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ln-item-text small { font-size: 13px; color: var(--ink3); }
+.ln-item-text b.ln-item-untitled { color: var(--ink2); font-weight: 500; }
 .ln-item-go { color: var(--ink3); font-size: 16px; }
 
 .ln-footer { margin-top: auto; padding: 32px 0 24px; display: flex; justify-content: center; }

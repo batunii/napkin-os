@@ -178,6 +178,13 @@ export async function fetchOpenDocument(): Promise<{ manifest: OpenResult['manif
 }
 
 export const httpHost: Host = {
+  // The tenant is the person: napkin-web's TenantId::ctx (tenant.rs) acts as
+  // `human:<tenant>`, and /session is where the page learns the tenant.
+  whoAmI: async () => {
+    const { tenant } = await session()
+    return { actor: `human:${tenant}`, id: tenant, name: null }
+  },
+
   openClan: path => adopt(json<OpenView>(`/d/${encodeURIComponent(path)}`)),
   openHome: () => adopt(json<OpenView>('/home')),
   newDocumentFromApp: async (appId, title) =>

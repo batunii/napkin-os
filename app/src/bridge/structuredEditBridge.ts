@@ -120,8 +120,35 @@ export const STRUCTURED_EDIT_BRIDGE = `
       .then(function(r) { return r.json(); });
   }
 
+  // Who is signed in, as the host acts for them: { actor: 'human:<id>', id,
+  // name } — name is null until the host knows one. Asked of the shell once
+  // ("clan:me?" → "clan:me"); null when there is no shell to answer (the app
+  // opened on its own), so the app can fall back to asking the person.
+  var mePromise = null;
+  function me() {
+    if (mePromise) return mePromise;
+    mePromise = new Promise(function(resolve) {
+      if (window.parent === window) { resolve(null); return; }
+      var timer = setTimeout(function() { done(null); }, 2000);
+      function done(v) {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMe);
+        if (v) { window.__CLAN__.me = v; }
+        resolve(v);
+      }
+      function onMe(e) {
+        if (e.source !== window.parent || !e.data || e.data.type !== 'clan:me') return;
+        done(e.data.actor ? { actor: e.data.actor, id: e.data.id, name: e.data.name || null } : null);
+      }
+      window.addEventListener('message', onMe);
+      window.parent.postMessage({ type: 'clan:me?' }, '*');
+    });
+    return mePromise;
+  }
+
   // Public API authored apps can call.
   window.clan = {
+    me: me,
     data: function() { return window.__CLAN__.data; },
     patchData: patchData,
     apiProxy: apiProxy,

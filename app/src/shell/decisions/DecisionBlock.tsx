@@ -3,29 +3,49 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // The pieces of the decision panel: a "Needs you" card, a "Worth a look"
-// item, and one line of history that opens to the decision itself.
+// item, and one line of history that opens to the decision itself. Every
+// line is signed the way the crew signs in the apps: the figure, then the
+// name and the job ("Jude · checks"); a person's line is "You" or their name.
 
 import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
 import { AgentFigure } from '../../studio/AgentFigure'
+import { AGENTS } from '../../studio/model'
 import { canRun, openInApp, runInApp } from '../appExport'
 import {
-  changeOf, chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, skippedOf, sourcesOf,
-  sureWord, whoOf,
+  changeOf, chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, signOf, skippedOf,
+  sourcesOf, sureWord, upper, whereOf, whoOf, withCountry,
 } from './words'
+import type { WhoIs } from './words'
 
 /** The agent's figure, or a person's initial. */
-export function Face({ block, size = 22, needs = false }: { block?: DecisionBlock; size?: number; needs?: boolean }) {
+export function Face({ block, size = 30, needs = false }: { block?: DecisionBlock; size?: number; needs?: boolean }) {
   const w = block ? whoOf(block) : null
-  if (w?.agent) return <AgentFigure agent={w.agent} size={size} state={needs ? 'needs-you' : 'idle'} />
+  if (w?.agent) return <span className="dp-fig" aria-hidden><AgentFigure agent={w.agent} size={size} state={needs ? 'needs-you' : 'idle'} /></span>
   return <span className="dp-av" aria-hidden>{(w?.name[0] ?? '?').toUpperCase()}</span>
 }
 
+/**
+ * Who says it, as the crew signs its bubbles in the apps: "Jude · checks".
+ * A person has no job to add, and their line already starts "You…".
+ */
+function Sign({ who }: { who: WhoIs }) {
+  if (who.person) return null
+  return <span className="dp-sign">{signOf(who)}</span>
+}
+
+/** Each "Needs you" item as a question a person can answer. */
 const TITLE: Record<string, string> = {
-  unverified_finding: 'A finding is waiting for your check',
-  open_contest: 'Two sources disagree',
-  flagged_field: 'This relies on a finding that was rejected',
+  unverified_finding: 'Is this right?',
+  open_contest: 'The sources disagree. Which is right?',
+  flagged_field: 'This rests on a point you turned down',
   bad_verdict: 'Marked wrong, and not answered yet',
-  unmerged_branch: 'Work not merged yet',
+  unmerged_branch: 'Some work is not in the document yet',
+}
+
+/** The button that takes a person to where they answer it. */
+const GO: Record<string, string> = {
+  unverified_finding: 'Check it',
+  open_contest: 'Pick one',
 }
 
 const WHERE = (
@@ -40,15 +60,16 @@ export function NeedsCard({ item, block }: { item: AttentionItem; block?: Decisi
   const path = String(item.address ?? '').split('#')[1]
   const who = block ? whoOf(block) : null
   const statement = item.code === 'unverified_finding' || item.code === 'flagged_field'
-    ? (item.label ?? '').replace(/^(Finding|Fact|Contest) · /, '') : (item.label ?? '')
+    ? withCountry((item.label ?? '').replace(/^(Finding|Fact|Contest) · /, '')) : withCountry(item.label ?? '')
   const raisedBy = block
-    ? `${who!.name} ${block.decision.kind === 'finding' ? 'proposed it' : 'raised it'}${sureWord(block.decision.reasoning?.certainty?.level) === 'Unsure' ? ', unsure' : ''}`
+    ? `${who!.name} ${block.decision.kind === 'finding' ? 'found this' : 'raised it'}${sureWord(block.decision.reasoning?.certainty?.level) === 'Unsure' ? ', and is unsure' : ''}`
     : null
   return (
     <div className="dp-card">
       <div className="dp-card-top">
-        <Face block={block} size={30} needs />
+        <Face block={block} size={40} needs />
         <div>
+          {who && <Sign who={who} />}
           <div className="dp-card-what">{TITLE[item.code] ?? 'Needs you'}</div>
           {raisedBy && <div className="dp-card-who">{raisedBy}</div>}
         </div>
@@ -56,9 +77,9 @@ export function NeedsCard({ item, block }: { item: AttentionItem; block?: Decisi
       {statement && <div className="dp-stmt"><span className="dp-clip">{statement}</span></div>}
       {item.code === 'flagged_field' && <p className="dp-why">{item.text}</p>}
       <div className="dp-acts">
-        {item.address && <button className="dp-btn dp-btn-primary" onClick={() => openInApp(ref, path)}>Open it</button>}
+        {item.address && <button className="dp-btn dp-btn-primary" onClick={() => openInApp(ref, path)}>{GO[item.code] ?? 'Open it'}</button>}
         {item.code === 'flagged_field' && /campaign\.audience/.test(path ?? '') && canRun('synthesise_findings') && (
-          <button className="dp-btn" onClick={() => runInApp('synthesise_findings', { redo: 'audience' })}>Ask Synthesis to redo it</button>
+          <button className="dp-btn" onClick={() => runInApp('synthesise_findings', { redo: 'audience' })}>Ask {AGENTS.synthesis.given} to redo it</button>
         )}
         <span className="dp-hint">{item.code === 'open_contest' ? 'you’ll pick one against its sources' : item.code === 'unverified_finding' ? 'you’ll check it against its sources' : 'settle it there'}</span>
       </div>
@@ -77,7 +98,8 @@ export function QuietItem({ block, text, busy, onLooksRight }: {
     <div className="dp-qi">
       <Face block={block} />
       <div>
-        <div className="dp-qi-t"><b>{w.name}</b>: {text}</div>
+        <Sign who={w} />
+        <div className="dp-qi-t">{text}</div>
         <div className="dp-acts">
           {block.decision.id && (
             <button className="dp-btn" disabled={busy} onClick={() => onLooksRight(block.decision.id!)}>{busy ? 'Recording…' : 'Looks right'}</button>
@@ -91,12 +113,13 @@ export function QuietItem({ block, text, busy, onLooksRight }: {
   )
 }
 
-/** One line of history: who · did what · where · when; opens to why. */
+/** One line of history: who, signed · did what · where · when; opens to why. */
 export function HistoryLine({ block, view }: { block: DecisionBlock; view: DecisionsView }) {
   const d = block.decision
   const r = d.reasoning
   const w = whoOf(block)
   const t = mainTarget(block)
+  const where = t ? whereOf(t.label) : null
   const sure = sureWord(r?.certainty?.level)
   const cites = citesOf(block)
   const sources = sourcesOf(block, view)
@@ -109,12 +132,14 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
       <summary>
         <Face block={block} />
         <div>
-          <div className="dp-line"><b>{w.name}</b> {didWhat(block, view)}</div>
+          <Sign who={w} />
+          {/* An agent's line sits under its signature, so it does not name them again. */}
+          <div className="dp-line">{w.person ? <><b>{w.name}</b> {didWhat(block, view)}</> : upper(didWhat(block, view))}</div>
           {typeof d.was === 'string' && typeof d.now === 'string' && <Change was={d.was} now={d.now} why={d.rationale} />}
           <div className="dp-meta">
-            {t && (
+            {t && where && (
               <button className="dp-where" onClick={e => { e.preventDefault(); openInApp(refOfAddress(t.address), t.path) }}>
-                {WHERE}{t.label.replace(/^(Finding|Fact) · /, (_, k: string) => `${k} · `).slice(0, 60)}
+                {WHERE}{where}
               </button>
             )}
             {sure === 'Unsure' && <span className="dp-pill-unsure">unsure</span>}
@@ -151,7 +176,7 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
           ) : null}
           {(facts + findings + sources.length + materials.length) > 0 && (
             <div>
-              <h4>From</h4>
+              <h4>Where this came from</h4>
               {materials.map(m => (
                 <div className="dp-row dp-row-static" key={m}>
                   <span>{/prompt|request/i.test(view.cites[m].label) ? 'Your request' : view.cites[m].label}
@@ -247,7 +272,7 @@ function Again({ block }: { block: DecisionBlock }) {
       {redo && canRun(redo.task) && <button className="dp-btn" onClick={() => runInApp(redo.task, redo.input)}>{redo.label}</button>}
       {skipped.length > 0 && (
         <details className="dp-skip">
-          <summary className="dp-btn">Research a skipped lens…</summary>
+          <summary className="dp-btn">Look into something that was left out…</summary>
           <div className="dp-acts">
             {skipped.map(x => (
               <button key={x.lens} className="dp-btn" onClick={() => runInApp('research_lens', { lenses: [x.lens] })}>{x.name}</button>

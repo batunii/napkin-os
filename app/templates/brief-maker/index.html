@@ -213,6 +213,10 @@
   .attach:hover{background:var(--sel)}
   .attach .ic{width:21px;height:21px}
   .attach:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+  /* Brand brief: the brand's ground can be dark, and a disc a shade darker
+     than the box reads as a hole. It is a raised, ringed button instead. */
+  :root[style*="--bg:"] .attach{background:color-mix(in srgb,var(--text) 14%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--text) 50%,transparent)}
+  :root[style*="--bg:"] .attach:hover{background:color-mix(in srgb,var(--text) 24%,var(--surface))}
   .go{cursor:pointer;border:none;border-radius:var(--r-pill);background:var(--go);color:var(--goText);min-height:52px;padding:14px 24px;font-size:16.5px;font-weight:600;letter-spacing:-.01em;display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;flex:none;transition:background-color .35s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease),opacity .2s var(--ease)}
   .go:hover{box-shadow:0 2px 6px rgba(20,32,64,.1),0 14px 34px -10px color-mix(in srgb,var(--go) 60%,transparent)}
   .go:active{transform:translateY(1px)}
@@ -1069,13 +1073,15 @@
         if(proposalOf(f.key)) props.push(f);
       }
       if(!hasVal(get(f.key))) return; filled++;
-      var d=ok?decisionsFor(f.key)[0]:null; if(d&&isHuman(d)) by.you=(by.you||0)+1;
+      var d=ok?decisionsFor(f.key)[0]:null; if(d&&isHuman(d)) by.you=(by.you||0)+1; else if(d&&agentKeyOf(d)==='drafter') by.me=(by.me||0)+1;
     });
-    // Dara: what is written, and a new version that waits for the person
-    var dt, dNeeds=!locked&&props.length>0;
+    // Dara: what is written, out of the brief's parts, and how many are hers
+    // (the parts she last wrote: the count the working screen gave), and a new
+    // version that waits for the person
+    var dt, dNeeds=!locked&&props.length>0, head=filled+' of its '+FIELDS.length+' parts '+(filled===1?'is':'are')+' written'+(by.me?', '+by.me+' of them by me':'');
     if(!filled) dt='Nothing is written yet. Tap the pencil beside any part to write it.';
-    else if(locked) dt='Your brief is locked and ready to hand over: '+parts(filled)+'.';
-    else dt='Your brief is ready: '+parts(filled)+', each from what you sent.'
+    else if(locked) dt='Your brief is locked and ready to hand over: '+head+'.';
+    else dt='Your brief is ready: '+head+'.'
       +(by.you?' You wrote or changed '+num(by.you)+'.':'')
       +' Switch the kind of brief up here any time; the words stay the same.';
     dt=esc(dt);
@@ -1096,15 +1102,23 @@
   }
   // The Judge's review of the brief (review.judge) and the scorecard, in place
   // of the old context panel.
+  // The scorecard's own words, said plainly: a verdict, each thing it looks at,
+  // and how healthy the brief is overall.
+  var VERDICT={pass:'Good', vague:'Too vague', missing:'Missing'};
+  var DIM={objectives_quality:'The objectives', audience_vividness:'How clearly the audience comes across',
+    single_minded_message:'One clear message', evaluation_criteria:'How the work will be judged',
+    budget_interlock:'Whether the budget fits the ambition', strategic_clarity:'A clear strategy', language:'Plain language'};
+  function dimName(k){ var s=DIM[k]||String(k||'').replace(/_/g,' '); return s.charAt(0).toUpperCase()+s.slice(1); }
+  function healthWords(n){ return n>=70?'in good shape':n<40?'needs work':'nearly there'; }
   function renderReview(){
     var el=$('review'); if(!el) return;
     var rv=get('review'); if(!rv||typeof rv!=='object'||!rv.scorecard){ el.innerHTML=''; el.hidden=true; return; }
     var sc=rv.scorecard, j=rv.judge;
     var dims=arr(sc.dimensions).map(function(x){
-      return '<li><span class="pill'+(x.verdict==='pass'?' ok':x.verdict==='missing'?' alert':'')+'">'+esc(x.verdict)+'</span> '+esc(String(x.dimension||'').replace(/_/g,' '))+(x.fix&&x.verdict!=='pass'?' <span class="m">— '+esc(x.fix)+'</span>':'')+'</li>';
+      return '<li><span class="pill'+(x.verdict==='pass'?' ok':x.verdict==='missing'?' alert':'')+'">'+esc(VERDICT[x.verdict]||x.verdict)+'</span> '+esc(dimName(x.dimension))+(x.fix&&x.verdict!=='pass'?' <span class="m">— '+esc(x.fix)+'</span>':'')+'</li>';
     }).join('');
     el.hidden=false;
-    el.innerHTML='<div class="sechead">Review'+(j&&typeof j.health==='number'?' <span class="pill'+(j.health>=70?' ok':j.health<40?' alert':'')+'">health '+esc(j.health)+'</span>':'')+'</div>'
+    el.innerHTML='<div class="sechead">'+esc(JUDE)+'’s review'+(j&&typeof j.health==='number'?' <span class="pill'+(j.health>=70?' ok':j.health<40?' alert':'')+'">'+esc(healthWords(j.health))+'</span>':'')+'</div>'
       +(sc.summary?'<p class="val" style="font-size:14.5px">'+esc(sc.summary)+'</p>':'')
       +(dims?'<ul class="dims">'+dims+'</ul>':'');
   }
@@ -1396,12 +1410,17 @@
   // Dara's parts, and how many are written: drafted (waiting for Jude),
   // being checked, done or suggested, and those Jude turned down, which she
   // still wrote, so the count never falls. What Jude turned down is his to say.
+  // `w` is what she has in the brief once the job is done: the same count the
+  // brief's header gives (inBrief), so the two always agree.
   var WRITTEN={waiting:1, judging:1, done:1, proposed:1, revising:1, failed:1};
   function daraCount(j){
-    var fs=j.fields||{}, n=0, k=0;
-    Object.keys(j.dk||{}).forEach(function(key){ var x=fs[key]||{}; if(x.state==='absent'||x.state==='kept') return; n++; if(WRITTEN[x.state]) k++; });
-    return {n:n, k:k};
+    var fs=j.fields||{}, n=0, k=0, w=0, props=[];
+    Object.keys(j.dk||{}).forEach(function(key){ var x=fs[key]||{}; if(x.state==='absent'||x.state==='kept') return; n++; if(WRITTEN[x.state]) k++;
+      if(x.state==='done') w++; if(x.state==='proposed') props.push(FIELDS.filter(function(f){ return f.key===key; })[0]); });
+    return {n:n, k:k, w:w, props:props.filter(Boolean)};
   }
+  // "of the brief's 18 parts": what every count of parts is out of.
+  function ofAll(){ return ' of the brief’s '+FIELDS.length+' parts'; }
   // What the person gave Ellis, in words: "your words and two files".
   function sentWords(){
     var w=[], n=arr(data().reference_assets).length;
@@ -1428,15 +1447,16 @@
       extract:{
         intro:st.extract==='done'?'<b>Hi, I’m '+esc(ELLIS)+'.</b> I read everything you sent'+esc(sentWords())+'.'
           :'<b>Hi, I’m '+esc(ELLIS)+'.</b> I’m reading everything you sent'+esc(sentWords())+'.',
-        st:st.extract==='done'?['ok','✓ Done.'+(eN?' I picked out '+parts(eN)+' of the brief.':'')]
+        st:st.extract==='done'?['ok','✓ Done.'+(eN?' I picked out '+eN+ofAll()+'.':'')]
           :['', j.state==='sending'||j.state==='checking'||j.state==='queued'?'Getting started…':'Reading now…']},
       drafter:{
         intro:st.drafter==='idle'&&at<1?'<b>I’m '+esc(DARA)+'.</b> I’ll write each part of your brief from what '+esc(ELLIS)+' finds.'
           :st.drafter==='done'&&!d.n?'<b>I’m '+esc(DARA)+'.</b> There was nothing for me to write this time.'
-          :'<b>I’m '+esc(DARA)+'.</b> '+(st.drafter==='done'?'I wrote':'I’m writing')+' '+(d.n?'the '+parts(d.n):'the parts')+' of your brief, each from what '+esc(ELLIS)+' found.',
-        st:st.drafter==='done'?['ok','✓ Done.'+(!d.n?'':d.k===d.n?' I wrote '+(d.n===1?'it':d.n===2?'both parts':'all '+parts(d.n))+'.':' I wrote '+num(d.k)+' of the '+parts(d.n)+'.')]
+          :st.drafter==='done'&&!d.w?'<b>I’m '+esc(DARA)+'.</b> None of my parts went into the brief this time.'
+          :'<b>I’m '+esc(DARA)+'.</b> '+(st.drafter==='done'?'I wrote '+d.w:'I’m writing '+(d.n?d.n:'my share'))+esc(ofAll())+', each from what '+esc(ELLIS)+' found.',
+        st:st.drafter==='done'?['ok','✓ Done.'+(d.props.length?' I’ve a new version of '+esc(listWords(d.props.map(partName)))+' for you. You hold '+(d.props.length===1?'that part':'those parts')+', so I didn’t change '+(d.props.length===1?'it':'them')+'.':'')]
           :st.drafter==='working'&&at===2?['', 'Rewriting '+esc(listWords(busyDraft.map(partName)))+' on '+esc(JUDE)+'’s note.']
-          :st.drafter==='working'?['', '<span class="pbar" aria-hidden="true"><i style="width:'+(d.n?Math.round(100*d.k/d.n):4)+'%"></i></span>'+(d.n?d.k+' of '+d.n+' written':'Starting…')]
+          :st.drafter==='working'?['', '<span class="pbar" aria-hidden="true"><i style="width:'+(d.n?Math.round(100*d.k/d.n):4)+'%"></i></span>'+(d.n?d.k+' of my '+d.n+' written':'Starting…')]
           :['', 'Waiting for '+esc(ELLIS)]},
       judge:{
         intro:'<b>And I’m '+esc(JUDE)+'.</b> '+(st.judge==='working'?'I’m checking every part, then the whole brief.'
@@ -1727,7 +1747,8 @@
         delete REGEN[f.key];
         var fs=(j.fields||{})[f.key]||{};
         if(j.error) setStatus(esc(j.error));
-        else if(fs.state==='failed') setStatus(esc(j.summary||(JUDE+' turned down '+f.label.toLowerCase()+' twice, so it wasn’t written.')));
+        // the middleware's summary stays in the record; the person hears Jude
+        else if(fs.state==='failed') setStatus(esc(JUDE+': I turned down the new '+f.label.toLowerCase()+' twice, so it wasn’t written.'));
         else if(fs.state==='proposed') setStatus(esc(DARA+' suggests a new '+f.label.toLowerCase()+': you hold that part, so it wasn’t changed.'));
         else setStatus('');
         if(phase==='doc') renderStructured();

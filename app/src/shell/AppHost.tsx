@@ -10,6 +10,7 @@ import WorkspaceView from './WorkspaceView'
 import DecisionPanel from './decisions/DecisionPanel'
 import { PoweredByClan } from '../brand/PoweredByClan'
 import type { RunningApp } from './types'
+import { docTitle } from './docTitle'
 import '../components/chrome.css'
 
 interface Props {
@@ -39,7 +40,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
       {/* Accent strip — recolors with a trusted app's theme (clan://set-theme). */}
       <div className="ch-strip" />
       <Toolbar
-        title={open.manifest.title}
+        title={open.is_template ? open.manifest.title : docTitle(open.manifest.title, open.manifest.app?.app_id, open.manifest.app?.name).text}
         isTemplate={open.is_template}
         trusted={open.trusted}
         onHome={onHome}

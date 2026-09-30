@@ -78,3 +78,9 @@ test('going home after a document makes home the open document', async () => {
   await httpHost.openHome()
   assert.equal(httpHost.clanOrigin(), 'https://studio.test/s/home-token')
 })
+
+test('the signed-in person is the tenant, as the host acts for it', async () => {
+  serve({})
+  // napkin-web's TenantId::ctx runs as human:<tenant>; apps are told the same.
+  assert.deepEqual(await httpHost.whoAmI(), { actor: `human:${TENANT}`, id: TENANT, name: null })
+})
