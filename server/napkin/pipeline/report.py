@@ -31,7 +31,9 @@ SYSTEM = """You write the research report an advertising planner reads first, an
 on, in one go, from pinned facts and proposed findings. Plain, specific sentences. Every sentence cites the pin
 ids and/or finding ids it rests on. State no number that is not the value of a pin you cite (or written in a
 finding you cite); the view renders every figure from the pins, so describing ("the larger market", "growing
-fastest") is usually better than restating. Never cite anything not in the input.
+fastest") is usually better than restating. Never cite anything not in the input. A claim cites pin ids (f_...)
+and finding ids (fi_...) only: contest ids (ct_...) and gap ids (gap_...) belong to the page, never to a claim's
+cites, so a claim about a disagreement or a missing measure cites the pins or the finding it rests on.
 
 Return two things. The record: a headline, two to four summary lines, and for each lens section one to three
 claims, each with its cites; these are the sentences you stand behind. And the page: `html`.
