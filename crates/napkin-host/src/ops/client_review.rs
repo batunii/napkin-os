@@ -420,17 +420,25 @@ fn value_text(v: &Value) -> Option<String> {
 }
 
 /// A `classify` mark says the address may not reach a model: the newest one
-/// on it, or on a path it is inside, has `model: false`. Every model call
+/// on it, or on a path it is inside, has `model: false` — or that holds for a
+/// path inside it, since a part's value carries everything under it (a mark on
+/// `audience.commercial` withholds `audience` whole). Every model call
 /// withholds such a value (`napkin.middleware/1` §10.13, item 6); it is not a
 /// filter on what the client sees.
 fn withheld(chain: &DecisionChain, address: &str) -> bool {
-    chain
-        .decisions
-        .iter()
-        .filter(|d| d.kind.as_deref() == Some("classify") && d.superseded_by.is_none())
-        .find(|d| d.targets.iter().any(|t| inside(address, t)))
-        .and_then(|d| d.licence.as_ref()?.model)
-        .is_some_and(|model| !model)
+    let marks = || {
+        chain
+            .decisions
+            .iter()
+            .filter(|d| d.kind.as_deref() == Some("classify") && d.superseded_by.is_none())
+    };
+    let at = |a: &str| {
+        marks()
+            .find(|d| d.targets.iter().any(|t| inside(a, t)))
+            .and_then(|d| d.licence.as_ref()?.model)
+            .is_some_and(|model| !model)
+    };
+    at(address) || marks().flat_map(|d| d.targets.iter()).any(|t| t != address && inside(t, address) && at(t))
 }
 
 // ── chain reads ─────────────────────────────────────────────────────────────

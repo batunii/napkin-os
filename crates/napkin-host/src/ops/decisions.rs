@@ -1300,10 +1300,21 @@ fn client_review(ctx: &Lookup) -> ClientDerived {
         .filter(|d| is(d, cr::CLIENT_ANSWER_PART) || is(d, cr::DISMISS_PART))
         .filter_map(|d| extra_str(d, "suggestion"))
         .collect();
+    // A part marked by hand for the same review settles its suggestion too:
+    // neither confirming nor dismissing it could be recorded any more (§8.2,
+    // item 2), so it is not left open.
+    let marked: BTreeSet<(&str, String)> = part_answers
+        .iter()
+        .filter_map(|&j| Some((extra_str(&chain[j], "review")?, part_here(&chain[j])?)))
+        .collect();
     let mut open: Vec<usize> = (0..chain.len())
         .filter(|&i| {
             let d = &chain[i];
-            is(d, cr::SUGGEST_PART) && part_here(d).is_some() && !d.id.as_deref().is_some_and(|x| named.contains(x))
+            is(d, cr::SUGGEST_PART)
+                && !d.id.as_deref().is_some_and(|x| named.contains(x))
+                && part_here(d).is_some_and(|a| {
+                    !extra_str(d, "review").is_some_and(|r| marked.contains(&(r, a)))
+                })
         })
         .collect();
     open = newest_first(open);

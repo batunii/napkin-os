@@ -455,6 +455,20 @@ fn a_value_marked_model_false_is_not_sent_to_ellis() {
 }
 
 #[test]
+fn a_part_holding_a_value_marked_model_false_is_not_sent_either() {
+    let f = open();
+    f.post_ok("/classify", json!({ "target": "audience.commercial", "model": false, "export": true, "corpus": false,
+                                  "rationale": "The client's own numbers" }));
+    f.post_ok("/approve", json!({}));
+    let input = ClientReview::parse(&review_body("rejected", json!([])).to_string()).unwrap();
+    let ask = f.session.read(|d| cr::request(f.session.ctx(), d, &input)).unwrap().unwrap();
+    assert_eq!(ask["input"]["parts"][1]["address"], format!("{}#audience", f.doc));
+    assert_eq!(ask["input"]["parts"][1]["value"], Value::Null, "the part's value carries the marked path");
+    assert!(!ask.to_string().contains("Grocery shoppers"));
+    assert_eq!(ask["input"]["parts"][2]["value"], "Warm, dry, a little wry", "other parts are sent");
+}
+
+#[test]
 fn a_suggestion_is_dismissed_by_a_person_and_the_edit_mode_reason_falls_back() {
     let f = locked();
     let mut body = review_body("rejected", json!([]));
@@ -474,6 +488,25 @@ fn a_suggestion_is_dismissed_by_a_person_and_the_edit_mode_reason_falls_back() {
     let p = f.post_ok("/client-review/confirm", json!({ "review": r, "address": "tone", "answer": "rejected" }));
     let u = f.post_ok("/client-review/reopen", json!({ "answer": p["decision"] }));
     assert_eq!(u["reason"], "Jane Murphy asked: Audience is wrong.");
+}
+
+#[test]
+fn a_part_marked_by_hand_settles_ellis_suggestion_on_it() {
+    let f = locked();
+    let mut body = review_body("rejected", json!([]));
+    body["said"] = json!("Audience is wrong.");
+    let input = ClientReview::parse(&body.to_string()).unwrap();
+    let reply = json!({ "api": "napkin.middleware/1", "job": { "state": "done" }, "change": null,
+        "result": { "suggestions": [ { "address": "audience", "answer": "rejected", "quote": "Audience is wrong." } ] } });
+    let done = f.session.perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply))).unwrap();
+    let s = done.reply["suggestions"]["decisions"][0].clone();
+    f.post_ok("/client-review/confirm", json!({ "review": done.reply["decision"], "address": "audience",
+                                                "answer": "accepted_with_changes" }));
+    // Neither can be recorded now, so it is not left asking for either.
+    assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": s, "confirm": true })), 409);
+    assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": s, "confirm": false })), 409);
+    assert_eq!(f.json_view()["client"]["suggestions"], json!([]));
+    assert_eq!(f.codes(), vec![("client_change_asked".into(), false)]);
 }
 
 #[test]

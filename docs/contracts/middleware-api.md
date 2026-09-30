@@ -73,7 +73,10 @@ name the stand-in, its port, or branch on which implementation answered.
   (`name@major`). When the document carries no pipeline, the middleware's
   declared built-in map is used (`extract_ask@1`, `research_lens@1`,
   `synthesise_findings@1`, `start_campaign@1`, `answer_question@1`,
-  `compose_report@1`, `draft_brief@1`, `regenerate_field@1`). A task the pipeline does not declare, an
+  `compose_report@1`, `draft_brief@1`, `regenerate_field@1`, and the review
+  tasks `verify_finding@1`, `correct_fact@1` and `find_client_parts@1`, which
+  resolve from this map even for a pipeline that does not declare them, §11).
+  Any other task the pipeline does not declare, an
   unregistered handler, a handler registered for a different task, or a major
   the middleware does not implement is a hard error (M4) — never a
   fall-through to a default. `job_status` is a transport verb and is not
