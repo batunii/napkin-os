@@ -40,6 +40,13 @@ const updates = signal()
  */
 export function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || import.meta.env.DEV) return
+  // The local stack keeps no offline copy: a cached shell there shows last
+  // build's screens after every rebuild. Drop any worker and its caches.
+  if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    void navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => void r.unregister()))
+    if ('caches' in window) void caches.keys().then(ks => ks.forEach(k => void caches.delete(k)))
+    return
+  }
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register(`${base}sw.js`, { scope: base })
