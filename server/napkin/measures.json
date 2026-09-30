@@ -1,0 +1,669 @@
+{
+ "_doc": "The fixed measures each research lens collects: the name the extraction step must use (key), what it means, its unit, and the alternative names the model tends to invent (mapped onto the key in code before facts merge). DRAFT: written by a model acting as a senior planner and NOT signed off by a human planner (see item SP-6 on the expert sign-off page). Source: the draft lens document, 2026-09-30.",
+ "lenses": {
+  "market_structure": [
+   {
+    "key": "size_eur",
+    "means": "Total sales value of the category in this market over a stated period; not one company's revenue, not exports.",
+    "unit": "eur",
+    "priority": "core",
+    "synonyms": [
+     "market_size",
+     "market_value_eur",
+     "market_size_eur",
+     "market_value",
+     "category_value",
+     "sales_value_eur",
+     "retail_value_eur",
+     "size"
+    ]
+   },
+   {
+    "key": "units_annual",
+    "means": "Number of discrete items sold or registered in the category in this market over a 12-month period (cars registered, handsets sold, policies written); not litres or kilos, not a customer base.",
+    "unit": "units",
+    "priority": "core",
+    "synonyms": [
+     "annual_units",
+     "unit_sales",
+     "units_sold",
+     "registrations",
+     "new_registrations",
+     "volume_units",
+     "deliveries"
+    ]
+   },
+   {
+    "key": "value_growth_yoy",
+    "means": "Change in category sales value against the same period a year earlier, as a proportion (+5% is 0.05).",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "growth_yoy",
+     "yoy_growth",
+     "value_growth",
+     "market_growth",
+     "growth_rate",
+     "annual_growth",
+     "sales_growth_yoy"
+    ]
+   },
+   {
+    "key": "share",
+    "means": "The entity's share of category sales by value in this market, or a 'market share' whose basis the source does not state.",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "market_share",
+     "value_share",
+     "brand_share",
+     "sales_share",
+     "mkt_share"
+    ]
+   },
+   {
+    "key": "share_volume",
+    "means": "The entity's share of category volume in this market: units, registrations, subscriptions or connections, as the quote states.",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "volume_share",
+     "unit_share",
+     "registration_share",
+     "share_of_registrations",
+     "subscription_share",
+     "subscriber_share"
+    ]
+   },
+   {
+    "key": "customer_base",
+    "means": "Number of the entity's active customers, subscriptions, accounts or policies in force in this market at a date (a stock).",
+    "unit": "count",
+    "priority": "extra",
+    "synonyms": [
+     "subscribers",
+     "subscriber_count",
+     "customers",
+     "customer_count",
+     "active_users",
+     "accounts",
+     "connections",
+     "policies_in_force"
+    ]
+   },
+   {
+    "key": "top3_share",
+    "means": "Combined share of category sales held by the three largest players, as one figure the source states; never summed by the model.",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "concentration",
+     "cr3",
+     "top_three_share",
+     "big_three_share",
+     "top_players_share"
+    ]
+   },
+   {
+    "key": "consolidation_event",
+    "means": "A merger, acquisition, market entry or exit affecting the category in this market, in the source's short words; as_of is the event date.",
+    "unit": "text",
+    "priority": "extra",
+    "synonyms": [
+     "acquisition",
+     "merger",
+     "m_and_a",
+     "market_entry",
+     "market_exit",
+     "deal",
+     "takeover"
+    ]
+   }
+  ],
+  "brands_positioning": [
+   {
+    "key": "claim",
+    "means": "The brand's current positioning line or core promise in this market as the brand states it (endline, tagline), verbatim; not a product performance claim or a price offer.",
+    "unit": "text",
+    "priority": "core",
+    "synonyms": [
+     "tagline",
+     "endline",
+     "slogan",
+     "strapline",
+     "positioning",
+     "positioning_statement",
+     "brand_promise",
+     "proposition"
+    ]
+   },
+   {
+    "key": "launch_date",
+    "means": "Date the entity's most recent new product, model or range went on sale in this market (YYYY, YYYY-MM or YYYY-MM-DD); not a campaign start, not an announcement.",
+    "unit": "date",
+    "priority": "core",
+    "synonyms": [
+     "launch",
+     "product_launch",
+     "release_date",
+     "launch_year",
+     "on_sale_date",
+     "market_launch"
+    ]
+   },
+   {
+    "key": "model_range",
+    "means": "The named products, models or tariffs the entity currently sells in the category in this market, as the source lists them, comma separated.",
+    "unit": "text",
+    "priority": "core",
+    "synonyms": [
+     "range",
+     "product_range",
+     "models",
+     "lineup",
+     "line_up",
+     "portfolio",
+     "product_lines",
+     "tariffs"
+    ]
+   },
+   {
+    "key": "awareness_prompted",
+    "means": "Proportion of the stated population who recognise the brand when shown or read its name or logo (aided or total awareness).",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "aided_awareness",
+     "prompted_awareness",
+     "total_awareness",
+     "brand_awareness",
+     "awareness",
+     "recognition"
+    ]
+   },
+   {
+    "key": "awareness_spontaneous",
+    "means": "Proportion of the stated population who name the brand unprompted when asked about the category, including top-of-mind first mentions.",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "unaided_awareness",
+     "spontaneous_awareness",
+     "unprompted_awareness",
+     "top_of_mind",
+     "first_mention"
+    ]
+   },
+   {
+    "key": "brand_asset",
+    "means": "A distinctive asset the brand owns and uses (logo, colour, character, sound, shape, pack, typeface, person), named in the source's words.",
+    "unit": "text",
+    "priority": "extra",
+    "synonyms": [
+     "distinctive_asset",
+     "brand_assets",
+     "dba",
+     "mnemonic",
+     "sonic_logo",
+     "mascot",
+     "brand_colour",
+     "logo"
+    ]
+   },
+   {
+    "key": "agency",
+    "means": "Name of the agency holding the entity's creative or media account in this market; as_of is the appointment date.",
+    "unit": "text",
+    "priority": "extra",
+    "synonyms": [
+     "agency_of_record",
+     "creative_agency",
+     "media_agency",
+     "aor",
+     "lead_agency",
+     "agency_appointment",
+     "agency_move"
+    ]
+   }
+  ],
+  "consumer_culture": [
+   {
+    "key": "purchase_intent_share",
+    "means": "Proportion of the stated population who say they will, or are likely to, buy in the category (or the brand) within a stated window; stated intention, not behaviour.",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "purchase_intent",
+     "intent_to_buy",
+     "intention_to_purchase",
+     "likely_to_buy_share",
+     "plan_to_buy_share",
+     "buying_intention"
+    ]
+   },
+   {
+    "key": "barrier_top",
+    "means": "The one reason the source ranks first for not buying or not switching, in the source's short words.",
+    "unit": "text",
+    "priority": "core",
+    "synonyms": [
+     "top_barrier",
+     "main_barrier",
+     "biggest_barrier",
+     "key_barrier",
+     "barrier",
+     "purchase_barrier",
+     "main_concern"
+    ]
+   },
+   {
+    "key": "segment_share",
+    "means": "Proportion of the category's buyers or users who belong to the named segment; the base is buyers, not the population.",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "segment_size",
+     "share_of_buyers",
+     "buyer_share",
+     "demographic_share",
+     "cohort_share"
+    ]
+   },
+   {
+    "key": "penetration",
+    "means": "Proportion of households or adults in the market who bought or used the category (or brand) in a stated period.",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "household_penetration",
+     "hh_penetration",
+     "usage_share",
+     "user_share",
+     "adoption_rate",
+     "ownership_share",
+     "incidence"
+    ]
+   },
+   {
+    "key": "attitude_share",
+    "means": "Proportion of the stated population who agree with a named attitude or report a named behaviour change.",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "agree_share",
+     "agreement_share",
+     "sentiment_share",
+     "moderating_share",
+     "adults_moderating",
+     "concern_share"
+    ]
+   },
+   {
+    "key": "cultural_tension",
+    "means": "true when the source names a cultural tension or shift that is moving the category in this market; the quote carries the substance, no number.",
+    "unit": "boolean",
+    "priority": "extra",
+    "synonyms": [
+     "trend",
+     "tension",
+     "cultural_shift",
+     "consumer_trend",
+     "cultural_trend",
+     "insight"
+    ]
+   }
+  ],
+  "category_codes": [
+   {
+    "key": "dominant_code",
+    "means": "true when the source says a convention is what most or all category advertising in this market does.",
+    "unit": "boolean",
+    "priority": "core",
+    "synonyms": [
+     "category_code",
+     "convention",
+     "category_convention",
+     "ad_convention",
+     "trope",
+     "common_trope"
+    ]
+   },
+   {
+    "key": "worn_out_code",
+    "means": "true when the source calls a convention tired, cliched, overused or losing effect in the category.",
+    "unit": "boolean",
+    "priority": "core",
+    "synonyms": [
+     "tired_code",
+     "cliche",
+     "cliched_code",
+     "overused_code",
+     "stale_convention",
+     "category_cliche"
+    ]
+   },
+   {
+    "key": "emerging_code",
+    "means": "true when the source says a convention is newly appearing in the category or is how challengers break from it.",
+    "unit": "boolean",
+    "priority": "extra",
+    "synonyms": [
+     "new_code",
+     "rising_code",
+     "challenger_code",
+     "emergent_code",
+     "breaking_convention"
+    ]
+   },
+   {
+    "key": "uses_code",
+    "means": "true when the source says the named brand's advertising uses the convention.",
+    "unit": "boolean",
+    "priority": "extra",
+    "synonyms": [
+     "brand_code",
+     "creative_approach",
+     "creative_code",
+     "execution_style"
+    ]
+   }
+  ],
+  "rhythm_moments": [
+   {
+    "key": "peak_months",
+    "means": "Months of highest category sales or demand in this market, as 'MM-MM' for one window or comma-separated windows ('03,09').",
+    "unit": "text",
+    "priority": "core",
+    "synonyms": [
+     "peak_season",
+     "peak_period",
+     "seasonality",
+     "busiest_months",
+     "peak_month",
+     "high_season",
+     "seasonal_peak"
+    ]
+   },
+   {
+    "key": "key_moment",
+    "means": "true when the source says the category plans around, or sells notably at, the named calendar moment in this market.",
+    "unit": "boolean",
+    "priority": "core",
+    "synonyms": [
+     "moment",
+     "key_event",
+     "event",
+     "tentpole",
+     "cultural_moment",
+     "calendar_moment",
+     "key_date"
+    ]
+   },
+   {
+    "key": "launch_window",
+    "means": "Months in which new products in the category are typically launched in this market, as 'MM' or 'MM-MM', comma separated.",
+    "unit": "text",
+    "priority": "extra",
+    "synonyms": [
+     "launch_season",
+     "launch_months",
+     "launch_timing",
+     "release_window"
+    ]
+   },
+   {
+    "key": "purchase_cycle_months",
+    "means": "Typical interval between a buyer's purchases or replacements in the category, in months.",
+    "unit": "months",
+    "priority": "extra",
+    "synonyms": [
+     "replacement_cycle",
+     "ownership_period",
+     "holding_period",
+     "switching_cycle",
+     "repurchase_cycle"
+    ]
+   }
+  ],
+  "media_spend": [
+   {
+    "key": "adspend_eur",
+    "means": "Total advertising expenditure by the category's advertisers, or by the named brand, in this market over a stated period, in euro as stated.",
+    "unit": "eur",
+    "priority": "core",
+    "synonyms": [
+     "ad_spend",
+     "adspend",
+     "advertising_spend",
+     "advertising_expenditure",
+     "media_spend",
+     "ad_investment",
+     "adex"
+    ]
+   },
+   {
+    "key": "tv_share_of_spend",
+    "means": "Proportion of the entity's adspend going to television, as the source defines TV.",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "tv_share",
+     "tv_spend_share",
+     "television_share",
+     "share_of_spend_tv",
+     "tv_share_of_adspend",
+     "linear_tv_share"
+    ]
+   },
+   {
+    "key": "digital_share_of_spend",
+    "means": "Proportion of the entity's adspend going to online channels, as the source defines digital.",
+    "unit": "proportion",
+    "priority": "core",
+    "synonyms": [
+     "digital_share",
+     "online_share_of_spend",
+     "digital_spend_share",
+     "share_of_spend_digital",
+     "online_adspend_share"
+    ]
+   },
+   {
+    "key": "share_of_spend",
+    "means": "Proportion of the entity's adspend going to one named channel other than TV and digital in total.",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "channel_share",
+     "channel_mix",
+     "media_mix_share",
+     "ooh_share_of_spend",
+     "radio_share",
+     "social_share_of_spend"
+    ]
+   },
+   {
+    "key": "share_of_voice",
+    "means": "The brand's proportion of the category's total adspend (or ad impressions, if the source says so) in this market over a stated period.",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "sov",
+     "voice_share",
+     "share_of_adspend",
+     "adspend_share"
+    ]
+   },
+   {
+    "key": "cpm_eur",
+    "means": "Average cost per thousand impressions for a named channel in this market, in euro as stated.",
+    "unit": "eur",
+    "priority": "extra",
+    "synonyms": [
+     "cpm",
+     "cost_per_thousand",
+     "cpt",
+     "average_cpm",
+     "media_cost"
+    ]
+   }
+  ],
+  "regulation_clearance": [
+   {
+    "key": "code_applies",
+    "means": "true when the source states that the named statute, regulation or advertising code governs advertising for the category in this market.",
+    "unit": "boolean",
+    "priority": "core",
+    "synonyms": [
+     "applicable_code",
+     "governing_code",
+     "advertising_code",
+     "applicable_law",
+     "rule_applies",
+     "legal_framework"
+    ]
+   },
+   {
+    "key": "mandatory_copy",
+    "means": "The exact wording a statute or code requires the category's ads to carry in this market, verbatim.",
+    "unit": "text",
+    "priority": "core",
+    "synonyms": [
+     "mandatory_wording",
+     "required_copy",
+     "required_disclaimer",
+     "warning_text",
+     "health_warning",
+     "statutory_warning",
+     "legal_line"
+    ]
+   },
+   {
+    "key": "grant_eur",
+    "means": "The maximum amount per buyer of a public grant, rebate or purchase incentive for the category in this market, in euro as stated ('up to EUR X' is X).",
+    "unit": "eur",
+    "priority": "core",
+    "synonyms": [
+     "grant",
+     "grant_amount",
+     "subsidy",
+     "rebate",
+     "incentive_eur",
+     "purchase_grant",
+     "max_grant",
+     "ev_grant"
+    ]
+   },
+   {
+    "key": "prohibited_claim",
+    "means": "true when the source states that a named type of claim or depiction is not allowed in the category's advertising in this market.",
+    "unit": "boolean",
+    "priority": "extra",
+    "synonyms": [
+     "banned_claim",
+     "restricted_claim",
+     "cannot_say",
+     "claim_restriction",
+     "not_permitted"
+    ]
+   },
+   {
+    "key": "min_age_depicted",
+    "means": "Minimum age, in years, of anyone shown in the category's advertising, as the code states.",
+    "unit": "years",
+    "priority": "extra",
+    "synonyms": [
+     "min_age",
+     "minimum_age",
+     "age_depicted",
+     "model_age_min",
+     "performer_min_age"
+    ]
+   },
+   {
+    "key": "restricted_hours",
+    "means": "The broadcast hours in which the category may not advertise on TV or radio in this market, as 'HH:MM-HH:MM' (the banned window).",
+    "unit": "text",
+    "priority": "extra",
+    "synonyms": [
+     "watershed",
+     "broadcast_watershed",
+     "time_restriction",
+     "ad_ban_hours",
+     "restricted_times"
+    ]
+   },
+   {
+    "key": "rule_effective_date",
+    "means": "Date a new or changed advertising rule for the category takes effect in this market; the value may be in the future, as_of may not.",
+    "unit": "date",
+    "priority": "extra",
+    "synonyms": [
+     "effective_date",
+     "commencement_date",
+     "in_force_date",
+     "comes_into_force",
+     "implementation_date"
+    ]
+   }
+  ],
+  "effectiveness_evidence": [
+   {
+    "key": "published_cases",
+    "means": "Number of published effectiveness cases with business results for the category or brand in this market, in a named collection, as the source counts them.",
+    "unit": "count",
+    "priority": "core",
+    "synonyms": [
+     "case_count",
+     "cases",
+     "number_of_cases",
+     "effie_cases",
+     "award_cases",
+     "case_studies_count"
+    ]
+   },
+   {
+    "key": "case_example",
+    "means": "The published title of an effectiveness case in this market, as the award or databank lists it.",
+    "unit": "text",
+    "priority": "core",
+    "synonyms": [
+     "case",
+     "case_study",
+     "example_case",
+     "award_case",
+     "effie_winner",
+     "winning_case",
+     "launch_case"
+    ]
+   },
+   {
+    "key": "case_result",
+    "means": "The headline business result a published case reports, in the source's words (for example 'sales up 12% in six months').",
+    "unit": "text",
+    "priority": "extra",
+    "synonyms": [
+     "case_outcome",
+     "result",
+     "business_result",
+     "sales_uplift",
+     "roi_claim",
+     "effect"
+    ]
+   },
+   {
+    "key": "brand_activation_split",
+    "means": "The share of budget the source recommends for long-term brand building (versus short-term activation) in this category, as a proportion (60:40 is 0.6).",
+    "unit": "proportion",
+    "priority": "extra",
+    "synonyms": [
+     "brand_activation_ratio",
+     "long_short_split",
+     "sixty_forty",
+     "brand_share_of_budget",
+     "optimal_brand_split"
+    ]
+   }
+  ]
+ }
+}

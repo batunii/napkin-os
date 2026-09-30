@@ -18,6 +18,10 @@ from ..util import slug
 
 LABEL_CUE = re.compile(r"\bbrand\s*:", re.I)
 OURS_CUE = re.compile(r"\b(?:our|we|we're|my|client|client's|clients?)\b", re.I)
+# The brand doing the asking ("IBM wants a campaign", "BMW is trying to enter ...") is the client, whether or
+# not the model marked it so; a brand only named beside it ("(watsonx)") is not.
+CLIENT_VERB = (r"wants?|needs?|would like|asks?|seeks?|plans?|aims?|hopes?|wishes|has (?:asked|briefed)|is briefing|"
+               r"(?:is|are) (?:trying|looking|launching|planning|seeking|entering|building|preparing|running)")
 
 
 def opt_id(text: str) -> str:
@@ -28,12 +32,19 @@ def brand_ref(name: str) -> str:
     return "brand/" + slug(name)
 
 
+def asks(quote: str, name: str) -> bool:
+    """The brand `name` is the one doing the asking in `quote`: it is followed, within two words, by a client verb."""
+    return re.search(rf"(?<!\w){re.escape(name)}(?:\W+\w+){{0,2}}?\W+(?:{CLIENT_VERB})\b", quote or "", re.I) is not None
+
+
 def checked_basis(b: dict) -> str:
     """The claimed basis, kept only when the verified quote carries its cue."""
     q = (b.get("span") or {}).get("quote", "")
     basis = b.get("basis")
     if slug(b.get("name", "")) not in slug(q):
         return "none"  # the evidence must name the brand it is evidence for
+    if asks(q, b.get("name", "")):
+        return "named_as_ours"
     if basis == "brand_label" and LABEL_CUE.search(q):
         return "brand_label"
     if basis == "named_as_ours" and OURS_CUE.search(q):

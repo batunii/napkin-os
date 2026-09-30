@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
+import threading
 import time as _time
 from concurrent.futures import ThreadPoolExecutor
 
 from ..doc import (CONF, ISO_3166, LENS_NAMESPACE, LENSES, LICENCE_RANK, ctx_data, ctx_facts, decision,
                    field_value, lens_of_key, market_list, read_of)
 from ..layers import origin_uri
-from ..metrics import emit
+from ..measures import MEASURES, SYNONYM
+from ..metrics import UNIT, emit
 from ..rules import merge as merge_rules
 from ..rules.confidence import coverage_of, fact_confidence, merge_coverage
 from ..rules.figures import quote_supports
@@ -64,7 +66,11 @@ You are given ONE research lens and ONE market, the campaign's subject brand, co
 category leaves, and sources with verbatim excerpts. Extract only facts an excerpt states.
 Each fact: what it is about (the category, the subject brand, or a named comparator), a short
 snake_case key_suffix naming the measure, not the period (the lens namespace is added for you;
-the period goes in as_of, so "bev_share", never "bev_share_2025"), the value (a number, a short
+the period goes in as_of, so "bev_share", never "bev_share_2025"). The input lists this lens's
+`measures`: each has a fixed name, a meaning and a unit. When a fact is one of them, use exactly that
+name as key_suffix and that unit; a measure with several answers takes a dot and a short lowercase
+qualifier after the name (key_moment.christmas); money keeps the currency the source states
+(size_eur, size_gbp). A fact that is none of them is named x_ and a short snake_case name. The value (a number, a short
 text, or a boolean), its unit, as_of (the date the figure describes or was published,
 YYYY-MM-DD, never in the future, or null), whether it is specific to this market, and the
 evidence: the source_id and the exact quote from that source's excerpts (character for
@@ -119,6 +125,29 @@ def validate_research(clan: dict, inp: dict):
     return lenses, markets, cats[:2]
 
 
+QUERY_LIMIT = 480  # the research port refuses a question over 500 characters (peripherals.md section 2)
+
+
+def search_question(question: str, cat_names: list[str], market: str, brand: str | None, comparators: list[str]) -> str:
+    """The question sent to the research port. Comparators are added whole and in order until the next
+    one would pass QUERY_LIMIT; they only steer the search, and fact extraction still sees every one.
+    A brand or category name long enough to break the limit on its own is cut, never sent over."""
+    def base(cats):
+        return (f"{question} Category: {', '.join(cats)}. Market: {market_list([market])} ({market})."
+                + (f" Brand: {brand}." if brand else ""))
+    head = base(cat_names)
+    if len(head) > QUERY_LIMIT:
+        head = base(cat_names[:1])
+    if len(head) > QUERY_LIMIT:
+        return head[:QUERY_LIMIT].rsplit(" ", 1)[0]
+    fitted: list[str] = []
+    for name in comparators:
+        if len(f"{head} Comparators: {', '.join(fitted + [name])}.") > QUERY_LIMIT:
+            break
+        fitted.append(name)
+    return f"{head} Comparators: {', '.join(fitted)}." if fitted else head
+
+
 def _date_ok(s) -> bool:
     return isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", s) is not None
 
@@ -141,6 +170,16 @@ class Researcher:
         self.leaf_names = {l["code"]: l["name"] for l in caps.layers.leaves()}
         self.done = 0
         self.hits = []
+        self._rows: dict = {}
+        self._rows_lock = threading.Lock()
+
+    def _entity_rows(self, layer: str, entity: str) -> list[dict]:
+        """Every current row the layers hold for an entity, read once per job. The reuse check of every lens and
+        market reads from this; nothing is written to the layers until the merge, so it cannot go stale in the run."""
+        with self._rows_lock:
+            if (layer, entity) not in self._rows:
+                self._rows[(layer, entity)] = self.caps.layers.facts(layer, entity)
+            return self._rows[(layer, entity)]
 
     # -- entities --------------------------------------------------------------
     def entities(self):
@@ -155,7 +194,11 @@ class Researcher:
     def unit(self, lens: str, market: str) -> dict:
         """One lens x market unit (see `_unit`); its outcome goes to the run ledger."""
         t0 = _time.monotonic()
-        u = self._unit(lens, market)
+        tok = UNIT.set(f"{lens}/{market}")
+        try:
+            u = self._unit(lens, market)
+        finally:
+            UNIT.reset(tok)
         emit("unit", lens=lens, market=market, secs=round(_time.monotonic() - t0, 2), reused=u["reused"],
              sources=len(u["sources"]), facts=len(u["cands"]) - u["reused"], gaps=len(u["gaps"]), error=u["error"],
              job=self.caps.attribution.get("job"))
@@ -168,9 +211,13 @@ class Researcher:
         # 0. reuse what the layers already hold, fresh
         cutoff = (_dt.date.today() - _dt.timedelta(days=self.reuse_days)).isoformat()
         for entity, layer in self.entities():
-            for row in self.caps.layers.facts(layer, entity, key_prefix=ns, market=market):
+            for row in self._entity_rows(layer, entity):
+                if not (row["key"] == ns or row["key"].startswith(ns + ".")):
+                    continue  # another lens's facts
                 if row["status"] != "active" or row["retrieved_at"] < cutoff:
                     continue
+                if row["market"] != market:
+                    continue  # a fact naming no market comes back for every market; it says nothing about this one
                 u["cands"].append(self._cand_from_row(row, lens, market))
                 u["reused"] += 1
         if u["reused"]:
@@ -180,9 +227,7 @@ class Researcher:
         brand = self.subject["name"] if self.subject else None
         cat_names = [self.leaf_names.get(c, c) for c in self.cats]
         question, wanted = LENS_QUESTIONS[lens]
-        query = (f"{question} Category: {', '.join(cat_names)}. Market: {market_list([market])} ({market})."
-                 + (f" Brand: {brand}." if brand else "")
-                 + (f" Comparators: {', '.join(c['name'] for c in self.comps)}." if self.comps else ""))
+        query = search_question(question, cat_names, market, brand, [c["name"] for c in self.comps if c.get("name")])
         try:
             res = self.caps.research.search(query, lens, market, entity=self.subject["ref"] if self.subject else None,
                                             category=self.cats[0])
@@ -212,6 +257,7 @@ class Researcher:
         # 3. the model extracts; the rules check
         comp_names = [c["name"] for c in self.comps]
         payload = {"lens": lens, "lens_question": question, "key_namespace": ns, "wanted": wanted,
+                   "measures": [{"key": m["key"], "means": m["means"], "unit": m["unit"]} for m in MEASURES[lens]],
                    "market": market, "subject_brand": brand, "comparators": comp_names,
                    "categories": [{"code": c, "name": self.leaf_names.get(c, c)} for c in self.cats],
                    "sources": [{"source_id": s["sid"], "url": s["url"], "publisher": s["publisher"],
@@ -230,7 +276,7 @@ class Researcher:
             c = self._check(f, lens, market, by_sid)
             if c:
                 u["cands"].append(c)
-        found = {c["key"].split(".", 1)[1] for c in u["cands"]}
+        found = {c["key"].split(".", 1)[1].split(".")[0] for c in u["cands"]}  # a qualified name counts as its measure
         for w in (raw.get("not_found") or []):
             w = re.sub(r"[^a-z0-9_]+", "_", str(w).lower()).strip("_")
             if w and w in wanted and w not in found:
@@ -265,6 +311,8 @@ class Researcher:
         else:
             return None
         suffix = re.sub(r"[^a-z0-9_.]+", "_", str(f.get("key_suffix") or "").lower()).strip("._")
+        head, dot, rest = suffix.partition(".")
+        suffix = SYNONYM.get((lens, head), head) + dot + rest  # a name the model invented becomes the fixed one
         if not suffix:
             return None
         key = f"{LENS_NAMESPACE[lens]}.{suffix}"

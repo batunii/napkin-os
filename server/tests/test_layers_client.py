@@ -91,12 +91,53 @@ def test_reads_retry_once_on_503_and_failures_are_loud():
     L = st.open({"org": "org/a", "brand": "brand/x"})
     svc.fail_next = [503]
     assert L.leaves()  # retried once
-    svc.fail_next = [503, 503]
+    svc.fail_next = [503, 503, 503]  # three attempts in all: a fourth failure would be needed to keep going
     L2 = st.open({"org": "org/a", "brand": "brand/x"})
     with pytest.raises(LayersError):
         L2.facts("category", "category/automotive.ev_charging")
     with pytest.raises(LayersError):  # licence is required: never a silent declassification
         L.append({k: v for k, v in fact(0.2).items() if k != "licence"}, DEC)
+
+
+def _store_recording_sleeps(svc, sleeps):
+    return HttpLayerStore("http://layers.test", transport=svc.transport(), sleep=sleeps.append)
+
+
+def test_a_short_outage_is_ridden_out_with_pauses_between_attempts():
+    """A blip of a second used to beat both attempts, which ran back to back."""
+    svc, sleeps = FakeLayersService(), []
+    L = _store_recording_sleeps(svc, sleeps).open({"org": "org/a", "brand": "brand/x"})
+    svc.fail_next = [503, 503]
+    assert L.leaves()                      # the third attempt is served
+    assert sleeps == [1.0, 3.0]            # a pause before the second and before the third attempt
+    n = len(svc.requests)
+    svc.fail_next = [502, 503, 504]
+    with pytest.raises(LayersError):       # three failures in a row still give up
+        L.facts("category", "category/automotive.ev_charging")
+    assert len(svc.requests) == n + 3
+
+
+def test_a_write_retried_after_a_pause_lands_once():
+    svc, sleeps = FakeLayersService(), []
+    L = _store_recording_sleeps(svc, sleeps).open({"org": "org/a", "brand": "brand/x"})
+    svc.fail_next = [503, 503]
+    r = L.append(fact(0.2), DEC)
+    assert r["version"] == 1 and len(L.facts("category", "category/automotive.ev_charging", market="IE")) == 1
+
+
+def test_a_timeout_is_still_tried_only_twice():
+    """A timeout has already waited its full time; a third wait of that length would stall a whole job."""
+    import httpx
+    seen = []
+
+    def slow(request):
+        seen.append(request)
+        raise httpx.ReadTimeout("slow", request=request)
+    L = HttpLayerStore("http://layers.test", transport=httpx.MockTransport(slow), sleep=lambda s: None) \
+        .open({"org": "org/a", "brand": "brand/x"})
+    with pytest.raises(LayersError, match="timed out"):
+        L.leaves()
+    assert len(seen) == 2
 
 
 def test_an_unknown_leaf_is_refused_by_a_service_that_enforces_it():

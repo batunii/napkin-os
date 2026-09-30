@@ -112,10 +112,64 @@ def test_unsourced_figures_matches_the_report_rule():
     fi = {"fi_A": {"statement": "Up 21% on last year", "status": "proposed"}}
     assert unsourced_figures("34% moderate", ["f_A"], pins, fi) == []
     assert unsourced_figures("0.34 share", ["f_A"], pins, fi) == []
-    assert unsourced_figures("12,500 units", ["f_B"], pins, fi) == ["12,500"]  # the pin says 12500
+    assert unsourced_figures("12,500 units", ["f_B"], pins, fi) == []  # thousands commas: 12,500 is 12500
     assert unsourced_figures("up 21%", ["fi_A"], pins, fi) == []
     assert unsourced_figures("BMW i4 sells", ["f_A"], pins, fi, names=["BMW i4"]) == []
     assert unsourced_figures("42 of them", ["f_A"], pins, fi) == ["42"]
+
+
+def _claim(text, value, unit="count", as_of=None):
+    pin = {"value": value, "unit": unit}
+    if as_of:
+        pin["as_of"] = as_of
+    return unsourced_figures(text, ["f_P"], {"f_P": pin}, {})
+
+
+def test_a_date_written_in_words_matches_the_stored_date():
+    # the real claim the rule dropped: the fact stores 2026-08-02, the sentence says 2 August 2026
+    assert _claim("duties apply from 2 August 2026", "2026-08-02", "date") == []
+    assert _claim("duties apply from 3 August 2026", "2026-08-02", "date") == ["3"]
+
+
+def test_scale_words_and_thousands_commas_match_the_stored_number():
+    for text in ("a budget of €1.5m", "a budget of €1.5 million", "a budget of €1,500,000", "budget €1500000",
+                 "a budget of 1.5mn"):
+        assert _claim(text, 1500000, "eur") == [], text
+    assert _claim("€2bn of spend", 2_000_000_000, "eur") == []
+    assert _claim("300k viewers", 300000) == [] and _claim("3 thousand units", 3000) == []
+
+
+def test_a_rounded_figure_needs_the_stored_number_to_round_to_it():
+    assert _claim("about €1.5m", 1_480_000, "eur") == []        # 1.48m rounds to 1.5m
+    assert _claim("about €1.5m", 1_200_000, "eur") == ["1.5"]   # 1.2m does not
+    assert _claim("€1.48m", 1_500_000, "eur") == ["1.48"]       # more precision than the pin holds
+    assert _claim("roughly 1.5", 1.48) == [] and _claim("roughly 1.6", 1.48) == ["1.6"]
+
+
+def test_a_year_must_come_from_a_cited_fact():
+    assert _claim("5 cases in 2025", 5, as_of="2025-12-31") == []          # the fact's own year
+    assert _claim("5 cases by 2033", 5, as_of="2025-12-31") == ["2033"]    # an invented year is still caught
+    assert _claim("5 cases in 2025", 5) == ["2025"]                        # no as-of date, no year
+
+
+def test_digits_inside_names_are_not_read_as_scale_words():
+    pins = {"f_P": {"value": "a long-term view", "unit": "text"}}
+    assert unsourced_figures("B2B marketing builds brands", ["f_P"], pins, {}, names=["B2B SaaS and cloud"]) == []
+    assert unsourced_figures("B2B marketing builds brands", ["f_P"], pins, {}) == ["2"]   # no name, no pass, as before
+    assert unsourced_figures("3M reported growth", ["f_P"], pins, {}, names=["3M"]) == []
+
+
+def test_a_figure_written_with_a_scale_word_in_a_text_fact_supports_the_same_wording():
+    pins = {"f_P": {"value": "a budget of €1.5m for the launch", "unit": "text"}}
+    assert unsourced_figures("a €1.5m budget", ["f_P"], pins, {}) == []
+    assert unsourced_figures("a 1.5 million budget", ["f_P"], pins, {}) == []
+    assert unsourced_figures("a €2.5m budget", ["f_P"], pins, {}) == ["2.5"]
+
+
+def test_the_figure_check_is_still_strict():
+    assert _claim("42 of them", 3) == ["42"]
+    assert _claim("35% moderate", 0.34, "proportion") == ["35"] and _claim("34% moderate", 0.34, "proportion") == []
+    assert _claim("12,000 units", 12500) == ["12,000"]
 
 
 def test_clean_claim():
@@ -174,6 +228,30 @@ def test_identify_claimed_basis_needs_its_cue_and_the_name():
     assert kind == "ask"
     kind, sub = identify.decide_subject([b("A Brand", "named_as_ours", quote="our client A Brand"), b("Other")])
     assert kind == "subject" and sub["name"] == "A Brand"
+
+
+IBM_ASK = "IBM wants a campaign in Ireland for its enterprise AI software (watsonx)."
+
+
+def test_identify_a_brand_that_wants_something_is_the_client():
+    """'IBM wants a campaign ... (watsonx)': the brand doing the asking is the client; watsonx is named beside it."""
+    kind, sub = identify.decide_subject([b("IBM", quote=IBM_ASK), b("watsonx", quote=IBM_ASK)])
+    assert kind == "subject" and sub["name"] == "IBM"
+    for quote in ("BMW is trying to enter the EV market. Tesla is the rival.", "Harbour Tonic needs a relaunch",
+                  "IBM Ireland is looking for a new campaign"):
+        name = quote.split()[0]
+        assert identify.decide_subject([b(name, quote=quote), b("Rival", quote="Rival sells more")])[0] == "subject", quote
+
+
+def test_identify_still_asks_when_no_brand_or_every_brand_is_the_one_asking():
+    assert identify.decide_subject([b("IBM", quote="IBM and watsonx feature in the brief"),
+                                    b("watsonx", quote="IBM and watsonx feature in the brief")])[0] == "ask"
+    both = "IBM wants a campaign and Oracle wants one too"
+    assert identify.decide_subject([b("IBM", quote=both), b("Oracle", quote=both)])[0] == "ask"
+    # the brand being talked about, not the one asking, is not made the client by someone else's verb
+    kind, sub = identify.decide_subject([b("IBM", quote="Oracle wants to overtake IBM"),
+                                         b("Oracle", quote="Oracle wants to overtake IBM")])
+    assert kind == "subject" and sub["name"] == "Oracle"
 
 
 def test_identify_only_a_comparator_or_nothing_asks():

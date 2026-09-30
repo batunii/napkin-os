@@ -121,6 +121,13 @@ def combine(doc, chunks) -> dict | None:
             "facts_append": facts, "findings_append": findings, "sources_append": sources, "decisions": decs}
 
 
+# The report waits for the host to take in every earlier stage. The host takes a stage in on the poll after it
+# is sent, and polls come every one to six seconds, so a stage still missing after this many polls and this
+# many seconds of polling was refused (or lost) and will not land: the job fails and names it.
+REPORT_STALL_POLLS = 10
+REPORT_STALL_SECONDS = 60.0
+
+
 class CampaignJob:
     def __init__(self, jid, doc, handler, clan, inp, caps, settings):
         self.id, self.doc, self.handler = jid, doc, handler
@@ -146,6 +153,7 @@ class CampaignJob:
         self.hits = []
         self._identify_raw = None
         self.latest_clan = clan
+        self._stall_sig, self._stall_polls, self._stall_secs, self._last_poll = frozenset(), 0, 0.0, None
         self.W, self.W_facts, self.W_version, self.clan = {}, [], None, clan
         self.sync(clan)
         self.thread = threading.Thread(target=self._run, name=f"campaign-{jid}", daemon=True)
@@ -226,6 +234,7 @@ class CampaignJob:
 
     def _run(self):
         while True:
+            stalled = None
             with self.lock:
                 if self.state in ("done", "failed"):
                     return
@@ -237,8 +246,19 @@ class CampaignJob:
                 if stage == "report":
                     earlier = set().union(*(c.ids for c in self.chunks)) if self.chunks else set()
                     if not earlier <= known_ids(self.latest_clan):
-                        self.cond.wait(timeout=30)
-                        continue  # composes once the earlier stages have landed (§8.4)
+                        if self._stall_polls >= REPORT_STALL_POLLS and self._stall_secs >= REPORT_STALL_SECONDS:
+                            known = known_ids(self.latest_clan)
+                            missing = [st for st in STAGES if any(c.stage == st and not c.ids <= known for c in self.chunks)]
+                            stalled = (f"the host did not apply the change for: {', '.join(missing)} (still missing after "
+                                       f"{self._stall_polls} polls). It refused the change or lost it, so the report "
+                                       f"cannot be built on it")
+                        else:
+                            self.cond.wait(timeout=min(30, REPORT_STALL_SECONDS / 4))
+                            continue  # composes once the earlier stages have landed (§8.4)
+            if stalled:
+                log.error("start_campaign %s: %s", self.id, stalled)
+                self.fail("report", "internal", stalled)
+                return
             t_stage = time.monotonic()
             try:
                 finished = getattr(self, "stage_" + stage)()
@@ -262,6 +282,7 @@ class CampaignJob:
                     return
 
     def fail(self, stage, etype, message):
+        emit("stage", stage=stage, failed=True, error=etype, job=self.id)
         d = decision(self.doc, self.did(stage, "failed"), "edit", self.handler, "stage_failed",
                      f"The {stage} stage failed: {message}. What landed before it stays.", [], reasoning=rsn.make(
                          f"Stopped the campaign at the {stage} stage; what landed before it stays.",
@@ -283,9 +304,18 @@ class CampaignJob:
         """The change for this reply: every chunk not landed in `clan`."""
         with self.lock:
             self.latest_clan = clan
-            self.cond.notify_all()
             known = known_ids(clan)
             pending = [c for c in self.chunks if not c.ids <= known]
+            # how long the same stages have been waiting to land while the host keeps polling
+            now, sig = time.monotonic(), frozenset(i for c in pending for i in c.ids)
+            if not sig or sig != self._stall_sig:
+                self._stall_sig, self._stall_polls, self._stall_secs = sig, 0, 0.0
+            else:
+                self._stall_polls += 1
+                if self._last_poll is not None and now - self._last_poll < 15:
+                    self._stall_secs += now - self._last_poll
+            self._last_poll = now
+            self.cond.notify_all()
             change = combine(self.doc, pending)
             if change is None and self.state == "done":
                 change = self.last_change
