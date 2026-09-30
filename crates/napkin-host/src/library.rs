@@ -76,7 +76,8 @@ pub struct RecentDoc {
 /// A recent document's state, as its decisions have it.
 #[derive(Serialize, Debug, PartialEq)]
 pub struct RecentState {
-    /// Things a person should check: the decision view's attention list.
+    /// Things a person must check before the lock, one per place: the same
+    /// count as the document's "Needs you".
     pub needs_you: usize,
     /// Locked (Contract 4 §7.1).
     pub locked: bool,
@@ -89,8 +90,16 @@ fn recent_state(id: DocId, bytes: Vec<u8>) -> Option<RecentState> {
     if view.problem.is_some() {
         return None;
     }
+    // Counted as the document's own "Needs you" counts them: what holds the
+    // lock, one item per place.
+    let places: std::collections::BTreeSet<(&str, &str)> = view
+        .attention
+        .iter()
+        .filter(|a| a.blocks_lock)
+        .map(|a| (a.code, a.address.as_deref().unwrap_or(&a.text)))
+        .collect();
     Some(RecentState {
-        needs_you: view.attention.len(),
+        needs_you: places.len(),
         locked: view.lock.locked,
     })
 }

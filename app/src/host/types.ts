@@ -100,7 +100,7 @@ export interface RecentDoc {
 }
 
 export interface RecentState {
-  /** Things a person should check. */
+  /** Things a person must check before the lock, one per place (the document’s own "Needs you"). */
   needs_you: number
   locked: boolean
 }
