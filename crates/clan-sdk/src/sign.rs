@@ -181,6 +181,7 @@ mod tests {
         .unwrap();
         let clan = ClanFile::from_bytes(bytes).unwrap();
         let app = AppInfo {
+            home: None,
             name: "Brief Maker".into(),
             app_id: "ie.napkin.brief".into(),
             version: "1.0.0".into(),

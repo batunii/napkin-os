@@ -665,6 +665,7 @@ fn a_template_with(app_id: &str, name: &str, spinoff: Option<clan_sdk::SpinoffSp
     clan_sdk::make_template(
         &base,
         clan_sdk::AppInfo {
+            home: None,
             name: name.into(),
             app_id: app_id.into(),
             version: "1.0.0".into(),

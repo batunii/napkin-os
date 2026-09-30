@@ -147,6 +147,7 @@ fn template_with(
     make_template(
         &with_view,
         AppInfo {
+            home: None,
             name: "Brief Maker".into(),
             app_id: APP.into(),
             version: version.into(),
@@ -489,6 +490,7 @@ fn spun_off_brief(version: &str) -> (Arc<MemStore>, DocId, DocId) {
     let research = make_template(
         &base,
         AppInfo {
+            home: None,
             name: "Campaign Research".into(),
             app_id: RESEARCH.into(),
             version: "1.0.0".into(),

@@ -123,6 +123,39 @@ pub struct AppInfo {
     /// knows its own schema — a caller should not have to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spinoff: Option<SpinoffSpec>,
+    /// How the app presents itself on the OS home (Napkin Studio OS
+    /// extension). Absent, the home shows the app's name and "Start".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<AppHome>,
+}
+
+/// An app's card on the OS home, in the app's own words. The OS draws only
+/// this, so a new app appears on the home without an OS change.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppHome {
+    /// The app's one colour, `#rrggbb`. The OS mixes the card's cover, ink
+    /// and the tile on recent work from it, for light and dark.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+    /// The card's title, verb first: "Research a market".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<String>,
+    /// One sentence on what the app does: the card's tooltip, and what a
+    /// screen reader hears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<String>,
+    /// The button's words: "Start research".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<String>,
+    /// The agents who work in the app, by the shared figure keys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub crew: Vec<String>,
+    /// What one document is called, and many: `["brief", "briefs"]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub noun: Vec<String>,
+    /// A new document's name until it has its own: "Untitled brief".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub untitled: Option<String>,
 }
 
 /// Declares what a template app accepts as a spin-off source and where the

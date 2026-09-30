@@ -120,6 +120,7 @@ fn template(app_id: &str) -> Vec<u8> {
     clan_sdk::make_template(
         &base,
         clan_sdk::AppInfo {
+            home: None,
             name: "Studio".into(),
             app_id: app_id.into(),
             version: "0.1.0".into(),

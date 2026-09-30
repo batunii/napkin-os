@@ -78,6 +78,7 @@ fn doc(title: &str) -> ClanFile {
 
 fn app(name: &str, app_id: &str, spinoff: Option<SpinoffSpec>) -> AppInfo {
     AppInfo {
+        home: None,
         name: name.into(),
         app_id: app_id.into(),
         version: "0.6.0".into(),

@@ -862,6 +862,7 @@ mod tests {
         .unwrap();
         let clan = ClanFile::from_bytes(bytes).unwrap();
         let app = AppInfo {
+            home: None,
             name: "Brief Maker".into(),
             app_id: "ie.napkin.brief".into(),
             version: "1.0.0".into(),
@@ -948,6 +949,7 @@ mod tests {
         clan = ClanFile::from_bytes(b.build().unwrap()).unwrap();
 
         let app = AppInfo {
+            home: None,
             name: "Seeded".into(),
             app_id: "ie.napkin.seeded".into(),
             version: "1.0.0".into(),
@@ -1006,6 +1008,7 @@ mod tests {
 
         let mut manifest = clan.manifest().clone();
         manifest.app = Some(AppInfo {
+            home: None,
             name: "Brief Maker".into(),
             app_id: app_id.into(),
             version: "1.0.0".into(),
@@ -1050,6 +1053,7 @@ mod tests {
         .unwrap();
         let source = ClanFile::from_bytes(bytes).unwrap();
         let app = AppInfo {
+            home: None,
             name: "Advertising Studio".into(),
             app_id: "ie.napkin.film".into(),
             version: "0.1.0".into(),

@@ -1133,6 +1133,7 @@ fn cmd_app(command: AppCommands, hints: &Hints) -> Result<()> {
             let declares_spinoff =
                 !spinoff_accepts.is_empty() || spinoff_map.is_some() || !lift.is_empty();
             let app = AppInfo {
+                home: None,
                 name: name.clone(),
                 app_id,
                 version,

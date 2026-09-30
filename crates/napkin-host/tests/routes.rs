@@ -312,6 +312,7 @@ fn spinoff_offers_a_target_then_branches_into_it() {
     let template = clan_sdk::make_template(
         &base,
         clan_sdk::AppInfo {
+            home: None,
             name: "Advertising Studio".into(),
             app_id: "ie.napkin.film".into(),
             version: "0.1.0".into(),
@@ -492,6 +493,7 @@ mod upstream {
         let tpl = clan_sdk::make_template(
             &base,
             clan_sdk::AppInfo {
+                home: None,
                 name: name.into(),
                 app_id: app_id.into(),
                 version: "0.6.0".into(),

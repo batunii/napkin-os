@@ -8,7 +8,11 @@
 // campaign's name, Brief Maker from the project name. Until then it says what
 // it is, not which app made it.
 
-/** What a document of a known tool is called before it has a title of its own. */
+/**
+ * What a document of a known tool is called before it has a title of its own,
+ * for a tool that is no longer installed. An installed tool says it itself
+ * (`app.home.untitled`).
+ */
 const UNTITLED: Readonly<Record<string, string>> = {
   'ie.napkin.campaign-research': 'Untitled research',
   'ie.napkin.brief-maker': 'Untitled brief',
@@ -25,11 +29,17 @@ const TOOL_NAMES: Readonly<Record<string, string>> = {
 
 /**
  * A document's title, or what it is while it has none. `appName` is the name
- * its app is installed under, when the shell knows it.
+ * its app is installed under, and `untitled` what the app calls a new
+ * document, when the shell knows them.
  */
-export function docTitle(title: string | null | undefined, appId?: string | null, appName?: string): { text: string; untitled: boolean } {
+export function docTitle(
+  title: string | null | undefined,
+  appId?: string | null,
+  appName?: string,
+  untitled?: string,
+): { text: string; untitled: boolean } {
   const t = (title ?? '').trim()
   const generic = !t || t === appName || /^untitled\b/i.test(t) || t === TOOL_NAMES[appId ?? '']
   if (!generic) return { text: t, untitled: false }
-  return { text: UNTITLED[appId ?? ''] ?? 'Untitled document', untitled: true }
+  return { text: untitled || UNTITLED[appId ?? ''] || 'Untitled document', untitled: true }
 }

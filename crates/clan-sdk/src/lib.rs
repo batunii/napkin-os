@@ -43,7 +43,7 @@ pub use instantiate::{
     instantiate, make_template, spinoff, InstantiateOptions, MakeTemplateOptions, SpinoffOptions,
 };
 pub use manifest::{
-    AppInfo, Carried, ExternalRef, FileEntry, ForkInfo, Lineage, Manifest, MergePolicies,
+    AppHome, AppInfo, Carried, ExternalRef, FileEntry, ForkInfo, Lineage, Manifest, MergePolicies,
     ParentRef, Signature, SpinoffSpec, ViewState, CLAN_VERSION, CLAN_VERSION_MINOR,
 };
 pub use merge::{

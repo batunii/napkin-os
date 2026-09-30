@@ -31,7 +31,7 @@
 use clan_sdk::hash::sha256_prefixed;
 use clan_sdk::{
     create, instantiate, make_template, pack_html, patch_context, patch_requirements, spinoff,
-    validate, AppInfo, ClanBuilder, ClanFile, CreateOptions, DecisionChain, FileEntry,
+    validate, AppHome, AppInfo, ClanBuilder, ClanFile, CreateOptions, DecisionChain, FileEntry,
     InstantiateOptions, MakeTemplateOptions, SpinoffOptions, SpinoffSpec,
 };
 use serde_yaml::Value;
@@ -239,7 +239,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Brief Maker".into(),
             app_id: APP_ID.into(),
             // 0.6: a brief can start from research, carried whole.
-            version: "0.6.0".into(),
+            // 0.7: its card on the OS home (app.home).
+            version: "0.7.0".into(),
             icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some(SCHEMA_PATH.into()),
@@ -252,6 +253,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // seeded from research.
                 upstream: true,
                 ..Default::default()
+            }),
+            // The card on the OS home, in the app's own words.
+            home: Some(AppHome {
+                colour: Some("#C98A1B".into()),
+                job: Some("Write a brief".into()),
+                line: Some(
+                    "Drop in the client’s notes, email or deck. The crew turns them into a brief you can check line by line.".into(),
+                ),
+                start: Some("Start a brief".into()),
+                crew: vec!["extract".into(), "drafter".into(), "judge".into()],
+                noun: vec!["brief".into(), "briefs".into()],
+                untitled: Some("Untitled brief".into()),
             }),
         },
         MakeTemplateOptions::default(),

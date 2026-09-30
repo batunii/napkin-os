@@ -27,7 +27,7 @@
 use clan_sdk::hash::sha256_prefixed;
 use clan_sdk::{
     create, instantiate, make_template, pack_html, patch_context, patch_requirements, validate,
-    AppInfo, ClanBuilder, ClanFile, CreateOptions, FileEntry, InstantiateOptions,
+    AppHome, AppInfo, ClanBuilder, ClanFile, CreateOptions, FileEntry, InstantiateOptions,
     MakeTemplateOptions,
 };
 use std::fs;
@@ -200,13 +200,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Research Tool".into(),
             app_id: APP_ID.into(),
             // 0.2: the Plan-zone identity; figures from the shared snippet.
-            version: "0.3.0".into(),
+            // 0.4: its card on the OS home (app.home).
+            version: "0.4.0".into(),
             icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
             data_seed: None,
             spinoff: None,
+            // The card on the OS home, in the app's own words.
+            home: Some(AppHome {
+                colour: Some("#0F9488".into()),
+                job: Some("Research a market".into()),
+                line: Some(
+                    "Tell us the client and the market. The crew finds the facts, checks every one, and writes a report.".into(),
+                ),
+                start: Some("Start research".into()),
+                crew: vec!["extract".into(), "market_structure".into(), "positioning".into(), "culture".into(), "synthesis".into(), "drafter".into()],
+                noun: vec!["research".into(), "research".into()],
+                untitled: Some("Untitled research".into()),
+            }),
         },
         MakeTemplateOptions::default(),
     )?;

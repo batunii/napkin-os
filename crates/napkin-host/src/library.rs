@@ -13,7 +13,7 @@
 
 use clan_sdk::decision::new_decision_id;
 use clan_sdk::{
-    create, instantiate, make_template, spinoff, AppInfo, ClanBuilder, ClanFile, CreateOptions,
+    create, instantiate, make_template, spinoff, AppHome, AppInfo, ClanBuilder, ClanFile, CreateOptions,
     Decision, DecisionChain, InstantiateOptions, MakeTemplateOptions, SpinoffOptions,
 };
 use serde::Serialize;
@@ -37,6 +37,9 @@ pub struct InstalledApp {
     pub version: String,
     pub path: String,
     pub icon: Option<String>,
+    /// The app's card on the OS home (`app.home`), when it declares one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub home: Option<AppHome>,
 }
 
 /// An installed app that will accept the open document as a spin-off source —
@@ -63,6 +66,33 @@ pub struct RecentDoc {
     pub path: String,
     pub app_id: Option<String>,
     pub updated_at: String,
+    /// What the home can say about it, worked out from its decisions. Absent
+    /// when the chain could not be read: the home then says nothing rather
+    /// than guess.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<RecentState>,
+}
+
+/// A recent document's state, as its decisions have it.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct RecentState {
+    /// Things a person should check: the decision view's attention list.
+    pub needs_you: usize,
+    /// Locked (Contract 4 §7.1).
+    pub locked: bool,
+}
+
+/// A document's [`RecentState`], or `None` when its decisions can't be read.
+fn recent_state(id: DocId, bytes: Vec<u8>) -> Option<RecentState> {
+    let doc = Document::from_bytes(id, bytes).ok()?;
+    let view = crate::ops::decisions::decisions(&doc).ok()?;
+    if view.problem.is_some() {
+        return None;
+    }
+    Some(RecentState {
+        needs_you: view.attention.len(),
+        locked: view.lock.locked,
+    })
 }
 
 /// Scan the app library for installed template apps. Shared by the shell's
@@ -85,6 +115,7 @@ pub fn scan_apps(store: &dyn DocStore) -> Vec<InstalledApp> {
                 version: a.version.clone(),
                 path: id.to_string(),
                 icon: displayable_icon(&clan, a.icon.as_deref()),
+                home: a.home.clone(),
             });
         }
     }
@@ -137,10 +168,18 @@ pub fn scan_recent(store: &dyn DocStore) -> Vec<RecentDoc> {
             path: id.to_string(),
             app_id: m.app.as_ref().map(|a| a.app_id.clone()),
             updated_at: m.updated_at.clone(),
+            state: None,
         });
     }
     out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     out.truncate(12);
+    // Only the dozen the home shows are read for their decisions.
+    for d in &mut out {
+        let id = DocId::new(d.path.clone());
+        if let Ok(bytes) = store.read(&id) {
+            d.state = recent_state(id, bytes);
+        }
+    }
     out
 }
 
@@ -178,6 +217,7 @@ pub fn install_change(store: &dyn DocStore, bytes: Vec<u8>) -> HostResult<(Insta
             version: a.version,
             path: dest.to_string(),
             icon: displayable_icon(&clan, a.icon.as_deref()),
+            home: a.home,
         },
         change,
     ))
@@ -764,6 +804,7 @@ pub fn home_change(store: &dyn DocStore) -> HostResult<(DocId, Option<Change>)> 
     let tpl = make_template(
         &with_html,
         AppInfo {
+            home: None,
             name: "Napkin Studio".into(),
             app_id: "ie.napkin.home".into(),
             version: "1.0.0".into(),
@@ -859,6 +900,7 @@ mod tests {
 
     fn app_info(name: &str, app_id: &str, spinoff: Option<SpinoffSpec>) -> AppInfo {
         AppInfo {
+            home: None,
             name: name.into(),
             app_id: app_id.into(),
             version: "0.1.0".into(),

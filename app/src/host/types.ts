@@ -55,6 +55,26 @@ export interface InstalledApp {
   version: string
   path: string
   icon?: string | null
+  /** Its card on the OS home (`app.home` in its manifest), when it declares one. */
+  home?: AppHome | null
+}
+
+/** An app's card on the OS home, in the app's own words (clan-sdk `AppHome`). */
+export interface AppHome {
+  /** The app's one colour, `#rrggbb`. */
+  colour?: string
+  /** The card's title, verb first. */
+  job?: string
+  /** One sentence: the tooltip, and what a screen reader hears. */
+  line?: string
+  /** The button's words. */
+  start?: string
+  /** Shared figure keys. */
+  crew?: string[]
+  /** What one document is called, and many. */
+  noun?: string[]
+  /** A new document's name until it has its own. */
+  untitled?: string
 }
 
 /**
@@ -75,6 +95,14 @@ export interface RecentDoc {
   path: string
   app_id?: string | null
   updated_at: string
+  /** Worked out from its decisions; absent when they could not be read. */
+  state?: RecentState | null
+}
+
+export interface RecentState {
+  /** Things a person should check. */
+  needs_you: number
+  locked: boolean
 }
 
 // ── The decision view (`napkin_host::ops::decisions`) ─────────────────────────

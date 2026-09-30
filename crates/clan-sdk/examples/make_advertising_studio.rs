@@ -85,6 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let template_bytes = make_template(
         &clan,
         AppInfo {
+            home: None,
             name: "Advertising Studio".into(),
             app_id: "ie.napkin.film".into(),
             version: "0.1.0".into(),
@@ -195,6 +196,7 @@ fn brief_maker_stub() -> Result<ClanFile, Box<dyn std::error::Error>> {
     let bytes = make_template(
         &clan,
         AppInfo {
+            home: None,
             name: "Brief Maker".into(),
             app_id: "ie.napkin.brief".into(),
             version: "1.0.0".into(),
