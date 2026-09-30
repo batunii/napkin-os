@@ -32,10 +32,13 @@ MIGRATIONS = HERE.parent / "migrations"
 REPO = HERE.parent.parent
 TAXONOMY = REPO / "docs" / "contracts" / "peripherals" / "taxonomy.json"
 GEOGRAPHIES = HERE.parent / "data" / "geographies.json"
+MEASURES = HERE.parent / "data" / "measures.json"
 
 PLAN = {
-    "category": ["0001_core.sql", "0002_category.sql", "0003_append.sql", "0004_cells.sql"],
-    "agency": ["0001_core.sql", "0002_agency.sql", "0003_append.sql"],
+    "category": ["0001_core.sql", "0002_category.sql", "0003_append.sql", "0004_cells.sql", "0005_cell_confidence.sql",
+                 "0006_period_basis.sql", "0007_measures.sql", "0008_retract.sql", "0009_shared_scope.sql"],
+    "agency": ["0001_core.sql", "0002_agency.sql", "0003_append.sql", "0006_period_basis.sql", "0007_measures.sql",
+               "0008_retract.sql"],
 }
 ROLE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 AGENCY = re.compile(r"^org/[a-z0-9][a-z0-9-]{0,62}$")
@@ -84,7 +87,33 @@ def migrate(conn: psycopg.Connection, kind: str, owner_role: str, app_role: str,
     seed_geographies(conn, owner_role)
     if kind == "category":
         seed_taxonomy(conn, owner_role, taxonomy)
+        seed_measures(conn, owner_role)
     return applied
+
+
+def seed_measures(conn: psycopg.Connection, owner_role: str, path: Path = MEASURES) -> int:
+    """The measure list, upserted. A measure that leaves the file is retired, not
+    deleted: facts may already use its key."""
+    doc = json.loads(path.read_text())
+    status = doc.get("status", "draft")
+    keys = []
+    with conn.transaction():
+        conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(owner_role)))
+        for lens, spec in doc["lenses"].items():
+            for m in spec["measures"]:
+                keys.append(m["key"])
+                conn.execute("""INSERT INTO layers.measures (key, lens, units, cardinality, qualifier, definition,
+                                                             search_group, status)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (key) DO UPDATE SET lens = EXCLUDED.lens, units = EXCLUDED.units,
+                                  cardinality = EXCLUDED.cardinality, qualifier = EXCLUDED.qualifier,
+                                  definition = EXCLUDED.definition, search_group = EXCLUDED.search_group,
+                                  status = EXCLUDED.status, updated_at = now()""",
+                             (m["key"], lens, m["units"], m["cardinality"], m["qualifier"], m["definition"],
+                              m["group"], m.get("status", status)))
+        conn.execute("UPDATE layers.measures SET status = 'retired', updated_at = now() "
+                     "WHERE NOT (key = ANY (%s)) AND status <> 'retired'", (keys,))
+    return len(keys)
 
 
 def seed_geographies(conn: psycopg.Connection, owner_role: str, path: Path = GEOGRAPHIES) -> int:

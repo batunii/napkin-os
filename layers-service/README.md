@@ -13,7 +13,8 @@ sources    one row per URL                    uri, publisher, tier, licence
 captures   one row per reading of it          retrieved_at, published_at + basis, content hash
 excerpts   verbatim passages from a reading   text (<= 1,500 chars), sha256 computed here
 facts      one row per fact version           typed value, unit, market + market_basis,
-                                              period_start..period_end, date_basis, status,
+                                              period_start..period_end, date_basis,
+                                              period_basis (stated | inferred), status,
                                               supersedes / superseded_by
 evidence   fact <- the exact span of an excerpt that says it (quote, start, end)
 decisions  the decision behind every write, whole
@@ -63,7 +64,7 @@ The unit a planner reads (Planner Research Taxonomy, panels 3 and 4): one leaf
 | Table | Holds |
 |---|---|
 | `lenses` | the eight standing questions, each with its cadence; `amber_cadence` is the stricter clock for a regulated leaf |
-| `cells` | opened per leaf and market by the tree owner (`layers.open_cells(leaf, market)` makes its eight) |
+| `cells` | opened per leaf and market by the job that researches them (`layers.open_cells(leaf, market)` makes its eight) |
 | `cell_versions` | every confirmation, never overwritten: summary in our words, what changed since last time, confidence, last-confirmed date, author (`agent:…` or `human:…`) |
 | `cell_citations` | what a version stands on: facts, or verbatim excerpts for qualitative claims (codes, culture) |
 | `cell_verifications` | a person confirming an agent-written version |
@@ -74,6 +75,23 @@ its key is under the lens's prefix, it is about this leaf (or a named
 competitor), it is not superseded, and its market applies (an IE cell may cite
 IE, EU and GLOBAL facts, never GB). A cell with fewer than 3 sources is kept
 and shown as thin, not refused.
+
+## Measures: the category layer's vocabulary (`0007_measures.sql`)
+
+The category layer speaks only the measure list, `data/measures.json` (a
+draft, for a planner to approve), loaded into `layers.measures` by the runner:
+65 measures across the 8 lenses, each with its units, a cardinality, the kind
+of qualifier it takes, a definition, and the search group that finds it.
+
+- **Qualifier:** what tells rows of a measure apart. `market.player_share`
+  for "Aldi" and for "Lidl" are two facts, not a contest. Compared normalised
+  (case and spacing).
+- **Cardinality `many`:** a list (claims, moments, codes, restrictions). A new
+  item is **added** beside the others and never contests or supersedes; the
+  same item again corroborates. Single-valued measures keep the dating rules.
+- **Unlisted measures** are refused by `append_fact` and go to
+  `layers.measure_proposals`, with the passage that states them, for a
+  planner to add to the list or refuse.
 
 ## The append rule (`layers.append_fact`, owner's decisions 2026-09-29)
 
@@ -92,14 +110,17 @@ serialised per entity + key by an advisory lock.
 | nothing | undated | **created**, active, date unknown |
 
 A period is a range: "2025" is 2025-01-01..2025-12-31, and a Q4 figure is a
-different period from an annual one. The date we read the page never decides
+different period from an annual one. `period_basis` says whether the passage
+**stated** the period or it was **inferred** from context (a comparison, the
+publication date). "Stated" is checked: the year the period ends in must
+appear in one of the fact's own passages, or the fact is refused (0006). The date we read the page never decides
 anything; it only says how fresh our reading is.
 
 ## Running
 
 ```sh
 uv sync                     # psycopg; dev: pytest + pgserver (a real Postgres 16)
-uv run pytest -q            # 55 tests, no Postgres to install
+uv run pytest -q            # 73 tests, no Postgres to install
 
 # apply to a database (as an admin who is a member of the owner role)
 uv run python -m napkin_layers.migrate --dsn "$DSN/napkin_category" --kind category \

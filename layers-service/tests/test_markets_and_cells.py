@@ -66,9 +66,9 @@ def test_unknown_market_needs_unknown_basis_and_back(session):
 def test_an_irish_and_an_eu_figure_never_contest(session):
     with session() as s:
         ie = s.append(0.20, quote="20% in Ireland", excerpt=s.capture(text="EV share was 20% in Ireland."),
-                      period=Y2025, key="market.bev_share")
+                      period=Y2025, key="market.segment_share", qualifier="BEV", unit="proportion")
         eu = s.append(0.15, quote="15% across the EU", excerpt=s.capture(uri="https://eu.example", text="15% across the EU."),
-                      period=Y2025, key="market.bev_share", market="EU")
+                      period=Y2025, key="market.segment_share", qualifier="BEV", unit="proportion", market="EU")
         assert ie["outcome"] == "created" and eu["outcome"] == "created"
         assert s.status(ie["fact"]) == "active" and s.status(eu["fact"]) == "active"
 
@@ -83,7 +83,7 @@ def confirm(s, n, citations, lens="market_structure", leaf=PLAIN, market="IE", a
             summary="Three players; public charging grew 38% in 2025.", change="first version"):
     return s.one("SELECT layers.confirm_cell(%s)", (Jsonb({
         "leaf": leaf, "lens": lens, "market": market, "summary": summary, "change_note": change,
-        "confidence": "medium", "author": author, "citations": citations, "decision": dec(n)}),))[0]
+        "author": author, "citations": citations, "decision": dec(n)}),))[0]
 
 
 def test_opening_a_leaf_creates_its_eight_cells_once(session):
@@ -120,7 +120,7 @@ def test_a_cell_is_stale_when_its_clock_runs_out(session, pg):
     with session() as s:
         s.one("SELECT layers.open_cells(%s, 'IE')", (PLAIN,))
         f = s.append(1, quote="1 player", excerpt=s.capture(text="Only 1 player in 2025."), period=Y2025,
-                     key="market.players_old")
+                     key="market.top_n_share", qualifier="top 1", unit="proportion")
         v = confirm(s, "stale", [{"fact_id": f["fact"]}])
         s.conn.commit()
     with psycopg.connect(dburi(pg, "napkin_category", "napkin_admin"), autocommit=True) as a:
@@ -134,7 +134,7 @@ def test_a_cell_is_stale_when_its_clock_runs_out(session, pg):
 
 
 def test_an_amber_leaf_keeps_regulation_on_a_monthly_clock(session, pg):
-    """If the tree owner relaxes regulation to quarterly for plain leaves, an
+    """If the lens cadence for regulation is relaxed to quarterly for plain leaves, an
     amber leaf (its own regulator) still refreshes monthly."""
     import datetime as dt
     from conftest import uri as dburi
@@ -160,10 +160,10 @@ def test_a_cell_cites_only_facts_that_answer_it(session):
     with session() as s:
         s.one("SELECT layers.open_cells(%s, 'IE')", (PLAIN,))
         media = s.append(5, quote="5 million", excerpt=s.capture(text="Spend of 5 million in 2025."), period=Y2025,
-                         key="media.adspend_eur")
+                         key="media.adspend_total", qualifier="whole market")
         refused(s, lambda: confirm(s, "wronglens", [{"fact_id": media["fact"]}]), "do not answer")
         gb = s.append(9, quote="9 players", excerpt=s.capture(uri="https://gb.example", text="9 players in 2025."),
-                      period=Y2025, key="market.players", market="GB")
+                      period=Y2025, key="market.player_count", unit="count", market="GB")
         refused(s, lambda: confirm(s, "wrongmarket", [{"fact_id": gb["fact"]}]), "do not answer")
 
 
@@ -171,10 +171,11 @@ def test_an_ie_cell_may_cite_eu_and_global_facts(session):
     with session() as s:
         s.one("SELECT layers.open_cells(%s, 'IE')", (PLAIN,))
         eu = s.append(0.15, quote="15% across the EU", excerpt=s.capture(uri="https://eu2.example",
-                      text="15% across the EU."), period=Y2025, key="market.eu_share", market="EU")
+                      text="15% across the EU."), period=Y2025, key="market.segment_share", qualifier="EV",
+                      unit="proportion", market="EU")
         gl = s.append(17_000_000, quote="17 million", excerpt=s.capture(uri="https://iea.example",
-                      text="17 million EVs sold worldwide in 2025."), period=Y2025, key="market.world_units",
-                      market="GLOBAL")
+                      text="17 million EVs sold worldwide in 2025."), period=Y2025, key="market.size_volume",
+                      unit="units", market="GLOBAL")
         r = confirm(s, "eugl", [{"fact_id": eu["fact"]}, {"fact_id": gl["fact"]}])
         assert r["sources"] == 2
 
@@ -199,7 +200,7 @@ def test_a_person_verifies_an_agent_version(session):
         r = confirm(s, "reg", [{"excerpt_id": a[0]}], lens="regulation_clearance", leaf=LEAF,
                     summary="ASAI polices speed claims.")
         s.q("INSERT INTO layers.decisions (id, kind, org, body) VALUES ('d_ver', 'approve', 'org/acme', '{}')")
-        s.q("INSERT INTO layers.cell_verifications (version_id, verified_by, decision_id) VALUES (%s, 'human:tree-owner', 'd_ver')",
+        s.q("INSERT INTO layers.cell_verifications (version_id, verified_by, decision_id) VALUES (%s, 'human:planner', 'd_ver')",
             (r["id"],))
         assert s.one("SELECT verified FROM layers.cell_status WHERE leaf = %s AND lens = 'regulation_clearance' "
                      "AND market = 'IE'", (LEAF,))[0] is True
@@ -210,3 +211,40 @@ def test_the_writer_org_is_stamped_from_scope(session):
         s.one("SELECT layers.open_cells(%s, 'GB')", (PLAIN,))
         assert s.one("SELECT opened_by_org FROM layers.cells WHERE leaf = %s AND market = 'GB' LIMIT 1",
                      (PLAIN,))[0] == "org/globex"
+
+
+# ── confidence is derived by the database (0005) ──────────────────────────────
+
+def test_confidence_is_derived_from_the_sources_not_sent(session):
+    with session() as s:
+        s.one("SELECT layers.open_cells(%s, 'IE')", (LEAF,))
+        one = s.capture(uri="https://c1.example", text="Mobile code one.", publisher="A", tier="secondary")
+        two = s.capture(uri="https://c2.example", text="Mobile code two.", publisher="B", tier="secondary")
+        three = s.capture(uri="https://c3.example", text="Mobile code three.", publisher="C", tier="primary")
+        same = s.capture(uri="https://c4.example", text="Mobile code four.", publisher="A", tier="secondary")
+        low = confirm(s, "c-low", [{"excerpt_id": one[0]}, {"excerpt_id": same[0]}], lens="category_codes", leaf=LEAF)
+        mid = confirm(s, "c-mid", [{"excerpt_id": one[0]}, {"excerpt_id": two[0]}], lens="category_codes", leaf=LEAF)
+        high = confirm(s, "c-high", [{"excerpt_id": one[0]}, {"excerpt_id": two[0]}, {"excerpt_id": three[0]}],
+                       lens="category_codes", leaf=LEAF)
+        assert (low["confidence"], low["publishers"]) == ("low", 1)      # two pages, one publisher
+        assert (mid["confidence"], mid["publishers"]) == ("medium", 2)
+        assert (high["confidence"], high["publishers"]) == ("high", 3)
+
+
+def test_three_publishers_without_a_primary_source_are_medium(session):
+    with session() as s:
+        s.one("SELECT layers.open_cells(%s, 'IE')", (LEAF,))
+        ids = [s.capture(uri=f"https://d{i}.example", text=f"Rhythm note {i}.", publisher=p, tier="tertiary")[0]
+               for i, p in enumerate("XYZ")]
+        r = confirm(s, "d-mid", [{"excerpt_id": e} for e in ids], lens="rhythm_moments", leaf=LEAF)
+        assert r["confidence"] == "medium"
+
+
+def test_a_self_reported_confidence_is_refused(session):
+    with session() as s:
+        s.one("SELECT layers.open_cells(%s, 'IE')", (LEAF,))
+        e = s.capture(uri="https://e.example", text="Media note.")
+        refused(s, lambda: s.one("SELECT layers.confirm_cell(%s)", (Jsonb({
+            "leaf": LEAF, "lens": "media_spend", "market": "IE", "summary": "x", "change_note": "First version.",
+            "confidence": "high", "author": "agent:t", "citations": [{"excerpt_id": e[0]}],
+            "decision": dec("self")}),)), "derived from the sources")

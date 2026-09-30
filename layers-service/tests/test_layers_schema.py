@@ -41,9 +41,10 @@ def test_same_value_same_period_corroborates_and_adds_evidence(session):
 def test_numbers_compare_as_numbers(session):
     with session() as s:
         text = "Share was 0.20 in 2025 and 0.2 by another count."
-        a = s.append(0.20, quote="0.20 in 2025", excerpt=s.capture(text=text), period=Y2025, key="market.share")
+        a = s.append(0.20, quote="0.20 in 2025", excerpt=s.capture(text=text), period=Y2025,
+                     key="market.player_share", qualifier="Tesla", unit="proportion")
         b = s.append(0.2, quote="0.2 by another count", excerpt=s.capture(uri="https://b.ie", text=text),
-                     period=Y2025, key="market.share")
+                     period=Y2025, key="market.player_share", qualifier="Tesla", unit="proportion")
         assert b["outcome"] == "corroborated" and b["fact"] == a["fact"]
 
 
@@ -105,11 +106,11 @@ def test_undated_same_value_corroborates_the_dated_row(session):
 
 def test_undated_rows_disagreeing_contest(session):
     with session() as s:
-        a = s.append("price", quote="price", excerpt=s.capture(text="Every ad leads on price."),
-                     key="codes.dominant_code")
-        b = s.append("range anxiety", quote="range anxiety",
-                     excerpt=s.capture(uri="https://c.ie", text="Ads all fight range anxiety."),
-                     key="codes.dominant_code")
+        a = s.append("Tesla", quote="Tesla", excerpt=s.capture(text="Tesla leads the market."),
+                     key="market.leader", unit="text")
+        b = s.append("BYD", quote="BYD",
+                     excerpt=s.capture(uri="https://c.ie", text="BYD now leads the market."),
+                     key="market.leader", unit="text")
         assert a["outcome"] == "created" and b["outcome"] == "contested"
         assert s.status(a["fact"]) == "contested"
 
@@ -127,9 +128,10 @@ def test_a_dated_fact_takes_precedence_over_undated_rows(session):
 
 def test_versions_count_per_entity_and_key_across_markets(session):
     with session() as s:
-        ie = s.append(1, quote="1", excerpt=s.capture(text="1 in Ireland"), period=Y2025, key="market.players")
-        gb = s.append(2, quote="2", excerpt=s.capture(text="2 in Britain"), period=Y2025, key="market.players",
-                      market="GB")
+        ie = s.append(1, quote="1", excerpt=s.capture(text="1 in Ireland"), period=Y2025, key="market.player_count",
+                      unit="count")
+        gb = s.append(2, quote="2", excerpt=s.capture(text="2 in Britain"), period=Y2025, key="market.player_count",
+                      market="GB", unit="count")
         v = dict(s.q("SELECT market, version FROM layers.facts WHERE id = ANY(%s)", ([ie["fact"], gb["fact"]],)))
         assert v == {"IE": 1, "GB": 2}
 
@@ -151,9 +153,11 @@ def test_concurrent_appends_to_one_identity_are_serialised(session, pg):
         conns[0].commit(); conns[1].commit()
         for c in conns:
             c.execute("SELECT set_config('napkin.org', 'org/acme', true)")
-        r1 = s1.append(7, quote="7 players", excerpt=e1, period=Y2025, key="market.race")
+        r1 = s1.append(7, quote="7 players", excerpt=e1, period=Y2025, key="market.player_count", unit="count",
+                       entity="category/automotive.used_dealer")
         t = threading.Thread(target=lambda: results.append(
-            s2.append(9, quote="9 players", excerpt=e2, period=Y2025, key="market.race")))
+            s2.append(9, quote="9 players", excerpt=e2, period=Y2025, key="market.player_count", unit="count",
+                      entity="category/automotive.used_dealer")))
         t.start()
         t.join(1.0)
         assert t.is_alive(), "the second writer must wait for the first"
@@ -174,7 +178,7 @@ def test_a_quote_not_in_its_excerpt_is_refused(session):
         exc = s.capture()
         refused(s, lambda: s.one(
             """SELECT layers.append_fact('{"id":"f_x","layer":"category","entity":"category/automotive.ev_charging",
-               "key":"market.size_eur","market":"IE","market_basis":"stated","value":1,"unit":"eur","licence":"open"}',
+               "key":"market.size_value","market":"IE","market_basis":"stated","value":1,"unit":"eur","licence":"open"}',
                %s, '{"id":"d_x","kind":"pin"}')""",
             (psycopg.types.json.Jsonb([{"excerpt_id": exc[0], "quote": "€450 million", "quote_start": 0}]),)),
             "not verbatim")
@@ -185,7 +189,7 @@ def test_a_quote_at_the_wrong_offset_is_refused(session):
         exc = s.capture()
         refused(s, lambda: s.one(
             """SELECT layers.append_fact('{"id":"f_y","layer":"category","entity":"category/automotive.ev_charging",
-               "key":"market.size_eur","market":"IE","market_basis":"stated","value":1,"unit":"eur","licence":"open"}',
+               "key":"market.size_value","market":"IE","market_basis":"stated","value":1,"unit":"eur","licence":"open"}',
                %s, '{"id":"d_y","kind":"pin"}')""",
             (psycopg.types.json.Jsonb([{"excerpt_id": exc[0], "quote": "€432 million", "quote_start": 0}]),)),
             "not verbatim")
@@ -195,7 +199,7 @@ def test_a_fact_needs_evidence(session):
     with session() as s:
         refused(s, lambda: s.one(
             """SELECT layers.append_fact('{"id":"f_z","layer":"category","entity":"category/automotive.ev_charging",
-               "key":"market.size_eur","market":"IE","market_basis":"stated","value":1,"unit":"eur","licence":"open"}', '[]', '{"id":"d_z","kind":"pin"}')"""),
+               "key":"market.size_value","market":"IE","market_basis":"stated","value":1,"unit":"eur","licence":"open"}', '[]', '{"id":"d_z","kind":"pin"}')"""),
             "at least one piece of evidence")
 
 
@@ -247,9 +251,12 @@ def test_nothing_is_deleted(session):
 def test_a_decision_id_never_carries_two_bodies(session):
     with session() as s:
         dec = {"id": "d_same", "kind": "pin", "rationale": "first"}
-        s.append(1, quote="€432 million", excerpt=s.capture(), period=Y2025, key="market.a", decision=dec)
-        s.append(2, quote="€432 million", excerpt=s.capture(), period=Y2025, key="market.b", decision=dec)
-        refused(s, lambda: s.append(3, quote="€432 million", excerpt=s.capture(), period=Y2025, key="market.c",
+        s.append(1, quote="€432 million", excerpt=s.capture(), period=Y2025, key="market.player_share", qualifier="A",
+                 unit="proportion", decision=dec)
+        s.append(0.2, quote="€432 million", excerpt=s.capture(), period=Y2025, key="market.player_share",
+                 qualifier="B", unit="proportion", decision=dec)
+        refused(s, lambda: s.append(0.3, quote="€432 million", excerpt=s.capture(), period=Y2025,
+                                    key="market.player_share", qualifier="C", unit="proportion",
                                     decision={**dec, "rationale": "changed"}), "idempotency_conflict")
 
 
@@ -295,7 +302,7 @@ def test_scope_in_the_body_is_refused(session):
         exc = s.capture()
         refused(s, lambda: s.one(
             """SELECT layers.append_fact('{"id":"f_s","layer":"category","org":"org/other",
-               "entity":"category/automotive.ev_charging","key":"market.size_eur","value":1,"unit":"eur",
+               "entity":"category/automotive.ev_charging","key":"market.size_value","value":1,"unit":"eur",
                "licence":"open"}', %s, '{"id":"d_s","kind":"pin"}')""",
             (psycopg.types.json.Jsonb([{"excerpt_id": exc[0], "quote": "€432", "quote_start": 22}]),)),
             "scope comes from the transaction")

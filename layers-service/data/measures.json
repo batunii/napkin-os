@@ -1,0 +1,761 @@
+{
+ "about": "The fixed list of measures per lens (DRAFT, for a planner to approve). Drawn from the pilot's 410 keys and the Planner Research Taxonomy's standing questions. key = <lens prefix>.<measure>. cardinality: one = a single value per period (and per qualifier) whose rivals contest; many = a list whose items sit side by side and never contest. qualifier: what distinguishes one row of the measure from another (none, player, channel, segment, moment, statement, rule, body, parent, metric, campaign). group: which targeted search finds it (1-3 per lens).",
+ "status": "draft",
+ "lenses": {
+  "market_structure": {
+   "groups": {
+    "1": "market size and growth: value, volume, growth rates, consumption per head",
+    "2": "players and shares: the leading players, their market shares, the top brands, how many players",
+    "3": "structure: channel split (on-trade, off-trade, online), segments, exports, consolidation and deals"
+   },
+   "measures": [
+    {
+     "key": "market.size_value",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "Total market value in the period."
+    },
+    {
+     "key": "market.size_volume",
+     "units": [
+      "units",
+      "count"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "Total market volume in the period, in the unit stated (litres, cases, units)."
+    },
+    {
+     "key": "market.value_growth_yoy",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "Year-on-year change in market value."
+    },
+    {
+     "key": "market.volume_growth_yoy",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "Year-on-year change in market volume."
+    },
+    {
+     "key": "market.per_capita_consumption",
+     "units": [
+      "units",
+      "count"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "Consumption per head (or per adult) in the period, in the unit stated."
+    },
+    {
+     "key": "market.share_of_parent_value",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "parent",
+     "group": 1,
+     "definition": "The category's share of a wider market BY VALUE (sales value), e.g. of the 'alcohol market'."
+    },
+    {
+     "key": "market.share_of_parent_volume",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "parent",
+     "group": 1,
+     "definition": "The category's share of a wider market BY VOLUME (litres, units, cases), e.g. of the 'alcohol market'."
+    },
+    {
+     "key": "market.leader",
+     "units": [
+      "text"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "The market-leading player or brand. The value is its name only (e.g. 'Bulmers'), nothing else."
+    },
+    {
+     "key": "market.player_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "player",
+     "group": 2,
+     "definition": "A named player's or brand's share of the market."
+    },
+    {
+     "key": "market.top_n_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "metric",
+     "group": 2,
+     "definition": "Combined share of the top N players (qualifier: e.g. 'top 5')."
+    },
+    {
+     "key": "market.player_count",
+     "units": [
+      "count"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "Number of players, brands or producers in the market."
+    },
+    {
+     "key": "market.channel_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "channel",
+     "group": 3,
+     "definition": "Share of sales through a channel (qualifier: on-trade, off-trade, online, forecourt...)."
+    },
+    {
+     "key": "market.segment_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "segment",
+     "group": 3,
+     "definition": "Share of the market held by a product segment (qualifier: the segment)."
+    },
+    {
+     "key": "market.export_value",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 3,
+     "definition": "Value of exports in the period."
+    },
+    {
+     "key": "market.consolidation_event",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 3,
+     "definition": "A merger, acquisition, entry or exit in the market."
+    }
+   ]
+  },
+  "brands_positioning": {
+   "groups": {
+    "1": "brand claims and assets: what each brand says it stands for, its lines and distinctive assets, its price position",
+    "2": "brand moves: launches, campaigns, sponsorships, agency appointments",
+    "3": "brand measures: prompted awareness, number of brands"
+   },
+   "measures": [
+    {
+     "key": "positioning.claim",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 1,
+     "definition": "A claim or line a brand uses about itself."
+    },
+    {
+     "key": "positioning.asset",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 1,
+     "definition": "A distinctive brand asset (character, sound, visual, pack)."
+    },
+    {
+     "key": "positioning.price_position",
+     "units": [
+      "text"
+     ],
+     "cardinality": "one",
+     "qualifier": "player",
+     "group": 1,
+     "definition": "Where the brand sits on price (value, mainstream, premium)."
+    },
+    {
+     "key": "positioning.launch",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 2,
+     "definition": "A product or range launch."
+    },
+    {
+     "key": "positioning.campaign",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 2,
+     "definition": "A named campaign and what it said."
+    },
+    {
+     "key": "positioning.sponsorship",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 2,
+     "definition": "A sponsorship or partnership."
+    },
+    {
+     "key": "positioning.agency_appointment",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 2,
+     "definition": "An agency appointed or changed, and for what."
+    },
+    {
+     "key": "positioning.awareness_prompted",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "player",
+     "group": 3,
+     "definition": "Prompted awareness of a brand."
+    },
+    {
+     "key": "positioning.brand_count",
+     "units": [
+      "count"
+     ],
+     "cardinality": "one",
+     "qualifier": "none",
+     "group": 3,
+     "definition": "Number of brands competing in the category."
+    }
+   ]
+  },
+  "consumer_culture": {
+   "groups": {
+    "1": "who buys: penetration, segments, purchase frequency and occasions",
+    "2": "attitudes: survey findings on attitudes, barriers and motivations, with the share who hold them",
+    "3": "culture: live cultural tensions and trends around the category"
+   },
+   "measures": [
+    {
+     "key": "consumer.penetration",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "segment",
+     "group": 1,
+     "definition": "Share of households or adults who buy (qualifier: the population, e.g. 'all adults', '18-34')."
+    },
+    {
+     "key": "consumer.segment_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "segment",
+     "group": 1,
+     "definition": "A buyer segment's share of buyers or spend."
+    },
+    {
+     "key": "consumer.occasion",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "An occasion the category is bought or used for."
+    },
+    {
+     "key": "consumer.attitude_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "statement",
+     "group": 2,
+     "definition": "Share of people agreeing with a stated attitude (qualifier: the statement, short)."
+    },
+    {
+     "key": "consumer.attitude",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "An attitude or belief about the category, without a figure."
+    },
+    {
+     "key": "consumer.barrier",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "A reason people do not buy or buy less."
+    },
+    {
+     "key": "consumer.motivation",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "A reason people buy."
+    },
+    {
+     "key": "consumer.cultural_tension",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 3,
+     "definition": "A live cultural tension the category sits in."
+    },
+    {
+     "key": "consumer.trend",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 3,
+     "definition": "A consumer trend affecting the category."
+    }
+   ]
+  },
+  "category_codes": {
+   "groups": {
+    "1": "advertising conventions: what every ad in the category does, its visual, verbal and sound codes",
+    "2": "worn-out and challenger codes: the cliches, and brands that break the conventions"
+   },
+   "measures": [
+    {
+     "key": "codes.dominant_code",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "A convention most ads in the category follow."
+    },
+    {
+     "key": "codes.visual_code",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "A recurring visual convention."
+    },
+    {
+     "key": "codes.verbal_code",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "A recurring verbal or claim convention."
+    },
+    {
+     "key": "codes.sound_code",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "A recurring music or sound convention."
+    },
+    {
+     "key": "codes.worn_out_code",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "A convention described as tired or cliched."
+    },
+    {
+     "key": "codes.challenger_code",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "player",
+     "group": 2,
+     "definition": "A brand breaking the category's conventions, and how."
+    }
+   ]
+  },
+  "rhythm_moments": {
+   "groups": {
+    "1": "the calendar: seasonal peaks, key moments, launch windows and cycles",
+    "2": "moments in figures: share of sales in peak periods, spend and sales growth around moments"
+   },
+   "measures": [
+    {
+     "key": "rhythm.key_moment",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "A moment the category plans around (a season, event, holiday)."
+    },
+    {
+     "key": "rhythm.launch_window",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "When launches usually happen."
+    },
+    {
+     "key": "rhythm.cycle",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 1,
+     "definition": "A buying or contract cycle (renewals, contract ends, weather)."
+    },
+    {
+     "key": "rhythm.period_share_of_sales",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "moment",
+     "group": 2,
+     "definition": "Share of annual sales in a period (qualifier: the period, e.g. 'Q4', 'Christmas')."
+    },
+    {
+     "key": "rhythm.moment_spend",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "moment",
+     "group": 2,
+     "definition": "Consumer spend at a moment (qualifier: the moment)."
+    },
+    {
+     "key": "rhythm.moment_sales_growth",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "moment",
+     "group": 2,
+     "definition": "Change in sales around a moment against the year before."
+    }
+   ]
+  },
+  "media_spend": {
+   "groups": {
+    "1": "total and category advertising spend, and its growth",
+    "2": "spend by channel: TV, radio, outdoor, digital, social, search, display; channel shares",
+    "3": "share of voice and the cost of attention (CPM, cost per reach)"
+   },
+   "measures": [
+    {
+     "key": "media.adspend_total",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "parent",
+     "group": 1,
+     "definition": "Total advertising spend (qualifier: 'whole market' or the category)."
+    },
+    {
+     "key": "media.adspend_growth_yoy",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "parent",
+     "group": 1,
+     "definition": "Year-on-year change in advertising spend (qualifier as above)."
+    },
+    {
+     "key": "media.adspend_forecast",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "parent",
+     "group": 1,
+     "definition": "Forecast advertising spend for a coming period."
+    },
+    {
+     "key": "media.channel_adspend",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "channel",
+     "group": 2,
+     "definition": "Spend in one channel (qualifier: tv, radio, outdoor, digital, social, search, display, print, cinema)."
+    },
+    {
+     "key": "media.channel_share",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "channel",
+     "group": 2,
+     "definition": "A channel's share of spend."
+    },
+    {
+     "key": "media.share_of_voice",
+     "units": [
+      "proportion"
+     ],
+     "cardinality": "one",
+     "qualifier": "player",
+     "group": 3,
+     "definition": "A brand's share of category advertising."
+    },
+    {
+     "key": "media.cost_of_attention",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "channel",
+     "group": 3,
+     "definition": "Cost per thousand or per reach point in a channel."
+    }
+   ]
+  },
+  "regulation_clearance": {
+   "groups": {
+    "1": "which codes and laws apply, which regulator enforces them, and what needs pre-clearance",
+    "2": "what you cannot say: restrictions, mandatory copy, substantiation, age and audience rules",
+    "3": "what is changing: pending legislation, recent rulings and enforcement, grants and levies"
+   },
+   "measures": [
+    {
+     "key": "regulation.code_applies",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "body",
+     "group": 1,
+     "definition": "A code or law that applies to the category's marketing (qualifier: the body)."
+    },
+    {
+     "key": "regulation.preclearance_required",
+     "units": [
+      "boolean"
+     ],
+     "cardinality": "one",
+     "qualifier": "body",
+     "group": 1,
+     "definition": "Whether ads need pre-clearance (qualifier: the clearing body)."
+    },
+    {
+     "key": "regulation.restriction",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "rule",
+     "group": 2,
+     "definition": "Something marketing may not do (timing, audience, placement, content)."
+    },
+    {
+     "key": "regulation.mandatory_copy",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "Wording or warnings that must appear."
+    },
+    {
+     "key": "regulation.substantiation",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "What claims must be backed by, and how."
+    },
+    {
+     "key": "regulation.age_rule",
+     "units": [
+      "years"
+     ],
+     "cardinality": "one",
+     "qualifier": "rule",
+     "group": 2,
+     "definition": "An age limit in the rules (qualifier: the rule, e.g. 'people shown in ads')."
+    },
+    {
+     "key": "regulation.pending_change",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 3,
+     "definition": "A proposed or scheduled change to the rules, with its date if known."
+    },
+    {
+     "key": "regulation.enforcement_case",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "body",
+     "group": 3,
+     "definition": "A recent ruling or enforcement action and its outcome."
+    },
+    {
+     "key": "regulation.levy_or_deposit",
+     "units": [
+      "eur",
+      "gbp",
+      "usd"
+     ],
+     "cardinality": "one",
+     "qualifier": "rule",
+     "group": 3,
+     "definition": "A levy, deposit or fee set by the rules (qualifier: what it applies to)."
+    },
+    {
+     "key": "regulation.grant",
+     "units": [
+      "eur",
+      "gbp",
+      "usd",
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 3,
+     "definition": "A grant or incentive available in the category."
+    }
+   ]
+  },
+  "effectiveness_evidence": {
+   "groups": {
+    "1": "award-winning and published effectiveness cases in the category and what they achieved",
+    "2": "evidence on what works: long vs short term, share of voice, pricing power"
+   },
+   "measures": [
+    {
+     "key": "effectiveness.case",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "campaign",
+     "group": 1,
+     "definition": "A published effectiveness case: the brand, campaign and what it did."
+    },
+    {
+     "key": "effectiveness.case_result",
+     "units": [
+      "proportion",
+      "eur",
+      "gbp",
+      "usd",
+      "count",
+      "units"
+     ],
+     "cardinality": "one",
+     "qualifier": "campaign",
+     "group": 1,
+     "definition": "A measured result of a named campaign (qualifier: the campaign)."
+    },
+    {
+     "key": "effectiveness.award",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "campaign",
+     "group": 1,
+     "definition": "An effectiveness or creative award won in the category."
+    },
+    {
+     "key": "effectiveness.evidence",
+     "units": [
+      "text"
+     ],
+     "cardinality": "many",
+     "qualifier": "none",
+     "group": 2,
+     "definition": "A finding on what works in the category (long vs short, share of voice, pricing)."
+    }
+   ]
+  }
+ }
+}

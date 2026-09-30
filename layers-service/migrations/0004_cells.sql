@@ -4,8 +4,7 @@
 -- IE". It is what a planner reads. Facts are its evidence underneath.
 --
 --   lenses         the eight standing questions, each with its own clock
---   cells          opened per leaf and market by the tree owner (the agent
---                  proposes, a planner approves, so the tree does not rot)
+--   cells          opened per leaf and market by the job that researches them
 --   cell_versions  every confirmation of a cell, never overwritten: summary in
 --                  our words, what changed since last time, confidence, the
 --                  last-confirmed date. A year of versions = the category's history.
@@ -165,7 +164,7 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended(v_cell.id, 7332));
   END IF;
   IF v_cell.id IS NULL THEN
-    RAISE EXCEPTION 'unknown_cell: % / % / % is not open; the tree owner opens a leaf for a market first',
+    RAISE EXCEPTION 'unknown_cell: % / % / % is not open; open the leaf for the market first (layers.open_cells)',
       p ->> 'leaf', p ->> 'lens', p ->> 'market' USING ERRCODE = 'foreign_key_violation';
   END IF;
   IF jsonb_typeof(p -> 'citations') IS DISTINCT FROM 'array' OR jsonb_array_length(p -> 'citations') = 0 THEN

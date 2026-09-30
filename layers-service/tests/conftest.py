@@ -67,15 +67,16 @@ class Session:
         return self.conn.execute(query, params).fetchone()
 
     def capture(self, uri="https://example.ie/report", text="The market was worth €432 million in 2025.",
-                published="2026-04-14", licence="open", retrieved="2026-10-02T10:00:00Z"):
+                published="2026-04-14", licence="open", retrieved="2026-10-02T10:00:00Z",
+                publisher="Example", tier="primary"):
         """A source (once per URI), one reading of it, one excerpt: the excerpt id."""
         n = next(self.ids)
         src = self.one("SELECT id FROM layers.sources WHERE uri = %s", (uri,))
         if src is None:
             src = (f"src_{n}",)
             self.q("""INSERT INTO layers.sources (id, uri, domain, publisher, tier, licence, added_by_org)
-                      VALUES (%s, %s, 'example.ie', 'Example', 'primary', %s, current_setting('napkin.org'))""",
-                   (src[0], uri, licence))
+                      VALUES (%s, %s, 'example.ie', %s, %s, %s, current_setting('napkin.org'))""",
+                   (src[0], uri, publisher, tier, licence))
         self.q("""INSERT INTO layers.captures (id, source_id, retrieved_at, published_at, published_basis)
                   VALUES (%s, %s, %s, %s, %s)""",
                (f"cap_{n}", src[0], retrieved, published, "page_metadata" if published else "unknown"))
@@ -84,16 +85,22 @@ class Session:
         return f"exc_{n}", text
 
     def append(self, value, *, quote, excerpt, period=None, layer="category",
-               entity="category/automotive.ev_charging", key="market.size_eur", market="IE",
-               market_basis=None, licence="open", contested=False, decision=None):
+               entity="category/automotive.ev_charging", key="market.size_value", market="IE",
+               market_basis=None, period_basis=None, licence="open", contested=False, decision=None,
+               qualifier=None, unit="eur"):
         text = excerpt[1]
         start = text.index(quote)
         n = next(self.ids)
         basis = market_basis or ("unknown" if market == "UNKNOWN" else "stated")
         fact = {"id": f"f_{n}", "layer": layer, "entity": entity, "key": key, "market": market,
-                "market_basis": basis, "value": value, "unit": "eur", "licence": licence, "method": "report"}
+                "market_basis": basis, "value": value, "unit": unit, "licence": licence, "method": "report"}
+        if qualifier:
+            fact["qualifier"] = qualifier
         if period:
             fact["period_start"], fact["period_end"] = period
+            fact["period_basis"] = period_basis or "inferred"
+        elif period_basis:
+            fact["period_basis"] = period_basis
         if contested:
             fact["contested"] = True
         dec = decision or {"id": f"d_{n}", "kind": "pin", "handler": "research_lens@1",
