@@ -18,11 +18,14 @@ FORBIDDEN_DO = ("engage with", "explore the", "interact with", "connect with the
 
 
 def _val(gf, fid):
+    """Return the "value" of a golden field entry, or the entry itself if it isn't a dict."""
     f = gf.get(fid) or {}
     return f.get("value") if isinstance(f, dict) else f
 
 
 def check(brief_dir: Path):
+    """Load a brief's brief_object.json and run the seven credibility invariants against it,
+    returning (hard_failures, advisory_warnings) lists of message strings."""
     obj = json.loads((brief_dir / "brief_object.json").read_text())
     gf = (obj.get("loop2_golden") or {}).get("fields", {}) or {}
     oqs = (obj.get("loop2_brief") or {}).get("open_questions", []) or []
@@ -75,6 +78,8 @@ def check(brief_dir: Path):
 
 
 def main():
+    """Run check() over each brief directory given on argv, print PASS/FAIL with any hard
+    failures and advisory warnings, and exit 1 if any brief has a hard failure, else 0."""
     dirs = [Path(d) for d in sys.argv[1:]] or sys.exit("usage: check_invariants.py outputs/<name> ...")
     failed = False
     for d in dirs:

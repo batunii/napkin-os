@@ -8,6 +8,8 @@ asks Claude for the structured brief fields, and returns them as JSON the app
 places straight into the boxes. The other backend is
 `engine/agent-server/server.py` (the full napkin briefing pipeline, Loops 1-7);
 both listen on :8787, so run one at a time.
+Behind `serve.py --mock-agent` since 2026-09-29: `serve.py` with no flag starts the
+real engine (audit C7); NAPKIN_BACKEND=api starts this agent on the Messages API.
 
 Two ways it can reach Claude, chosen automatically:
 
@@ -122,6 +124,7 @@ _DIGEST_DIR = Path(os.environ.get(
 
 
 def _load_digests() -> str:
+    """Read every packs_dist/*/digest.md into one concatenated, headed markdown blob."""
     parts = []
     if _DIGEST_DIR.is_dir():
         for d in sorted(_DIGEST_DIR.glob("*/digest.md")):
@@ -214,6 +217,7 @@ def usage_of(env: dict) -> dict:
 
 
 def approx_tokens(chars: int) -> int:
+    """Rough chars-to-tokens conversion for attributing context sections in the debug log."""
     return chars // 4  # rough chars→tokens for attributing context sections
 
 
@@ -382,6 +386,15 @@ def synthesize(prefix: str, suffix: str, task: str = "draft_brief") -> dict:
 
 # ── Backend B: the Claude Code CLI ───────────────────────────────────────────
 
+def cli_env() -> dict:
+    """The environment for `claude -p`: the parent's, minus ANTHROPIC_API_KEY. With the
+    key present the CLI bills the key (which may have no credit) instead of the logged-in
+    account this backend exists to use (audit F14). engine/parse_brief.py does the same."""
+    env = {**os.environ}
+    env.pop("ANTHROPIC_API_KEY", None)
+    return env
+
+
 def call_claude(prompt: str, attempts: int = 2, model=None, tools="",
                 max_turns=1, cwd=None, timeout=180):
     """Run Claude Code headless; return the parsed JSON envelope. Retries once on
@@ -397,6 +410,10 @@ def call_claude(prompt: str, attempts: int = 2, model=None, tools="",
         "--output-format", "json",
         "--tools", tools,     # "" disables ALL tools — force a single completion
         "--max-turns", str(max_turns),
+        # Same isolation as the engine's CLI transport: no session transcript (a
+        # client brief must not be written to ~/.claude), no user/project
+        # settings, no MCP servers.
+        "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
     ]
     if tools:
         # Pre-approve the read-only set so a headless run never blocks on a prompt.
@@ -409,6 +426,7 @@ def call_claude(prompt: str, attempts: int = 2, model=None, tools="",
             text=True,
             timeout=timeout,
             cwd=str(cwd or WORKDIR),
+            env=cli_env(),
             stdin=subprocess.DEVNULL,   # don't wait 3s for stdin; deterministic
         )
         if proc.returncode == 0:
@@ -507,6 +525,55 @@ def grounding_block(findings) -> str:
             "evidence):\n" + "\n".join(lines) + "\n\n")
 
 
+_JSON_TYPES = {"string": str, "array": list, "object": dict, "number": (int, float),
+               "integer": int, "boolean": bool}
+META_KEYS = ("rationale", "context", "theme")
+
+
+class BadReply(ValueError):
+    """The model's reply cannot be placed into the brief (a regeneration without the
+    requested field, or a draft with nothing usable)."""
+
+
+def filter_reply(fields, clan: dict, field: str | None = None) -> dict:
+    """The part of a model reply the app may receive. Before 2026-09-25 the raw JSON went
+    straight to the app, so any key the model invented was patched into the brief and a
+    locked field was protected only by a prompt line (audit F14).
+    Draft: keys are kept only when they are top-level schema properties of the right JSON
+    type (or the meta keys rationale/context/theme); locked fields are dropped by code.
+    Regeneration (`field` given): the reply must carry that field (string or array/object
+    for a nested one), else BadReply; only it and `rationale` are returned."""
+    if not isinstance(fields, dict):
+        raise BadReply("reply is not a JSON object")
+    data = clan.get("data") or {}
+    locked = {str(k) for k in (data.get("locked_fields") or [])}
+    if field:
+        if field not in fields or fields[field] in (None, "", [], {}):
+            raise BadReply(f"regeneration reply carries no '{field}'")
+        if field in locked:
+            raise BadReply(f"'{field}' is locked")
+        out = {field: fields[field]}
+        if fields.get("rationale"):
+            out["rationale"] = str(fields["rationale"])
+        return out
+    props = ((clan.get("schema") or {}).get("properties") or {})
+    out = {}
+    for k, v in fields.items():
+        if k in locked or k.split(".", 1)[0] in locked:
+            continue
+        if k in META_KEYS:
+            out[k] = v
+            continue
+        if k not in props:
+            continue
+        want = _JSON_TYPES.get((props[k] or {}).get("type"))
+        if want is None or isinstance(v, want):
+            out[k] = v
+    if not any(k not in META_KEYS for k in out):
+        raise BadReply("draft reply carries no schema field")
+    return out
+
+
 def build_prompt(payload: dict, clan: dict, grounding: str = ""):
     """Return (STABLE prefix, VOLATILE suffix).
 
@@ -595,17 +662,25 @@ def build_prompt(payload: dict, clan: dict, grounding: str = ""):
 
 
 class Handler(BaseHTTPRequestHandler):
+    """HTTP handler for the mock agent server: GET /stats for token/cost totals, POST for a
+    draft/regenerate call to Claude Code."""
+
     def log_message(self, *a):  # quieter default logging
+        """Replace the default access-log line with a plain print of its args."""
         print(a)
         pass
 
     def do_GET(self):
+        """Serve GET /stats with the cumulative token/cost tally; anything else is a 404."""
         # GET /stats → cumulative token + cost tally for the session.
         if self.path.rstrip("/") == "/stats":
             return self._send(200, TOTALS)
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        """Read the JSON payload/clan body, build the prompt, call Claude Code, filter the
+        reply to safe fields, update the running usage totals, and send back the fields (or a
+        502 with the error) as JSON."""
         _CALL_N[0] += 1
         call_id = f"{time.strftime('%H%M%S')}-{_CALL_N[0]:03d}"
         t0 = time.time()
@@ -674,7 +749,8 @@ class Handler(BaseHTTPRequestHandler):
             env = synthesize(prefix, suffix, task)
             _dump(call_id, "4-envelope.json",
                   {k: v for k, v in env.items() if k != "result"})
-            fields = extract_json(env.get("result", "") or "")
+            fields = filter_reply(extract_json(env.get("result", "") or ""), clan,
+                                  field=payload.get("field") if task == "regenerate_field" else None)
             u = usage_of(env)
             for k in ("input", "output", "cache_read", "cache_creation"):
                 TOTALS[k] += u[k]
@@ -722,6 +798,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(502, {"error": str(e)})
 
     def _send(self, code, obj):
+        """Write obj as a JSON response body with the given status code."""
         data = json.dumps(obj).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")

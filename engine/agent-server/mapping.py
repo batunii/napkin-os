@@ -82,6 +82,8 @@ def _to_list(v) -> list[str]:
 
 
 def _format_question(q) -> str:
+    """One open question as the app shows it: "[priority] question — why it matters".
+    A non-dict question is shown as its string form."""
     if not isinstance(q, dict):
         return str(q)
     text = str(q.get("question", "")).strip()
@@ -103,17 +105,21 @@ def map_brief(brief: dict, clan_data: dict | None = None) -> dict:
     gf = (brief.get("loop2_golden") or {}).get("fields") or {}
 
     def g(key):
+        """A golden-brief field's value."""
         return _fv(gf.get(key))
 
     def l2v(key):
+        """A Loop 2 brief field's value."""
         return _fv(l2.get(key))
 
     def l1v(key):
+        """A Loop 1 capture field's value."""
         return _fv(l1f.get(key))
 
     out: dict = {}
 
     def put(key, value):
+        """Set an app field unless the value is empty (empty values are omitted)."""
         if value not in (None, "", [], {}):
             out[key] = value
 
@@ -168,6 +174,16 @@ def map_brief(brief: dict, clan_data: dict | None = None) -> dict:
 
     put("rationale", build_rationale(brief))
     put("context", build_context(brief))
+    # Which verified research facts each field used (C1b, 2026-09-29), keyed by the app's
+    # field names: {"reasons_to_believe": [{"item", "id", "version", "scope", "source_ids"}]}.
+    # A pass-through until the campaign CLAN's source field is confirmed (Shrey).
+    app_name = {"insight": "insight", "smp": "single_minded_proposition",
+                "reasons_to_believe": "reasons_to_believe", "desired_response": "desired_response"}
+    put("fact_refs", {app_name[k]: v["fact_refs"] for k, v in gf.items()
+                      if k in app_name and isinstance(v, dict) and v.get("fact_refs")})
+    # Where the client brief and a verified fact disagree (C1d): both sides, for CLAN's merge
+    # report to record as a contest; the brief states neither as fact until a person settles it.
+    put("fact_conflicts", ((meta.get("research_facts") or {}).get("conflicts") or []))
     return out
 
 
@@ -180,6 +196,11 @@ def build_rationale(brief: dict) -> str:
     gf = (brief.get("loop2_golden") or {}).get("fields") or {}
     filled = sum(1 for v in gf.values() if _fv(v) not in (None, "", [], {}))
 
+    if mode.startswith("heuristic") and meta.get("capture_fallback"):
+        # A model was configured and its capture failed: say that, not "no API keys" (C13).
+        who = "jev sentence sorter" if meta["capture_fallback"].get("reader") == "jev" else "rule-based reader"
+        return (f"Capture fell back to the {who} ({meta['capture_fallback'].get('reason')}): "
+                "check the captured facts; the rest of the brief used the models as normal.")
     if mode.startswith("heuristic"):
         return ("Heuristic extraction (no API keys): captured facts only — "
                 "strategy fields (insight/SMP/RTBs) need LLM keys + RAG to fill.")
@@ -188,7 +209,16 @@ def build_rationale(brief: dict) -> str:
         bits.append(f"no-loss ledger coverage {coverage}%")
     if filled:
         bits.append(f"golden-brief fill {filled}/{len(gf)} fields")
-    return "; ".join(bits) + "."
+    if meta.get("fallback_links"):
+        bits.append(f"NOT a Claude brief: answered by {', '.join(meta['fallback_links'])}")
+    drafts = [k for k, v in gf.items() if isinstance(v, dict) and isinstance(v.get("review"), dict)]
+    if drafts:   # kept because every draft failed its checks (2026-09-28); not final
+        bits.append(f"DRAFTS TO REVIEW (failed their checks): {', '.join(k.replace('_', ' ') for k in drafts)}")
+    text = "; ".join(bits) + "."
+    # A degraded run says so first: the planner must see why the draft is thin.
+    if meta.get("degraded"):
+        text = f"Degraded run ({meta['degraded']}): {text}"
+    return text
 
 
 def build_context(brief: dict, research_summary: str | None = None) -> str:
@@ -211,10 +241,28 @@ def build_context(brief: dict, research_summary: str | None = None) -> str:
 
     l37 = brief.get("loops3_7") or {}
     sources = l37.get("sources_used") or []
-    if l37.get("enabled") and sources:
-        cited = "\n".join(f"- {s}" for s in sources[:8])
-        more = f"\n- …and {len(sources) - 8} more" if len(sources) > 8 else ""
-        lines.append(f"**Strategy grounded in precedent:**\n{cited}{more}")
+    fb = l37.get("fallback") or {}
+    # Only what a strategy writer was actually given counts as precedent (audit RAG-10,
+    # 2026-09-28): the insight and SMP writers' evidence_ids. Everything else retrieved fed
+    # the loop syntheses and is background. On the digest fallback there is no precedent
+    # to claim (N5): the fallback line below says what the brief ran on.
+    gf = (brief.get("loop2_golden") or {}).get("fields") or {}
+    read = []
+    for fid in ("insight", "smp"):
+        for e in ((gf.get(fid) or {}).get("evidence_ids") or []) if isinstance(gf.get(fid), dict) else []:
+            if e not in read:
+                read.append(e)
+    if l37.get("enabled") and not fb.get("reason"):
+        if read:
+            lines.append("**Precedent the strategy writers read:**\n" + "\n".join(f"- {s}" for s in read[:8]))
+        if sources:   # evidence_ids are titles, sources_used citations: counted, not subtracted
+            lines.append(f"**Retrieved for the strategy notes (background):** {len(sources)} playbook "
+                         f"and case sections.")
+    if fb.get("reason"):
+        lines.append(f"**⚠ Retrieval fell back to {fb.get('to', 'digests')}:** {fb['reason']}")
+    if l37.get("validation_degraded"):
+        lines.append(f"**⚠ Unvalidated evidence** in {len(l37['validation_degraded'])} of 5 loops "
+                     f"({', '.join(l37['validation_degraded'])}).")
 
     if research_summary:
         lines.append(f"**Research:**\n{research_summary}")

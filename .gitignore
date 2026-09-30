@@ -2,6 +2,8 @@
 .agents/
 .claude/
 *.clan.bak
+# The project plan is a local working file, shared with teammates directly (Sai, 2026-09-29)
+/project_plan.clan
 *.tmp
 .env
 target/
@@ -47,3 +49,7 @@ app/public/apps/
 
 # Middleware runtime data (default knowledge-layers database)
 server/var/
+
+# Real client material: never commit (confidential)
+client_briefs/
+engine/rag/golden/labels/client/

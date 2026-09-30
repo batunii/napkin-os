@@ -1,0 +1,82 @@
+[
+ {
+  "config": "baseline (n50 k60 1:1 b0.75)",
+  "all@5": 0.972,
+  "all@10": 0.981,
+  "holdout@5": 0.927,
+  "holdout@10": 0.953,
+  "n_holdout": 150
+ },
+ {
+  "config": "rrf_k=10",
+  "all@5": 0.977,
+  "all@10": 0.989,
+  "holdout@5": 0.94,
+  "holdout@10": 0.967,
+  "n_holdout": 150
+ },
+ {
+  "config": "rrf_k=30",
+  "all@5": 0.973,
+  "all@10": 0.981,
+  "holdout@5": 0.927,
+  "holdout@10": 0.953,
+  "n_holdout": 150
+ },
+ {
+  "config": "rrf_k=120",
+  "all@5": 0.972,
+  "all@10": 0.981,
+  "holdout@5": 0.927,
+  "holdout@10": 0.953,
+  "n_holdout": 150
+ },
+ {
+  "config": "weights dense:lex=2:1",
+  "all@5": 0.973,
+  "all@10": 0.979,
+  "holdout@5": 0.927,
+  "holdout@10": 0.94,
+  "n_holdout": 150
+ },
+ {
+  "config": "weights dense:lex=1:2",
+  "all@5": 0.969,
+  "all@10": 0.98,
+  "holdout@5": 0.92,
+  "holdout@10": 0.947,
+  "n_holdout": 150
+ },
+ {
+  "config": "n=20",
+  "all@5": 0.972,
+  "all@10": 0.993,
+  "holdout@5": 0.92,
+  "holdout@10": 0.973,
+  "n_holdout": 150
+ },
+ {
+  "config": "n=100",
+  "all@5": 0.971,
+  "all@10": 0.98,
+  "holdout@5": 0.92,
+  "holdout@10": 0.947,
+  "n_holdout": 150
+ },
+ {
+  "config": "bm25 b=0.3",
+  "all@5": 0.981,
+  "all@10": 0.989,
+  "holdout@5": 0.94,
+  "holdout@10": 0.96,
+  "n_holdout": 150
+ },
+ {
+  "config": "bm25 k1=1.2",
+  "all@5": 0.972,
+  "all@10": 0.987,
+  "holdout@5": 0.927,
+  "holdout@10": 0.96,
+  "n_holdout": 150
+ }
+]

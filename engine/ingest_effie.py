@@ -34,6 +34,7 @@ OUT_DIR = HERE / "reference" / "rag" / "effie"
 
 
 def _slug(text: str) -> str:
+    """Lowercase, replace non-alphanumeric with hyphens, collapse runs."""
     return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9]+", "-", str(text).lower())).strip("-")
 
 
@@ -43,6 +44,7 @@ def _norm(h: str) -> str:
 
 
 def _clean(v) -> str:
+    """Collapse any whitespace run to a single space and strip, coercing None to ""."""
     if v is None:
         return ""
     return re.sub(r"\s+", " ", str(v)).strip()
@@ -78,6 +80,7 @@ def _index_row(row: dict) -> dict:
 
 
 def _pick(nrow: dict, candidates, default="not recorded") -> str:
+    """Return the first cleaned, non-empty value found under any of the normalised candidates."""
     for c in candidates:
         if c in nrow:
             v = _clean(nrow[c])
@@ -87,10 +90,13 @@ def _pick(nrow: dict, candidates, default="not recorded") -> str:
 
 
 def _is_cautionary(tier: str) -> bool:
+    """True if the award tier text marks this as a cautionary (what-not-to-do) case."""
     return "caution" in tier.lower()
 
 
 def build_markdown(index: int, nrow: dict) -> str:
+    """Render one Effie row into a frontmatter-tagged markdown document, marking cautionary
+    cases distinctly and adding retrieval queries."""
     g = lambda f: _pick(nrow, FIELDS[f], default="not recorded")
     title = g("title"); client = g("client"); agency = g("agency")
     year = g("year"); region = g("region"); sector = g("sector"); award_tier = g("award_tier")
@@ -138,6 +144,7 @@ tags: [{", ".join(tags)}]
 
 
 def _load_rows(src: Path) -> list[dict]:
+    """Load case rows from a JSON list/dict or a CSV file, returning a list of dicts."""
     if src.suffix.lower() == ".json":
         data = json.loads(src.read_text(encoding="utf-8"))
         rows = data if isinstance(data, list) else (data.get("cases") or data.get("rows") or [])
@@ -148,6 +155,9 @@ def _load_rows(src: Path) -> list[dict]:
 
 
 def main():
+    """Load the Effie CSV/JSON export (path arg or DEFAULT_INPUT), write one markdown file per
+    row with title or narrative content to OUT_DIR, and print a wrote/skipped summary. Exits
+    with an error if the input file is missing or has no rows."""
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_INPUT
     if not src.exists():
         sys.exit(

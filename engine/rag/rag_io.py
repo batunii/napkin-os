@@ -1,0 +1,538 @@
+#!/usr/bin/env python3
+"""
+rag_io.py — the RAG module's front door: validate a middleware request, run it, return
+a contract-shaped response.
+
+The contract lives in ../schema/rag_io.v1.json (JSON Schema, draft 2020-12) so the
+middleware can validate the same bytes in whatever language it is written in. This
+module defines no field of its own: it loads that file, checks requests against it, and
+maps a valid request onto brief_context.build().
+
+    from rag_io import handle, validate, RequestInvalid, StoreUnavailable
+
+    resp = handle(request)              # dict shaped like $defs/response
+    problems = validate(request)        # [] when clean, else ["authority.brand: ...", ...]
+
+Inputs   a request dict ($defs/request). `authority` is the confidentiality boundary and
+         is injected by the middleware; nothing else in the request can set scope,
+         tenant or brand.
+Outputs  a response dict ($defs/response): blocks of citable hits in prompt reading
+         order, the rendered prompt text, token count, notes and the full trace, plus
+         `degraded` (1.4.0, 2026-09-28): what did not work as intended for this answer,
+         lifted out of the trace so the caller can act on it (retry, flag, accept). Each
+         entry also becomes one plain line in `notes`. Empty when nothing degraded.
+Failure  an invalid request raises RequestInvalid carrying EVERY problem found, not just
+         the first — a caller fixing a payload wants the whole list. A passage library
+         that is missing, empty or unreachable raises StoreUnavailable before anything is
+         searched (2026-09-28: it used to return a normal-looking response with 0 hits and
+         no note, indistinguishable from "nothing relevant"). Other retrieval failures
+         propagate from brief_context unchanged; this layer adds no retries.
+
+Design notes
+  * stdlib only, like contract.py. The validator implements the subset of JSON Schema
+    the contract uses (type, enum, required, properties, additionalProperties, items,
+    min/max length and items, pattern, minimum/maximum, local $ref) plus two extension
+    keywords: `x-enum-from` resolves a closed enum from rag_metadata.v1.json at check
+    time, so the two contracts cannot drift; `x-status` marks a field `live` or
+    `planned`.
+  * `planned` fields are validated but not acted on. The adapter deliberately ignores
+    them rather than half-using them — test_rag_io asserts that every `live` field
+    changes what build() receives, so the contract cannot claim more than the code does.
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from functools import lru_cache
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+IO_SCHEMA_PATH = HERE.parent / "schema" / "rag_io.v1.json"
+
+# Prompt reading order, matching BriefContext.prompt_text(): the standard first, then
+# what must not be done, then how to think, then precedent.
+BLOCK_ORDER = ("instructions", "rules", "craft", "exemplars")
+
+
+class StoreUnavailable(RuntimeError):
+    """The passage library is missing, empty or unreachable, so nothing was searched.
+    `.label` names the library tried (index path or collection)."""
+
+    def __init__(self, label: str, detail: str):
+        """Keep the library's label; the message says what to check."""
+        self.label = label
+        super().__init__(f"The passage library {label} is {detail}. Nothing was searched. "
+                         "Check RAG_STORE / RAG_INDEX or the store connection.")
+
+
+def require_store(index_dir=None) -> None:
+    """Raise StoreUnavailable unless the configured store opens and holds passages. Uses the
+    store's own available() (local: chunks.jsonl exists with a row; Qdrant: the collection
+    exists with points, 0 when unreachable); the store is the process's shared instance, so
+    the rows it loads here are the ones the search then uses."""
+    import rag
+    from store_base import StoreConfigError
+    try:
+        store = rag.open_store(index_dir)
+    except StoreConfigError as e:
+        raise StoreUnavailable(rag.store_name(), f"not configured ({e})") from e
+    if not store.available():
+        label = (store.describe() or {}).get("label") or store.name
+        raise StoreUnavailable(label, "empty, missing or unreachable (0 passages)")
+
+
+class RequestInvalid(ValueError):
+    """The request does not satisfy the contract. `.problems` lists every violation."""
+
+    def __init__(self, problems: list[str]):
+        """Keep every problem; the message joins them for logs."""
+        self.problems = list(problems)
+        super().__init__("; ".join(self.problems))
+
+
+# ---- contract ------------------------------------------------------------------
+@lru_cache(maxsize=1)
+def io_schema() -> dict:
+    """The parsed contract file, loaded once per process."""
+    return json.loads(IO_SCHEMA_PATH.read_text())
+
+
+def version() -> str:
+    """The contract version this code speaks, e.g. '1.0.0'."""
+    return io_schema()["version"]
+
+
+def _enum_from(field_name: str) -> tuple[str, ...]:
+    """Closed enum of `field_name` in rag_metadata.v1.json — the target of `x-enum-from`."""
+    from contract import SCHEMA
+    return tuple(SCHEMA.enum_values(field_name))
+
+
+# ---- validator -----------------------------------------------------------------
+_TYPES = {
+    "object": lambda v: isinstance(v, dict),
+    "array": lambda v: isinstance(v, list),
+    "string": lambda v: isinstance(v, str),
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "boolean": lambda v: isinstance(v, bool),
+    "null": lambda v: v is None,
+}
+
+
+def _resolve(node: dict) -> dict:
+    """Follow a local `#/$defs/...` $ref to the schema node it names. Other refs raise."""
+    ref = node.get("$ref")
+    if not ref:
+        return node
+    if not ref.startswith("#/$defs/"):
+        raise ValueError(f"unsupported $ref {ref!r} — only local #/$defs/ refs")
+    return _resolve(io_schema()["$defs"][ref[len("#/$defs/"):]])
+
+
+def _check(value, node: dict, path: str, out: list[str]) -> None:
+    """Check `value` against schema `node`, appending problems to `out` under `path`.
+
+    Recurses into arrays and objects. A type mismatch stops checks on that value (the
+    remaining keywords would only produce noise); every other problem is collected."""
+    node = _resolve(node)
+    where = path or "(root)"
+
+    types = node.get("type")
+    if types is not None:
+        allowed = types if isinstance(types, list) else [types]
+        if not any(_TYPES[t](value) for t in allowed):
+            out.append(f"{where}: expected {' or '.join(allowed)}, got {type(value).__name__}")
+            return
+    if value is None:
+        return
+
+    if "enum" in node and value not in node["enum"]:
+        out.append(f"{where}: {value!r} not in {node['enum']}")
+    if "x-enum-from" in node:
+        vals = _enum_from(node["x-enum-from"])
+        if value not in vals:
+            out.append(f"{where}: {value!r} not in rag_metadata {node['x-enum-from']} enum {list(vals)}")
+
+    if isinstance(value, str):
+        if "minLength" in node and len(value) < node["minLength"]:
+            out.append(f"{where}: shorter than {node['minLength']}")
+        if "maxLength" in node and len(value) > node["maxLength"]:
+            out.append(f"{where}: longer than {node['maxLength']} chars ({len(value)})")
+        if "pattern" in node and not re.search(node["pattern"], value):
+            out.append(f"{where}: {value!r} does not match {node['pattern']}")
+
+    if _TYPES["number"](value):
+        if "minimum" in node and value < node["minimum"]:
+            out.append(f"{where}: {value} below minimum {node['minimum']}")
+        if "maximum" in node and value > node["maximum"]:
+            out.append(f"{where}: {value} above maximum {node['maximum']}")
+
+    if isinstance(value, list):
+        if "minItems" in node and len(value) < node["minItems"]:
+            out.append(f"{where}: fewer than {node['minItems']} items")
+        if "maxItems" in node and len(value) > node["maxItems"]:
+            out.append(f"{where}: more than {node['maxItems']} items ({len(value)})")
+        if "items" in node:
+            for i, item in enumerate(value):
+                _check(item, node["items"], f"{path}[{i}]", out)
+
+    if isinstance(value, dict):
+        props = node.get("properties", {})
+        for key in node.get("required", []):
+            if key not in value:
+                out.append(f"{path + '.' if path else ''}{key}: required")
+        extra = node.get("additionalProperties", True)
+        for key, v in value.items():
+            sub = f"{path}.{key}" if path else key
+            if key in props:
+                _check(v, props[key], sub, out)
+            elif extra is False:
+                out.append(f"{sub}: not in the contract")
+            elif isinstance(extra, dict):
+                _check(v, extra, sub, out)
+
+
+def validate(instance, definition: str = "request") -> list[str]:
+    """Problems with `instance` against $defs/<definition>. [] means valid."""
+    out: list[str] = []
+    _check(instance, {"$ref": f"#/$defs/{definition}"}, "", out)
+    if definition == "request" and isinstance(instance, dict):
+        cv = instance.get("contract_version")
+        if isinstance(cv, str) and cv.split(".")[0] != version().split(".")[0]:
+            out.append(f"contract_version: {cv!r} is not compatible with {version()!r} "
+                       f"(major versions differ)")
+    return out
+
+
+# ---- request -> build() ----------------------------------------------------------
+def _join(*parts) -> str:
+    """Comma-join strings and lists of strings, dropping blanks and case-insensitive repeats."""
+    seen, out = set(), []
+    for p in parts:
+        for v in (p if isinstance(p, list) else [p]):
+            v = str(v or "").strip()
+            if v and v.lower() not in seen:
+                seen.add(v.lower()); out.append(v)
+    return ", ".join(out)
+
+
+def to_build_args(request: dict) -> tuple[dict, list[str]]:
+    """Map a VALID request onto brief_context.build() keyword arguments.
+
+    Returns (kwargs, notes). Only `live` fields are read. The authorised brand and
+    tenant come from `authority` alone; brand.name and the campaign pairs only ever
+    become search text, so nothing a document says can reach the scope boundary."""
+    notes: list[str] = []
+    auth = request.get("authority") or {}
+    brand = request.get("brand") or {}
+    campaign = dict(request.get("campaign") or {})
+
+    # effectiveness_type is `planned`: build() has no pair key for it yet, and passing
+    # it through would quietly turn a filter value into query text.
+    campaign.pop("effectiveness_type", None)
+    pairs: dict = dict(campaign)
+
+    # `brand` carries the subject name ONLY: scopes_for() reads it as the document's
+    # claim about who the client is, and "BMW, BMW i" would read as a different client.
+    # Aliases are exact keyword terms too, so they ride on `product` instead.
+    subject = brand.get("name") or (auth.get("brand") or "").replace("_", " ")
+    if subject:
+        pairs["brand"] = subject
+    product = _join(campaign.get("product"), brand.get("aliases") or [])
+    if product:
+        pairs["product"] = product
+
+    cats = brand.get("categories") or []
+    alt = []
+    if cats:
+        pairs["category"] = cats[0]
+        alt = list(cats[1:])                     # widens a THIN bucket before any filter drops
+
+    market = _join(campaign.get("market"), brand.get("markets") or [])
+    if market:
+        pairs["market"] = market
+
+    # Comparators and competitors are exact lexical terms — they help find cases ABOUT
+    # them, which are public corpus. A `parent` is not a search term: Dove's brief does
+    # not want Unilever's corporate cases.
+    others = [r["name"] for r in auth.get("references") or []
+              if r.get("role") in ("comparator", "competitor")]
+    if others:
+        pairs["competitors"] = _join(others)
+
+    kwargs = {"pairs": pairs, "brand": auth.get("brand"), "tenant": auth.get("tenant")}
+    if alt:
+        kwargs["alt_categories"] = alt
+    # Brief context for the validator: research findings then attachments, each labelled.
+    # Attachments are untrusted, which is exactly why they only ever reach this string —
+    # a relevance judgement — and never pairs, scope or tenant.
+    ctx = [f"[research {f['id']}] {f['text']}" for f in request.get("research") or []]
+    ctx += [f"[attachment {a['id']}] {a['text']}" for a in request.get("attachments") or []]
+    if ctx:
+        kwargs["context"] = "\n".join(ctx)
+    admission = {}
+    excl = (request.get("memory") or {}).get("exclude_doc_ids")
+    if excl:
+        admission["exclude_doc_ids"] = list(excl)
+    rec = (request.get("limits") or {}).get("recency_years")
+    if rec:
+        admission["recency_years"] = int(rec)
+    if admission:
+        kwargs["admission"] = admission
+    budget = (request.get("limits") or {}).get("token_budget")
+    if budget:
+        kwargs["budget"] = dict(budget)
+    return kwargs, notes
+
+
+# ---- BriefContext -> response ------------------------------------------------------
+def _weight(hit) -> str:
+    """How much authority a hit carries: constraint (a reviewer rejected it), advice
+    (a rules-bucket pitfall), or evidence (everything else)."""
+    if hit.bucket != "rules":
+        return "evidence"
+    return "constraint" if hit.metadata.get("verdict") == "rejected" else "advice"
+
+
+def _hit_out(h) -> dict:
+    """One brief_context.Hit as $defs/hit. `relevance` is null until validation exists."""
+    md = h.metadata or {}
+    return {
+        "cite": h.cite, "doc_id": h.doc_id, "source": h.source,
+        "title": h.title, "section": h.section, "text": h.text,
+        "tokens": h.tokens, "retrieval_score": float(h.score),
+        "relevance": h.relevance,
+        "scope": str(md.get("scope") or "global"),
+        "tenant": str(md.get("tenant") or "house"),
+        "category": md.get("category"),
+        "year": md.get("year"),
+        "weight": _weight(h),
+    }
+
+
+DEGRADED_KINDS = ("checker_skipped", "keyword_only", "empty_field", "generic_query")
+
+
+def _why_one(a: dict) -> str:
+    """One attempt in words: 'jev not_entitled (401)', and for a timeout whether the field
+    waited in the queue and was never sent, or jev itself was slow (2026-09-28)."""
+    base = f"{a.get('backend')} {a.get('outcome')}" + (f" ({a['status']})" if a.get("status") else "")
+    if a.get("outcome") != "timeout" or "wait_ms" not in a:
+        return base
+    wait, reply = a["wait_ms"] / 1000.0, (a.get("reply_ms") or 0) / 1000.0
+    if not a.get("sent"):
+        return f"{base}: queued {wait:.1f} s behind other fields, never sent"
+    return f"{base}: jev still answering after {reply:.1f} s (queued {wait:.1f} s first)"
+
+
+def _why_skipped(v: dict) -> str:
+    """'jev timeout: queued 7.9 s behind other fields, never sent', 'jev not_entitled (401)', ...
+    from a validation record's attempts."""
+    got = sorted({_why_one(a) for a in (v.get("attempts") or [])})
+    return "; ".join(got) or "no backend answered"
+
+
+def _skipped(v) -> bool:
+    """True when validation was asked for and nobody answered. Validation switched off
+    (no backend requested) is a choice, not a degradation."""
+    return isinstance(v, dict) and bool(v.get("fell_back")) and not v.get("backend_used") and v.get("pool_size", 1) > 0
+
+
+def degraded_of(*, embed_mode: "str | None", validation: dict, counts: dict, gist: dict) -> list:
+    """The `degraded` list for one answer.
+
+    embed_mode  "keyword-only" when no embedding answered
+    validation  {field or bucket: validation record} (judge.ValidationResult.as_dict shape)
+    counts      {field or bucket: hits returned}
+    gist        the campaign's problem / objective / audience / key_message; None when the
+                caller has no request (response_from called directly), so it is not judged"""
+    out = []
+    skipped = [k for k, v in validation.items() if _skipped(v)]
+    if skipped:
+        whys = sorted({_why_skipped(validation[k]) for k in skipped})
+        out.append({"kind": "checker_skipped", "fields": skipped, "why": "; ".join(whys)})
+    if embed_mode == "keyword-only":
+        out.append({"kind": "keyword_only", "fields": [], "why": "no embedding endpoint answered: keyword (BM25) search only"})
+    empty = [k for k, n in counts.items() if not n]
+    if empty:
+        out.append({"kind": "empty_field", "fields": empty, "why": "no passage matched"})
+    if gist is not None and not any(str(v or "").strip() for v in gist.values()):
+        out.append({"kind": "generic_query", "fields": [],
+                    "why": "the campaign has no problem, objective, audience or key message: the search is not about this brief"})
+    return out
+
+
+def degraded_notes(degraded: list, total: int) -> list:
+    """One plain-language line per degraded entry."""
+    lines = []
+    for d in degraded:
+        n = len(d["fields"])
+        if d["kind"] == "checker_skipped":
+            lines.append(f"Relevance checker skipped on {n} of {total} ({', '.join(d['fields'])}): {d['why']}. "
+                         "Those passages are in search order, unchecked.")
+        elif d["kind"] == "keyword_only":
+            lines.append("Search model unavailable: keyword-only search, so passages that say the same thing in other words are missed.")
+        elif d["kind"] == "empty_field":
+            lines.append(f"No evidence for {n} of {total} ({', '.join(d['fields'])}).")
+        else:
+            lines.append("The request has no problem, objective, audience or key message: the evidence is generic, not about this brief.")
+    return lines
+
+
+def validation_summary(per_field: dict) -> "dict | None":
+    """One $defs/validation record for the mix path's per-field records: the backend
+    requested, the backend that answered (the most common one; None when none did), pools,
+    passed and rejected summed, fell_back when any field fell back. The per-field records
+    stay in `trace.validation.per_field`; which fields were left unchecked is in `degraded`.
+    None when no field was validated. (2026-09-28: the per-field record itself used to sit
+    here, which the contract does not admit, so a live mix answer failed its own contract.)"""
+    recs = [v for v in (per_field or {}).values() if isinstance(v, dict)]
+    if not recs:
+        return None
+    used = [v.get("backend_used") for v in recs if v.get("backend_used")]
+    return {"backend_requested": next((str(v["backend_requested"]) for v in recs if v.get("backend_requested")), ""),
+            "backend_used": max(set(used), key=used.count) if used else None,
+            "pool_size": sum(int(v.get("pool_size") or 0) for v in recs),
+            "passed": sum(int(v.get("passed") or 0) for v in recs),
+            "rejected": sum(int(v.get("rejected") or 0) for v in recs),
+            "fell_back": any(bool(v.get("fell_back")) for v in recs)}
+
+
+def response_from(ctx, run_id: str, notes: list[str] | None = None, gist: dict | None = None) -> dict:
+    """Shape a BriefContext as $defs/response."""
+    blocks = []
+    for name in BLOCK_ORDER:
+        b = ctx.blocks.get(name)
+        if b is None:
+            continue
+        blocks.append({"bucket": b.bucket, "hits": [_hit_out(h) for h in b.hits],
+                       "tokens": b.tokens, "budget": b.budget, "dropped": b.dropped,
+                       "over_target": b.over_target, "truncated": b.truncated})
+    v = ctx.validation or {}
+    keyword_only = any("keyword-only" in str(w) for w in ctx.widened)
+    degraded = degraded_of(embed_mode="keyword-only" if keyword_only else None,
+                           validation={b["bucket"]: v for b in blocks} if _skipped(v) else {},
+                           counts={b["bucket"]: len(b["hits"]) for b in blocks}, gist=gist)
+    return {
+        "contract_version": version(),
+        "run_id": run_id,
+        "blocks": blocks,
+        "prompt_text": ctx.prompt_text(),
+        "tokens": ctx.tokens,
+        "validation": v.get("contract"),
+        "notes": list(notes or []) + list(ctx.widened) + degraded_notes(degraded, len(blocks)),
+        "degraded": degraded,
+        "trace": ctx.trace(),
+    }
+
+
+# build_multi() takes these of to_build_args()'s keys; `budget` (limits.token_budget)
+# replaces the mix path's per-field bucket targets since 2026-09-28.
+_MULTI_KWARGS = ("brand", "tenant", "context", "admission", "alt_categories", "budget")
+
+
+def gist_of(request: dict) -> dict:
+    """The brief gist the mix path's field queries are written from: the campaign's
+    problem, objective, audience and key_message ('' when absent)."""
+    c = request.get("campaign") or {}
+    return {k: str(c.get(k) or "") for k in ("problem", "objective", "audience", "key_message")}
+
+
+def response_from_multi(mc, queries: dict, run_id: str, notes: list[str] | None = None,
+                        gist: dict | None = None) -> dict:
+    """Shape build_multi()'s MultiContext as $defs/response: `fields` carries one evidence
+    set per brief field (the brief generator's Loops 3-7), `blocks` is empty, and
+    prompt_text renders the fields in order."""
+    from brief_context import estimate_tokens
+    fields, parts = [], []
+    for key, hits in mc.fields.items():
+        fields.append({"field": key, "query": queries.get(key, ""), "hits": [_hit_out(h) for h in hits]})
+        if hits:
+            parts.append(f"## {key}\n" + "\n\n".join(f"[{h.cite}] {h.text}" for h in hits))
+    text = "\n\n".join(parts)
+    trace = mc.trace or {}
+    per_field = ((trace.get("validation") or {}).get("per_field") or {})
+    degraded = degraded_of(embed_mode=trace.get("embed"), validation=per_field,
+                           counts={f["field"]: len(f["hits"]) for f in fields}, gist=gist)
+    return {
+        "contract_version": version(),
+        "run_id": run_id,
+        "blocks": [],
+        "fields": fields,
+        "prompt_text": text,
+        "tokens": estimate_tokens(text),
+        "validation": validation_summary(per_field),
+        "notes": list(notes or []) + degraded_notes(degraded, len(fields)),
+        "degraded": degraded,
+        "trace": mc.trace,
+    }
+
+
+# ---- entry point -------------------------------------------------------------------
+def handle(request: dict, *, index_dir=None, build=None, build_multi=None) -> dict:
+    """Validate, retrieve, respond. `build` / `build_multi` are injectable for tests.
+
+    retrieval.path picks the retrieval (default "mix", Sai 2026-09-24):
+      mix      one query per brief field through brief_context.build_multi(), exactly as
+               the brief generator retrieves (response `fields`);
+      buckets  one query into four budgeted buckets through brief_context.build()
+               (response `blocks`)."""
+    problems = validate(request)
+    if problems:
+        raise RequestInvalid(problems)
+    kwargs, notes = to_build_args(request)
+    pairs = kwargs.pop("pairs")
+    mix = ((request.get("retrieval") or {}).get("path") or "mix") == "mix"
+    if (build_multi if mix else build) is None:          # a real store, not a test's stand-in
+        require_store(index_dir)
+    if mix:
+        if build_multi is None:
+            from brief_context import build_multi
+        from mix_queries import queries_for
+        queries = queries_for(gist_of(request))
+        if "budget" in kwargs:
+            notes.append("limits.token_budget applies per field on the mix path "
+                         "(exemplars, craft, rules; instructions has no mix bucket)")
+        mc = build_multi(pairs, queries, index_dir=index_dir,
+                         **{k: v for k, v in kwargs.items() if k in _MULTI_KWARGS})
+        return response_from_multi(mc, queries, request["run_id"], notes, gist=gist_of(request))
+    if build is None:
+        from brief_context import build
+    ctx = build(pairs, index_dir=index_dir, **kwargs)
+    return response_from(ctx, request["run_id"], notes, gist=gist_of(request))
+
+
+def cli(argv: list) -> int:
+    """`rag_io.py req.json` validates a request file; `rag_io.py --run req.json` runs it and
+    prints the response as JSON, or the error as {"error", ...} JSON, so the middleware can
+    test its handling in any language (2026-09-28). Exit codes: 0 ok, 1 RequestInvalid,
+    2 usage, 3 StoreUnavailable. Example: engine/schema/examples/request.bmw.json; with
+    RAG_STORE=local RAG_INDEX=/nonexistent it gives the StoreUnavailable shape."""
+    run = argv[:1] == ["--run"]
+    args = argv[1:] if run else argv
+    if len(args) != 1:
+        print("usage: rag_io.py [--run] <request.json>", file=sys.stderr)
+        return 2
+    request = json.loads(Path(args[0]).read_text())
+    if not run:
+        found = validate(request)
+        print("\n".join(found) if found else f"valid against rag_io v{version()}")
+        return 1 if found else 0
+    try:
+        print(json.dumps(handle(request), default=str))
+        return 0
+    except RequestInvalid as e:
+        print(json.dumps({"error": "RequestInvalid", "problems": e.problems}))
+        return 1
+    except StoreUnavailable as e:
+        print(json.dumps({"error": "StoreUnavailable", "label": e.label, "message": str(e)}))
+        return 3
+
+
+if __name__ == "__main__":
+    sys.exit(cli(sys.argv[1:]))

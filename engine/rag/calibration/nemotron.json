@@ -1,0 +1,276 @@
+{
+ "a": 0.530949,
+ "b": -0.088336,
+ "threshold": 0.128418,
+ "fitted_on": "golden held-out, rerank-pilot selection (119 specific ipa/cannes + 40 playbook, seed 7); hybrid pool 40 from _index_v3 (nvidia/nemotron-3-embed-1b) filtered by source; label = doc_id in accept set; Platt fit on 70% of cases",
+ "n": 4320,
+ "provisional": true,
+ "backend": "nemotron",
+ "fitted_at": "2026-09-23",
+ "method": "Platt scaling p = sigmoid(a*raw + b); Newton on cross-entropy with Platt's smoothed targets (Lin, Lin & Weng 2007); fitted on train cases only",
+ "threshold_policy": "maximises F1 on the train cases' fitted probabilities; midpoint between the adjacent distinct probabilities; ties pass more",
+ "n_pos": 688,
+ "n_neg": 3632,
+ "split": {
+  "unit": "case",
+  "method": "sha1(source|query) % 1000 < 700",
+  "train_cases": 108,
+  "test_cases": 47,
+  "by_source": {
+   "cannes/test": 5,
+   "cannes/train": 8,
+   "ipa/test": 29,
+   "ipa/train": 74,
+   "playbook/test": 13,
+   "playbook/train": 26
+  }
+ },
+ "train": {
+  "n_pos": 688,
+  "n_neg": 3632,
+  "auc": 0.9834,
+  "ece_10": 0.02,
+  "raw_median_pos": 7.875,
+  "raw_median_neg": -7.283,
+  "at": {
+   "0.3": {
+    "threshold": 0.3,
+    "precision": 0.8799,
+    "recall": 0.8198,
+    "f1": 0.8488,
+    "pass_rate": 0.1484,
+    "tp": 564,
+    "fp": 77,
+    "fn": 124,
+    "tn": 3555
+   },
+   "0.5": {
+    "threshold": 0.5,
+    "precision": 0.9074,
+    "recall": 0.7834,
+    "f1": 0.8409,
+    "pass_rate": 0.1375,
+    "tp": 539,
+    "fp": 55,
+    "fn": 149,
+    "tn": 3577
+   },
+   "0.7": {
+    "threshold": 0.7,
+    "precision": 0.9187,
+    "recall": 0.7558,
+    "f1": 0.8293,
+    "pass_rate": 0.131,
+    "tp": 520,
+    "fp": 46,
+    "fn": 168,
+    "tn": 3586
+   },
+   "chosen": {
+    "threshold": 0.128418,
+    "precision": 0.8306,
+    "recall": 0.8765,
+    "f1": 0.8529,
+    "pass_rate": 0.1681,
+    "tp": 603,
+    "fp": 123,
+    "fn": 85,
+    "tn": 3509
+   }
+  }
+ },
+ "test": {
+  "n_pos": 298,
+  "n_neg": 1582,
+  "auc": 0.9798,
+  "ece_10": 0.0269,
+  "raw_median_pos": 6.246,
+  "raw_median_neg": -7.494,
+  "at": {
+   "0.3": {
+    "threshold": 0.3,
+    "precision": 0.866,
+    "recall": 0.8456,
+    "f1": 0.8557,
+    "pass_rate": 0.1548,
+    "tp": 252,
+    "fp": 39,
+    "fn": 46,
+    "tn": 1543
+   },
+   "0.5": {
+    "threshold": 0.5,
+    "precision": 0.8856,
+    "recall": 0.8054,
+    "f1": 0.8436,
+    "pass_rate": 0.1441,
+    "tp": 240,
+    "fp": 31,
+    "fn": 58,
+    "tn": 1551
+   },
+   "0.7": {
+    "threshold": 0.7,
+    "precision": 0.9079,
+    "recall": 0.7282,
+    "f1": 0.8082,
+    "pass_rate": 0.1271,
+    "tp": 217,
+    "fp": 22,
+    "fn": 81,
+    "tn": 1560
+   },
+   "chosen": {
+    "threshold": 0.128418,
+    "precision": 0.822,
+    "recall": 0.9295,
+    "f1": 0.8724,
+    "pass_rate": 0.1793,
+    "tp": 277,
+    "fp": 60,
+    "fn": 21,
+    "tn": 1522
+   }
+  },
+  "reliability": [
+   {
+    "bin": "0.0-0.1",
+    "n": 1521,
+    "mean_p": 0.0235,
+    "pos_rate": 0.0118
+   },
+   {
+    "bin": "0.1-0.2",
+    "n": 44,
+    "mean_p": 0.135,
+    "pos_rate": 0.4091
+   },
+   {
+    "bin": "0.2-0.3",
+    "n": 24,
+    "mean_p": 0.2532,
+    "pos_rate": 0.4167
+   },
+   {
+    "bin": "0.3-0.4",
+    "n": 10,
+    "mean_p": 0.3405,
+    "pos_rate": 0.6
+   },
+   {
+    "bin": "0.4-0.5",
+    "n": 10,
+    "mean_p": 0.4403,
+    "pos_rate": 0.6
+   },
+   {
+    "bin": "0.5-0.6",
+    "n": 11,
+    "mean_p": 0.5362,
+    "pos_rate": 0.7273
+   },
+   {
+    "bin": "0.6-0.7",
+    "n": 21,
+    "mean_p": 0.6486,
+    "pos_rate": 0.7143
+   },
+   {
+    "bin": "0.7-0.8",
+    "n": 13,
+    "mean_p": 0.7494,
+    "pos_rate": 0.6154
+   },
+   {
+    "bin": "0.8-0.9",
+    "n": 43,
+    "mean_p": 0.8621,
+    "pos_rate": 0.6977
+   },
+   {
+    "bin": "0.9-1.0",
+    "n": 183,
+    "mean_p": 0.9807,
+    "pos_rate": 0.9781
+   }
+  ]
+ },
+ "test_by_source": {
+  "cannes": {
+   "cases": 5,
+   "n_pos": 34,
+   "n_neg": 166,
+   "auc": 0.9412,
+   "chosen": {
+    "threshold": 0.128418,
+    "precision": 0.6071,
+    "recall": 1.0,
+    "f1": 0.7556,
+    "pass_rate": 0.28,
+    "tp": 34,
+    "fp": 22,
+    "fn": 0,
+    "tn": 144
+   }
+  },
+  "ipa": {
+   "cases": 29,
+   "n_pos": 186,
+   "n_neg": 974,
+   "auc": 0.9999,
+   "chosen": {
+    "threshold": 0.128418,
+    "precision": 0.8378,
+    "recall": 1.0,
+    "f1": 0.9118,
+    "pass_rate": 0.1914,
+    "tp": 186,
+    "fp": 36,
+    "fn": 0,
+    "tn": 938
+   }
+  },
+  "playbook": {
+   "cases": 13,
+   "n_pos": 78,
+   "n_neg": 442,
+   "auc": 0.9474,
+   "chosen": {
+    "threshold": 0.128418,
+    "precision": 0.9661,
+    "recall": 0.7308,
+    "f1": 0.8321,
+    "pass_rate": 0.1135,
+    "tp": 57,
+    "fp": 2,
+    "fn": 21,
+    "tn": 440
+   }
+  }
+ },
+ "label_noise": "document-level labels on passages: a pooled chunk outside the accept set can be genuinely relevant (counted FP), a chunk of an accepted document can be off-topic (counted FN); precision and recall are approximate",
+ "domain_caveat": "golden queries are retrieval-shaped (case names, templated questions); briefs pair a long query-plus-context with each passage, so logits may shift. Provisional until refitted on labelled brief pairs",
+ "backend_config": {
+  "name": "nemotron",
+  "model": "nvidia/llama-nemotron-rerank-vl-1b-v2",
+  "capacity": 40,
+  "chars": 1500,
+  "query_chars": 1000
+ },
+ "run": {
+  "cases_selected": 159,
+  "pools": 159,
+  "deadline_s": 20.0,
+  "attempted": 159,
+  "scored": 155,
+  "skipped": {
+   "timeout": 4
+  },
+  "aborted": 0,
+  "latency_s": {
+   "p50": 0.467,
+   "p90": 0.558,
+   "max": 0.775
+  }
+ }
+}

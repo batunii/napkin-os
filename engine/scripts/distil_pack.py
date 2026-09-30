@@ -54,6 +54,8 @@ campaigns. Output markdown only, starting with '## What great looks like'."""
 
 
 def corpus_fingerprint(pack: Pack) -> str:
+    """Return a short sha256 hex digest over every .md file's name and contents in the pack,
+    used to detect whether the corpus changed since the last digest was written."""
     h = hashlib.sha256()
     assert pack.path is not None
     for f in sorted(pack.path.rglob("*.md")):
@@ -79,6 +81,9 @@ def sample_pack(pack: Pack, budget_chars: int = 24000) -> str:
 
 
 def distil(pack: Pack, out_dir: Path, force: bool = False) -> str:
+    """Write out_dir/<pack.id>/digest.md by sampling the pack and asking the model to paraphrase
+    its patterns, skipping the call if the corpus fingerprint is unchanged (unless force). Returns
+    one of "unchanged", "empty" (no sample text), "failed" (short/empty model output), or "written"."""
     out = out_dir / pack.id / "digest.md"
     state = out_dir / pack.id / ".digest_state.json"
     fp = corpus_fingerprint(pack)
@@ -101,6 +106,9 @@ def distil(pack: Pack, out_dir: Path, force: bool = False) -> str:
 
 
 def main(argv=None):
+    """Parse CLI args, discover packs (optionally filtered to given ids), distil each pack with
+    a corpus directory on disk into out_dir, and print each pack's result. Exits with an error
+    if any requested pack id is unknown."""
     ap = argparse.ArgumentParser(description="distil packs into shippable digests")
     ap.add_argument("packs", nargs="*", help="pack ids (default: all)")
     ap.add_argument("--force", action="store_true")

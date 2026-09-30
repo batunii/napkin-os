@@ -161,10 +161,10 @@
       "depends_on": [
         "budget_scope"
       ],
-      "prompt": "Describe one real human, not a demographic cell. What they want, fear and do; how they decide. Avoid clichés like 'millennials.'",
-      "good_example": "Conor, 29, Dublin. Drinks craft cans because they signal taste, not tradition. Wouldn't be seen holding a pint of the 'big' lager — that's his uncle's drink.",
+      "prompt": "A vivid picture of the audience built ONLY from the brief's data: who they are (demographics), what they think, feel and want (psychographics, needs), how and where they use the product, and who the brand is NOT for. Keep every audience the brief names, in priority order (primary / secondary); a B2B audience is a buying group, not a person. A group written in a pen-portrait voice is fine. Never invent a named person, an age, a city or habits the brief does not give. Avoid clichés like 'millennials'.",
+      "good_example": "Busy (working) mothers. A 'Life is Sweet' / 'food is love' family where mum tends to over-feed everyone. She keeps the fridge well stocked as family meal-times can be erratic.",
       "bad_example": "ABC1 males 18–34, urban, social, brand-aware.",
-      "bad_reason": "A data cell, not a human; tells us nothing about motivation.",
+      "bad_reason": "A bare data cell: 'Adults 18-64 really doesn't help the creative team' (Weichselbaum p.304). Nothing about how they think, what they want, or who is excluded. The opposite fault is as bad: a named person with an age, a city and habits the brief never gave.",
       "rubric": [
         {
           "id": "within_limit",
@@ -172,11 +172,22 @@
           "method": "auto"
         },
         {
-          "id": "is_human",
-          "test": "Reads as one real person, not a demographic segment.",
-          "method": "llm"
+          "id": "is_vivid",
+          "method": "llm",
+          "test": "A vivid picture from the brief's data: demographics, psychographics and needs or wants (not a bare data cell) — and NOT an invented individual with an age, a city or habits the brief does not give."
+        },
+        {
+          "id": "says_who_not",
+          "method": "llm",
+          "test": "Says who the brand is NOT for, or which audience comes first when the brief names several."
         }
-      ]
+      ],
+      "good_examples": [
+        "Busy (working) mothers. A 'Life is Sweet' / 'food is love' family where mum tends to over-feed everyone. She keeps the fridge well stocked as family meal-times can be erratic.",
+        "Primarily, disaffected mid-corporate customers of other banks: companies with a turnover of between £1m and £130m p.a. We are talking to the owners/directors. Secondarily: existing customers and staff."
+      ],
+      "_example_sources": "Cadbury's Chocolate Trifle brief, BBH, 24 Jan 1995 (BBH 1995 upload, slide 11); NatWest Mid Corporates brief, BBH, 10 Feb 1995 (slide 17). R2 §5.2: all 16 legible BBH audience boxes describe a group; none names a person. Third-party upload, not independently authenticated.",
+      "_rubric_sources": "BBG p.16 ('a vivid picture of demographics, psychographics and needs or wants'), BBG p.10 ('equally clear on who it is not'); replaces is_human, which passed only invented personas and failed every faithful extraction incl. the B2B employer brief (R2 §3.2, audit H4)"
     },
     {
       "id": "budget_scope",
@@ -234,9 +245,9 @@
         "background"
       ],
       "prompt": "A human tension, not a fact. Reveal WHY, not just WHAT. Shape: 'They [do/believe X] because [deeper motivation], which means [implication].' Survive the 'so what?' test ×3.",
-      "good_example": "Young drinkers don't reject us on taste — choosing a drink is choosing a tribe, and ours signals the wrong one. So the job isn't taste, it's belonging.",
-      "bad_example": "Younger consumers are drinking less mainstream lager.",
-      "bad_reason": "An observation with no motivation and no implication; a 'what', not a 'why'.",
+      "good_example": "Buyers don't reject the Fabia on its engineering — they reject it because 'it's still a Skoda', which means the job is to confront the prejudice, not to prove the car.",
+      "bad_example": "The Fabia has brilliant engineering.",
+      "bad_reason": "An observation about the product with no motivation and no implication; the creatives' answer was 'Yes, but it's still a Skoda' (Fallon 2006 p.77).",
       "rubric": [
         {
           "id": "within_limit",
@@ -263,7 +274,8 @@
           "test": "Says what the job actually is.",
           "method": "llm"
         }
-      ]
+      ],
+      "_example_sources": "Built from Fallon 2006 pp.77-80 (Skoda Fabia, Fallon London 2000): 'the biggest barrier was an irrational prejudice against the brand' (p.80); the good example's wording is ours, its facts are the source's. IPA case: 'It's a Skoda. Honest.' reduced marque rejection from 60% to 42%."
     },
     {
       "id": "smp",
@@ -279,12 +291,13 @@
         "insight",
         "background",
         "reasons_to_believe",
-        "competitor_context"
+        "competitor_context",
+        "audience"
       ],
-      "prompt": "ONE sentence — the single most compelling, true and ownable thing. Not a tagline, not 'creative', not a list. If you have two, choose. (Problem + Benefit + Insight → SMP.)",
-      "good_example": "The lager that earns its place in your round.",
-      "bad_example": "Great taste, fewer carbs, brewed with passion for modern drinkers.",
-      "bad_reason": "Three messages; features not benefit; not ownable; reads like finished copy.",
+      "prompt": "ONE sentence — the one thing we want the audience to take away. It must follow from the problem and the insight, be true and backed by the reasons to believe, give this audience a reason to care, and be specific to this brand, not a category generic. Written for the creative team: it points to where the idea should be and is not the idea's final wording. Not a tagline, not 'creative', not a list. If you have two, choose.",
+      "good_example": "A smart choice because you don't pay for what you don't need.",
+      "bad_example": "Good drinks, fun times, real people.",
+      "bad_reason": "'It is not a main idea, but three main ideas' (Steel 1998 p.169); averaged from research, it 'could have fitted any one of a host of other beverages' (p.89).",
       "rubric": [
         {
           "id": "single_sentence",
@@ -298,25 +311,51 @@
         },
         {
           "id": "single_minded",
-          "test": "One idea, not a list.",
-          "method": "auto"
-        },
-        {
-          "id": "ownable",
-          "test": "A competitor could not say the same thing (needs competitor_context).",
-          "method": "llm"
-        },
-        {
-          "id": "not_a_tagline",
-          "test": "Strategy that points to the idea, not finished ad copy.",
-          "method": "llm"
+          "method": "llm",
+          "tolerance": "hard",
+          "test": "One strategic choice: does it commit to one thing to communicate, rather than offering two or more claims for the creatives to choose between? (An 'and' or a comma is not by itself a fail.)"
         },
         {
           "id": "derives_from",
-          "test": "Traceable to insight + problem + benefit.",
-          "method": "llm"
+          "method": "llm",
+          "tolerance": "hard",
+          "test": "Would a reader who has read only the problem and the insight see why this is the proposition?"
+        },
+        {
+          "id": "not_a_tagline",
+          "method": "llm",
+          "test": "Is it a plain statement of the thought: no pun or double meaning, no hype standing in for a thought, and not the brand's sign-off line? (Being short, or able to run as a headline, is NOT a fail.)"
+        },
+        {
+          "id": "ownable",
+          "method": "llm",
+          "test": "Not a category generic: most rivals could not say it just as well. (A pre-empted claim that no rival currently makes counts as specific. Needs competitor_context.)"
+        },
+        {
+          "id": "reason_to_care",
+          "method": "llm",
+          "test": "Would this audience care? Is it motivating to them, not merely true or unique? (An emotional reason counts.)"
+        },
+        {
+          "id": "room_for_many_ads",
+          "method": "llm",
+          "test": "Could a creative team write several quite different ads from it?"
         }
-      ]
+      ],
+      "_prompt_sources": "R1 2026-09-24 §1.1: Steel 1998 p.168-169; APG 1997 pp.56-57; BBG p.17; Excellence 1997 p.158; Reeves 1961 p.47; benefit not required (Ogilvy DO, BBH 1992 slide 32, Binet & Field 2007)",
+      "_word_limit_note": "3-20 is our convention as a sanity limit; no source sets a number (R1 C13)",
+      "_rubric_sources": "R1 §3: C1 Steel p.169/APG p.56; C2 Excellence p.158, Steel p.169, BBG p.17; C4 BBG p.17, BBH 1992 slide 9, Steel p.149 (headline-able is not a fail); C6 APG p.57, Steel p.169; C7 Reeves p.48, Weichselbaum p.305, Binet & Field 2007; C8 Reeves p.47, Trott 2022, RSE 2007/Sharp 2010 (keep soft); C10 Excellence p.158. 'tolerance: hard' = a fail is final regardless of the gate's one-fail tolerance",
+      "good_examples": [
+        "A smart choice because you don't pay for what you don't need.",
+        "A party waiting to happen.",
+        "Häagen-Dazs is the ultimate sensual intimate pleasure."
+      ],
+      "contrast_examples": [
+        "Proposition: 'Renting from Granada is more sensible than owning.' — Copy: 'Why buy a millstone when you can rent a milestone?' (Excellence 1997 p.159; the same support sits under both)",
+        "Proposition: 'the picture is only the beginning' — Line: 'See What Develops' (Steel 1998 pp.174-175, Polaroid)",
+        "Convergence is allowed: 'Levi's 501s are the original and definitive jeans' ran with the sign-off 'The Original Jeans' (BBH 1995 slide 14)"
+      ],
+      "_example_sources": "E2 Motel 6, Weichselbaum p.305; E1 Jose Cuervo, Steel 1998 p.169 (bad) — 'A party waiting to happen' (good); E9 Häagen-Dazs, BBH brief 10 Feb 1995 (BBH 1995 slide 16). Page numbers for Steel/Excellence verified by wording 2026-09-25, not by page (T8)."
     },
     {
       "id": "reasons_to_believe",
@@ -330,7 +369,7 @@
         "smp"
       ],
       "prompt": "The few proof points that make the proposition credible — strongest first. Not a shopping list; number flexes by channel.",
-      "good_example": "Small-batch brewed · 3g carbs · chosen #1 in a blind taste test of under-30s.",
+      "good_example": "You can stay always up to date · Nicam · widescreen · satellite",
       "bad_example": "Award-winning · trusted · premium · loved by thousands · refreshing · bold.",
       "bad_reason": "Generic, unprovable claims; a shopping list, not proof for the SMP.",
       "rubric": [
@@ -344,7 +383,8 @@
           "test": "Every item supports the SMP.",
           "method": "llm"
         }
-      ]
+      ],
+      "_example_sources": "Granada TV Rental support, Excellence 1997 p.159 (Duckworth): 'If you rent from Granada you can stay always up to date. Nicam, widescreen and satellite'. Replaces the invented '3g carbs / blind taste test' line (audit H1: the style example was itself an invented stat)."
     },
     {
       "id": "desired_response",
@@ -464,7 +504,7 @@
       },
       {
         "id": "smp_single",
-        "rule": "SMP is one ownable sentence within word limit.",
+        "rule": "SMP is one sentence within the word limit.",
         "method": "auto"
       },
       {
@@ -512,7 +552,7 @@
         "insight",
         "background"
       ],
-      "rule": "SMP must trace to insight + problem + a benefit.",
+      "rule": "The SMP follows visibly from the problem and the insight (the derives_from check).",
       "method": "llm"
     },
     {
@@ -539,7 +579,7 @@
         "smp",
         "competitor_context"
       ],
-      "rule": "Judging 'ownable' requires competitor_context.",
+      "rule": "Judging 'ownable' needs competitor_context; without it the check is left for review, not failed.",
       "method": "auto"
     }
   ],

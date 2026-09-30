@@ -31,6 +31,8 @@ RULES = [
 
 
 def source_for(path: Path) -> str | None:
+    """Return the `source` frontmatter value for a corpus file based on its subdirectory under
+    CORPUS (per RULES), or None if it doesn't match any mapped subdirectory."""
     rel = path.relative_to(CORPUS).as_posix()
     for subdir, src in RULES:
         if rel.startswith(subdir + "/"):
@@ -58,6 +60,9 @@ def backfill(path: Path, src: str) -> bool:
 
 
 def main():
+    """Walk every markdown file under CORPUS, back-fill a `source:` frontmatter line into
+    files whose subdirectory maps to one (per source_for) and that don't already have one,
+    and print a per-source summary. Exits with an error if CORPUS doesn't exist."""
     if not CORPUS.is_dir():
         sys.exit(f"corpus dir not found: {CORPUS}")
     changed = skipped = 0

@@ -8,9 +8,10 @@ python3 serve.py                          # picks the backend FOR you (see below
 cd app && npm install && npx tauri dev    # the app (needs Node + Rust)
 ```
 
-`serve.py` decides — you never choose: a chat key in your env → the full engine
-pipeline; no key but Claude Code installed → briefs via your Claude login
-(mock-agent); neither → it tells you how to get one of the two.
+`serve.py` decides — you never choose: it always starts the full engine pipeline, on
+your Anthropic key when one is set (handing over to the Claude Code login if the key has
+no credit), or on your Claude Code login when there is no key; with neither it tells you
+how to get one. (`--mock-agent` still starts the old one-call mock agent on request.)
 
 **The knowledge needs no setup.** Paraphrased pack digests are committed at
 `engine/packs_dist/` and both backends load them automatically — draft a brief
@@ -24,7 +25,7 @@ The knowledge ships in tiers. Pick the row that matches what you have:
 | You have | What runs | Grounding |
 |---|---|---|
 | nothing | keyless heuristic draft | none (honestly labelled) |
-| any ONE chat key (Groq / Cerebras / NVIDIA) — or just Claude Code for the mock-agent | full LLM pipeline | **digest mode** — paraphrased pack digests, committed in `packs_dist/` |
+| an Anthropic key, or just Claude Code logged in | full LLM pipeline | **digest mode** — paraphrased pack digests, committed in `packs_dist/` |
 | Claude Code + `NAPKIN_RETRIEVE=agentic` | mock-agent, two calls | **agentic mode** — digests *plus* per-brief retrieval over owned methodology docs, cited by file and line. No embeddings, no store, no key. |
 | + Qdrant creds + NVIDIA key (ask the maintainer — never in the repo) | full pipeline | **vector mode** — per-query retrieval with citations |
 

@@ -46,10 +46,12 @@ import rag  # noqa: E402
 
 
 def _index_dir() -> Path:
+    """Return the local index directory, from RAG_INDEX or the default engine/rag/index."""
     return Path(os.environ.get("RAG_INDEX", ENGINE / "rag" / "index"))
 
 
 def _content_hash(chunk: dict) -> str:
+    """Return a short sha256 hex digest of the chunk's embeddable text, used to detect changes."""
     return hashlib.sha256(rag.embed_text_of(chunk).encode()).hexdigest()[:16]
 
 
@@ -88,6 +90,11 @@ def _load_cache(index_dir: Path) -> dict[tuple, dict]:
 
 
 def sync(dry_run: bool = False) -> int:
+    """Reconcile the corpus on disk against the local index (and Qdrant, if configured):
+    chunk and embed only changed/new content, re-upsert retagged chunks, delete stale and
+    orphaned-pack points, write the local chunks.jsonl/manifest.json and rag/packs.lock, and
+    print a summary. With dry_run, only prints the plan and makes no changes. Exits if no
+    corpus root or no pack directories are found."""
     root = corpus_root()
     if root is None:
         sys.exit("sync needs the corpus on disk — set BRIEF_CORPUS or run from the corpus repo.")
@@ -200,6 +207,8 @@ def sync(dry_run: bool = False) -> int:
 
 
 def status() -> int:
+    """Print each discovered pack with its live chunk count (from Qdrant or the last sync's
+    packs.lock) and return 1 if no packs were found, else 0."""
     packs = discover_packs()
     if not packs:
         print("no packs found (no corpus on disk and no packs.lock)")
@@ -229,6 +238,7 @@ def status() -> int:
 
 
 def main(argv=None):
+    """Parse the sync/status subcommand and args, then dispatch to sync() or status()."""
     ap = argparse.ArgumentParser(prog="napkin-packs",
                                  description="reconcile knowledge packs with the index")
     sub = ap.add_subparsers(dest="cmd", required=True)
