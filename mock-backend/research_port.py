@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import os
 import re
 import time
 import unicodedata
@@ -139,13 +140,37 @@ def parse_request(raw: bytes) -> dict:
 
 
 def cache_key(req: dict, model: str) -> str:
-    return sha256_hex(canon({**req, "query": req["query"].lower(), "_model": model, "_v": PROMPT_VERSION}))
+    return sha256_hex(canon({**req, "query": req["query"].lower(), "_model": model, "_v": PROMPT_VERSION,
+                              **({"_p": prompt_variant()} if prompt_variant() else {})}))
 
 
 # ------------------------------------------------------------------ prompt
 
 
+# MOCK_RESEARCH_PROMPT picks an experimental wording for the "how to work" steps, to measure how much of a
+# unit's cost follows the pages read. Empty (the default) is the wording the service has always used.
+VARIANTS = {
+    "capped": {"search": "1. Run at most 2 WebSearch queries aimed at this lens in this market. Prefer, in order:",
+               "fetch": "2. WebFetch at most 3 pages in total, and WebFetch every page before you cite it. Cite only pages you actually fetched and"},
+    "primary": {"search": "1. Run WebSearch queries aimed at this lens in this market, starting with primary sources. Stop searching and\n"
+                          "   fetching as soon as you have read 3 good pages from primary or industry bodies. Prefer, in order:",
+                "fetch": "2. WebFetch every page before you cite it. Cite only pages you actually fetched and"},
+}
+
+
+def prompt_variant() -> str:
+    v = os.environ.get("MOCK_RESEARCH_PROMPT", "").strip().lower()
+    if v and v not in VARIANTS:
+        raise SystemExit(f"MOCK_RESEARCH_PROMPT must be one of {sorted(VARIANTS)} or empty, not {v!r}")
+    return v
+
+
 def build_prompt(req: dict) -> str:
+    v = prompt_variant()
+
+    def _V(part: str, default: str) -> str:
+        return VARIANTS[v][part] if v else default
+
     lines = [
         "You are the source-discovery step of a research pipeline. Find current, citable",
         "web sources for ONE research lens in ONE market and return verbatim quotes from them.",
@@ -164,12 +189,12 @@ def build_prompt(req: dict) -> str:
         f"Return at most {req['max_sources']} sources.",
         "",
         "How to work:",
-        "1. Run several WebSearch queries aimed at this lens in this market. Prefer, in order:",
+        _V("search", "1. Run several WebSearch queries aimed at this lens in this market. Prefer, in order:"),
         "   primary sources (regulators, official statistics offices, government bodies,",
         "   company filings, annual reports and official press releases), then industry",
         "   bodies and trade press, then reputable news. Avoid forums, SEO content farms,",
         "   aggregators that only restate others, and pages behind a paywall you cannot read.",
-        "2. WebFetch every page before you cite it. Cite only pages you actually fetched and",
+        _V("fetch", "2. WebFetch every page before you cite it. Cite only pages you actually fetched and"),
         "   read; never cite a URL from search results alone, and never invent a URL.",
         "3. From each fetched page, copy 1 to 3 short passages (a sentence or a short paragraph,",
         "   under 400 characters each) that bear directly on the question: figures, dates,",

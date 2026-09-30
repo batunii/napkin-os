@@ -138,6 +138,7 @@ def main():
                 clan["decision_chain"]["decisions"] = list(clan["decision_chain"]["decisions"]) + list(change["decisions"])
                 clan["data"] = merge_patch(clan["data"], change["data_patch"])
                 row["findings"] = len(change["findings_append"])
+                (out / f"findings_{i}.json").write_text(json.dumps(change["findings_append"], indent=1))
             if "report" in stages:
                 t0 = time.monotonic()
                 rep, cites, _, _ = report_stage.compose(clan["id"], clan, handler, caps)

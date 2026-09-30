@@ -18,6 +18,29 @@ def body(mode, **kw):
 
 
 class Units(unittest.TestCase):
+    def test_prompt_variants_change_only_the_page_budget_wording(self):
+        import os
+        req = {"query": "q", "lens": "media_spend", "market": "IE", "max_sources": 6}
+        old = os.environ.pop("MOCK_RESEARCH_PROMPT", None)
+        try:
+            base = rp.build_prompt(req)
+            self.assertIn("Run several WebSearch queries", base)
+            os.environ["MOCK_RESEARCH_PROMPT"] = "capped"
+            capped = rp.build_prompt(req)
+            self.assertIn("at most 2 WebSearch", capped)
+            self.assertIn("at most 3 pages", capped)
+            capped_key = rp.cache_key(req, "sonnet")
+            del os.environ["MOCK_RESEARCH_PROMPT"]
+            self.assertNotEqual(capped_key, rp.cache_key(req, "sonnet"))
+            os.environ["MOCK_RESEARCH_PROMPT"] = "primary"
+            self.assertIn("read 3 good pages", rp.build_prompt(req))
+            os.environ["MOCK_RESEARCH_PROMPT"] = "nonsense"
+            with self.assertRaises(SystemExit):
+                rp.build_prompt(req)
+        finally:
+            os.environ.pop("MOCK_RESEARCH_PROMPT", None)
+            if old is not None:
+                os.environ["MOCK_RESEARCH_PROMPT"] = old
     def test_ledger_splits_spend_by_model(self):
         usage = {"claude-sonnet-5-5": {"inputTokens": 4, "outputTokens": 294, "cacheReadInputTokens": 4683,
                                        "cacheCreationInputTokens": 2774, "costUSD": 0.015},
