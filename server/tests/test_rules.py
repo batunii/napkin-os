@@ -301,8 +301,28 @@ def test_a_share_word_with_no_cited_share_is_dropped_but_a_finding_cite_is_not_c
     assert ok is not None
 
 
-def test_most_is_not_read_as_a_share_word():
-    ok, _ = clean_claim("This is the most popular channel.", ["f_1"], _share_pins(0.2), {})
+def test_a_most_claim_needs_a_cited_share_above_half():
+    ok, _ = clean_claim("Most Irish adults drink coffee.", ["f_1"], _share_pins(0.76), {})
+    assert ok is not None
+    bad, why = clean_claim("Most people want human oversight.", ["f_1"], _share_pins(0.38), {})
+    assert bad is None and "says most" in why
+    bad, _ = clean_claim("Social takes most of display spend.", ["f_1"], _share_pins(0.3), {})
+    assert bad is None
+
+
+def test_most_as_a_superlative_or_with_no_cited_share_is_not_checked():
+    for text in ("This is the most popular channel.", "Barry's and Lyons are Ireland's two most popular tea brands.",
+                 "Ireland's most popular brand is Barry's.", "Search is most likely to grow.",
+                 "At most a third of firms use it."):
+        ok, _ = clean_claim(text, ["f_1"], _share_pins(0.2), {})
+        assert ok is not None, text
+    # euro amounts are not a share: the words cannot be compared, so the claim stands
+    ok, _ = clean_claim("Adspend grows, and most of it is digital.", ["f_1"], _share_pins(900, unit="EUR"), {})
+    assert ok is not None
+    # a growth rate is a proportion but not a share: it neither backs nor refutes "most"
+    pins = {"f_1": {"id": "f_1", "key": "media.x_total_market_adspend_growth_forecast", "value": 0.073,
+                    "unit": "proportion", "as_of": "2025-06-01"}}
+    ok, _ = clean_claim("Adspend grows 7.3%, and most of it is digital.", ["f_1"], pins, {})
     assert ok is not None
 
 
