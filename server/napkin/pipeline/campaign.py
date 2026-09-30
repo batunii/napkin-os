@@ -23,6 +23,7 @@ import re
 import threading
 import time
 import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 
 from ..doc import (CAMPAIGN_FIELDS, GATES, LENS_TITLES, LENSES, STAGES, address, apply_patch, build_materials,
                    ctx_data, ctx_decisions, ctx_facts, ctx_findings, decision, deep_merge, field_paths, get_dotted,
@@ -152,6 +153,7 @@ class CampaignJob:
         self.selected = None
         self.hits = []
         self._identify_raw = None
+        self._identify_call: Future | None = None
         self.latest_clan = clan
         self._stall_sig, self._stall_polls, self._stall_secs, self._last_poll = frozenset(), 0, 0.0, None
         self.W, self.W_facts, self.W_version, self.clan = {}, [], None, clan
@@ -395,16 +397,35 @@ class CampaignJob:
                     return {"material_id": mat.id, "locator": mat.locator(m.start()), "quote": m.group(0)}
         return None
 
+    def _identify_request(self):
+        """The identify call's arguments. It reads only the material and the category tree, never what
+        extract writes, so it can run beside extract."""
+        leaves = self.caps.layers.leaves()
+        return (leaves, ("identify", IDENTIFY_SYSTEM,
+                         {"materials": extract_stage.material_payload(self.materials()),
+                          "category_tree": [{"code": l["code"], "name": l["name"], "vertical": l["vertical_name"]}
+                                            for l in leaves]},
+                         identify_schema([l["code"] for l in leaves])))
+
+    def start_identify_call(self):
+        """Starts the identify call beside extract (saves its ~14 s), only when identify will read it: a
+        brand, category or client the document does not hold yet. identify_raw collects the reply; an
+        error in the call surfaces there, in the identify stage, as before."""
+        camp = self.W.get("campaign") or {}
+        if self._identify_raw is not None or self._identify_call is not None or all(
+                camp.get(f) for f in ("brand", "categories", "client_org")):
+            return
+        _leaves, args = self._identify_request()
+        ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"identify-{self.id}")
+        self._identify_call = ex.submit(self.caps.model.structured, *args, max_tokens=8000)
+        ex.shutdown(wait=False)
+
     def identify_raw(self):
-        """ONE model call over the material, cached for the job."""
+        """ONE model call over the material, cached for the job (started beside extract when it can be)."""
         if self._identify_raw is None:
-            leaves = self.caps.layers.leaves()
-            raw = self.caps.model.structured(
-                "identify", IDENTIFY_SYSTEM,
-                {"materials": extract_stage.material_payload(self.materials()),
-                 "category_tree": [{"code": l["code"], "name": l["name"], "vertical": l["vertical_name"]}
-                                   for l in leaves]},
-                identify_schema([l["code"] for l in leaves]), max_tokens=8000)
+            leaves, args = self._identify_request()
+            call, self._identify_call = self._identify_call, None
+            raw = call.result() if call is not None else self.caps.model.structured(*args, max_tokens=8000)
             brands = []
             for b in raw.get("brands") or []:
                 name = (b.get("name") or "").strip()
@@ -434,6 +455,7 @@ class CampaignJob:
 
     # -- stages -----------------------------------------------------------------
     def stage_extract(self):
+        self.start_identify_call()
         did = self.did("extract")
         result, change, hits = extract_stage.run_extract(self.doc, self.W_version, self.wclan(), self.inp,
                                                          self.handler, self.caps,
