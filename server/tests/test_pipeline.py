@@ -369,9 +369,50 @@ def test_the_agent_lays_the_report_out_and_the_rule_holds_it_to_the_record(store
     assert "Grounded." in html
 
 
+def _report_clan(store, model=None):
+    caps = caps_for(store, model=model) if model else caps_for(store)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps_for(store), ["media_spend", "market_structure"],
+                           ["IE"], ["automotive.ev_charging"]).run()
+    return caps, dict(rclan(["IE"]), facts=rch["facts_append"])
+
+
+def test_the_report_and_its_page_are_one_model_call(store):
+    from fakes import FakeModel
+    fm = FakeModel()
+    caps, clan = _report_clan(store, fm)
+    rpt, _, _, _ = report.compose(DOC, clan, "t@1.0", caps)
+    purposes = [c[0] for c in fm.calls]
+    assert purposes.count("report") == 1 and "layout" not in purposes
+    assert rpt["layout_by"] == "agent" and "<clan-sources></clan-sources>" in rpt["layout"]
+
+
+def test_the_composition_is_given_what_the_page_needs_to_reference(store):
+    seen = []
+    from fakes import FakeModel
+    caps, clan = _report_clan(store, FakeModel({"report": lambda p: (seen.append(p), FakeModel.r_report(p))[1]}))
+    clan["edits"] = {"report:headline": "<p>Our own words</p>"}
+    report.compose(DOC, clan, "t@1.0", caps)
+    p = seen[0]
+    pin = p["lenses"][0]["pins"][0]
+    assert {"id", "label", "value", "unit", "market", "as_of", "has_quote"} <= set(pin)
+    assert all("id" in g for l in p["lenses"] for g in l["gaps"] + l["open_contests"])
+    assert p["person_wording"] == ["Our own words"]
+
+
+def test_a_model_that_fails_still_gives_a_report_with_a_built_page(store):
+    from fakes import FakeModel
+    def boom(p):
+        raise RuntimeError("model unavailable")
+    caps, clan = _report_clan(store, FakeModel({"report": boom}))
+    rpt, _, _, _ = report.compose(DOC, clan, "t@1.0", caps)
+    assert rpt["layout_by"] == "built" and rpt["sections"] and rpt["summary"]
+    assert "<clan-sources></clan-sources>" in rpt["layout"]
+
+
 def test_a_layout_that_loses_its_evidence_is_built_from_the_report(store):
     from fakes import FakeModel
-    caps = caps_for(store, model=FakeModel({"layout": lambda p: {"html": "<p>Nothing but words.</p>"}}))
+    caps = caps_for(store, model=FakeModel({"report": lambda p: {**FakeModel.r_report(p),
+                                                                 "html": "<p>Nothing but words.</p>"}}))
     _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
                            ["automotive.ev_charging"]).run()
     clan = dict(rclan(["IE"]), facts=rch["facts_append"])

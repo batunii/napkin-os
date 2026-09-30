@@ -179,10 +179,6 @@ class FakeModel:
         return {"findings": out, "audience": None}
 
     @staticmethod
-    def r_layout(p):
-        return fake_layout(p)
-
-    @staticmethod
     def r_report(p):
         secs, first = [], None
         for l in p["lenses"]:
@@ -196,7 +192,11 @@ class FakeModel:
                 "headline": {"text": f"{p['brand']}: the research is in.", "cites": [first]},
                 "summary": [{"text": "Read the sections below.", "cites": [first]},
                             {"text": "Nothing is cited here.", "cites": []}],
-                "sections": secs}
+                "sections": secs,
+                # the page the same call writes, with the mistakes the layout rule must catch
+                "html": fake_layout({"pins": [x for l in p["lenses"] for x in l["pins"]],
+                                     "findings": [x for l in p["lenses"] for x in l["findings"]],
+                                     "headline": {"text": f"{p['brand']}: the research is in."}})["html"]}
 
 
 def fake_layout(p):

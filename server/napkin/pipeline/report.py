@@ -1,10 +1,11 @@
 """report: data.report, composed from the document as the request holds it
 (middleware-api.md §8.5, Contract 3 §17).
 
-The model writes the prose (headline, summary, per-lens claims) as
-structured output. The structure — sections, pins / finding / gap / contest
-blocks, `confirm`, `not_researched`, `based_on` — is built here from the
-document. Every claim the model wrote is checked in code before the change is
+One model call writes the report with a free hand: the record (headline,
+summary, per-lens claims) and the page it is read on (`html`). The record's
+structure — sections, pins / finding / gap / contest blocks, `confirm`,
+`not_researched`, `based_on` — is built here from the document, and the page is
+checked by the layout rule (layout.py). Every claim the model wrote is checked in code before the change is
 sent: its cites must be pins or non-rejected findings the document holds, and
 it may state no figure absent from what it cites. A claim that fails is
 dropped; a headline or summary that fails is replaced by a figure-free line
@@ -26,14 +27,19 @@ from . import layout
 
 log = logging.getLogger("napkin.report")
 
-SYSTEM = """You write the research report an advertising planner reads first, from pinned facts
-and proposed findings. Plain, specific sentences. Every sentence cites the pin ids and/or finding
-ids it rests on. State no number that is not the value of a pin you cite (or written in a finding
-you cite); the view renders every figure from the pins, so describing ("the larger market",
-"growing fastest") is usually better than restating. Never cite anything not in the input. Write a
-headline, two to four summary lines, and for each lens section one to three claims.
-The grounds are for the report as a whole: the pins and findings (by id) that support the headline
-and summary, and the other headlines the input would allow and what in it rules each out.""" + rsn.GUIDE
+SYSTEM = """You write the research report an advertising planner reads first, and lay out the page they read it
+on, in one go, from pinned facts and proposed findings. Plain, specific sentences. Every sentence cites the pin
+ids and/or finding ids it rests on. State no number that is not the value of a pin you cite (or written in a
+finding you cite); the view renders every figure from the pins, so describing ("the larger market", "growing
+fastest") is usually better than restating. Never cite anything not in the input.
+
+Return two things. The record: a headline, two to four summary lines, and for each lens section one to three
+claims, each with its cites; these are the sentences you stand behind. And the page: `html`.
+
+""" + layout.PAGE_RULES + """
+
+The grounds are for the report as a whole: the pins and findings (by id) that support the headline and
+summary, and the other headlines the input would allow and what in it rules each out.""" + rsn.GUIDE
 
 FIELD_LABELS = {"brand": "Brand", "client_org": "Client", "categories": "Categories", "markets": "Markets",
                 "competitor_set": "Comparators", "audience": "The researched audience", "in_market": "In market",
@@ -50,6 +56,7 @@ def schema(cite_ids: list[str], lenses: list[str]) -> dict:
     return _obj({"headline": claim, "summary": {"type": "array", "items": claim},
                  "sections": {"type": "array", "items": _obj({"lens": {"type": "string", "enum": lenses or LENSES},
                                                               "claims": {"type": "array", "items": claim}})},
+                 "html": {"type": "string"},
                  "grounds": rsn.MODEL_SCHEMA})
 
 
@@ -97,20 +104,37 @@ def compose(doc, clan, handler, caps):
     written = {"headline": None, "summary": [], "sections": {}}
     dropped = []
     raw = {}
+    ask = {k: (camp[k] or {}).get("value") for k in ("problem", "objective", "audience_stated", "name")
+           if isinstance(camp.get(k), dict) and isinstance((camp[k] or {}).get("value"), str)}
+    person_wording = [re.sub(r"<[^>]+>", " ", h).strip() for k, h in (clan.get("edits") or {}).items()
+                      if str(k).startswith("report:") and isinstance(h, str) and h.strip()][:40]
+    all_findings = {f["id"]: f for f in ctx_findings(clan) if isinstance(f.get("id"), str)}
+    contested = {c["id"]: c for c in sel.get("contested") or [] if c.get("id")}
+    gap_by = {g["id"]: g for g in sel.get("gaps") or [] if g.get("id")}
     if lenses_with:
+        pin_row = lambda p: {"id": p["id"], "label": layout.label(p), "entity": p["entity"], "key": p["key"],
+                             "value": p["value"], "unit": p.get("unit"), "market": p.get("market"),
+                             "as_of": p.get("as_of"), "has_quote": bool(p.get("quotes")),
+                             "confidence": p.get("confidence")}
         payload = {"brand": brand, "markets": markets, "problem": fval("problem"), "objective": fval("objective"),
+                   "ask": [{"ref": f"campaign.{k}", "value": v} for k, v in ask.items()],
                    "lenses": [{"lens": l, "title": LENS_TITLES[l],
-                               "pins": [{"id": p["id"], "entity": p["entity"], "key": p["key"], "value": p["value"],
-                                         "unit": p.get("unit"), "market": p.get("market"),
-                                         "confidence": p.get("confidence")} for p in by_lens[l]["pins"]],
+                               "pins": [pin_row(p) for p in by_lens[l]["pins"]],
                                "findings": [{"id": f["id"], "statement": f["statement"], "status": f["status"]}
                                             for f in by_lens[l]["findings"]],
-                               "open_contests": [c["key"] for c in by_lens[l]["contests"] if c.get("status") == "open"],
-                               "gaps": [g.get("searched") for g in by_lens[l]["gaps"]]}
+                               "open_contests": [{"id": c["id"], "key": c["key"],
+                                                  "values": [v.get("value") for v in c.get("values") or []]}
+                                                 for c in by_lens[l]["contests"] if c.get("status") == "open"],
+                               "gaps": [{"id": g["id"], "wanted": g.get("wanted") or g.get("key"),
+                                         "searched": g.get("searched")} for g in by_lens[l]["gaps"]]}
                               for l in lenses_with]}
+        if roster:
+            payload["identity_pins"] = [pin_row(p) for p in roster]
+        if person_wording:
+            payload["person_wording"] = person_wording
         try:
             raw = caps.model.structured("report", SYSTEM, payload, schema(sorted(pin_by) + sorted(fi_by), lenses_with),
-                                        max_tokens=6000)
+                                        max_tokens=16000)
         except Exception as e:  # the structure still composes; the prose falls back to lines built here
             log.warning("report prose unavailable: %s", e)
             dropped.append(f"model: {e}")
@@ -190,15 +214,10 @@ def compose(doc, clan, handler, caps):
     report = {"built_at": iso(), "handler": handler, "based_on": based_on(clan),
               "headline": headline, "summary": summary, "sections": sections,
               "confirm": confirm_list(doc, camp), "not_researched": not_researched(sel, markets)}
-    # How it looks: the agent's layout over the same record, checked in code (Contract 5).
-    all_findings = {f["id"]: f for f in ctx_findings(clan) if isinstance(f.get("id"), str)}
-    report["layout"], report["layout_by"], ldropped = layout.compose(
-        report, pin_by, all_findings, {c["id"]: c for c in sel.get("contested") or [] if c.get("id")},
-        {g["id"]: g for g in sel.get("gaps") or [] if g.get("id")}, caps, names, brand, markets,
-        ask={k: (camp[k] or {}).get("value") for k in ("problem", "objective", "audience_stated", "name")
-             if isinstance(camp.get(k), dict) and isinstance((camp[k] or {}).get("value"), str)},
-        person_wording=[re.sub(r"<[^>]+>", " ", h).strip() for k, h in (clan.get("edits") or {}).items()
-                        if str(k).startswith("report:") and isinstance(h, str) and h.strip()][:40])
+    # How it looks: the page the same call wrote, checked in code (Contract 5), or one built from the record.
+    report["layout"], report["layout_by"], ldropped = layout.finish(
+        raw.get("html") if isinstance(raw, dict) else None, report, pin_by, all_findings, contested, gap_by, names,
+        {f"campaign.{k}" for k in ask})
     if ldropped:
         log.info("report layout (%s): dropped %d: %s", report["layout_by"], len(ldropped), json.dumps(ldropped)[:600])
     cites = list(dict.fromkeys(list(headline["cites"]) + [c for s in summary for c in s["cites"]] + sorted(used)))

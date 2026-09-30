@@ -52,13 +52,28 @@ def merge_patch(target, patch):
     return out
 
 
+def page_metrics(html: str, clan: dict) -> dict:
+    """What a report page covers: sections, charts, quotes, and which lenses and how many of the facts and
+    findings it references anywhere (a field, a cite, a chart or a quote)."""
+    import re
+    from napkin.doc import lens_of_key
+    refs = set(re.findall(r"\b(?:f|fi)_[0-9A-Z]{6,}\b", html))
+    pins = {f["id"]: f for f in clan.get("facts") or []}
+    with_ev = {lens_of_key(f.get("key")) for f in pins.values()} - {None}
+    on_page = {lens_of_key(pins[r]["key"]) for r in refs if r in pins} - {None}
+    return {"sections": len(re.findall(r"<h2[\s>]", html)), "charts": html.count("<clan-chart"),
+            "quotes": html.count("<clan-quote"), "facts_on_page": len(refs & set(pins)), "facts_in_doc": len(pins),
+            "findings_on_page": len({r for r in refs if r.startswith("fi_")}),
+            "lenses_with_evidence": len(with_ev), "lenses_on_page": len(on_page & with_ev)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--clan", required=True, help="a checkpoint file: after_research.json or after_synthesise.json")
     ap.add_argument("--stages", default="synthesise,report")
     ap.add_argument("--model", action="append", default=[], metavar="PURPOSE=MODEL")
     ap.add_argument("--effort", action="append", default=[], metavar="PURPOSE=LEVEL")
-    ap.add_argument("--default-model", default="claude-opus-5")
+    ap.add_argument("--default-model", default="claude-opus-5-5")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--label", default="trial")
     a = ap.parse_args()
@@ -133,6 +148,8 @@ def main():
                 row["summary_lines"] = len(rep.get("summary") or [])
                 row["headline"] = (rep.get("headline") or {}).get("text")
                 row["layout_chars"] = len(rep.get("layout") or "")
+                row.update(page_metrics(rep.get("layout") or "", clan))
+                (out / f"page_{i}.html").write_text(rep.get("layout") or "")
             results.append(row)
             print(f"repeat {i}: {row}", flush=True)
     finally:
@@ -158,7 +175,8 @@ def main():
     (out / "trial.json").write_text(json.dumps({"clan": str(a.clan), "stages": stages, "models": by_model,
                                                 "efforts": by_effort, "default_model": a.default_model,
                                                 "results": results}, indent=1))
-    cols = ("findings", "report_claims", "layout_by", "cli_cost", "list_cost", "calls")
+    cols = ("report_claims", "layout_by", "sections", "charts", "quotes", "facts_on_page", "lenses_on_page",
+            "layout_chars", "cli_cost", "calls")
     print("\n| repeat | secs | " + " | ".join(cols) + " |\n|---|---|" + "---|" * len(cols))
     for r in results:
         print(f"| {r['repeat']} | {sum(r['secs'].values()):.0f} | " + " | ".join(str(r.get(c, '')) for c in cols) + " |")
