@@ -281,7 +281,7 @@ def validate_sources(raw, max_sources: int, retrieved_at: str) -> tuple[list, di
 class Research:
     def __init__(self, cfg: Config, slots: Slots):
         self.cfg, self.slots = cfg, slots
-        self.cache = DiskCache(cfg.data, "research")
+        self.cache = DiskCache(cfg.cache_root, "research")
 
     def health(self) -> dict:
         return {"api": API, "backend": BACKEND, "model": self.cfg.research_model}
@@ -327,8 +327,10 @@ class Research:
                         "trace": {"backend": BACKEND, "queries": queries, "model": self.cfg.research_model}}
             log(f"research {req['lens']}/{req['market']}: {len(sources)} sources in "
                 f"{time.monotonic() - t0:.1f}s, dropped {drops}, cost {result['cost_usd']}")
-            # The query parameters (a public-web question) and public excerpts only.
-            self.cache.put(key, {"request": req, "created": _dt.datetime.now(_dt.timezone.utc)
+            # The query parameters (a public-web question) and public excerpts only. An empty answer is
+            # never cached: it would repeat on every later run with the same request.
+            if sources:
+                self.cache.put(key, {"request": req, "created": _dt.datetime.now(_dt.timezone.utc)
                                  .isoformat(timespec="seconds"), "dropped": drops, "response": response})
             return response
 

@@ -11,7 +11,12 @@ Writes `report.json` and `report.md` beside them and prints the table.
 import json
 import sys
 from collections import defaultdict
+import sqlite3
 from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+PRICES = json.loads((HERE / "prices.json").read_text())["models"]
 
 STAGE_OF = {"extract": "extract", "identify": "identify", "classify_category": "identify", "select": "select",
             "extract_facts": "research", "synthesise": "synthesise", "report": "report", "layout": "report"}
@@ -22,14 +27,28 @@ def load(p):
     return [json.loads(x) for x in p.read_text().splitlines() if x.strip()] if p.is_file() else []
 
 
+def list_cost(model: str, tin: int, tout: int, breakdown: dict | None) -> float | None:
+    """Cost at list price from the ledger's token counts, or None when the model has no price row.
+    With a cache breakdown, fresh/cache-write/cache-read are priced apart; without one every input token is fresh."""
+    p = PRICES.get(model)
+    if not p:
+        return None
+    b = breakdown or {"fresh": tin, "cache_write": 0, "cache_read": 0}
+    return (b.get("fresh", 0) * p["in"] + b.get("cache_write", 0) * p["cache_write_5m"]
+            + b.get("cache_read", 0) * p["cache_read"] + tout * p["out"]) / 1e6
+
+
 def build(run: Path) -> dict:
     mw, mock = load(run / "middleware.jsonl"), load(run / "mock" / "metrics.jsonl")
     stages = defaultdict(lambda: dict(wall=0.0, model_calls=0, model_secs=0.0, cost=0.0, tin=0, tout=0,
                                       research_calls=0, research_cached=0, research_secs=0.0, searches=0, fetches=0,
-                                      turns=0, retries=0))
+                                      turns=0, retries=0, list_cost=0.0, unpriced=0, failed_attempts=0, failed_stage=0))
     for e in mw:
-        if e["kind"] == "stage" and e.get("finished"):
-            stages[e["stage"]]["wall"] += e["secs"]
+        if e["kind"] == "stage":
+            if e.get("failed"):
+                stages[e["stage"]]["failed_stage"] += 1
+            else:
+                stages[e["stage"]]["wall"] += e.get("secs") or 0  # every pass: a stage that asks a question runs twice
     for e in mock:
         if e.get("cached"):
             stages["research"]["research_cached"] += 1
@@ -49,8 +68,19 @@ def build(run: Path) -> dict:
             s["model_calls"] += 1
             s["model_secs"] += e["secs"]
     for e in mw:
-        if e["kind"] == "model" and e.get("attempt", 1) > 1:
-            stages[STAGE_OF.get(e["purpose"], e["purpose"])]["retries"] += 1
+        if e["kind"] != "model":
+            continue
+        st = STAGE_OF.get(e["purpose"], e["purpose"])
+        if e.get("attempt", 1) > 1:
+            stages[st]["retries"] += 1
+        if e.get("stop") == "error":
+            stages[st]["failed_attempts"] += 1
+            continue
+        c = list_cost(e.get("model"), e.get("input_tokens") or 0, e.get("output_tokens") or 0, e.get("breakdown"))
+        if c is None:
+            stages[st]["unpriced"] += 1
+        else:
+            stages[st]["list_cost"] += c
     units = [e for e in mw if e["kind"] == "unit"]
     by_purpose = defaultdict(lambda: dict(calls=0, secs=0.0, cost=0.0, tin=0, tout=0))
     for e in mock:
@@ -62,7 +92,8 @@ def build(run: Path) -> dict:
             b["tin"] += (e.get("in_fresh") or 0) + (e.get("cache_write") or 0) + (e.get("cache_read") or 0)
             b["tout"] += e.get("out") or 0
     tot = {k: sum(s[k] for s in stages.values()) for k in
-           ("wall", "model_calls", "cost", "tin", "tout", "research_calls", "research_cached", "searches", "fetches")}
+           ("wall", "model_calls", "cost", "tin", "tout", "research_calls", "research_cached", "searches", "fetches",
+            "list_cost", "failed_attempts", "failed_stage", "unpriced")}
     tot["units"] = len(units)
     tot["units_reused"] = sum(1 for u in units if u["reused"])
     tot["units_zero_sources"] = sum(1 for u in units if not u["reused"] and not u["sources"])
@@ -99,17 +130,46 @@ def quality(run: Path) -> dict | None:
             "coverage_cells": dict(cov), "findings": len(out.get("findings") or []), "report_claims": claims}
 
 
+def sources_and_yield(run: Path, units: list) -> dict:
+    """Source-tier mix from the run's layers database, and how many facts the extraction returned against how
+    many survived the middleware's checks (needs the recorded extract_facts replies)."""
+    out: dict = {}
+    dbp = run / "mock" / "layers.sqlite"
+    if dbp.is_file():
+        db = sqlite3.connect(dbp)
+        out["tiers"] = dict(db.execute("select tier, count(*) from sources group by tier").fetchall())
+        out["domains"] = db.execute("select count(distinct domain) from sources").fetchone()[0]
+    rec = run / "recordings" / "model_calls.jsonl"
+    if rec.is_file():
+        per: dict = defaultdict(int)
+        for line in rec.read_text().splitlines():
+            r = json.loads(line)
+            if r.get("purpose") != "extract_facts" or r.get("stop") != "ok" or not r.get("reply"):
+                continue
+            try:
+                per[r.get("unit")] += len(json.loads(r["reply"]).get("facts") or [])
+            except (ValueError, TypeError):
+                pass
+        returned = sum(per.values())
+        kept = sum(u.get("facts") or 0 for u in units if u.get("sources"))
+        out["extraction_returned"], out["extraction_kept"] = returned, kept
+    return out
+
+
 def table(r: dict) -> str:
-    rows = ["| stage | wall s | model calls | research calls (cached) | searches/fetches | tokens in / out | cost $ |",
-            "|---|---|---|---|---|---|---|"]
+    rows = ["| stage | wall s | model calls | research calls (cached) | searches/fetches | tokens in / out | CLI cost $ | list cost $ |",
+            "|---|---|---|---|---|---|---|---|"]
     for name in ("extract", "identify", "select", "research", "synthesise", "report"):
         s = r["stages"].get(name)
         if s:
             rows.append(f"| {name} | {s['wall']:.0f} | {s['model_calls']} | {s['research_calls']} ({s['research_cached']}) | "
-                        f"{s['searches']}/{s['fetches']} | {s['tin']:,} / {s['tout']:,} | {s['cost']:.2f} |")
+                        f"{s['searches']}/{s['fetches']} | {s['tin']:,} / {s['tout']:,} | {s['cost']:.2f} | {s['list_cost']:.2f} |")
     t = r["totals"]
     rows.append(f"| **total** | {t['wall']:.0f} | {t['model_calls']} | {t['research_calls']} ({t['research_cached']}) | "
-                f"{t['searches']}/{t['fetches']} | {t['tin']:,} / {t['tout']:,} | {t['cost']:.2f} |")
+                f"{t['searches']}/{t['fetches']} | {t['tin']:,} / {t['tout']:,} | {t['cost']:.2f} | {t['list_cost']:.2f} |")
+    if t["failed_attempts"] or t["failed_stage"] or t["unpriced"]:
+        rows.append(f"\nfailed model attempts: {t['failed_attempts']}, failed stages: {t['failed_stage']}, "
+                    f"model calls with no price row: {t['unpriced']}")
     rows += ["", f"units: {t['units']}, reused from DB: {t['units_reused']}, zero sources: {t['units_zero_sources']}, "
                  f"with facts: {t['units_with_facts']}", "", "| model purpose | calls | secs | tokens in / out | cost $ |",
              "|---|---|---|---|---|"]
@@ -125,6 +185,17 @@ def table(r: dict) -> str:
                  f"| lens x market cells filled / thin / empty | {q['coverage_cells'].get('filled', 0)} / "
                  f"{q['coverage_cells'].get('thin', 0)} / {q['coverage_cells'].get('empty', 0)} |",
                  f"| findings / report claims | {q['findings']} / {q['report_claims']} |"]
+    x = r.get("sources")
+    if x:
+        if x.get("tiers"):
+            rows.append(f"\nsource tiers: " + ", ".join(f"{k} {v}" for k, v in sorted(x["tiers"].items()))
+                        + f" ({x.get('domains', 0)} distinct domains)")
+        if "extraction_returned" in x:
+            rows.append(f"extraction yield: {x['extraction_kept']} of {x['extraction_returned']} facts the model returned "
+                        f"survived the quote and figure checks")
+    inv = r.get("invariants")
+    if inv is not None:
+        rows.append(f"invariant check: {inv['violations']} violation(s) " + (json.dumps(inv["by_rule"]) if inv["by_rule"] else ""))
     return "\n".join(rows)
 
 
@@ -132,6 +203,13 @@ if __name__ == "__main__":
     run = Path(sys.argv[1])
     r = build(run)
     r["quality"] = quality(run)
+    r["sources"] = sources_and_yield(run, r["units"])
+    try:
+        import invariants
+        vs = invariants.check(run)
+        r["invariants"] = {"violations": len(vs), "by_rule": invariants.summarise(vs), "first": vs[:10]}
+    except (OSError, ValueError, KeyError):
+        r["invariants"] = None
     (run / "report.json").write_text(json.dumps(r, indent=1, default=dict))
     md = table(r)
     (run / "report.md").write_text(md + "\n")

@@ -95,6 +95,14 @@ class ResearchServer(unittest.TestCase):
         st, r = self.post(body("empty"))
         self.assertEqual((st, r["sources"]), (200, []))
 
+    def test_an_empty_answer_is_not_cached(self):
+        """It would repeat on every later run with the same request, so the same request runs again."""
+        b = body("empty", max_sources=3)
+        n0 = self.calls()
+        self.assertEqual(self.post(b)[1]["sources"], [])
+        self.assertEqual(self.post(b)[1]["sources"], [])
+        self.assertEqual(self.calls(), n0 + 2)
+
     def test_failures_are_502_upstream_failed(self):
         for mode in ("exit", "is_error", "garbage", "nostructured"):
             st, r = self.post(body(mode))

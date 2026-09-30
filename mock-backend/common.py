@@ -90,6 +90,9 @@ class Config:
         self.data = Path(os.environ.get("MOCK_DATA", "").strip() or _default_data())
         self.layers_db = os.environ.get("MOCK_LAYERS_DB", "").strip() or str(self.data / "layers.sqlite")
         self.no_cache = env_flag("MOCK_NO_CACHE")
+        # Where the research and retrieval answers are cached. Default: under MOCK_DATA. Point it at a
+        # run's own directory to record that run's web answers, or at an earlier run's to replay them.
+        self.cache_root = Path(os.environ.get("MOCK_CACHE_ROOT", "").strip() or self.data)
         self.max_budget = os.environ.get("MOCK_MAX_BUDGET_USD", "").strip() or None
         self.token = os.environ.get("MOCK_TOKEN", "").strip() or None
         # Request bodies carry client-confidential material. They are NEVER
