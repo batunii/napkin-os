@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { host } from '../../host'
 import type { AttentionItem, DecisionBlock, DecisionsView } from '../../host'
+import type { Decisions } from './useDecisions'
 import { LogoSpinner } from '../../brand/LogoSpinner'
 import { onRunnable, openInApp } from '../appExport'
 import { HistoryLine, NeedsCard, QuietItem } from './DecisionBlock'
@@ -31,43 +32,21 @@ import { refOfAddress, runsOf, sectionsOf } from './words'
 import './DecisionPanel.css'
 
 interface Props {
-  /** The open document; the panel reloads when it changes. */
-  docPath: string
+  /**
+   * The host's view of the open document, read by the shell (useDecisions):
+   * the top bar and client review read it too. A new document's view starts
+   * from nothing, so the old one's blocks never show against it.
+   */
+  decisions: Decisions
 }
 
-export default function DecisionPanel({ docPath }: Props) {
+export default function DecisionPanel({ decisions }: Props) {
+  const { view, error, reload: load } = decisions
   const [open, setOpen] = useState(false)
-  const [view, setView] = useState<DecisionsView | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [by, setBy] = useState<'run' | 'section'>('run')
   const [quietOpen, setQuietOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [actError, setActError] = useState<string | null>(null)
-
-  const load = useCallback(() => {
-    host.getDecisions().then(
-      v => { setView(v); setError(null) },
-      e => setError(String(e instanceof Error ? e.message : e)),
-    )
-  }, [])
-
-  // A new document starts from nothing, so the old one's blocks never show
-  // against it.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setView(null)
-    load()
-  }, [docPath, load])
-
-  // Every write the host fans out can change the chain.
-  useEffect(() => {
-    const offs = [
-      host.on('clan-data-changed', load),
-      host.on('clan-patch-saved', load),
-      host.on('clan-title-changed', load),
-    ]
-    return () => { for (const off of offs) off.then(f => f()) }
-  }, [load])
 
   // The app says which steps it can run again; redraw when it does.
   const [, setRunnable] = useState(0)
@@ -112,7 +91,8 @@ export default function DecisionPanel({ docPath }: Props) {
       {view && !view.problem && (
         <p className={`dp-lock ${view.lock.can_lock ? 'dp-lock-ok' : ''}`}>
           <span className="dp-dot" aria-hidden />
-          {view.lock.can_lock ? 'Nothing stops you locking it.' : `You can lock it once ${needs.length === 1 ? 'this is' : 'these are'} settled.`}
+          {view.lock.locked && !view.lock.reopened?.length ? 'It is locked. A change from here makes a new version.'
+            : view.lock.can_lock ? 'Nothing stops you locking it.' : `You can lock it once ${needs.length === 1 ? 'this is' : 'these are'} settled.`}
         </p>
       )}
 
@@ -197,7 +177,9 @@ function quietOf(view: DecisionsView | null): { block: DecisionBlock; text: stri
   const needy = new Set(view.attention.filter(a => a.blocks_lock).map(a => refOfAddress(a.address)))
   const out: { block: DecisionBlock; text: string }[] = []
   for (const b of view.decisions) {
-    if (b.superseded || b.who.kind !== 'agent' || b.decision.kind === 'finding') continue
+    // Ellis's suggestions are confirmed or dismissed in client review, where
+    // "Looks right" would record the wrong thing.
+    if (b.superseded || b.who.kind !== 'agent' || b.decision.kind === 'finding' || b.decision.kind === 'client_review') continue
     const quiet = b.attention.filter(r => !r.blocks_lock)
     if (!quiet.length) continue
     if (b.targets.some(t => needy.has(refOfAddress(t.address)))) continue

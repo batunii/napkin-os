@@ -12,7 +12,7 @@ import { AgentFigure } from '../../studio/AgentFigure'
 import { AGENTS } from '../../studio/model'
 import { canRun, openInApp, runInApp } from '../appExport'
 import {
-  changeOf, chipOf, citesOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, signOf, skippedOf,
+  changeOf, chipOf, citesOf, clientLineOf, didWhat, hhmm, mainTarget, opensInApp, plain, redoOf, refOfAddress, signOf, skippedOf,
   sourcesOf, sureWord, upper, whereOf, whoOf, withCountry,
 } from './words'
 import type { WhoIs } from './words'
@@ -40,6 +40,8 @@ const TITLE: Record<string, string> = {
   flagged_field: 'This rests on a point you turned down',
   bad_verdict: 'Marked wrong, and not answered yet',
   unmerged_branch: 'Some work is not in the document yet',
+  client_rejected: 'The client turned this part down',
+  client_rejected_parts_unknown: 'The client turned it down. Which parts?',
 }
 
 /** The button that takes a person to where they answer it. */
@@ -61,7 +63,8 @@ export function NeedsCard({ item, block }: { item: AttentionItem; block?: Decisi
   const who = block ? whoOf(block) : null
   const statement = item.code === 'unverified_finding' || item.code === 'flagged_field'
     ? withCountry((item.label ?? '').replace(/^(Finding|Fact|Contest) · /, '')) : withCountry(item.label ?? '')
-  const raisedBy = block
+  // A client's answer is not something anyone "raised": the host's sentence says whose it is.
+  const raisedBy = block && !item.code.startsWith('client_')
     ? `${who!.name} ${block.decision.kind === 'finding' ? 'found this' : 'raised it'}${sureWord(block.decision.reasoning?.certainty?.level) === 'Unsure' ? ', and is unsure' : ''}`
     : null
   return (
@@ -75,13 +78,16 @@ export function NeedsCard({ item, block }: { item: AttentionItem; block?: Decisi
         </div>
       </div>
       {statement && <div className="dp-stmt"><span className="dp-clip">{statement}</span></div>}
-      {item.code === 'flagged_field' && <p className="dp-why">{item.text}</p>}
+      {(item.code === 'flagged_field' || item.code === 'client_rejected' || item.code === 'client_rejected_parts_unknown') && <p className="dp-why">{item.text}</p>}
       <div className="dp-acts">
         {item.address && <button className="dp-btn dp-btn-primary" onClick={() => openInApp(ref, path)}>{GO[item.code] ?? 'Open it'}</button>}
         {item.code === 'flagged_field' && /campaign\.audience/.test(path ?? '') && canRun('synthesise_findings') && (
           <button className="dp-btn" onClick={() => runInApp('synthesise_findings', { redo: 'audience' })}>Ask {AGENTS.synthesis.given} to redo it</button>
         )}
-        <span className="dp-hint">{item.code === 'open_contest' ? 'you’ll pick one against its sources' : item.code === 'unverified_finding' ? 'you’ll check it against its sources' : 'settle it there'}</span>
+        <span className="dp-hint">{item.code === 'open_contest' ? 'you’ll pick one against its sources'
+          : item.code === 'unverified_finding' ? 'you’ll check it against its sources'
+            : item.code === 'client_rejected' ? 'change it there, saying why'
+              : item.code === 'client_rejected_parts_unknown' ? 'mark the parts above the document' : 'settle it there'}</span>
       </div>
     </div>
   )
@@ -127,6 +133,8 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
   const findings = cites.filter(c => view.cites[c]?.kind === 'finding').length
   const materials = cites.filter(c => view.cites[c]?.kind === 'material')
   const hasMore = !!(r || d.rationale || cites.length)
+  // A client's answer leads with the client, not the person who recorded it.
+  const client = clientLineOf(block, view)
   return (
     <details className={`dp-ev ${block.superseded ? 'dp-ev-old' : ''}`}>
       <summary>
@@ -134,7 +142,13 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
         <div>
           <Sign who={w} />
           {/* An agent's line sits under its signature, so it does not name them again. */}
-          <div className="dp-line">{w.person ? <><b>{w.name}</b> {didWhat(block, view)}</> : upper(didWhat(block, view))}</div>
+          <div className="dp-line">
+            {client?.subject ? <><b>{client.subject}</b> {client.rest}</>
+              : w.person ? <><b>{w.name}</b> {didWhat(block, view)}</> : upper(didWhat(block, view))}
+          </div>
+          {typeof d.said === 'string' && d.action === 'client_answer' && (
+            <q className="dp-said">{clipSaid(d.said)}</q>
+          )}
           {typeof d.was === 'string' && typeof d.now === 'string' && <Change was={d.was} now={d.now} why={d.rationale} />}
           <div className="dp-meta">
             {t && where && (
@@ -228,6 +242,12 @@ export function HistoryLine({ block, view }: { block: DecisionBlock; view: Decis
       )}
     </details>
   )
+}
+
+/** The client's words on the line, verbatim; cut only for the line, with the whole in the record. */
+function clipSaid(said: string): string {
+  const one = said.replace(/\s+/g, ' ').trim()
+  return one.length > 160 ? `${one.slice(0, 159).trimEnd()}…` : one
 }
 
 /** The change itself, on the line: what went, what came, and why. */

@@ -834,6 +834,12 @@ A carried `client_review` (it targets a parent's address) is the parent's
 record: it shows in the history and counts in none of this — no part state,
 no lock item, no reopen.
 
+A suggestion still open when the document is locked again is closed by that
+lock: `/approve` writes, after its `approve`, one `dismiss_part` per open
+suggestion, by the person locking, with `closed_by: <the approve>` and a
+rationale saying the new lock closed it, so it leaves `client.suggestions` and
+asks for nothing (owner rule, 2026-09-30).
+
 #### 7.5.4 Lock rules — §7.2 item 6
 
 A client's rejection not yet answered. Only locking **again** can meet it (a

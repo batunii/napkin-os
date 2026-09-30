@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-clan-noun="brief">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -467,6 +467,9 @@
   .edit textarea:focus,.edit input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
   .edit textarea{min-height:76px;resize:vertical;font-family:var(--fieldFont);line-height:1.55}
   .edit .rat{border-color:var(--border);font-size:13px}
+  .edit textarea.rat{min-height:64px;font-family:inherit}
+  .ratlab{display:flex;flex-direction:column;gap:4px}
+  .ratlab>span{font-size:12.5px;font-weight:600;color:var(--muted)}
   .editrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .editrow label{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
   .editrow input[type=color]{width:26px;height:26px;border:1px solid var(--border);border-radius:50%;padding:1px;background:none;cursor:pointer}
@@ -503,6 +506,36 @@
   .lock:hover{box-shadow:0 2px 6px rgba(20,32,64,.08),0 16px 40px rgba(40,64,120,.16)}
   .lock:active{transform:translateY(1px)}
   .lock.locked{background:var(--green-soft);color:var(--green-ink);box-shadow:none}
+  .lock:disabled{opacity:.55;cursor:default;box-shadow:none;transform:none}
+  .lock .n{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;padding:0 6px;font-size:12px;background:color-mix(in srgb,var(--goText) 22%,transparent)}
+  /* What the lock waits for (the host's lock list): Jude names each, and a
+     tap opens it where it is settled — the part, or the evidence drawer. */
+  .locklist{flex-basis:100%;display:flex;gap:12px;align-items:flex-start;margin-top:10px}
+  .locklist .agent-figure{width:24px;height:32px;flex:none}
+  .locklist .lb{min-width:0;flex:1;display:grid;gap:8px;font-size:14px}
+  .lkitems{display:flex;flex-wrap:wrap;gap:8px}
+  .lkitem{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;min-height:44px;max-width:100%;padding:6px 12px;border:1.5px solid var(--text);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;font-size:13.5px;line-height:1.3;transition:box-shadow .15s var(--ease)}
+  .lkitem:hover{box-shadow:3px 3px 0 var(--text)}
+  .lkitem .k{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .lkitem .x{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  /* A list part opens its evidence on a tap, as a clan-field does. */
+  .val.opens{cursor:pointer;border-radius:6px;transition:background .15s var(--ease)}
+  .val.opens:hover{background:color-mix(in srgb,var(--text) 5%,transparent)}
+  /* A brief started from research: what it carried, and what changed there
+     since (the notice on the design tokens, so it reads under a brand's colours) */
+  .fromup{width:100%;background:var(--surface);color:var(--text);border:2px solid var(--text);border-radius:22px;padding:18px 20px;margin-bottom:26px;display:grid;gap:12px;box-shadow:4px 4px 0 var(--text);transition:background-color .35s var(--ease),border-color .35s var(--ease)}
+  .fromup .fu-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .fromup .fu-t{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+  .fromup blockquote{margin:0;font-family:var(--fieldFont);font-size:16px;line-height:1.5;border-left:3px solid var(--go);padding-left:12px}
+  .fromup .fu-n{font-size:14px;color:var(--muted)}
+  .fromup .fu-n b{color:var(--text);font-weight:600}
+  .fromup .note{text-align:left}
+  .upnote{display:flex;gap:10px;align-items:flex-start;background:var(--amber-soft);color:var(--ink);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin:0 0 14px}
+  .upnote .ub{min-width:0;flex:1;display:grid;gap:6px}
+  .upnote ul{margin:0;padding-left:18px;display:grid;gap:4px}
+  .upnote .m{color:var(--ink2)}
+  .upnote details summary{cursor:pointer;min-height:32px;display:flex;align-items:center;font-weight:500}
+  .upnote .agent-figure{width:18px;height:24px;flex:none}
   .footer .save-as{padding:9px 15px}
   .footer .muted{margin-left:4px}
   .status{display:inline-flex;align-items:center;gap:8px}
@@ -541,10 +574,13 @@
     .tile .agent-figure{width:18px;height:24px}
     .tile .tv{-webkit-line-clamp:1}
     .rsn .rl{display:block;min-width:0}
+    .fromup{padding:14px;border-radius:18px}
+    .lkitem{flex:1 1 100%}
   }
   @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}.tile.work .tv::after{animation:none;content:"…"}}
 </style>
 <!-- @napkin:agent-figures -->
+<!-- @napkin:clan-fields -->
 </head>
 <body>
 <div class="app">
@@ -553,10 +589,11 @@
   <section class="intake" id="intake">
     <div class="ident"><svg viewBox="0 0 44 44" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 8.5h14.2l5.8 5.8v21.2H12z M16.5 18h11v2.6h-11z M16.5 23h11v2.6h-11z M16.5 28h7v2.6h-7z"/><path fill="currentColor" opacity=".5" d="M27.4 7.6 33 13.2h-5.6z"/></svg>Brief Maker<span class="kind">Plan</span></div>
     <div class="hello">
-      <h1 class="h1">What’s the brief?</h1>
-      <p class="lede">Paste the client’s words, or drop in their notes, deck or voice memo.<span class="kindline" id="kindLine"></span></p>
+      <h1 class="h1" id="introH">What’s the brief?</h1>
+      <p class="lede"><span id="ledeText">Paste the client’s words, or drop in their notes, deck or voice memo.</span><span class="kindline" id="kindLine"></span></p>
     </div>
     <div class="stage">
+      <div class="fromup" id="fromUp" hidden></div>
       <div class="onbox" id="introCrew"></div>
       <div class="composer">
         <label class="sr" for="prompt">The brief, in your words</label>
@@ -628,6 +665,7 @@
         <span class="muted" style="width:100%">Change the font, size or colour of one part with the palette button beside it.</span>
       </div>
 
+      <div class="upnote" id="upNote" role="status" hidden></div>
       <div id="fields"></div>
       <div class="review" id="review" hidden></div>
 
@@ -642,6 +680,7 @@
         <button class="save-as" id="exPdf" title="Export a print-ready PDF"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13h10"/></svg>PDF</button>
         <span class="muted" id="lockedBadge" style="display:none;color:var(--ok)">Locked for handoff</span>
         <span class="muted status" id="status" role="status"></span>
+        <div class="locklist" id="lockList" hidden></div>
       </div>
     </div>
   </section>
@@ -714,6 +753,60 @@
   function lockedList(){ var l=get('locked_fields'); return Array.isArray(l)?l:[]; }
   function isLocked(k){ return lockedList().indexOf(k)!==-1; }
   var forceIntake=false, handWrite=false, phase='intake';
+  // The shell's client review mode, as it last said (clan:clientmode).
+  var CLIENT={on:false, answer:null};
+
+  // ---------- the OS layer: the host's decision view, the lock, the parts ----------
+  // What needs a person and whether the brief may lock are the host's
+  // (clan://decisions, which the fields snippet reads and announces as
+  // clan:viewloaded). The brief is locked by an `approve` on it (os-layer
+  // §7.1); a brief made before that holds `data.locked` instead, which is
+  // still read, never written true.
+  function OSF(){ return typeof ClanFields==='object'&&ClanFields?ClanFields:null; }
+  function osView(){ var F=OSF(); return F&&F.view?F.view():null; }
+  function lockState(){ var v=osView(); return v&&v.lock&&typeof v.lock==='object'?v.lock:null; }
+  function approveLocked(){ var l=lockState(); return !!(l&&l.locked); }
+  function legacyLocked(){ return get('locked')===true&&!approveLocked(); }
+  function docLocked(){ return approveLocked()||get('locked')===true; }
+  // A part reopened for a client's request (os-layer §7.5.6): the one place a
+  // locked brief may be edited, through /edit, answering that request.
+  function reopenedOf(key){
+    var l=lockState(); if(!l) return null;
+    return arr(l.reopened).filter(function(r){ return pathOf(r.address)===key; })[0]||null;
+  }
+  function reopenReason(r){
+    var b=arr((osView()||{}).decisions).filter(function(x){ return x.decision&&x.decision.id===r.decision; })[0];
+    return b&&b.decision.rationale||'';
+  }
+  // A person may write the part now: not locked, or locked with it reopened.
+  function canWrite(key){ return !approveLocked()||!!reopenedOf(key); }
+  // A part as the client review and its chips name it (os-layer §7.5.1).
+  function partLabel(f){
+    if(f.sec==='Objectives') return f.label+' objective';
+    if(f.sec==='Desired response') return 'What they should '+f.label.toLowerCase();
+    return f.label.replace(/^The /,'').replace(/^./,function(c){ return c.toUpperCase(); });
+  }
+  // The OS's evidence drawer opens on a data path once the snippet reads it
+  // as one (single-segment paths such as `insight` came with clan-fields.md §2.1).
+  function opensPath(key){ var F=OSF(); return !!(F&&F.kindOf&&F.kindOf(key)==='path'); }
+  // One host route, as the snippet posts them: the reply carries the document
+  // as it now stands, which replaces the page's copy.
+  function hostPost(route, body){
+    return fetch(clanScheme+route,{method:'POST',body:JSON.stringify(body||{})})
+      .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'status '+r.status}; }).then(function(j){ if(!r.ok&&j&&j.ok!==false) j.ok=false; return j; }); })
+      .then(function(res){
+        if(res&&res.clan&&res.clan.data&&window.__CLAN__){
+          window.__CLAN__.data=res.clan.data;
+          window.dispatchEvent(new CustomEvent('clan:dataupdated',{detail:{source:'review',version:res.clan.version}}));
+        }
+        return res;
+      });
+  }
+  function hostErrText(res){
+    var m=res&&(typeof res.error==='string'?res.error:res.error&&res.error.message);
+    m=String(m||'').replace(/^[A-Z0-9_]{3,}:\s*/,'').trim();
+    return /\s/.test(m)?m.charAt(0).toUpperCase()+m.slice(1):'That was not accepted. Please try again.';
+  }
 
   // ---------- who does Brief Maker's work (decision N4, middleware-api §10) ----------
   // Three workers, all real: the middleware reports which of them is on which
@@ -747,6 +840,8 @@
   // it cannot place in Brief Maker is drafting, the one open-ended job here.
   function agentKeyOf(d){
     if(!d) return '';
+    // The middleware's find_client_parts is Ellis reading the client's words.
+    if(/^find_client_parts\b/.test(String(d.handler||d.agent||''))) return 'extract';
     return (CREW_OK&&NapkinAgents.ofDecision(d))||'drafter';
   }
   function whoName(d){ return isHuman(d)?'You':(AGENT_NAME[agentKeyOf(d)]||d.agent); }
@@ -791,8 +886,12 @@
   function about(key){ return CHAIN.decisions.filter(function(d){ return names(d,key); }); }
   function isVerdict(d){ return d.kind==='verdict'||!!d.polarity; }
   function isProposal(d){ return (d.kind||'edit')==='edit'&&d.action==='propose'; }
+  // A decision that writes a value, as the host counts one: an edit or a
+  // resolve, not a proposal and not superseded. A client's answer on a part,
+  // Ellis's suggestion, a reopen or a backref names the field but writes nothing.
+  function isWrite(d){ var k=d.kind; return !d.superseded_by&&d.action!=='propose'&&(k==='resolve'||(k?k==='edit':/^(confirm|edit|patch-data)/.test(String(d.action||'')))); }
   // The decisions that wrote the field, newest first.
-  function decisionsFor(key){ return about(key).filter(function(d){ return !isVerdict(d)&&!isProposal(d)&&d.kind!=='contest'; }); }
+  function decisionsFor(key){ return about(key).filter(isWrite); }
   function newer(a,b){ return CHAIN.decisions.indexOf(a)<CHAIN.decisions.indexOf(b); }
   // The latest verdict on the field, and whether it is a bad one nobody has
   // answered: no person has written the field, or judged it, since.
@@ -801,7 +900,7 @@
   // passing the redraft (the host's /decisions counts it the same way).
   function reasonedGood(d){ return isVerdict(d)&&d.polarity==='good'&&!!(hasReasoning(d)||String(d.rationale||'').trim()); }
   function verdictState(v,key){
-    var answered=v.polarity==='bad'&&about(key).some(function(d){ return newer(d,v)&&(isHuman(d)||reasonedGood(d)); });
+    var answered=v.polarity==='bad'&&about(key).some(function(d){ return newer(d,v)&&(isHuman(d)&&isWrite(d)||reasonedGood(d)); });
     return {d:v, bad:v.polarity==='bad', open:v.polarity==='bad'&&!answered};
   }
   function verdictOf(key){
@@ -874,7 +973,7 @@
   function proposalOf(key){
     var p=about(key).filter(isProposal)[0]; if(!p) return null;
     if(dismissed().indexOf(p.id)!==-1) return null;
-    var since=about(key).some(function(d){ return !isVerdict(d)&&!isProposal(d)&&newer(d,p); });
+    var since=about(key).some(function(d){ return isWrite(d)&&newer(d,p); });
     var named=CHAIN.decisions.some(function(d){ return d!==p&&String(d.rationale||'').indexOf(p.id)!==-1; });
     if(since||named) return null;
     var v=p.proposed_value;
@@ -992,7 +1091,7 @@
   // field a person holds — each asks for the person.
   function notesHtml(f){
     if(CHAIN.state!=='ok') return '';
-    var h='', v=ownVerdictOf(f.key), p=proposalOf(f.key), locked=!!get('locked');
+    var h='', v=ownVerdictOf(f.key), p=proposalOf(f.key), locked=docLocked();
     crossVerdictsOf(f.key).forEach(function(c){ if(c.open) h+=crossNoteHtml(c,f); });
     if(v&&v.open){
       var r=hasReasoning(v.d)?v.d.reasoning:null, say=r?plainJudge(r.attention,1)||(arr(r.because).length?'':plainJudge(r.decided)):(v.d.rationale||'');
@@ -1063,9 +1162,18 @@
     return 'the '+f.label.toLowerCase().replace(/^the /,'');   // "The insight" is not "the the insight"
   }
   var SHOW_ME='<span class="answers"><button type="button" class="act-show">Show me</button></span>';
+  // The client's answer on the locked brief, when it answers this version
+  // (os-layer §7.5.3); the shell's band says it in full, the header only
+  // agrees with it.
+  function clientNow(){ var c=(osView()||{}).client, a=c&&c.answer; return a&&a.current?a:null; }
+  function clientFirst(a){ var n=String(a&&a.client&&a.client.name||'').trim(); return n?n.split(/\s+/)[0]:'the client'; }
+  function clientOpenParts(){ return arr(((osView()||{}).client||{}).parts).filter(function(p){ return p&&p.state!=='accepted'&&!p.answered; }); }
+  function addrLabel(a){ var f=fieldOfAddress(a.address); return a.label||(f?partLabel(f):pathOf(a.address)||''); }
   function renderCrewline(){
     var el=$('crewline'); if(!el) return;
-    var ok=CHAIN.state==='ok', by={}, filled=0, passed=0, failed=[], props=[], locked=!!get('locked');
+    var ok=CHAIN.state==='ok', by={}, filled=0, passed=0, failed=[], props=[], locked=docLocked();
+    var re=approveLocked()?arr((lockState()||{}).reopened):[], ca=approveLocked()?clientNow():null, caNo=!!ca&&ca.answer!=='accepted';
+    var whose=function(a){ var n=clientFirst(a); return n==='the client'?'the client’s':n+'’s'; };
     FIELDS.forEach(function(f){
       if(ok){
         var v=ownVerdictOf(f.key), cx=crossVerdictsOf(f.key).some(function(c){ return c.open; });
@@ -1080,6 +1188,8 @@
     // version that waits for the person
     var dt, dNeeds=!locked&&props.length>0, head=filled+' of its '+FIELDS.length+' parts '+(filled===1?'is':'are')+' written'+(by.me?', '+by.me+' of them by me':'');
     if(!filled) dt='Nothing is written yet. Tap the pencil beside any part to write it.';
+    else if(re.length) dt='Your brief is locked, with '+listWords(re.map(addrLabel))+' open for '+whose(ca)+' change: '+head+'.';
+    else if(caNo) dt='Your brief is locked: '+head+'.';
     else if(locked) dt='Your brief is locked and ready to hand over: '+head+'.';
     else dt='Your brief is ready: '+head+'.'
       +(by.you?' You wrote or changed '+num(by.you)+'.':'')
@@ -1088,17 +1198,42 @@
     if(dNeeds) dt+=' <b>I’ve a new version of '+esc(listWords(props.map(partName)))+' for you.</b> You hold '+(props.length===1?'that part':'those parts')+', so I didn’t change '+(props.length===1?'it':'them')+'.';
     var h='<div class="pair">'+fig('drafter',{state:dNeeds?'needs-you':'idle',decorative:true})
       +say('drafter', dt+(dNeeds?SHOW_ME.replace('act-show','act-show" data-k="'+esc(props[0].key)):''), 'left'+(dNeeds?' warn':''))+'</div>';
-    // Jude: what the checks found
-    if(ok){
-      var jt, jNeeds=!locked&&failed.length>0;
+    // Jude: what the checks found, and what else the lock waits for (the
+    // host's lock list: what the research left open comes with the brief)
+    var others=lockOthers(), lockBy=approveLocked()?lockDecisionHere():null, LIST='<span class="answers"><button type="button" class="act-locklist">Show me</button></span>';
+    if(re.length){
+      // A part reopened for the client's change: what is open, and what the
+      // next lock still waits for (the host's list, which renderLock shows).
+      var all=lockItems(), rt=listWords(re.map(addrLabel))+' '+(re.length===1?'is':'are')+' open for '+whose(ca)+' change. Lock the brief again when the change is made.';
+      if(all.length) rt+=' Before it can lock again, '+num(all.length)+' '+(all.length===1?'thing needs':'things need')+' you.';
+      h+='<div class="pair">'+fig('judge',{state:'needs-you',decorative:true})+say('judge', esc(rt)+(all.length?LIST:''), 'left warn')+'</div>';
+    } else if(ca){
+      // The shell's band speaks for the client's answer; the header agrees
+      // with it rather than saying the brief is simply locked.
+      var op=clientOpenParts(), cn=clientFirst(ca), Cn=cn.charAt(0).toUpperCase()+cn.slice(1), ct;
+      if(!caNo) ct=Cn+' accepted this brief. It’s signed off.';
+      else if(op.length) ct=Cn+(ca.answer==='rejected'?' rejected ':' asked for a change on ')+listWords(op.map(addrLabel))+'. '+(op.length===1?'It’s':'Each is')+' shown on the part.';
+      else ct=Cn+(ca.answer==='rejected'?' rejected this brief.':' asked for changes to this brief.')+' Which parts they mean is not settled yet.';
+      h+='<div class="pair">'+fig('judge',{decorative:true})+say('judge', esc(ct), 'left')+'</div>';
+    } else if(lockBy){
+      var lw=lockBy.who&&lockBy.who.you?'You':lockBy.who&&lockBy.who.name||'Someone', lt=String(lockBy.decision.timestamp||'');
+      h+='<div class="pair">'+fig('judge',{decorative:true})+say('judge', esc('This brief is locked. '+lw+' agreed to it'+(lt?' on '+fmtDate(lt):'')+'. A change from here makes a new version.'), 'left')+'</div>';
+    } else if(ok||others.length){
+      var jt, jNeeds=!locked&&failed.length>0, jOthers=!locked&&others.length>0;
       if(jNeeds) jt=esc(Num(failed.length)+' '+(failed.length===1?'part needs':'parts need')+' you: '+listWords(failed.map(partName))+'.')
         +SHOW_ME.replace('act-show','act-show" data-k="'+esc(failed[0].key));
-      else if(passed) jt=esc('I checked '+parts(passed)+' and '+(passed===1?'it holds':'they hold')+' up. Nothing needs you.');
+      else if(!ok) jt='';
+      else if(passed) jt=esc('I checked '+parts(passed)+' and '+(passed===1?'it holds':'they hold')+' up.'+(jOthers?'':' Nothing needs you.'));
       else jt=esc(filled?'I haven’t checked this brief. Ask '+DARA+' to write a part again and I’ll check it.':'When there’s something written, I’ll check it.');
-      h+='<div class="pair">'+fig('judge',{state:jNeeds?'needs-you':'idle',decorative:true})+say('judge', jt, 'left'+(jNeeds?' warn':''))+'</div>';
+      if(jOthers) jt+=(jt?' ':'')+esc('Before the brief can lock, '+num(others.length)+' '+(jNeeds?'more ':'')+(others.length===1?'thing needs':'things need')+' you.')
+        +LIST;
+      h+='<div class="pair">'+fig('judge',{state:jNeeds||jOthers?'needs-you':'idle',decorative:true})+say('judge', jt, 'left'+(jNeeds||jOthers?' warn':''))+'</div>';
     }
     el.innerHTML=h;
     el.querySelectorAll('.act-show').forEach(function(b){ b.addEventListener('click',function(){ gotoField(b.getAttribute('data-k')); }); });
+    el.querySelectorAll('.act-locklist').forEach(function(b){ b.addEventListener('click',function(){
+      var l=$('lockList'); if(!l||l.hidden) return; l.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});
+      var first=l.querySelector('.lkitem'); if(first) first.focus({preventScroll:true}); }); });
   }
   // The Judge's review of the brief (review.judge) and the scorecard, in place
   // of the old context panel.
@@ -1198,8 +1333,9 @@
     var s=style(), K=kindOf(s);
     document.querySelectorAll('#kinds .kpick,#modes button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.getAttribute('data-style')===s)); });
     $('kindLine').textContent=K.line;
-    $('genBtn').textContent=K.go;
-    var l=$('ellisLine'); if(l&&l.textContent!==K.hi()) l.textContent=K.hi();
+    var fed=isResearchFed(), hi=fed?researchHi():K.hi();
+    $('genBtn').textContent=fed?'Draft from the research':K.go;
+    var l=$('ellisLine'); if(l&&l.textContent!==hi) l.textContent=hi;
     brandPreview();
   }
   // Picking a kind shows at once (PICKED), and is recorded as the style
@@ -1227,6 +1363,7 @@
     }
     if(phase==='intake') renderIntake();
     if(phase==='doc'){ renderStructured(); loadChain(); }
+    syncTitle();
   }
 
   // ---------- start ----------
@@ -1240,7 +1377,7 @@
       }).join('');
   }
   function renderIntake(){
-    buildIntroCrew(); syncKind();
+    buildIntroCrew(); syncKind(); renderFromUp();
     var nm=$('noMw'), off=noMiddleware();
     nm.hidden=!off; $('genBtn').disabled=off;
     if(off){
@@ -1422,9 +1559,9 @@
   // "of the brief's 18 parts": what every count of parts is out of.
   function ofAll(){ return ' of the brief’s '+FIELDS.length+' parts'; }
   // What the person gave Ellis, in words: "your words and two files".
-  function sentWords(){
-    var w=[], n=arr(data().reference_assets).length;
-    if(String(get('brief_input')||'').trim()) w.push('your words');
+  function sentWords(j){
+    var w=[], n=j&&j.sent?j.sent.files:arr(data().reference_assets).length;
+    if(j&&j.sent?j.sent.words:String(get('brief_input')||'').trim()) w.push('your words');
     if(n) w.push(num(n)+' '+(n===1?'file':'files'));
     return w.length?': '+listWords(w):'';
   }
@@ -1445,8 +1582,8 @@
     if(live&&at<=0&&st.extract==='idle') st.extract='working';   // sending, picking up: Ellis is first
     var M={
       extract:{
-        intro:st.extract==='done'?'<b>Hi, I’m '+esc(ELLIS)+'.</b> I read everything you sent'+esc(sentWords())+'.'
-          :'<b>Hi, I’m '+esc(ELLIS)+'.</b> I’m reading everything you sent'+esc(sentWords())+'.',
+        intro:st.extract==='done'?'<b>Hi, I’m '+esc(ELLIS)+'.</b> I read everything you sent'+esc(sentWords(j))+'.'
+          :'<b>Hi, I’m '+esc(ELLIS)+'.</b> I’m reading everything you sent'+esc(sentWords(j))+'.',
         st:st.extract==='done'?['ok','✓ Done.'+(eN?' I picked out '+eN+ofAll()+'.':'')]
           :['', j.state==='sending'||j.state==='checking'||j.state==='queued'?'Getting started…':'Reading now…']},
       drafter:{
@@ -1491,6 +1628,7 @@
       renderProc();
       if(j.state==='done') setTimeout(function(){ if(DRAFT!==j) return; DRAFT=null; forceIntake=false; setPhase('doc'); render(); window.scrollTo(0,0); }, reduce?200:1100);
     }};
+    if(!resumeId) j.sent={words:!!String(prompt||'').trim(), files:arr(atts).length};
     setPhase('proc'); window.scrollTo(0,0);
     if(resumeId){ j.id=resumeId; j.state='checking'; j.delay=900; renderProc(); pollJob(j); return; }
     runJob(j, {prompt:prompt, attachments:atts});
@@ -1539,24 +1677,34 @@
     return {pdf:'application/pdf', txt:'text/plain', md:'text/markdown', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp',
       docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation'}[e.toLowerCase()]||'application/octet-stream';
   }
+  // In a brief started from research, the client's files that came with it
+  // go too: they are the client's words, and capture reads them
+  // (middleware-api §10.13, item 2). The host adds each one's extracted text.
   function attachmentsFor(){
-    return Promise.all((data().reference_assets||[]).map(function(a){
-      var hash=a.sha256?Promise.resolve(a.sha256):fetch(assetUrl(a.name)).then(function(r){ return r.arrayBuffer(); }).then(sha256Hex);
+    var list=arr(data().reference_assets).slice(), names=list.map(function(a){ return a.name; });
+    upMaterials().forEach(function(m){ if(names.indexOf(m.name)===-1) list.push(m); });
+    return Promise.all(list.map(function(a){
+      var hash=/^[0-9a-f]{64}$/.test(a.sha256||'')?Promise.resolve(a.sha256):fetch(assetUrl(a.name)).then(function(r){ return r.arrayBuffer(); }).then(sha256Hex);
       return hash.then(function(h){ return {name:a.name, sha256:h, media_type:mediaTypeOf(a.name, a.media_type), asset:a.path}; });
     }));
   }
 
-  $('genBtn').addEventListener('click',function(){
-    var prompt=$('prompt').value.trim();
+  // A draft: the planner's words (else the ask already recorded, else, in a
+  // brief started from research, the ask that started the research) and the
+  // client's files, the ones that came with the research included.
+  function draftNow(prompt){
+    var typed=!!prompt, ask=prompt||String(get('brief_input')||'').trim()||(isResearchFed()?upPrompt():'');
     if(!window.clan){ $('intakeStatus').textContent='No host bridge — open this inside the studio.'; return; }
     if(noMiddleware()){ renderIntake(); return; }
-    if(!prompt&&!(data().reference_assets||[]).length){ $('intakeStatus').textContent='Say what the brief is, or attach the client’s material.'; return; }
+    if(!ask&&!(data().reference_assets||[]).length&&!upMaterials().length){ $('intakeStatus').textContent='Say what the brief is, or attach the client’s material.'; return; }
     $('intakeStatus').classList.remove('err'); $('intakeStatus').textContent='';
     // The ask is the planner's own words: theirs to write.
-    var ready=(prompt&&prompt!==get('brief_input'))?Promise.resolve(patch('brief_input',prompt,{actor:'human',pinned:false,action:'edit brief_input',rationale:'The ask, in the planner’s words'})):Promise.resolve();
-    ready.then(attachmentsFor).then(function(atts){ startDraft(prompt, atts); })
+    var why=typed||!isResearchFed()?'The ask, in the planner’s words':'The ask that started the research “'+(upTitle()||'it')+'”, in the planner’s words';
+    var ready=(ask&&ask!==get('brief_input'))?Promise.resolve(patch('brief_input',ask,{actor:'human',pinned:false,action:'edit brief_input',rationale:why})):Promise.resolve();
+    ready.then(attachmentsFor).then(function(atts){ startDraft(ask, atts); })
       .catch(function(e){ $('intakeStatus').textContent='Could not read the attachments: '+(e&&e.message||e); $('intakeStatus').classList.add('err'); });
-  });
+  }
+  $('genBtn').addEventListener('click',function(){ draftNow($('prompt').value.trim()); });
 
   // On open: pick up a job this tab started on this document, with one free poll.
   function resumeJobs(){
@@ -1588,6 +1736,127 @@
     return base?base+' campaign':'';
   }
 
+  // ---------- a brief started from research (os-layer §5) ----------
+  // The research is frozen at data.upstream.<its document id>, read-only; its
+  // pins, findings and sources were merged into this brief's own, and its
+  // open items are on this brief's lock list. GET /upstream says whether the
+  // research has moved on since (§8.1, item 6).
+  function upKeys(){ var u=get('upstream'); return u&&typeof u==='object'&&!Array.isArray(u)?Object.keys(u):[]; }
+  function isResearchFed(){ return upKeys().length>0; }
+  var UP={state:'idle', res:null, t:null};
+  function upEntry(){ var r=UP.res; return r?arr(r.upstream).filter(function(e){ return e&&e.direct; })[0]||null:null; }
+  // The direct parent: the one lineage.carried names, else the only one there.
+  function directUpId(){ var ks=upKeys(), c=UP.res&&UP.res.carried&&UP.res.carried.document_id; return c&&ks.indexOf(c)!==-1?c:ks[0]||''; }
+  function upData(){ var id=directUpId(), u=get('upstream')||{}; return id&&u[id]&&typeof u[id]==='object'?u[id]:{}; }
+  function envVal(v){ return v&&typeof v==='object'&&!Array.isArray(v)&&'value' in v?v.value:v; }
+  // The research's name: its campaign name, else its title unless that is only
+  // the tool's own name (a report nobody named), else its brand's research.
+  function upStoreTitle(){ var e=upEntry(); return String(e&&e.title||'').trim(); }
+  function upTitle(){
+    var c=upData().campaign||{}, n=envVal(c.name), t=upStoreTitle(), br=envVal(c.brand)||envVal(c.client_org);
+    if(br&&typeof br==='object') br=br.name;   // a brand is {name, ref}
+    if(typeof n==='string'&&n.trim()) return n.trim();
+    if(t&&!/^(untitled.*|research( tool)?|campaign research)$/i.test(t)) return t;
+    return typeof br==='string'&&br.trim()?br.trim()+' research':t;
+  }
+  function upHeadline(){
+    var r=upData().report||{}, h=r.headline; h=h&&typeof h==='object'?h.text:h;
+    if(typeof h==='string'&&h.trim()) return h.trim();
+    var s0=arr(r.summary)[0]; return s0&&typeof s0.text==='string'?s0.text:'';
+  }
+  // The planner's own words that started the research: the asks of its chat
+  // (the messages indexed as its prompt), in order; else every message of theirs.
+  function upPrompt(){
+    var ms=(upData().intake||{}).messages||{};
+    var ks=Object.keys(ms).filter(function(k){ var m=ms[k]; return m&&m.role==='user'&&String(m.text||'').trim(); });
+    ks.sort(function(a,b){ var x=String(ms[a].at||''), y=String(ms[b].at||''); return x<y?-1:x>y?1:a<b?-1:a>b?1:0; });
+    var asks=ks.filter(function(k){ return ms[k].material_id; }); if(asks.length) ks=asks;
+    return ks.map(function(k){ return String(ms[k].text).trim(); }).join('\n\n');
+  }
+  // The client's own material that travelled with the research: its frozen
+  // materials whose bytes are in this brief's assets, by the asset name the
+  // host finds each one's extracted text under.
+  function upMaterials(){
+    var ms=upData().materials||{}, have=window.__CLAN__&&window.__CLAN__.assets, out=[];
+    Object.keys(ms).forEach(function(id){
+      var m=ms[id]||{}; if(m.kind==='prompt'||!m.asset) return;
+      var name=String(m.asset).replace(/^(?:human\/)?assets\//,'');
+      if(!name||(have&&typeof have==='object'&&!have[name])) return;
+      out.push({name:name, label:m.name||name, sha256:String(m.sha256||'').replace(/^sha256:/,''), media_type:m.media_type||'', path:'human/assets/'+name});
+    });
+    return out;
+  }
+  // What the brief carries, counted from its own merged record.
+  function upCounts(){
+    var pr=get('projection')||{}, fs=pr.findings||{}, fk=Object.keys(fs);
+    return {findings:fk.length, checked:fk.filter(function(k){ return fs[k]&&fs[k].status==='verified'; }).length,
+      pins:Object.keys(pr.pins||{}).length, sources:Object.keys(pr.sources||{}).length,
+      open:arr((upData().selection||{}).contested).filter(function(c){ return c&&c.status==='open'; }).length};
+  }
+  function researchHi(){
+    var t=upTitle(), n=upMaterials().length;
+    return 'Hi, I’m '+ELLIS+'! This brief starts from the research'+(t?' “'+t+'”':'')+'. '
+      +(n?'I’ll read the client’s own words that came with it':'I’ll read the ask that started it')
+      +'. Add anything else they said, then draft it.';
+  }
+  function renderFromUp(){
+    var el=$('fromUp'), on=isResearchFed()&&phase==='intake';
+    $('introH').textContent=on?'Start from the research':'What’s the brief?';
+    $('ledeText').textContent=on?'The client’s words came with it. Add anything else they said, or draft it now.':'Paste the client’s words, or drop in their notes, deck or voice memo.';
+    $('prompt').placeholder=on?'Anything else the client said? (optional)':'Paste what the client said, or tell us about the brief';
+    el.hidden=!on; if(!on){ el.innerHTML=''; return; }
+    var t=upTitle(), hl=upHeadline(), c=upCounts(), mats=upMaterials(), items=lockItems(), n=[];
+    if(c.findings) n.push('<b>'+c.findings+'</b> '+(c.findings===1?'finding':'findings')+(c.checked?' ('+c.checked+' checked)':''));
+    if(c.pins) n.push('<b>'+c.pins+'</b> '+(c.pins===1?'fact':'facts'));
+    if(c.sources) n.push('<b>'+c.sources+'</b> '+(c.sources===1?'source':'sources'));
+    var h='<div><div class="fu-k">From research</div><div class="fu-t">'+esc(t||'The research this brief started from')+'</div></div>'
+      +(hl?'<blockquote>'+esc(hl)+'</blockquote>':'')
+      +(n.length||c.open?'<p class="fu-n">'+(n.length?'It carries '+listWords(n)+'.':'')+(c.open?' Its sources disagree in '+esc(num(c.open))+' '+(c.open===1?'place':'places')+'.':'')+'</p>':'')
+      +'<p class="note">'+esc(mats.length
+        ?ELLIS+' reads the client’s own words that came with it ('+listWords(mats.map(function(m){ return m.label; }))+') and the ask that started the research. The research’s findings can back the insight and the proposition; they never stand in for what the client said.'
+        :'None of the client’s files came with the research, so '+ELLIS+' reads the ask that started it. Add the client’s words below if you have them.')+'</p>';
+    if(items.length) h+='<div class="locklist">'+lockListHtml(items, 'Before the brief can lock, '+(items.length===1?'this needs':'these need')+' you. Settle '+(items.length===1?'it':'them')+' now, or once the brief is drafted.')+'</div>';
+    var up=upNoteInner(); if(up) h+='<div class="upnote" role="status">'+up+'</div>';
+    el.innerHTML=h; bindLkItems(el);
+  }
+  // "The research has changed since this brief started", and what changed:
+  // findings marked wrong there first, with where this brief uses them.
+  function upNoteInner(){
+    var e=upEntry(); if(!e||e.status!=='changed') return '';
+    var li=[], q=function(x){ return '“'+short(x||'a finding',140)+'”'; };
+    arr(e.findings).slice().sort(function(a,b){ return (a.change==='rejected'?0:1)-(b.change==='rejected'?0:1); }).forEach(function(x){
+      var used=arr(x.cited_by).map(fieldOfAddress).filter(Boolean).map(partName);
+      if(x.change==='rejected') li.push('<b>Marked wrong there:</b> '+esc(q(x.statement))+(x.reason?' <span class="m">'+esc('— '+x.reason)+'</span>':'')+(used.length?' '+esc('This brief uses it in '+listWords(used)+'.'):''));
+      else li.push(esc((x.change==='verified'?'Checked there: ':'New there: ')+q(x.statement)+'.'));
+    });
+    arr(e.contests).forEach(function(x){ var k=String(x.key||'a figure').replace(/[._]+/g,' ');
+      li.push(esc(x.change==='resolved'?'A value was picked there for '+k+(x.resolved_here?', and you picked one here too.':'.'):'Its sources now disagree about '+k+'.')); });
+    arr(e.pins).forEach(function(x){ var l=x.label||'a fact';
+      li.push(esc((x.change==='added'?'A new fact: ':x.change==='replaced'?'A fact was replaced: ':'A fact changed: ')+l+'.')); });
+    // Nothing itemised: say what kind of thing changed (the host gives only
+    // which members differ, no paths) and what to do about it.
+    if(!li.length){ var ch=e.changed||{}, w=[];
+      if(ch.data) w.push('its ask or its report was edited'); if(ch.facts) w.push('its facts changed'); if(ch.findings) w.push('its findings changed'); if(ch.sources) w.push('its sources changed');
+      if(w.length){ var w0=listWords(w); li.push(esc('In the research, '+w0+'. Open the research to see what changed, and bring anything you need into this brief yourself.')); } }
+    var ds=typeof e.decisions_since==='number'&&e.decisions_since>0?' '+Num(e.decisions_since)+' '+(e.decisions_since===1?'decision was':'decisions were')+' made there since.':'';
+    var shown=li.slice(0,5), rest=li.slice(5);
+    return '<div class="ub"><b>The research has changed since this brief started.</b>'
+      +'<span class="m">'+esc('This brief keeps the research as it was then; it doesn’t take the newer one on its own.'+ds)+'</span>'
+      +(shown.length?'<ul>'+shown.map(function(x){ return '<li>'+x+'</li>'; }).join('')+'</ul>':'')
+      +(rest.length?'<details><summary>'+rest.length+' more '+(rest.length===1?'change':'changes')+'</summary><ul>'+rest.map(function(x){ return '<li>'+x+'</li>'; }).join('')+'</ul></details>':'')+'</div>';
+  }
+  function renderUpNote(el){ if(!el) return; var h=upNoteInner(); el.hidden=!h; el.innerHTML=h; }
+  // Read when the brief opens and after each write (a read, any actor, locked or not).
+  function loadUpstream(){
+    if(!isResearchFed()) return;
+    clearTimeout(UP.t);
+    UP.t=setTimeout(function(){
+      fetch(clanScheme+'/upstream').then(function(r){ return r.ok?r.json():null; })
+        .then(function(v){ if(v&&typeof v==='object'){ UP.res=v; UP.state='ok'; } }, function(){ UP.state='unavailable'; })
+        .then(function(){ if(phase==='intake'){ renderFromUp(); syncKind(); } else if(phase==='doc') renderUpNote($('upNote')); syncTitle(); });
+    }, 300);
+  }
+
   // ---------- structured ----------
   var REGEN={};   // field key → true while its Drafter is redrafting it
   function renderStructured(){
@@ -1608,20 +1877,28 @@
     ob.setAttribute('aria-expanded', String(own)); ob.textContent=own?'Hide my own colours and font':'Choose my own colours and font';
     $('themebar').classList.toggle('on', own);
     if(own) syncThemeInputs();
-    var host=$('fields'); host.innerHTML=''; var sec=null;
-    FIELDS.forEach(function(f,i){
-      if(f.sec!==sec){ sec=f.sec; var h=document.createElement('div'); h.className='sechead'; h.textContent=f.sec; host.appendChild(h); }
-      var row=fieldRow(f,i); row.classList.add('t'+(i%4)); host.appendChild(row);   // Studio tints the parts in turn
-    });
+    // While the shell records a client's answer, the parts stay as they are:
+    // the fields snippet has put its marks under them.
+    var host=$('fields'), keep=CLIENT.on&&host.childNodes.length, sec=null;
+    if(!keep){
+      host.innerHTML='';
+      FIELDS.forEach(function(f,i){
+        if(f.sec!==sec){ sec=f.sec; var h=document.createElement('div'); h.className='sechead'; h.textContent=f.sec; host.appendChild(h); }
+        var row=fieldRow(f,i); row.classList.add('t'+(i%4)); host.appendChild(row);   // Studio tints the parts in turn
+      });
+    }
     var showBoards=(s==='creative'||brand);
     $('boardsHead').style.display=showBoards?'flex':'none';
     $('boardsNote').hidden=!showBoards;
     $('boards').classList.toggle('on',showBoards);
     if(showBoards) renderBoards(s==='immersive');
-    var locked=!!get('locked');
-    $('lockedBadge').style.display=locked?'inline':'none';
-    var lb=$('lockBtn'); lb.classList.toggle('locked',locked); lb.textContent=locked?'✓ Locked':'Lock brief';
+    $('newDraft').hidden=approveLocked();
+    renderLock(); renderUpNote($('upNote'));
     renderCrewline(); renderReview();
+    LOCK_SIG=lockSig();
+    // The clan-fields inside the rows render, and the snippet finds the
+    // parts again (and puts back what it shows under them).
+    var F=OSF(); if(F&&!keep) F.refresh();
   }
 
   function fieldStyle(key){ var fs=(get('field_styles')||{})[key]||{}; var s='';
@@ -1629,30 +1906,51 @@
 
   function fieldRow(f,i){
     var row=document.createElement('div'); row.className='row'; row.setAttribute('data-i', String(i));
+    // A part the client review can name (the shared protocol: the snippet
+    // collects these in document order and hands them to the shell).
+    row.setAttribute('data-clan-part', f.key); row.setAttribute('data-clan-part-label', partLabel(f));
     var v=get(f.key); var has=hasVal(v);
     var st=fieldStyle(f.key); var sa=st?' style="'+st+'"':'';
     var cls='val'+(f.hero?' spp':'');
-    var valHtml = !has ? '<div class="val empty">Nothing here yet. Tap the pencil to write it.</div>'
-      : f.type==='list' ? '<div class="'+cls+'"'+sa+'><ul>'+(Array.isArray(v)?v:[v]).map(function(x){return '<li>'+esc(String(x))+'</li>';}).join('')+'</ul></div>'
-      : '<div class="'+cls+'"'+sa+'>'+esc(String(v))+'</div>';
+    // A written part opens the OS's evidence drawer: a text part is a
+    // clan-field (its words in this page's type; in the OS's edit mode a tap
+    // edits it through /edit), a list keeps its own list and opens the drawer
+    // on a tap. Without the snippet the words show as they always did.
+    var clf=f.type!=='list'&&opensPath(f.key), opens=f.type==='list'&&opensPath(f.key);
+    var reo=reopenedOf(f.key), writable=canWrite(f.key);
+    var valHtml = !has ? '<div class="val empty">'+(writable?'Nothing here yet. Tap the pencil to write it.':'Nothing here.')+'</div>'
+      : f.type==='list' ? '<div class="'+cls+(opens?' opens':'')+'"'+sa+(opens?' role="button" tabindex="0" title="Where this came from" aria-label="'+esc(f.label+': where this came from')+'"':'')+'><ul>'+(Array.isArray(v)?v:[v]).map(function(x){return '<li>'+esc(String(x))+'</li>';}).join('')+'</ul></div>'
+      : '<div class="'+cls+'"'+sa+'>'+(clf?'<clan-field ref="'+esc(f.key)+'" as="block" caption="'+esc(partLabel(f))+'">'+esc(String(v))+'</clan-field>':esc(String(v)))+'</div>';
     var locked=isLocked(f.key);
+    // Locked by an approve, a part offers nothing but its evidence; a part
+    // reopened for the client's request offers its pencil, and only that.
+    var ctrls=!approveLocked()
+      ? '<button class="iconbtn act-edit" title="Change this" aria-label="Change '+esc(f.label)+'">'+IC.edit+'</button>'+
+        (style()==='immersive'&&(EDIT_MODE||OWN)?'<button class="iconbtn act-style" title="Font, size, colour" aria-label="Font, size and colour of '+esc(f.label)+'">'+IC.style+'</button>':'')+
+        '<button class="iconbtn act-regen" title="'+(noMiddleware()?'Writing it again needs the middleware':'Ask '+esc(DARA)+' to write this again')+'" aria-label="Write again: '+esc(f.label)+'"'+(REGEN[f.key]||noMiddleware()?' disabled':'')+'>'+IC.regen+'</button>'+
+        '<button class="iconbtn act-lock'+(locked?' on':'')+'" title="'+(locked?'Let the crew change this again':'Keep this as it is')+'" aria-label="'+(locked?'Unlock ':'Lock ')+esc(f.label)+'">'+(locked?IC.lock:IC.unlock)+'</button>'
+      : reo ? '<button class="iconbtn act-edit" title="Make the change the client asked for" aria-label="Make the change the client asked for: '+esc(f.label)+'">'+IC.edit+'</button>' : '';
     row.innerHTML='<div class="lab"><span>'+esc(f.label)+'</span>'+
       provHtml(f)+
       (locked?' <span class="lockbadge">'+IC.lock+'locked</span>':'')+
-      '<span class="ctrls">'+
-        '<button class="iconbtn act-edit" title="Change this" aria-label="Change '+esc(f.label)+'">'+IC.edit+'</button>'+
-        (style()==='immersive'&&(EDIT_MODE||OWN)?'<button class="iconbtn act-style" title="Font, size, colour" aria-label="Font, size and colour of '+esc(f.label)+'">'+IC.style+'</button>':'')+
-        '<button class="iconbtn act-regen" title="'+(noMiddleware()?'Writing it again needs the middleware':'Ask '+esc(DARA)+' to write this again')+'" aria-label="Write again: '+esc(f.label)+'"'+(REGEN[f.key]||noMiddleware()?' disabled':'')+'>'+IC.regen+'</button>'+
-        '<button class="iconbtn act-lock'+(locked?' on':'')+'" title="'+(locked?'Let the crew change this again':'Keep this as it is')+'" aria-label="'+(locked?'Unlock ':'Lock ')+esc(f.label)+'">'+(locked?IC.lock:IC.unlock)+'</button>'+
-      '</span></div>'+valHtml+
+      (reo?' <span class="lockbadge">open for the client’s change</span>':'')+
+      (ctrls?'<span class="ctrls"'+(reo?' style="opacity:1"':'')+'>'+ctrls+'</span>':'')+'</div>'+valHtml+
       regenLine(f)+
       '<div class="notes">'+notesHtml(f)+'</div>'+
       (OPEN_WHY[f.key]?'<div class="why">'+whyHtml(f)+'</div>':'');
-    row.querySelector('.act-edit').addEventListener('click',function(){startEdit(row,f);});
-    row.querySelector('.act-regen').addEventListener('click',function(){startRegen(row,f);});
-    row.querySelector('.act-lock').addEventListener('click',function(){toggleLock(f);});
+    var eb=row.querySelector('.act-edit'); if(eb) eb.addEventListener('click',function(){startEdit(row,f);});
+    var rb=row.querySelector('.act-regen'); if(rb) rb.addEventListener('click',function(){startRegen(row,f);});
+    var lb=row.querySelector('.act-lock'); if(lb) lb.addEventListener('click',function(){toggleLock(f);});
     var sb=row.querySelector('.act-style'); if(sb) sb.addEventListener('click',function(){startStyle(row,f);});
     var pb=row.querySelector('.prov'); if(pb) pb.addEventListener('click',function(){toggleWhy(row,f);});
+    var ov=row.querySelector('.val.opens');
+    if(ov){
+      // In the OS's edit mode a list is edited in the brief's own editor (one
+      // item per line); otherwise a tap shows where it came from.
+      var go=function(){ if(EDIT_MODE&&writable) startEdit(row,f); else { var F=OSF(); if(F) F.open(f.key); } };
+      ov.addEventListener('click',go);
+      ov.addEventListener('keydown',function(e){ if(e.target===ov&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); go(); } });
+    }
     bindNotes(row.querySelector('.notes'), f);
     return row;
   }
@@ -1695,19 +1993,29 @@
     wrap.querySelector('.sreset').addEventListener('click',function(){commit(true);});
   }
 
-  // edit value + rationale + optional pin(=lock)
-  function startEdit(row,f){
+  // edit value + rationale + optional pin(=lock). On a locked brief it is the
+  // client's change to a reopened part (os-layer §7.5.5): an /edit that says
+  // why — the reason comes pre-filled — and answers the client's request.
+  function startEdit(row,f,given){
+    var reo=approveLocked()?(reopenedOf(f.key)||(given&&given.answers?{answers:given.answers}:null)):null;
+    if(approveLocked()&&!reo) return;
     var cur=valToText(get(f.key),f.type);
     var ctl = (f.type==='list')?'<textarea class="valctl" placeholder="one per line">'+esc(cur)+'</textarea>'
       : (f.key.indexOf('name')===-1)?'<textarea class="valctl">'+esc(cur)+'</textarea>'
       : '<input type="text" class="valctl" value="'+esc(cur)+'" />';
+    var reason=(given&&given.reason)||(reo?reopenReason(reo):'');
     var wrap=openInline(row, ctl+
-      '<input type="text" class="rat" placeholder="Why this change? (optional — recorded in the decision chain)" />'+
+      // The client's reason, shown whole under a label that says where it came from; still editable.
+      (reo?'<label class="ratlab"><span>'+(reason?'Reason, filled in for you':'Why this change? (needed)')+'</span><textarea class="rat" rows="3">'+esc(reason)+'</textarea></label>'
+        :'<input type="text" class="rat" placeholder="Why this change? (optional — recorded in the decision chain)" />')+
       '<div class="editrow"><button class="save">Save</button><button class="cancel">Cancel</button>'+
-      '<label><input type="checkbox" class="pin" '+(isLocked(f.key)?'checked':'')+' /> Pin &amp; lock this field</label>'+
-      (f.type==='list'?'<span class="muted">one item per line</span>':'')+'</div>');
+      (reo?'<span class="muted">The rest of the brief stays as the client saw it.</span>'
+        :'<label><input type="checkbox" class="pin" '+(isLocked(f.key)?'checked':'')+' /> Pin &amp; lock this field</label>')+
+      (f.type==='list'?'<span class="muted">one item per line</span>':'')+'</div>'+
+      (reo?'<div class="note err" hidden></div>':''));
     if(!wrap) return;
     wrap.querySelector('.valctl').focus();
+    if(reo){ wrap.querySelector('.save').addEventListener('click',function(){ saveClientChange(wrap,f,reo,(given&&given.answers)||reo.answers); }); return; }
     wrap.querySelector('.save').addEventListener('click',function(){
       var raw=wrap.querySelector('.valctl').value;
       var value=f.type==='list'?raw.split('\n').map(function(s){return s.trim();}).filter(Boolean):raw;
@@ -1724,6 +2032,31 @@
       wrap.__close();
     });
   }
+  function saveClientChange(wrap,f,reo,answers){
+    var raw=wrap.querySelector('.valctl').value, btn=wrap.querySelector('.save'), err=wrap.querySelector('.note.err');
+    var value=f.type==='list'?raw.split('\n').map(function(s){return s.trim();}).filter(Boolean):raw;
+    var why=wrap.querySelector('.rat').value.trim();
+    function fail(m){ err.textContent=m; err.hidden=false; btn.disabled=false; }
+    if(valToText(value,f.type)===valToText(get(f.key),f.type)){ wrap.__close(); return; }
+    if(!why){ fail('Say why you are changing it.'); wrap.querySelector('.rat').focus(); return; }
+    btn.disabled=true;
+    hostPost('/edit',{path:f.key, value:value, rationale:why, answers:answers}).then(function(res){
+      if(res&&res.ok){ toast('Saved. Lock the brief again when it’s ready.'); var F=OSF(); if(F) F.reload(); if(wrap.isConnected) wrap.__close(); return; }
+      fail('That did not save. '+hostErrText(res));
+    },function(){ fail('That did not go through. Check your connection and try again.'); });
+  }
+  // "Make this change" (the fields snippet, after /client-review/reopen) on a
+  // part it cannot edit in place — a list — opens the brief's own editor with
+  // the returned reason and the part answer it answers.
+  window.addEventListener('clan:editpart',function(e){
+    var d=(e&&e.detail)||{}, key=String(d.path||d.address||'');
+    if(key.indexOf('#')!==-1) key=pathOf(key)||'';
+    var i=-1; FIELDS.forEach(function(x,j){ if(x.key===key) i=j; }); if(i<0) return;
+    var row=document.querySelector('#fields .row[data-i="'+i+'"]'); if(!row) return;
+    if(e.preventDefault) e.preventDefault();
+    row.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});
+    startEdit(row, FIELDS[i], {reason:d.reason, answers:d.answers});
+  });
 
   // regenerate with OPTIONAL guidance (transient)
   function startRegen(row,f){
@@ -1952,23 +2285,149 @@
   // ---------- footer actions ----------
   $('newDraft').addEventListener('click',function(){ forceIntake=true; handWrite=false; render(); });
   $('saveBtn').addEventListener('click',function(){ if(window.clan&&window.clan.requestSave) window.clan.requestSave(); toast('Saving a copy of this .clan…'); });
+  // ---------- the lock: the shared one (os-layer §7) ----------
+  // Lock brief is /approve, which the host refuses while its lock list holds
+  // anything (carried items included); the button waits on lock.can_lock and
+  // Jude names what it waits for. There is no unlocking an approve: a
+  // client's change reopens one part (§7.5.6), and locking again closes it.
+  var KIND_WORD={open_contest:'Sources disagree', unverified_finding:'Is this right?', flagged_field:'Rests on something marked wrong',
+    bad_verdict:'Marked wrong', unmerged_branch:'Copy not brought back', client_rejected:'The client said no',
+    client_rejected_parts_unknown:'Which parts?'};
+  function refOfAddress(a){ var p=String(a||'').split('#')[1]||'', m=/^(?:findings|facts|materials)\[([^\]]+)\]$/.exec(p)||/^selection\.contested\[([^\]]+)\]$/.exec(p); return m?m[1]:p; }
+  function fieldOfAddress(a){ var p=pathOf(a); if(p==null) return null; return FIELDS.filter(function(f){ return f.key===p||p.indexOf(f.key+'.')===0; })[0]||null; }
+  // One line per part and kind: a part the whole-brief check and its own
+  // check both marked wrong is one thing to settle, not two.
+  function lockItems(){
+    var v=osView(), seen={}; if(!v) return [];
+    return arr(v.attention).filter(function(a){
+      if(!a||!a.blocks_lock) return false;
+      var k=a.code+'|'+(a.address||a.decision||a.text); if(seen[k]) return false; seen[k]=1; return true;
+    }).map(function(a){
+      return {code:a.code, text:a.text||'', label:a.label||'', address:a.address||'', ref:refOfAddress(a.address), field:fieldOfAddress(a.address)};
+    });
+  }
+  // What the lock waits for besides the parts Jude already names in his line.
+  function lockOthers(){ return lockItems().filter(function(x){ return !(x.field&&x.code==='bad_verdict'); }); }
+  function lockDecisionHere(){
+    return arr((osView()||{}).decisions).filter(function(b){ return b.decision&&b.decision.kind==='approve'&&!b.superseded&&arr(b.targets).some(function(t){ return t.here!==false; }); })[0]||null;
+  }
+  function lockSig(){ var l=lockState(); return l?[l.locked, l.can_lock, arr(l.reopened).map(function(r){ return r.address; }).join(',')].join('|'):''; }
+  var LOCK_SIG='';
+  function lkItemHtml(x){
+    return '<button type="button" class="lkitem" data-addr="'+esc(x.address)+'" data-ref="'+esc(x.ref)+'" data-note="'+esc(x.text)+'">'
+      +'<span class="k">'+esc(KIND_WORD[x.code]||'Needs you')+'</span><span class="x">'+esc(x.field?partLabel(x.field):(x.label||x.text))+'</span></button>';
+  }
+  // A part of this brief is settled at the part; anything else (a carried
+  // contest, a finding) in the OS's evidence drawer.
+  function bindLkItems(el){
+    el.querySelectorAll('.lkitem').forEach(function(b){ b.addEventListener('click',function(){
+      var f=fieldOfAddress(b.getAttribute('data-addr')), F=OSF(), ref=b.getAttribute('data-ref');
+      if(f&&phase==='doc'){ gotoField(f.key); return; }
+      if(F&&ref) F.open(ref, false, F.kindOf&&F.kindOf(ref)?'':b.getAttribute('data-note'));
+    }); });
+  }
+  function lockListHtml(items, lead){
+    var more=items.length>8?items.length-8:0;
+    return fig('judge',{state:'needs-you',decorative:true})+'<div class="lb"><div><b>'+esc(JUDE)+':</b> '+esc(lead)+'</div>'
+      +'<div class="lkitems">'+items.slice(0,8).map(lkItemHtml).join('')+'</div>'+(more?'<span class="muted">and '+more+' more, in the decision panel</span>':'')+'</div>';
+  }
+  function renderLock(){
+    var lb=$('lockBtn'), l=lockState(), A=approveLocked(), L=A||get('locked')===true, re=l?arr(l.reopened):[];
+    var again=A&&re.length>0, items=lockItems(), n=items.length, wait=!!l&&!l.can_lock;
+    $('lockedBadge').style.display=L&&!again?'inline':'none';
+    lb.classList.toggle('locked', L&&!again);
+    if(again){ lb.disabled=wait; lb.innerHTML='Lock the brief again'+(wait&&n?' <span class="n">'+n+'</span>':''); lb.title=wait?'Everything listed below has to be settled first':''; }
+    else if(A){ lb.disabled=true; lb.textContent='✓ Locked'; lb.title='Locked. A change from here makes a new version.'; }
+    else if(L){ lb.disabled=false; lb.textContent='✓ Locked'; lb.title='Unlock this brief'; }   // a brief locked before /approve
+    else { lb.disabled=wait; lb.innerHTML='Lock brief'+(wait&&n?' <span class="n">'+n+'</span>':''); lb.title=wait?'Everything listed below has to be settled first':''; }
+    var el=$('lockList'), show=(!L||again)&&n>0;
+    el.hidden=!show; if(!show){ el.innerHTML=''; return; }
+    el.innerHTML=lockListHtml(items, 'Before the brief can lock, '+(n===1?'this needs':'these need')+' you. Tap one to settle it.');
+    bindLkItems(el);
+  }
   $('lockBtn').addEventListener('click',function(){
-    var locked=!get('locked'); patch('locked',locked,{actor:'human',pinned:true,action:'lock brief',rationale:'Brief locked for handoff'});
-    if(locked){
+    var lb=$('lockBtn'), l=lockState(), A=approveLocked();
+    // A brief locked by its old flag unlocks as it always did.
+    if(legacyLocked()){ patch('locked',false,{actor:'human',pinned:true,action:'unlock brief',rationale:'Brief unlocked'}); return; }
+    if(A&&!(l&&arr(l.reopened).length)) return;
+    if(l&&!l.can_lock){ renderLock(); return; }
+    if(!window.clan){ toast('Locking needs the Napkin host.'); return; }
+    lb.disabled=true;
+    hostPost('/approve',{rationale:A?'Brief locked again after the client’s change':'Brief locked for handoff'}).then(function(res){
+      var F=OSF(); if(F) F.reload();
+      if(!(res&&res.ok)){ lb.disabled=false; toast(hostErrText(res)); return; }
       if(window.napkin&&window.napkin.notify) window.napkin.notify('Brief locked',(get('project_name')||'Brief')+' is ready for handoff.');
       if(window.clan&&window.clan.requestSave) window.clan.requestSave();
       toast('Locked & saved as "'+(get('project_name')||'brief')+'.clan"');
-    }
+    },function(){ lb.disabled=false; toast('That did not go through. Check your connection and try again.'); });
+  });
+
+  // ---------- the title: the working title, where the recent list and the top bar read it ----------
+  // The project name, else the working title from the client and the
+  // commercial objective. Set while the document wears a title nobody chose
+  // (untitled, the app's, the research's it was spun off from, or one set
+  // here); a title the person gave it is left alone.
+  var TITLE={done:'', last:''};
+  function workingTitle(){ return String(get('project_name')||'').trim()||derivedTitle(); }
+  function syncTitle(){
+    var t=workingTitle(), m=(window.__CLAN__||{}).manifest||{};
+    if(!t) return;
+    document.title=t+' · Brief';
+    if(TITLE.done===t||m.title===t||!(window.clan&&window.clan.setTitle)) return;
+    var cur=String(m.title||'').trim(), fed=isResearchFed(), ut=fed?upTitle():'', st=fed?upStoreTitle():'';
+    var ours=!cur||/^(untitled.*|new .*|brief( maker)?.*|creative brief.*|x)$/i.test(cur)||cur===TITLE.last||cur===derivedTitle()||(!!ut&&cur===ut)||(!!st&&cur===st);
+    if(!ours) return;
+    TITLE.done=t;
+    window.clan.setTitle(t).then(function(res){ if(res&&res.ok!==false){ m.title=t; TITLE.last=t; } else TITLE.done=''; }, function(){ TITLE.done=''; });
+  }
+
+  // ---------- the OS's decision panel and client review ----------
+  // The panel may ask for a draft or one part again (clan:run); these are the
+  // tasks it may ask for, each run as this view's own button runs it.
+  var RUNNABLE=['draft_brief','regenerate_field'];
+  function announce(){ try{ window.parent.postMessage({type:'clan:can-run', tasks:RUNNABLE}, '*'); }catch(e){} }
+  window.addEventListener('message', function(e){
+    var m=e.data; if(e.source!==window.parent||!m||typeof m!=='object') return;
+    if(m.type==='clan:can-run?'){ announce(); return; }
+    // Client review is the shell's mode; the fields snippet draws it. The
+    // brief only holds its parts still while it is on, and catches up after.
+    if(m.type==='clan:clientmode'){ var was=CLIENT.on; CLIENT={on:!!m.on, answer:m.answer||null}; if(was&&!CLIENT.on&&phase==='doc') render(); return; }
+    if(m.type!=='clan:run'||RUNNABLE.indexOf(m.task)===-1) return;
+    var input=m.input&&typeof m.input==='object'?m.input:{};
+    if(docLocked()){ toast('The brief is locked, so the crew can’t write it again.'); return; }
+    if(noMiddleware()){ toast(NO_MW); return; }
+    if(m.task==='draft_brief'){ if(!DRAFT) draftNow(String(input.prompt||'').trim()); return; }
+    var f=FIELDS.filter(function(x){ return x.key===input.field; })[0]; if(!f||REGEN[f.key]) return;
+    if(phase!=='doc'){ forceIntake=false; render(); }
+    regenField(f, String(input.guidance||'').trim());
+    toast('Asking '+DARA+' to write '+partName(f)+' again.');
+  });
+  // The panel points at a part of the brief: show it.
+  window.addEventListener('clan:focus', function(e){
+    var p=String((e.detail&&e.detail.path)||''); if(p.indexOf('#')!==-1) p=pathOf(p)||'';
+    var f=FIELDS.filter(function(x){ return x.key===p||p.indexOf(x.key+'.')===0; })[0]; if(!f) return;
+    if(phase!=='doc'){ if(!hasContent()) return; forceIntake=false; render(); }
+    gotoField(f.key);
+  });
+  // The fields snippet has read the host's decision view again: the lock and
+  // what it waits for may have moved. A change to the lock redraws the parts
+  // (their controls follow it); anything else only the lock and the crew.
+  window.addEventListener('clan:viewloaded', function(){
+    if(phase==='doc'){ if(lockSig()!==LOCK_SIG) renderStructured(); else { renderLock(); renderCrewline(); } }
+    else if(phase==='intake') renderFromUp();
   });
 
   // ---------- boot ----------
   render();
   checkMiddleware();
   resumeJobs();
+  announce();
+  loadUpstream();
   // A write lands: re-render, and re-read the chain it was recorded in.
   window.addEventListener('clan:dataupdated', function(){
     if(PICKED&&get('brief_style')===PICKED) PICKED=null;   // the kind's write has landed
     if(phase==='proc') renderProc(); render();
+    loadUpstream();
   });
   // The OS toolbar shows whether this app is trusted; the app does not repeat it.
   window.addEventListener('napkin:ready', function(){ applyModeChrome(); });

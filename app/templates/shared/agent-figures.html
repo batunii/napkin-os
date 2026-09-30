@@ -147,6 +147,7 @@ var NapkinAgents=(function(T){
     if(!who||who==='human'||/^human:/.test(who)) return null;
     if(d.kind==='verdict'||d.polarity) return 'judge';
     if(d.kind==='finding') return 'synthesis';
+    if(act.toLowerCase()==='score') return 'judge';
     var w=T.step[last(who)]||T.step[act.toLowerCase()]
       ||(/judge|critic/i.test(who)?'judge':/extract|capture/i.test(who+' '+act)?'read':/draft/i.test(who)?'draft':'');
     if(!w) return null;

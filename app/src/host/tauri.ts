@@ -47,6 +47,12 @@ export const tauriHost: Host = {
   // The desktop viewer is parked; the web shell is where the panel lives.
   getDecisions: () => Promise.reject(new Error('the decision view is not available on the desktop yet')),
   acknowledge: () => Promise.reject(new Error('the decision view is not available on the desktop yet')),
+  // Nor client review, which is read and answered from that view.
+  upstream: () => Promise.reject(new Error('what changed upstream is not available on the desktop yet')),
+  clientReview: () => Promise.reject(new Error('client review is not available on the desktop yet')),
+  clientReviewConfirm: () => Promise.reject(new Error('client review is not available on the desktop yet')),
+  clientReviewReopen: () => Promise.reject(new Error('client review is not available on the desktop yet')),
+  uploadAsset: () => Promise.reject(new Error('client review is not available on the desktop yet')),
 
   setEditMode: active => invoke('set_edit_mode', { active }),
   updatePreviewHtml: html => invoke('update_preview_html', { html }),

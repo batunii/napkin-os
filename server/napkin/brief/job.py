@@ -341,7 +341,7 @@ class BriefJob:
                       "the client's brief is revised", only_option="the scorecard judges the material as it stands",
                       attention=(f"The brief bundles {len(sm['split_into']) or 'several'} strategies; consider "
                                  f"splitting it." if sm["verdict"] == "multiple" else None))
-        sdec = self.dec(("score",), "edit", "score", ["review"], mat_ids, sr, "extract")
+        sdec = self.dec(("score",), "edit", "score", ["review"], mat_ids, sr, "judge")  # the Judge's review
         self.add_chunk("extract", patch, [cdec, sdec] + decisions)
 
     # =============================================================================

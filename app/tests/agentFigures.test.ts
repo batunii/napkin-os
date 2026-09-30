@@ -77,7 +77,7 @@ test('NapkinAgents in the snippet agrees with model.ts', async () => {
     { agent: 'start_campaign', action: 'report' }, { agent: 'start_campaign', action: 'mystery' },
     { agent: 'synthesise_findings' }, { agent: 'x', kind: 'finding' },
     { agent: 'research_lens', lens: 'media_spend' }, { agent: 'research_lens', targets: ['d#lenses.regulation_clearance'] },
-    { agent: 'research_lens' },
+    { agent: 'research_lens' }, { agent: 'draft_brief@1.0/extract', action: 'score' },
   ]
   for (const c of cases) assert.equal(crew.ofDecision(c), agentOfDecision(c), JSON.stringify(c))
   assert.match(crew.figure('judge', { state: 'needs-you' }), /aria-label="Judge,.*needs you"/)

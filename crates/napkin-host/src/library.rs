@@ -418,7 +418,7 @@ fn with_projection(bytes: Vec<u8>) -> HostResult<Vec<u8>> {
         &findings,
         &findings_bytes,
         members::projects_sources(&clan).then_some((sources.as_slice(), sources_bytes.as_slice())),
-        &clan.manifest().updated_at,
+        &utc_seconds(&clan.manifest().updated_at),
     );
     let mut data: serde_yaml::Mapping = match clan.read_entry(DATA) {
         Ok(b) => serde_yaml::from_slice(&b)
@@ -439,6 +439,17 @@ fn with_projection(bytes: Vec<u8>) -> HostResult<Vec<u8>> {
     }
     b.add_entry(DATA, data.into_bytes());
     Ok(b.build()?)
+}
+
+/// A stamp in the form the data schemas take (`…T…Z`, whole seconds, as the
+/// host writes every other one); the manifest's own may carry nanoseconds and
+/// an offset, which a brief's schema refuses at its next write.
+fn utc_seconds(stamp: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(stamp)
+        .map(|t| t.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|_| chrono::Utc::now())
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 // ── Tenancy ─────────────────────────────────────────────────────────────────

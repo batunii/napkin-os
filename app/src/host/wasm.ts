@@ -18,6 +18,9 @@
 import init, { NapkinHost } from '../wasm/napkin_wasm'
 import { prepareFrameHtml } from './wasmFrame'
 import type {
+  ClientConfirmReply,
+  ClientReopenReply,
+  ClientReviewReply,
   DecisionsView,
   Host,
   HostEvents,
@@ -26,6 +29,8 @@ import type {
   RecentDoc,
   SpinoffTarget,
   Unlisten,
+  UploadedAsset,
+  UpstreamView,
 } from './types'
 
 /** Bytes out of wasm arrive as an Array unless they already are a view. */
@@ -139,6 +144,27 @@ function dispatch(resp: RawResponse) {
   for (const e of resp.events) emit(e.name, e.payload)
 }
 
+/**
+ * A `clan://` route as a function call, its reply parsed and its events
+ * fanned out; a refusal thrown in the host's words. The route table is the
+ * same one the server answers, so a review recorded here is the same record.
+ */
+async function route<T>(path: string, query: string, body: Uint8Array): Promise<T> {
+  const resp = (await boot()).handle(path, query, body) as RawResponse
+  const text = new TextDecoder().decode(asBytes(resp.body))
+  let parsed: unknown = null
+  try { parsed = JSON.parse(text) } catch { /* not JSON: the body is the message */ }
+  if (resp.status !== 200) {
+    const err = (parsed as { error?: unknown } | null)?.error
+    throw new Error((typeof err === 'string' ? err : '') || text || `${path.slice(1)}: ${resp.status}`)
+  }
+  dispatch(resp)
+  return parsed as T
+}
+
+const post = <T,>(path: string, body: unknown) =>
+  route<T>(path, '', new TextEncoder().encode(JSON.stringify(body)))
+
 function download(bytes: Uint8Array, filename: string) {
   const url = URL.createObjectURL(new Blob([bytes as unknown as BlobPart]))
   const a = document.createElement('a')
@@ -225,6 +251,16 @@ export const wasmHost: Host = {
     if (resp.status !== 200) throw new Error(new TextDecoder().decode(asBytes(resp.body)))
     dispatch(resp)
   },
+
+  upstream: () => route<UpstreamView>('/upstream', '', new Uint8Array()),
+
+  // Answered by the route table in the page. There is no middleware here, so
+  // Ellis is never asked: the reply says so (`suggestions.status:
+  // unavailable`) and a person marks the parts.
+  clientReview: body => post<ClientReviewReply>('/client-review', body),
+  clientReviewConfirm: body => post<ClientConfirmReply>('/client-review/confirm', body),
+  clientReviewReopen: answer => post<ClientReopenReply>('/client-review/reopen', { answer }),
+  uploadAsset: (name, bytes) => route<UploadedAsset>('/upload-asset', `name=${encodeURIComponent(name)}`, bytes),
 
   setEditMode: async active => { (await boot()).setEditMode(active) },
   // The frame is loaded from srcdoc, so there is no document slot to fill.

@@ -397,10 +397,26 @@ fn commit(
     delta: &str,
     now: &str,
 ) -> HostResult<Outcome> {
+    commit_with(doc, data, m, decision, Vec::new(), delta, now)
+}
+
+/// [`commit`], with `then` written after `decision` in the same generation
+/// (the last ends up newest). The reply names `decision`.
+fn commit_with(
+    doc: &Document,
+    data: Value,
+    m: Members,
+    decision: Decision,
+    then: Vec<Decision>,
+    delta: &str,
+    now: &str,
+) -> HostResult<Outcome> {
     let id = decision.id.clone().unwrap_or_default();
     let kind = decision.kind.clone().unwrap_or_default();
     let targets = decision.targets.clone();
-    let bytes = assemble(doc.clan(), data, m, vec![decision], delta, now, false)?;
+    let mut decisions = vec![decision];
+    decisions.extend(then);
+    let bytes = assemble(doc.clan(), data, m, decisions, delta, now, false)?;
     let notice = serde_json::json!({ "ok": true, "source": "review", "kind": kind, "decision": id });
     let change = doc
         .change(bytes)?
@@ -1203,11 +1219,14 @@ pub fn correct_fact(
 /// A locked document with a part reopened for a client's request locks again
 /// (Contract 4 §7.5.6, item 3): the whole list is run, a client's unanswered
 /// rejection included, and the new `approve` — now the lock — closes every
-/// reopened part. The older one is not rewritten.
+/// reopened part. The older one is not rewritten. Any of Ellis's suggestions
+/// still unconfirmed is closed by it, one dismissal each, written after it
+/// (§7.5.3): they were about a version the new lock replaces.
 pub fn approve(ctx: &Ctx, doc: &Document, rationale: &str) -> HostResult<Outcome> {
     let who = person(ctx, "lock the document")?;
     let chain = chain_of(doc)?;
     let here = doc.clan().document_id();
+    let again = lock_of(&chain, here).is_some();
     if let Some(lock) = lock_of(&chain, here) {
         if super::client_review::reopened(&chain, here).is_empty() {
             return Err(locked(lock));
@@ -1246,7 +1265,13 @@ pub fn approve(ctx: &Ctx, doc: &Document, rationale: &str) -> HostResult<Outcome
         &now,
     );
     d.version = Some(doc.version().as_str().to_string());
-    commit(doc, data_of(clan)?, Members::of(clan)?, d, "locked", &now)
+    let closed = if again {
+        let lock = d.id.clone().unwrap_or_default();
+        super::client_review::closed_by_lock(ctx, &who, &chain, &view.client.suggestions, &lock, &now)?
+    } else {
+        Vec::new()
+    };
+    commit_with(doc, data_of(clan)?, Members::of(clan)?, d, closed, "locked", &now)
 }
 
 /// Now, in the one shape the campaign schema's `datetime` accepts.

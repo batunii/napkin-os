@@ -4,7 +4,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { host } from '../host'
-import type { ManifestInfo } from '../host'
+import type { ClientAnswerKind, ClientPartRef, ManifestInfo } from '../host'
+import { partsFrom } from './clientReview/review'
 import { getTheme, onThemeChange } from '../theme'
 import { setExportFrame } from './appExport'
 import { LEGACY_EDIT_BRIDGE } from '../bridge/legacyEditBridge'
@@ -17,6 +18,21 @@ interface Props {
   /** "authored" → structured (data-layer) bridge; "legacy" → contenteditable. */
   renderModel: 'authored' | 'legacy'
   editMode: boolean
+  /**
+   * Client review, the OS's other mode (OS-layer contract §7.5). The app's
+   * fields show "+ This part" under each part it declared while `on`, and
+   * only for an answer that is not Accepted.
+   */
+  clientMode?: { on: boolean; answer: ClientAnswerKind | null }
+  /** The parts the app declares (`clan:parts`), in document order. */
+  onParts?: (parts: ClientPartRef[]) => void
+  /** A part marked or unmarked in client review, and the words under it (`clan:part-mark`). */
+  onPartMark?: (mark: { address: string; marked: boolean; words: string }) => void
+  /**
+   * The app asks for edit mode (`clan:edit-request`): "Make this change"
+   * reopened one part, and the part opens in edit mode with the reason filled in.
+   */
+  onEditRequest?: () => void
 }
 
 /**
@@ -25,7 +41,9 @@ interface Props {
  * the appropriate edit bridge: the structured (data-layer) bridge for authored
  * Napkin apps, or the legacy contenteditable bridge for AI-generated HTML.
  */
-export default function AppRuntime({ htmlContent, hasHumanView, manifest, renderModel, editMode }: Props) {
+export default function AppRuntime({
+  htmlContent, hasHumanView, manifest, renderModel, editMode, clientMode, onParts, onPartMark, onEditRequest,
+}: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const editModeRef = useRef(editMode)
 
@@ -104,6 +122,42 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
         me => frame.postMessage({ type: 'clan:me', actor: me.actor, id: me.id, name: me.name }, '*'),
         () => frame.postMessage({ type: 'clan:me', actor: null, id: null, name: null }, '*'),
       )
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  // ── client review ─────────────────────────────────────────────────────────
+  // The mode is the shell's; the app's fields draw the per-part controls. The
+  // mode goes to the frame whenever it changes and again on every load, so a
+  // reloaded frame is never left showing controls for a mode that ended.
+  const clientOn = !!clientMode?.on
+  const clientAnswer = clientMode?.answer ?? null
+  const clientRef = useRef({ on: clientOn, answer: clientAnswer })
+  const postClientMode = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'clan:clientmode', on: clientRef.current.on, answer: clientRef.current.on ? clientRef.current.answer : null }, '*',
+    )
+  }, [])
+  useEffect(() => {
+    clientRef.current = { on: clientOn, answer: clientAnswer }
+    postClientMode()
+  }, [clientOn, clientAnswer, postClientMode])
+
+  // What the app says about its parts. Its contentWindow is the frame's for
+  // the frame's whole life, loads included, so nothing it posts before its
+  // load event is missed. Only our own frame is heard.
+  const handlers = useRef({ onParts, onPartMark, onEditRequest })
+  useEffect(() => { handlers.current = { onParts, onPartMark, onEditRequest } })
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const frame = iframeRef.current?.contentWindow
+      if (!frame || e.source !== frame) return
+      const m = e.data as { type?: string; parts?: unknown; address?: unknown; marked?: unknown; words?: unknown }
+      if (m?.type === 'clan:parts') handlers.current.onParts?.(partsFrom(m.parts))
+      else if (m?.type === 'clan:part-mark' && typeof m.address === 'string') {
+        handlers.current.onPartMark?.({ address: m.address, marked: m.marked === true, words: typeof m.words === 'string' ? m.words : '' })
+      } else if (m?.type === 'clan:edit-request') handlers.current.onEditRequest?.()
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -204,6 +258,9 @@ export default function AppRuntime({ htmlContent, hasHumanView, manifest, render
       title={manifest.title}
       onLoad={() => {
         postScheme(getTheme())
+        postClientMode()
+        // An app that declared its parts before the shell heard says them again.
+        iframeRef.current?.contentWindow?.postMessage({ type: 'clan:parts?' }, '*')
         setExportFrame(iframeRef.current?.contentWindow ?? null)
       }}
     />

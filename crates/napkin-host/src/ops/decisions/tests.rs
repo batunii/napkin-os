@@ -68,13 +68,12 @@ fn the_example_lists_what_blocks_its_lock() {
     assert!(v.problem.is_none());
     assert_eq!(v.document_id, DOC);
 
-    // Newest first.
-    let stamps: Vec<i64> = v
-        .decisions
-        .iter()
-        .map(|b| stamp(&b.decision.timestamp))
-        .collect();
-    assert!(stamps.windows(2).all(|w| w[0] >= w[1]), "{stamps:?}");
+    // Newest first: the chain's own order, whatever the stamps say.
+    let read = std::fs::read(format!("{EXAMPLE}/agent/decision-chain.yaml")).unwrap();
+    let chain = DecisionChain::from_yaml(&read).unwrap();
+    let shown: Vec<_> = v.decisions.iter().map(|b| b.decision.id.clone()).collect();
+    let written: Vec<_> = chain.decisions.iter().map(|d| d.id.clone()).collect();
+    assert_eq!(shown, written);
 
     let c = codes(&v);
     // The open ABV contest, on the decision that opened it; the resolved

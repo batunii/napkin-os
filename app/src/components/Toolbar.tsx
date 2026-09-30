@@ -29,6 +29,21 @@ interface Props {
   /** Edit mode, for every app: its fields become editable, each change a person's pinned decision. */
   editMode?: boolean
   onToggleEdit?: () => void
+  /**
+   * Client review (OS-layer contract §7.5): given only while the document is
+   * locked with no part reopened — the bar then offers it where Edit is.
+   */
+  onClientReview?: () => void
+  /**
+   * The client has answered this locked version already: the bar's button is
+   * quiet then ("New client answer"), so the band's next step leads.
+   */
+  clientAnswered?: boolean
+  /**
+   * Client review is on: the bar is tinted and says so, and Cancel leaves it,
+   * dropping whatever was not saved. The document's other actions wait.
+   */
+  clientMode?: { onCancel: () => void; busy?: boolean }
   loading: boolean
   validation?: string
   /**
@@ -173,7 +188,7 @@ function MoreMenu({ items }: { items: MenuItem[] }) {
  */
 export default function Toolbar({
   title, isTemplate, trusted, onHome, onOpenFile, onToggleSidebar, onWorkspace, onSave, onKeepOffline, onExport, editMode, onToggleEdit,
-  docPath, onSpinoff, sidebarOpen, loading, validation, saved,
+  onClientReview, clientAnswered, clientMode, docPath, onSpinoff, sidebarOpen, loading, validation, saved,
 }: Props) {
   const invalid = !!validation && validation !== 'OK'
   const targets = useSpinoffTargets(docPath)
@@ -202,6 +217,23 @@ export default function Toolbar({
     },
   ]
 
+  if (clientMode) {
+    return (
+      <div className="ch-bar ch-bar-mode" role="region" aria-label="Client review">
+        <button className="ch-bar-home" onClick={onHome} title="Back to the studio">
+          <StudioLogo size={15} compact />
+        </button>
+        <span className="ch-bar-title">{title ?? 'No file open'}</span>
+        <span className="ch-modetag"><span className="ch-modetag-dot" aria-hidden />Client review</span>
+        <span className="ch-bar-sep" />
+        <button className="ch-btn" onClick={clientMode.onCancel} disabled={clientMode.busy} title="Leave client review. Nothing you have not saved is kept.">
+          Cancel
+        </button>
+        <ThemeToggle />
+      </div>
+    )
+  }
+
   return (
     <div className="ch-bar">
       <button className="ch-bar-home" onClick={onHome} title="Back to the studio">
@@ -220,6 +252,15 @@ export default function Toolbar({
         </span>
       )}
       <span className="ch-bar-sep" />
+      {onClientReview && !editMode && (
+        <button
+          className={clientAnswered ? 'ch-btn ch-btn-big' : 'ch-btn ch-btn-primary ch-btn-big'}
+          onClick={onClientReview}
+          title={clientAnswered ? 'Record another answer from the client about the locked version' : 'Record what the client said about the locked version'}
+        >
+          {clientAnswered ? 'New client answer' : 'Client review'}
+        </button>
+      )}
       {onToggleEdit && editMode && (
         <button
           className="ch-btn ch-btn-editing"

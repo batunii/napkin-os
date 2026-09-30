@@ -657,6 +657,10 @@ async fn the_public_viewer_is_the_shell_and_starts_no_session() {
 // ── Install and launch ───────────────────────────────────────────────────────
 
 fn a_template(app_id: &str, name: &str) -> Vec<u8> {
+    a_template_with(app_id, name, None)
+}
+
+fn a_template_with(app_id: &str, name: &str, spinoff: Option<clan_sdk::SpinoffSpec>) -> Vec<u8> {
     let base = clan_sdk::ClanFile::from_bytes(a_clan(name)).unwrap();
     clan_sdk::make_template(
         &base,
@@ -669,7 +673,7 @@ fn a_template(app_id: &str, name: &str) -> Vec<u8> {
             schema: Some("agent/output-schema.json".into()),
             prompt_templates: vec![],
             data_seed: None,
-            spinoff: None,
+            spinoff,
         },
         clan_sdk::MakeTemplateOptions::default(),
     )
@@ -820,4 +824,369 @@ async fn an_export_is_composed_once_and_claimed_once() {
         StatusCode::NOT_FOUND,
         "a claimed export is gone"
     );
+}
+
+// ── Client review, through the sandbox ───────────────────────────────────────
+//
+// The server serves the host's own routes behind the token (Contract 4 §8.1
+// item 6, §8.2): `/client-review` takes the asynchronous path that asks the
+// middleware's `find_client_parts` (Ellis), and every decision is the
+// tenant's — its person as the recorder, its workspace as the scope.
+
+const SMP: &str = "single_minded_proposition";
+const SAID: &str =
+    "Honestly this isn't the brief we talked about. The summer line doesn't feel like us.";
+
+/// A middleware that answers `find_client_parts` with one suggestion: the
+/// first part it is given, quoting the client's last sentence. What it was
+/// asked is kept in memory for the test to read, and nowhere else.
+async fn ellis() -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = asked.clone();
+    let app = Router::new().route(
+        "/v1/tasks",
+        axum::routing::post(move |axum::Json(body): axum::Json<Value>| {
+            let seen = seen.clone();
+            async move {
+                let address = body["payload"]["input"]["parts"][0]["address"].clone();
+                seen.lock().unwrap().push(body);
+                axum::Json(serde_json::json!({
+                    "api": "napkin.middleware/1", "task": "find_client_parts",
+                    "handler": "find_client_parts@1.0",
+                    "job": { "id": "job_e", "state": "done" }, "change": null,
+                    "result": { "summary": "one part", "dropped": 0, "suggestions": [
+                        { "address": address, "answer": "rejected",
+                          "quote": "The summer line doesn't feel like us." } ] },
+                    "trace": { "backend": "mock-backend" }
+                }))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/v1/tasks", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (url, asked)
+}
+
+/// A workspace whose `middleware` proxy is `endpoint`.
+struct WithMiddleware(String);
+
+impl napkin_host::HostConfig for WithMiddleware {
+    fn workspace(&self) -> Option<napkin_host::WorkspaceConfig> {
+        let mut ws = napkin_host::WorkspaceConfig::default();
+        ws.proxies.insert(
+            "middleware".into(),
+            napkin_host::config::ProxyConfig {
+                endpoint: self.0.clone(),
+                auth_kind: None,
+                secret_ref: None,
+            },
+        );
+        Some(ws)
+    }
+    fn secret(&self, _: &str) -> Option<String> {
+        None
+    }
+}
+
+fn server_with(config: Arc<dyn napkin_host::HostConfig>) -> Server {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Arc::new(AppCtx::new(dir.path().to_path_buf(), config, None, 40));
+    let app = napkin_web::router(ctx.clone(), None, false);
+    Server {
+        _dir: dir,
+        ctx,
+        app,
+    }
+}
+
+/// POST a sandbox route and insist on a 200.
+async fn clan_ok(s: &Server, token: &str, route: &str, body: Value) -> Value {
+    let r = post(s, &format!("/s/{token}{route}"), "", body.to_string()).await;
+    assert_eq!(
+        r.status,
+        StatusCode::OK,
+        "{route}: {}",
+        String::from_utf8_lossy(&r.body)
+    );
+    r.json()
+}
+
+/// A brief with three parts, locked through the sandbox.
+async fn a_locked_brief(s: &Server, b: &Browser) -> (String, String) {
+    let (doc, token) = upload(s, b, "Brief").await;
+    clan_ok(
+        s,
+        &token,
+        "/patch-data",
+        serde_json::json!({ "agent": "human", "rationale": "the brief", "patch": {
+            SMP: "Summer tastes better without the hangover.",
+            "audience": { "primary": "Adults 25-40" },
+            "tone": "Warm, dry, a little wry",
+        } }),
+    )
+    .await;
+    clan_ok(s, &token, "/approve", serde_json::json!({})).await;
+    (doc, token)
+}
+
+fn client_parts() -> Value {
+    serde_json::json!([
+        { "address": SMP, "label": "Single-minded proposition" },
+        { "address": "audience", "label": "Audience" },
+        { "address": "tone", "label": "Tone" },
+    ])
+}
+
+#[tokio::test]
+async fn a_clients_rejection_asks_ellis_and_is_made_good_through_the_sandbox() {
+    let (url, asked) = ellis().await;
+    let s = server_with(Arc::new(WithMiddleware(url)));
+    let b = browser(&s).await;
+    let (_doc, token) = a_locked_brief(&s, &b).await;
+    let tenant = b.tenant.clone();
+
+    let r = clan_ok(
+        &s,
+        &token,
+        "/client-review",
+        serde_json::json!({ "answer": "rejected", "client": { "name": "Jane Murphy" },
+                            "channel": "pasted_email", "said": SAID, "parts": client_parts() }),
+    )
+    .await;
+    assert_eq!(r["suggestions"]["status"], "found", "{r}");
+    assert_eq!(
+        r["clan"].is_object(),
+        true,
+        "the reply carries the document now"
+    );
+    {
+        let asked = asked.lock().unwrap();
+        assert_eq!(asked.len(), 1, "Ellis is asked once");
+        assert_eq!(asked[0]["request_kind"], "middleware");
+        assert_eq!(asked[0]["payload"]["task"], "find_client_parts");
+        assert_eq!(asked[0]["payload"]["input"]["proof"], SAID);
+    }
+
+    // Every decision is the tenant's: its person records, its workspace scopes.
+    let chain = get(&s, &format!("/s/{token}/chain"), None).await.json();
+    let decisions = chain["decisions"].as_array().unwrap();
+    let (suggestion, answer) = (&decisions[0], &decisions[1]);
+    assert_eq!(answer["action"], "client_answer");
+    assert_eq!(answer["actor"], format!("human:{tenant}"));
+    assert_eq!(answer["scope"]["org"], tenant.as_str());
+    assert_eq!(answer["said"], SAID, "verbatim");
+    assert_eq!(suggestion["action"], "suggest_part");
+    assert_eq!(suggestion["actor"], "process:middleware");
+    assert_eq!(suggestion["handler"], "find_client_parts@1.0");
+    assert_eq!(suggestion["scope"]["org"], tenant.as_str());
+
+    let view = get(&s, &format!("/s/{token}/decisions"), None).await.json();
+    assert_eq!(
+        view["client"]["suggestions"][0]["decision"],
+        r["suggestions"]["decisions"][0]
+    );
+    assert_eq!(view["lock"]["locked"], true);
+    assert_eq!(
+        view["lock"]["can_lock"], false,
+        "which parts is not known yet"
+    );
+
+    let c = clan_ok(
+        &s,
+        &token,
+        "/client-review/confirm",
+        serde_json::json!({ "suggestion": r["suggestions"]["decisions"][0], "confirm": true }),
+    )
+    .await;
+    let part = c["decision"].as_str().unwrap().to_string();
+    let u = clan_ok(
+        &s,
+        &token,
+        "/client-review/reopen",
+        serde_json::json!({ "answer": part }),
+    )
+    .await;
+    assert_eq!(
+        u["reason"],
+        "Jane Murphy asked: The summer line doesn't feel like us."
+    );
+    let path = u["address"]
+        .as_str()
+        .unwrap()
+        .split_once('#')
+        .unwrap()
+        .1
+        .to_string();
+    assert_eq!(path, SMP);
+    clan_ok(
+        &s,
+        &token,
+        "/edit",
+        serde_json::json!({ "path": path, "value": "Summer, but ours.", "rationale": u["reason"], "answers": part }),
+    )
+    .await;
+    clan_ok(&s, &token, "/approve", serde_json::json!({})).await;
+    let view = get(&s, &format!("/s/{token}/decisions"), None).await.json();
+    assert_eq!(view["client"]["parts"][0]["answered"], true);
+    assert_eq!(view["lock"]["reopened"], serde_json::json!([]));
+    assert_eq!(
+        view["client"]["available"], true,
+        "locked again, a client can answer"
+    );
+}
+
+#[tokio::test]
+async fn without_a_middleware_the_answer_is_still_recorded_and_parts_are_marked_by_hand() {
+    let s = server(40);
+    let b = browser(&s).await;
+    let (_doc, token) = a_locked_brief(&s, &b).await;
+    let r = clan_ok(
+        &s,
+        &token,
+        "/client-review",
+        serde_json::json!({ "answer": "rejected", "client": { "name": "Jane Murphy" },
+                            "channel": "pasted_email", "said": SAID, "parts": client_parts() }),
+    )
+    .await;
+    assert_eq!(r["suggestions"]["status"], "unavailable");
+    assert!(r["suggestions"]["reason"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
+    let m = clan_ok(
+        &s,
+        &token,
+        "/client-review/confirm",
+        serde_json::json!({ "review": r["decision"], "address": "tone", "answer": "accepted_with_changes" }),
+    )
+    .await;
+    let view = get(&s, &format!("/s/{token}/decisions"), None).await.json();
+    assert_eq!(view["client"]["parts"][0]["decision"], m["decision"]);
+    assert_eq!(
+        view["lock"]["can_lock"], true,
+        "a change asked never blocks"
+    );
+
+    // Refused as the host refuses: a client answers a locked document only.
+    let (_open, fresh) = upload(&s, &b, "Unlocked").await;
+    let refused = post(
+        &s,
+        &format!("/s/{fresh}/client-review"),
+        "",
+        serde_json::json!({ "answer": "accepted", "client": { "name": "Jane" },
+                            "channel": "none", "parts": [] })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(refused.status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn upstream_answers_on_the_server_as_on_the_device() {
+    let s = server(40);
+    let b = browser(&s).await;
+    let (doc, token) = a_locked_brief(&s, &b).await;
+    let web = get(&s, &format!("/s/{token}/upstream"), None).await;
+    assert_eq!(web.status, StatusCode::OK);
+    let web = web.json();
+    assert_eq!(web["carried"], Value::Null, "not spun off");
+    assert_eq!(web["upstream"], serde_json::json!([]));
+
+    let bytes = get(
+        &s,
+        &format!("/api/t/{}/d/{doc}/download", b.tenant),
+        Some(&b.cookie),
+    )
+    .await
+    .body;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("brief.clan");
+    std::fs::write(&path, &bytes).unwrap();
+    let device = napkin_host::Session::with_ctx(
+        Arc::new(napkin_host::FsStore::new(dir.path().to_path_buf())),
+        napkin_host::Ctx::local(),
+    );
+    device.open(path.into()).unwrap();
+    let dev = napkin_host::handle(
+        &device,
+        &NoConfig,
+        napkin_host::HostRequest::new("/upstream", "", Vec::new()),
+    );
+    assert_eq!(dev.status, 200);
+    assert_eq!(web, serde_json::from_slice::<Value>(&dev.body).unwrap());
+}
+
+#[tokio::test]
+async fn upstream_names_the_tenants_parent_and_what_changed_in_it() {
+    let s = server(40);
+    let b = browser(&s).await;
+    let t = |p: &str| format!("/api/t/{}{p}", b.tenant);
+    let spec = clan_sdk::SpinoffSpec {
+        upstream: true,
+        ..Default::default()
+    };
+    let up = post(
+        &s,
+        &t("/documents/upload"),
+        &b.cookie,
+        a_template_with("ie.napkin.child", "Child", Some(spec)),
+    )
+    .await;
+    let template = up.json()["path"].as_str().unwrap().to_string();
+    let installed = post(
+        &s,
+        &t(&format!("/apps/from/{template}")),
+        &b.cookie,
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(
+        installed.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&installed.body)
+    );
+
+    let (parent, parent_token) = upload(&s, &b, "Parent").await;
+    clan_ok(
+        &s,
+        &parent_token,
+        "/patch-data",
+        serde_json::json!({ "agent": "human", "rationale": "first", "patch": { "tone": "Warm" } }),
+    )
+    .await;
+    let child = post_json(
+        &s,
+        &t(&format!("/d/{parent}/spinoff")),
+        &b.cookie,
+        serde_json::json!({ "app_id": "ie.napkin.child" }),
+    )
+    .await;
+    assert_eq!(
+        child.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&child.body)
+    );
+    let child_token = child.json()["token"].as_str().unwrap().to_string();
+
+    let v = get(&s, &format!("/s/{child_token}/upstream"), None)
+        .await
+        .json();
+    let parent_id = v["carried"]["document_id"].as_str().unwrap().to_string();
+    assert_eq!(v["upstream"][0]["document_id"], parent_id.as_str());
+    assert_eq!(
+        v["upstream"][0]["in_store"], true,
+        "the tenant's own store holds it"
+    );
+    assert_eq!(v["upstream"][0]["status"], "current");
+
+    clan_ok(&s, &parent_token, "/patch-data",
+            serde_json::json!({ "agent": "human", "rationale": "later", "patch": { "tone": "Bright" } })).await;
+    let v = get(&s, &format!("/s/{child_token}/upstream"), None)
+        .await
+        .json();
+    assert_eq!(v["upstream"][0]["status"], "changed");
+    assert_eq!(v["upstream"][0]["changed"]["data"], true);
+    assert_eq!(v["upstream"][0]["decisions_since"], 1);
 }

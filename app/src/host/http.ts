@@ -15,6 +15,9 @@
 //    unmodified.
 
 import type {
+  ClientConfirmReply,
+  ClientReopenReply,
+  ClientReviewReply,
   DecisionsView,
   Host,
   HostEvents,
@@ -23,6 +26,8 @@ import type {
   RecentDoc,
   SpinoffTarget,
   Unlisten,
+  UploadedAsset,
+  UpstreamView,
 } from './types'
 
 interface SessionInfo {
@@ -91,6 +96,28 @@ async function text(path: string, init?: RequestInit): Promise<string> {
 function postJson(body: unknown): RequestInit {
   return { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
 }
+
+/**
+ * A `clan://` route, reached as the frame reaches it: on the frame's token
+ * URL, so it acts on the document the frame shows. No content type, as the
+ * app's own calls send none — a plain request, which the sandbox origin
+ * answers across origins. A refusal is thrown as the host's own words.
+ */
+async function clanCall<T>(route: string, init?: RequestInit): Promise<T> {
+  const resp = await fetch(`${httpHost.clanOrigin()}${route}`, init)
+  const body = await resp.text()
+  let parsed: unknown = null
+  try { parsed = JSON.parse(body) } catch { /* not JSON: the body is the message */ }
+  if (!resp.ok) {
+    const err = (parsed as { error?: unknown } | null)?.error
+    const message = typeof err === 'string' ? err : (err as { message?: string } | undefined)?.message
+    throw new Error(message || body || `${route.slice(1)}: ${resp.status}`)
+  }
+  return parsed as T
+}
+
+const clanPost = <T,>(route: string, body: unknown) =>
+  clanCall<T>(route, { method: 'POST', body: JSON.stringify(body) })
 
 /** Opens asked for so far. Only the latest one may become the open document. */
 let opens = 0
@@ -214,6 +241,17 @@ export const httpHost: Host = {
     const resp = await fetch(`${httpHost.clanOrigin()}/acknowledge`, { method: 'POST', body: JSON.stringify({ decision }) })
     if (!resp.ok) throw new Error(((await resp.json().catch(() => null)) as { error?: string } | null)?.error ?? `acknowledge: ${resp.status}`)
   },
+
+  upstream: () => clanCall<UpstreamView>('/upstream'),
+
+  clientReview: body => clanPost<ClientReviewReply>('/client-review', body),
+  clientReviewConfirm: body => clanPost<ClientConfirmReply>('/client-review/confirm', body),
+  clientReviewReopen: answer => clanPost<ClientReopenReply>('/client-review/reopen', { answer }),
+  uploadAsset: (name, bytes) =>
+    clanCall<UploadedAsset>(`/upload-asset?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      body: bytes as unknown as BodyInit,
+    }),
 
   setEditMode: async active => {
     await request(`/d/${requireDoc()}/edit-mode`, postJson({ active }))

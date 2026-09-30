@@ -330,10 +330,9 @@ pub fn decisions_for(doc: &Document, viewer: Option<&str>) -> HostResult<Decisio
         chain: &chain,
     };
 
-    // Newest first. The chain is written that way, but prepends and merges
-    // can leave equal or out-of-order stamps; chain order breaks ties.
-    let mut order: Vec<usize> = (0..chain.decisions.len()).collect();
-    order.sort_by_key(|&i| (std::cmp::Reverse(ctx.at(i)), i));
+    // Newest first, as the chain is written. A stamp is shown, never used to
+    // order: clocks disagree and a merge can leave them out of order.
+    let order: Vec<usize> = (0..chain.decisions.len()).collect();
 
     let client = client_review(&ctx);
     let mut attention = lock_blockers(&ctx, clan);
@@ -418,15 +417,11 @@ struct Lookup<'a> {
 }
 
 impl<'a> Lookup<'a> {
-    /// When decision `i` was made, in milliseconds; 0 when it does not parse.
-    fn at(&self, i: usize) -> i64 {
-        stamp(&self.chain.decisions[i].timestamp)
-    }
-
-    /// True when decision `a` came after decision `b`: a later stamp, or the
-    /// same stamp and earlier in the (newest-first) chain.
+    /// True when decision `a` came after decision `b`: it is nearer the head
+    /// of the (newest-first) chain. Position decides, never the stamps
+    /// (owner, 2026-09-30): a clock can be wrong, the chain's order cannot.
     fn after(&self, a: usize, b: usize) -> bool {
-        (self.at(a), std::cmp::Reverse(a)) > (self.at(b), std::cmp::Reverse(b))
+        cr::after(a, b)
     }
 
     fn index_of(&self, id: &str) -> Option<usize> {
@@ -1158,8 +1153,9 @@ fn client_review(ctx: &Lookup) -> ClientDerived {
         let (on, path) = a.split_once('#')?;
         (on == here && !path.is_empty()).then_some(a)
     };
+    // Chain order is newest first; an index list sorted ascending is too.
     let newest_first = |mut v: Vec<usize>| {
-        v.sort_by_key(|&i| (std::cmp::Reverse(ctx.at(i)), i));
+        v.sort_unstable();
         v
     };
     let id = |d: &Decision| d.id.clone().unwrap_or_default();
@@ -1924,15 +1920,6 @@ fn clip(s: &str, max: usize) -> String {
     let mut out: String = s.chars().take(max - 1).collect();
     out.push('…');
     out
-}
-
-/// When, to the second. The chain mixes precisions — a packed entry is stamped
-/// to the nanosecond, a review decision to the second — so within one second
-/// the stamps say nothing and chain order (prepend-only, newest first) decides.
-pub(crate) fn stamp(ts: &str) -> i64 {
-    chrono::DateTime::parse_from_rfc3339(ts.trim())
-        .map(|t| t.timestamp() * 1000)
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

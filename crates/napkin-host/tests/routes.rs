@@ -681,6 +681,10 @@ mod upstream {
             data["projection"]["built_from"]["facts_sha256"],
             clan_sdk::hash::sha256_prefixed(&facts)
         );
+        // Stamped as every other host stamp, so the brief's schema takes the
+        // next write (a manifest stamp's nanoseconds and offset it refuses).
+        let built_at = data["projection"]["built_from"]["built_at"].as_str().unwrap();
+        assert!(built_at.ends_with('Z') && built_at.len() == 20, "{built_at}");
 
         let up = brief.get("/upstream");
         assert_eq!(up["document_id"], brief.doc);

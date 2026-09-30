@@ -941,6 +941,9 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function decs(){ return CHAIN.decisions; }
   function decById(id){ var d=decs(); for(var i=0;i<d.length;i++) if(d[i].id===id) return d[i]; return null; }
   function ts(d){ return Date.parse(d&&d.timestamp)||0; }
+  // Which of two decisions came first is their place in the chain, stored
+  // newest first (owner's rule, 2026-09-30); a stamp can tie or run behind.
+  function newer(a, b){ var d=decs(); return d.indexOf(a)<d.indexOf(b); }
   // Does decision d touch address path p (entity-keyed, doc id stripped)?
   function touches(d, p){
     var hit=false;
@@ -957,13 +960,13 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   // Verdicts on a field: the latest good/bad and whether a bad one is answered
   // (revised by a later edit, or overridden by a later verdict with a reason).
   function verdictState(p){
-    var ds=decs().filter(function(d){ return d.kind==='verdict' && targets(d,p); }).sort(function(a,b){ return ts(b)-ts(a); });
+    var ds=decs().filter(function(d){ return d.kind==='verdict' && targets(d,p); });
     var out={good:[], bad:[], unanswered:[]};
     ds.forEach(function(v){
       (v.polarity==='bad'?out.bad:out.good).push(v);
       if(v.polarity==='bad'){
         var answered=decisionsFor(p).some(function(d){
-          if(ts(d)<=ts(v) || d===v) return false;
+          if(d===v || !newer(d,v)) return false;
           if(d.kind==='edit' || (!d.kind && /^(confirm|edit|patch-data)/.test(d.action||''))) return true;
           if(d.kind==='verdict' && d.polarity==='good' && d.rationale) return true;
           return false;
@@ -974,7 +977,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     return out;
   }
   function classifyState(p){
-    var ds=decs().filter(function(d){ return d.kind==='classify' && targets(d,p); }).sort(function(a,b){ return ts(b)-ts(a); });
+    var ds=decs().filter(function(d){ return d.kind==='classify' && targets(d,p); });
     return ds[0]||null;
   }
 
@@ -1179,11 +1182,19 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   // The fields a person can type into are the OS's editable fields (Edit in
   // the toolbar); the rest keep this view's own rendering.
   var OS_EDITABLE={text:1, prose:1, enum:1, codes:1, ref:1};
+  // The parts a client can answer about (Contract 4 §7.5.1): fields of the ask
+  // a person edits in place, so "Make this change" always opens an editor. The
+  // researched audience, the budget band and the lists keep this view's own
+  // rendering and are not offered, nor is anything in the agent's report
+  // layout. Declared on the field, filled or not: a client can reject a field
+  // left empty, and the list stays the same from one render to the next.
+  var PARTS=['name','problem','objective','audience_stated','markets','campaign_type','deliverables','channels_mandated'];
+  function partAttrs(f){ return PARTS.indexOf(f.k)===-1||!OS_EDITABLE[f.type]?'':' data-clan-part="campaign.'+f.k+'" data-clan-part-label="'+esc(f.label)+'"'; }
   function osField(f){ return '<clan-field ref="campaign.'+f.k+'" as="block" gate="'+esc(f.gate)+'" caption="'+esc(f.label)+'"></clan-field>'; }
   function renderField(f){
     var env=camp()[f.k], p='campaign.'+f.k, A=addr(p);
     if(!isObj(env)){
-      return '<article class="field absent'+(f.type==='audience'||f.type==='prose'?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'">'
+      return '<article class="field absent'+(f.type==='audience'||f.type==='prose'?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'"'+partAttrs(f)+'>'
         +'<div class="fh"><span class="lab">'+esc(f.label)+'</span>'+gatePill(f.gate)+'<span class="sp"></span><span class="path">'+esc(p)+'</span></div>'
         +'<div class="empty-v"><b>Not filled.</b> '+(f.gate==='none'?'No state waits on it.':'The document cannot reach “'+esc(f.gate)+'” without it.')+(f.hint?' '+esc(f.hint):'')+'</div>'
         +(OS_EDITABLE[f.type]&&f.k!=='id'?'<div class="os-edit-only">'+osField(f)+'</div>':'')
@@ -1191,7 +1202,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
     var flagged=rejectedCited(env);
     var wide=(f.type==='audience'||f.type==='prose'||f.type==='items'||f.type==='asksrc');
-    var h='<article class="field o-'+esc(env.origin)+(flagged.length?' flagged':'')+(wide?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'">'
+    var h='<article class="field o-'+esc(env.origin)+(flagged.length?' flagged':'')+(wide?' wide':'')+'" id="field-'+f.k+'" data-address="'+esc(A)+'"'+partAttrs(f)+'>'
       +'<div class="fh"><span class="lab">'+esc(f.label)+'</span>'+originBadge(env.origin, env)+gatePill(f.gate)+'<span class="sp"></span><span class="path">'+esc(p)+'</span></div>';
     if(flagged.length) h+='<div class="flag" style="margin-bottom:10px"><div><b>Flagged.</b> Cites '+flagged.map(function(id){ return '<a href="#finding-'+esc(id)+'">'+esc(id)+'</a>'; }).join(', ')+', which a person rejected. Revise the field to stop citing it before lock.</div></div>';
     h+=(OS_EDITABLE[f.type]&&f.k!=='id'?osField(f):renderValue(f, env));
@@ -1212,10 +1223,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     $('ask-count').textContent=n+' of 19 filled';
     $('nav-ask').textContent=n+'/19';
     $('legend').innerHTML='<span>'+originBadge('extracted')+' read from your material, quoted</span><span>'+originBadge('proposed')+' derived from pinned facts</span><span>'+originBadge('confirmed')+' a human accepted it</span><span>'+originBadge('stated')+' a human supplied it</span>';
-    $('ask-body').innerHTML=GROUPS.map(function(g){
+    // Rewritten only when it changed: the OS's fields put a client's marks and
+    // chips beside each part, and a render with nothing new must not wipe them.
+    var html=GROUPS.map(function(g){
       return '<div class="group"><h3>'+esc(g.h)+'</h3><div class="grid2">'+g.keys.map(function(k){ return renderField(FIELD[k]); }).join('')+'</div></div>';
     }).join('');
+    if(html!==ASK_HTML){ $('ask-body').innerHTML=html; ASK_HTML=html; }
   }
+  var ASK_HTML='';
 
   // ════════════════════════════════════════════════════════════════════════
   // render: facts (from projection.pins)
@@ -1445,7 +1460,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function renderHistory(){
     // The decision history lives in the OS's Decisions panel now.
     if(!$('history-body')) return;
-    var all=decs().slice().sort(function(a,b){ return ts(b)-ts(a); });
+    var all=decs().slice();
     $('history-count').textContent=CHAIN.state==='ok'?all.length+' decisions':CHAIN.state==='loading'?'loading…':'unavailable';
     $('nav-history').textContent=all.length||'';
     if(!all.length){ $('history-body').innerHTML='<div class="empty-state">'+(CHAIN.state==='loading'?'Reading the decision chain…':CHAIN.state==='ok'?'No decisions yet.':'The decision chain is not available here.')+'</div>'; return; }
@@ -1473,7 +1488,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     rb.setAttribute('aria-disabled', ok?'false':'true');
     rb.title=ok?'research_lens: one run per lens × market ('+(8*arr(camp().markets&&camp().markets.value).length)+' runs)':'Research needs the created and research gates: '+missingFor('created').concat(missingFor('research')).map(function(f){return f.label;}).join(', ');
     var m=(window.__CLAN__||{}).manifest||{};
-    $('docfoot').innerHTML='<span>document '+esc(docId())+'</span><span>'+esc((m.app&&m.app.name)||'campaign-research')+(m.app&&m.app.version?' '+esc(m.app.version):'')+'</span><span>contract campaign-clan/1</span><span>'+stalePins().length+' stale pin'+(stalePins().length===1?'':'s')+' (accepted as frozen at lock)</span>';
+    $('docfoot').innerHTML='<span>document '+esc(docId())+'</span><span>'+esc((m.app&&m.app.name)||'campaign-research')+(m.app&&m.app.version?' '+esc(m.app.version):'')+'</span><span>contract campaign-clan/1</span><span>'+stalePins().length+' stale pin'+(stalePins().length===1?'':'s')+' (accepted as frozen at lock)</span>'+(usedIn().length?'<span>'+esc(usedText(usedIn()))+'</span>':'');
     var sb=$('synthBtn'), hasPins=Object.keys(pins()).length>0;
     sb.setAttribute('aria-disabled', hasPins?'false':'true');
     sb.title=hasPins?'Ask '+given('synthesis')+' to find the points in the pinned facts':given('synthesis')+' reads the pins; there are none yet';
@@ -1614,6 +1629,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
 
   // ── LIVE: confirm an extracted/proposed field → origin confirmed (Contract 3 §10: edit)
   function doConfirm(k){
+    // The shell is still saying who is signed in: wait for it, not the name box.
+    if(!WHO.shell&&WHO.ask){ WHO.ask.then(function(){ doConfirm(k); }); return; }
     var f=FIELD[k], env=camp()[k]; if(!isObj(env)) return;
     var A=addr('campaign.'+k);
     // Confirming a field that carries an unanswered bad verdict, unchanged, is
@@ -1750,7 +1767,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   }
   function doWhy(p, A){
     var env=null, m=/^campaign\.([a-z_]+)$/.exec(p); if(m) env=camp()[m[1]];
-    var ds=decisionsFor(p).sort(function(a,b){ return ts(b)-ts(a); });
+    var ds=decisionsFor(p);
     var setter=env&&env.decision;
     var lbl=m?FIELD[m[1]].label:p;
     openDialog('<h2 id="dlg-title">Why is this here?</h2><div class="addr">'+esc(A)+'</div>'
@@ -2079,7 +2096,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     });
   }
   function chainHuman(){
-    var d=decs().slice().sort(function(a,b){ return ts(b)-ts(a); });
+    var d=decs();
     for(var i=0;i<d.length;i++) if(/^human:./.test(d[i].actor||'')) return d[i].actor.slice(6);
     return '';
   }
@@ -2951,21 +2968,94 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       +'<div><span class="q">'+esc(given('judge'))+' · this needs a look</span>'+(c.label?'<p class="t">'+esc(c.label)+'</p>':'')+'<p class="from">'+esc(c.text||'')+'</p>'
       +'<div class="answers sm"><button type="button" class="ans" data-act="chk-open" data-ref="'+ref+'" data-note="'+esc(c.text||'')+'">Show me</button></div></div></div>';
   }
+  // ── what was made from it (Contract 4 §7.4) ─────────────────────────────
+  // A brief that carried this research and was locked writes one `used`
+  // backref here, newest last in the chain. Its title is only in the
+  // rationale the host writes (Used in locked "<title>" at <version>.), and
+  // the id the shell opens a document by is not in the record at all, so the
+  // brief is named, not linked. Locked again after a change, it wrote a
+  // second: one line per brief.
+  function usedIn(){
+    var seen={}, out=[];
+    decs().forEach(function(d){
+      if(d.kind!=='backref'||d.action!=='used') return;
+      var f=isObj(d.from)?d.from:{}, k=f.document_id||d.id||''; if(seen[k]) return; seen[k]=1;
+      var m=/^Used in locked "(.*)" at /.exec(String(d.rationale||''));
+      out.push({title:m?m[1]:'', at:d.timestamp});
+    });
+    return out;
+  }
+  function usedText(u){
+    var named=u.filter(function(x){ return x.title; }).map(function(x){ return '“'+x.title+'”'; });
+    if(!named.length) return u.length===1?'Used in a locked brief.':'Used in '+u.length+' locked briefs.';
+    return 'Used in brief'+(named.length===1?' ':'s ')+listJoin(named)+(u.length>named.length?' and '+(u.length-named.length)+' more':'')+'.';
+  }
+  // ── a brief from this report: the host's own spin-off (Contract 4 §8.1) ──
+  // The same route as the shell's "Continue in…", asked from here once the
+  // report is locked; the host opens the new brief in the shell. Offered only
+  // when an app that takes this report whole is installed.
+  var SPIN={targets:null, asking:false, busy:false};
+  function briefTarget(){
+    var t=arr(SPIN.targets);
+    return t.filter(function(x){ return x&&x.app_id==='ie.napkin.brief-maker'; })[0]||t.filter(function(x){ return x&&x.upstream; })[0]||null;
+  }
+  function askTargets(){
+    if(SPIN.targets||SPIN.asking||!hasHost()) return;
+    SPIN.asking=true;
+    fetch(clanScheme+'/spinoff-targets').then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); })
+      .then(function(t){ SPIN.targets=arr(t); }, function(){ SPIN.targets=[]; })
+      .then(function(){ SPIN.asking=false; renderChecks(); });
+  }
+  function doSpinBrief(){
+    var t=briefTarget(); if(!t||SPIN.busy) return;
+    SPIN.busy=true; renderChecks();
+    fetch(clanScheme+'/spinoff', {method:'POST', body:JSON.stringify({app_id:t.app_id})})
+      .then(function(r){ return r.json().catch(function(){ return {ok:false, error:'status '+r.status}; }); })
+      .then(function(res){
+        SPIN.busy=false; renderChecks();
+        if(res&&res.ok) toast('Brief started. It opens with this report in it.');
+        else toast('Not started: '+((res&&(typeof res.error==='string'?res.error:res.error&&res.error.message))||'the host refused'));
+      }, function(e){ SPIN.busy=false; renderChecks(); toast('Not started: '+(e&&e.message||e)); });
+  }
+
   var NUM=['No','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'];
   function judgeBarHtml(all){
     var N=all.length, open=all.filter(function(c){ return c.open; }).length, jn=given('judge');
     var L=window.ClanFields&&ClanFields.locked?ClanFields.locked():null;
     var lockBtn=window.ClanFields?'<button type="button" class="jb-btn go" data-clf-lock>Lock the report</button>':'<button type="button" class="jb-btn go" data-act="lock">Lock the report</button>';
     var h='<div class="jb-in">'+figK('judge', !L&&open?'needs-you':'idle');
-    if(L){
-      var by=L.who&&L.who.you?'You':(L.who&&L.who.name)||'A person';
-      return h+'<p class="jb-text"><b>'+esc(jn)+' here: this report is locked.</b> '+esc(by)+' agreed to it'+(L.decision&&L.decision.timestamp?' on '+esc(String(L.decision.timestamp).slice(0,10)):'')+'. A change from here makes a new version.</p><span class="jb-done">✓ Locked</span></div>';
+    var used=usedIn(), usedP=used.length?' '+esc(usedText(used)):'';
+    // A part reopened for the client's change: the report is locked again
+    // once it is changed (the host's lock view says when it may be).
+    var LV=window.ClanFields&&ClanFields.view&&ClanFields.view(), lk=LV&&LV.lock||{}, re=L?arr(lk.reopened):[];
+    if(re.length){
+      var wait=lk.can_lock===false, rn=re.length===1?'A part is':(re.length<NUM.length?NUM[re.length]:String(re.length))+' parts are';
+      return h+'<p class="jb-text"><b>'+esc(jn)+' here: '+esc(rn.charAt(0).toLowerCase()+rn.slice(1))+' open for the client’s change.</b> Lock the report again when the change is made.'+usedP+'</p>'
+        +'<div class="jb-count"><button type="button" class="jb-btn go" data-clf-lock'+(wait?' disabled title="Everything listed has to be settled first"':'')+'>Lock the report again</button></div></div>';
     }
-    if(!N) return h+'<p class="jb-text"><b>'+esc(jn)+' here: your report is ready.</b> Nothing in it needs a person to check.</p><div class="jb-count">'+lockBtn+'</div></div>';
+    // The client said no, or asked for changes, on this version: the report
+    // is locked but not agreed, so it is not offered for a brief yet (the
+    // shell's band says what to do next; os-layer §7.5.3).
+    var CA=L&&LV&&LV.client&&LV.client.answer;
+    if(CA&&CA.current&&CA.answer!=='accepted'){
+      var cn=String(CA.client&&CA.client.name||'').trim().split(/\s+/)[0]||'The client';
+      var op=arr(LV.client.parts).filter(function(p){ return p&&p.state!=='accepted'&&!p.answered; }).map(function(p){ return p.label||'a part'; });
+      var what=CA.answer==='rejected'?(op.length?' rejected '+listJoin(op):' rejected this report'):(op.length?' asked for a change on '+listJoin(op):' asked for changes to this report');
+      return h+'<p class="jb-text"><b>'+esc(jn)+' here: '+esc(cn+what)+'.</b> '+esc(op.length?(op.length===1?'It’s':'Each is')+' marked on the report. ':'')+'A brief can start from it once it is changed and locked again.'+usedP+'</p></div>';
+    }
+    if(L){
+      var by=L.who&&L.who.you?'You':(L.who&&L.who.name)||'A person', bt;
+      askTargets(); bt=briefTarget();
+      return h+'<p class="jb-text"><b>'+esc(jn)+' here: this report is locked.</b> '+esc(by)+' agreed to it'+(L.decision&&L.decision.timestamp?' on '+esc(fmtWhen(L.decision.timestamp)||String(L.decision.timestamp).slice(0,10)):'')+'. A change from here makes a new version.'+usedP+'</p>'
+        +'<div class="jb-count"><span class="jb-done">✓ Locked</span>'
+        +(bt?'<button type="button" class="jb-btn go" data-act="spin-brief" title="'+esc('Opens a new brief'+(bt.name?' in '+bt.name:'')+', carrying this report, its facts and its checks')+'"'+(SPIN.busy?' disabled':'')+'>'+(SPIN.busy?'Starting…':'Start a brief from this')+'</button>':'')
+        +'</div></div>';
+    }
+    if(!N) return h+'<p class="jb-text"><b>'+esc(jn)+' here: your report is ready.</b> Nothing in it needs a person to check.'+usedP+'</p><div class="jb-count">'+lockBtn+'</div></div>';
     var n=N<NUM.length?NUM[N]:String(N);
-    if(open) return h+'<p class="jb-text"><b>'+esc(jn)+' here: your report is ready.</b> '+esc(n)+' thing'+(N===1?'':'s')+' in it need'+(N===1?'s':'')+' a person to agree before you share it. '+(N===1?'It’s':'They’re')+' marked below.</p>'
+    if(open) return h+'<p class="jb-text"><b>'+esc(jn)+' here: your report is ready.</b> '+esc(n)+' thing'+(N===1?'':'s')+' in it need'+(N===1?'s':'')+' a person to agree before you share it. '+(N===1?'It’s':'They’re')+' marked below.'+usedP+'</p>'
       +'<div class="jb-count"><span role="status"><b>'+(N-open)+' of '+N+'</b> checked</span><button type="button" class="jb-btn" id="jb-next" data-act="chk-next">Next check ↓</button></div></div>';
-    return h+'<p class="jb-text"><b>'+esc(jn)+' here: everything is checked.</b> You can lock the report now, so it can be shared.</p>'
+    return h+'<p class="jb-text"><b>'+esc(jn)+' here: everything is checked.</b> You can lock the report now, so it can be shared.'+usedP+'</p>'
       +'<div class="jb-count"><span role="status"><b>'+N+' of '+N+'</b> checked</span>'+lockBtn+'</div></div>';
   }
   function renderChecks(){
@@ -3145,6 +3235,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
         onCheck(act, b); break;
       case 'chk-next': nextCheck(); break;
       case 'lock': doLock(); break;
+      case 'spin-brief': doSpinBrief(); break;
     }
   });
   $('lockBtn').addEventListener('click', doLock);
@@ -3169,6 +3260,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var m=e.data; if(e.source!==window.parent||!m) return;
     if(m.type==='clan:can-run?'){ announce(); return; }
     if(m.type==='clan:me'){ if(takeWho(m)) render(); return; }
+    // The shell's client review (Contract 4 §7.5): the parts a client can
+    // answer about are the ask's fields, kept in "Everything recorded". When
+    // the answer asks the recorder to mark them, open it, as clan:focus does.
+    if(m.type==='clan:clientmode'){
+      var rec=$('records');
+      if(m.on&&(m.answer==='accepted_with_changes'||m.answer==='rejected')&&rec&&!rec.open){ rec.dataset.touched='1'; rec.open=true; }
+      return;
+    }
     if(m.type!=='clan:run'||RUNNABLE.indexOf(m.task)===-1) return;
     var input=isObj(m.input)?m.input:{};
     if(m.task==='compose_report'){ doRefreshReport(); toast('Writing the report again.'); return; }

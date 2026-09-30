@@ -200,6 +200,11 @@ export const STRUCTURED_EDIT_BRIDGE = `
     if (e.source !== window.parent) return;
     var m = e.data;
     if (m && m.type === 'clan:colorscheme') applyColorScheme(m.scheme);
+    // The shell changed the document outside the app (a client's answer, a
+    // suggestion settled): the app reads it again as after its own write.
+    if (m && m.type === 'clan:dataupdated') {
+      window.dispatchEvent(new CustomEvent('clan:dataupdated', { detail: { source: 'shell' } }));
+    }
     // The shell is about to compose an export from this document's markup,
     // which for a client-rendered app is the empty shell it started as. Offer
     // the app the job first: call preventDefault() on clan:export to take it,

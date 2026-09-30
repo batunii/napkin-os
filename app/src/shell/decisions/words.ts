@@ -24,8 +24,13 @@ export interface WhoIs {
 export function agentOf(block: DecisionBlock): AgentKey | null {
   if (block.who.kind !== 'agent') return null
   const d = block.decision
+  // The middleware's find_client_parts is Ellis reading the client's words
+  // (napkin.middleware/1 §11): the shell's rule, not yet the snippet's copy.
+  if (d.kind === 'client_review' || /^find_client_parts\b/.test(d.handler ?? block.who.id)) return 'extract'
+  // The step's own agent ("draft_brief@1.0/extract" is Ellis), as the apps'
+  // fields read it; who.id is only the job that ran it.
   return agentOfDecision({
-    agent: block.who.id, action: d.action, kind: d.kind, polarity: d.polarity,
+    agent: typeof d.agent === 'string' && d.agent ? d.agent : block.who.id, action: d.action, kind: d.kind, polarity: d.polarity,
     lens: d.lens == null ? undefined : String(d.lens), targets: d.targets,
   })
 }
@@ -138,6 +143,8 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
   const d = block.decision
   const t = mainTarget(block)
   const what = t ? strip(t.label) : 'the document'
+  const client = clientLineOf(block, view)
+  if (client) return client.rest
   if (block.who.kind === 'person') {
     switch (d.action) {
       case 'verify_finding': return `said “${clip(what, 90)}” is right`
@@ -148,7 +155,7 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
         return chosen?.value ? `chose ${chosen.value} for ${what}` : `settled ${what}`
       }
       case 'classify': return `marked ${what} confidential`
-      case 'lock': return 'locked the document'
+      case 'lock': return lockedBefore(block, view) ? 'locked it again' : 'locked the document'
       case 'start_campaign': case 'create': return 'started the research'
       case 'answer_question': return 'answered a question from the crew'
       case 'edit_text': {
@@ -156,7 +163,11 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
         return `rewrote the ${/^Report/.test(what) ? `report’s ${part}` : part}`
       }
       case 'restore_text': return 'put the original wording back'
-      case 'edit_field': return `changed ${t ? partOf(t.label) : what}`
+      case 'edit_field': {
+        // "Make this change": the edit answers a client's request (§7.5.5).
+        const asked = typeof d.answers === 'string' ? clientOfDecision(d.answers, view) : null
+        return `changed ${t ? partOf(t.label) : what}${asked ? `, as ${asked} asked` : typeof d.answers === 'string' ? ', as the client asked' : ''}`
+      }
       case 'correct_fact': return `corrected ${t ? partOf(t.label) : what}`
     }
     if (d.kind === 'verdict') return `marked ${what} ${d.polarity === 'bad' ? 'wrong' : 'right'}`
@@ -169,6 +180,120 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
   }
   const said = d.reasoning?.decided || d.rationale.split(/\. Because/)[0] || d.action.replace(/_/g, ' ')
   return lower(pastTense(plain(said.replace(/\.$/, ''))))
+}
+
+// ── client review (OS-layer contract §7.5) ──────────────────────────────────
+
+/** The part a client decision is about, as the app called it. */
+// The part as the app declared it: the record's label, else the label of the
+// suggestion it settles (a dismissal carries none), else the target's.
+const partLabel = (block: DecisionBlock, view: DecisionsView) => {
+  const own = block.decision.label
+  if (typeof own === 'string' && own) return own
+  const s = typeof block.decision.suggestion === 'string'
+    ? view.decisions.find(b => b.decision.id === block.decision.suggestion)?.decision.label : undefined
+  return typeof s === 'string' && s ? s : strip(mainTarget(block)?.label ?? 'a part')
+}
+
+/** The client named on a decision in the chain, by its id: an answer's, or the answer it belongs to. */
+function clientOfDecision(id: string, view: DecisionsView, depth = 0): string | null {
+  const d = view.decisions.find(b => b.decision.id === id)?.decision
+  if (!d) return null
+  const c = d.client as { name?: unknown } | undefined
+  if (typeof c?.name === 'string' && c.name.trim()) return c.name.trim()
+  if (depth > 2) return null
+  const up = typeof d.review === 'string' ? d.review : typeof d.answers === 'string' ? d.answers : null
+  return up ? clientOfDecision(up, view, depth + 1) : null
+}
+
+/** Who a client decision is about: its own client, or its review's. */
+function clientOfBlock(block: DecisionBlock, view: DecisionsView): string {
+  const d = block.decision
+  const own = (d.client as { name?: unknown } | undefined)?.name
+  if (typeof own === 'string' && own.trim()) return own.trim()
+  for (const id of [d.review, d.answers, ...(d.cites ?? [])]) {
+    if (typeof id !== 'string') continue
+    const n = clientOfDecision(id, view)
+    if (n) return n
+  }
+  return 'The client'
+}
+
+const PART_VERB: Record<string, string> = {
+  accepted: 'accepted', accepted_with_changes: 'asked for a change to', rejected: 'rejected',
+}
+const DOC_VERB: Record<string, string> = {
+  accepted: 'accepted it', accepted_with_changes: 'accepted it with changes', rejected: 'rejected it',
+}
+const REASON: Record<string, string> = {
+  off_brief: 'off brief', wrong_audience: 'wrong audience', tone: 'tone', facts_wrong: 'facts wrong', budget: 'budget', other: 'other',
+}
+
+/**
+ * How a client's answer was recorded, after "recorded by you": from what, in
+ * the record's own evidence (§7.5.8) — the client's first name, never a
+ * pronoun the record does not hold.
+ */
+function fromWhat(d: DecisionBlock['decision'], client: string): string {
+  const first = client.split(/\s+/)[0]
+  const whose = client === 'The client' ? 'the client’s' : `${first}’s`
+  const asset = String((d.evidence as { asset?: unknown } | undefined)?.asset ?? '')
+  switch (d.channel) {
+    case 'file': return /\.pdf$/i.test(asset) ? `from the PDF ${client === 'The client' ? 'the client' : first} sent, attached` : `from ${whose} email, attached`
+    case 'pasted_email': return `from ${whose} email, pasted`
+    case 'call': return 'from a note of a call'
+    default: return 'with nothing attached'
+  }
+}
+
+/**
+ * A client review line (§7.5.2), and the reopen it leads to: "Mary Kelly
+ * (client) accepted it with changes · recorded by you from Mary’s email,
+ * pasted". `subject` leads the line in bold; for the rest the line's own
+ * signature is the subject. Null for any other decision.
+ */
+export function clientLineOf(block: DecisionBlock, view: DecisionsView): { subject: string | null; rest: string } | null {
+  const d = block.decision
+  if (d.kind !== 'client_review' && d.kind !== 'unlock') return null
+  const client = clientOfBlock(block, view)
+  const by = block.who.you ? 'you' : whoOf(block).name
+  const label = partLabel(block, view)
+  const answer = String(d.answer ?? '')
+  switch (d.action) {
+    case 'client_answer': {
+      const reasons = Array.isArray(d.reasons) && d.reasons.length
+        ? ` (${d.reasons.map(r => REASON[String(r)] ?? String(r)).join(', ')})` : ''
+      return {
+        subject: `${client} (client)`,
+        rest: `${DOC_VERB[answer] ?? 'answered'}${reasons} · recorded by ${by} ${fromWhat(d, client)}`,
+      }
+    }
+    case 'client_answer_part':
+      return {
+        subject: null,
+        rest: d.found_by === 'agent'
+          ? `confirmed ${AGENTS.extract.given}’s suggestion: ${client} ${PART_VERB[answer] ?? 'answered on'} ${label}`
+          : `marked that ${client} ${PART_VERB[answer] ?? 'answered on'} ${label}`,
+      }
+    case 'suggest_part':
+      return { subject: null, rest: `thinks ${client}’s answer is about ${label}. Only a person’s yes makes it count` }
+    case 'dismiss_part':
+      // Locking again closes each suggestion still open (§7.5.3): nobody said no to it.
+      return typeof d.closed_by === 'string'
+        ? { subject: null, rest: `locked it again; ${AGENTS.extract.given}’s suggestion about ${label} was left unanswered and is closed` }
+        : { subject: null, rest: `said ${client}’s answer is not about ${label}` }
+    case 'reopen_part':
+      return { subject: null, rest: `reopened ${label} to make the change: ${clip(plain(d.rationale), 120)}` }
+  }
+  return { subject: null, rest: d.kind === 'unlock' ? `reopened ${label}` : `recorded a client’s answer on ${label}` }
+}
+
+/** An `approve` of this document older than this one: the lock after a reopen. */
+function lockedBefore(block: DecisionBlock, view: DecisionsView): boolean {
+  const at = view.decisions.indexOf(block)
+  if (at < 0) return false
+  return view.decisions.slice(at + 1).some(b =>
+    b.decision.kind === 'approve' && !b.superseded && (b.decision.targets ?? []).includes(view.document_id))
 }
 
 const LENS_WORDS: Record<string, string> = {

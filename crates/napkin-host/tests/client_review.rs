@@ -117,6 +117,29 @@ impl Fixture {
             .collect()
     }
 
+    /// Stamp decision `id` with `ts` on disk, as a wrong clock would have
+    /// written it, and open the document again. Its place in the chain is
+    /// left alone.
+    fn restamp(&self, id: &str, ts: &str) {
+        let clan = ClanFile::open(self.id.as_str()).unwrap();
+        let mut chain = self.chain();
+        chain.decisions.iter_mut().find(|d| d.id.as_deref() == Some(id)).expect("in the chain").timestamp = ts.into();
+        let mut b = clan_sdk::ClanBuilder::new(clan.manifest().clone());
+        for (path, bytes) in clan.read_all_entries().unwrap() {
+            match path.as_str() {
+                clan_sdk::MANIFEST_PATH => {}
+                "agent/decision-chain.yaml" => b.add_entry(path, chain.to_yaml().unwrap()),
+                _ => b.add_entry(path, bytes),
+            }
+        }
+        std::fs::write(self.id.as_str(), b.build().unwrap()).unwrap();
+        self.session.open(self.id.clone()).unwrap();
+    }
+
+    fn head(&self) -> String {
+        self.chain().decisions[0].id.clone().unwrap()
+    }
+
     fn edit(&self, path: &str, value: &str, answers: Option<&str>) -> (u16, Value) {
         let mut body = json!({ "path": path, "value": value, "rationale": "Jane Murphy asked for it" });
         if let Some(a) = answers {
@@ -529,4 +552,116 @@ fn the_ops_refuse_what_the_routes_refuse() {
         .perform(f.session.ctx(), |c, d| review::approve(c, d, ""))
         .unwrap_err();
     assert_eq!(e.status, 409, "locked, nothing reopened");
+}
+
+// ── which came first: the chain's order, never the clocks ───────────────────
+
+const PAST: &str = "2001-01-01T00:00:00Z";
+const FUTURE: &str = "2099-12-31T23:59:59Z";
+
+#[test]
+fn an_edit_stamped_before_the_answer_but_written_after_it_answers_it() {
+    let f = locked();
+    let r = f.post_ok("/client-review", review_body("rejected", json!([{ "address": SMP, "answer": "rejected" }])));
+    let answer = r["parts"][0].as_str().unwrap().to_string();
+    f.post_ok("/client-review/reopen", json!({ "answer": answer }));
+    assert_eq!(f.edit(SMP, "Summer, lighter.", Some(&answer)).0, 200);
+    f.restamp(&f.head(), PAST);
+    assert_eq!(f.part(SMP)["answered"], true, "written after the answer, whatever its clock said");
+    assert!(f.codes().is_empty(), "{:?}", f.codes());
+    f.post_ok("/approve", json!({}));
+}
+
+#[test]
+fn a_part_answer_stamped_in_the_future_does_not_hide_a_later_edit() {
+    let f = locked();
+    let r = f.post_ok("/client-review", review_body("rejected", json!([{ "address": SMP, "answer": "rejected" }])));
+    let answer = r["parts"][0].as_str().unwrap().to_string();
+    f.restamp(&answer, FUTURE);
+    f.post_ok("/client-review/reopen", json!({ "answer": answer }));
+    assert_eq!(f.edit(SMP, "Summer, lighter.", Some(&answer)).0, 200);
+    let p = f.part(SMP);
+    assert_eq!((p["answered"].as_bool(), p["stale"].as_bool()), (Some(true), Some(true)));
+    assert_eq!(f.refused("/client-review/reopen", json!({ "answer": answer })), 409, "answered");
+
+    // Nor does a newer answer on the part lose to it for being stamped earlier.
+    let review = r["decision"].as_str().unwrap().to_string();
+    f.post_ok("/approve", json!({}));
+    let again = f.post_ok("/client-review", json!({ "answer": "accepted", "client": { "name": "Jane Murphy" },
+                                                    "channel": "none", "parts": parts() }));
+    f.restamp(again["decision"].as_str().unwrap(), PAST);
+    let p = f.part(SMP);
+    assert_eq!(p["state"], "accepted", "the answer written last is current");
+    assert_ne!(p["review"], review);
+}
+
+#[test]
+fn an_unlock_stamped_before_the_lock_but_written_after_it_reopens_the_part() {
+    let f = locked();
+    let r = f.post_ok("/client-review", review_body("rejected", json!([{ "address": SMP, "answer": "rejected" }])));
+    let answer = r["parts"][0].as_str().unwrap().to_string();
+    let u = f.post_ok("/client-review/reopen", json!({ "answer": answer }));
+    f.restamp(u["decision"].as_str().unwrap(), PAST);
+    let v = f.json_view();
+    assert_eq!(v["lock"]["reopened"][0]["decision"], u["decision"], "after the lock, by the chain");
+    assert_eq!(f.part(SMP)["reopened"], true);
+    assert_eq!(f.edit(SMP, "Summer, lighter.", Some(&answer)).0, 200, "the part is open for its edit");
+    f.post_ok("/approve", json!({}));
+}
+
+#[test]
+fn the_newest_approve_is_the_lock_whatever_its_stamp() {
+    let f = locked();
+    let first = f.head();
+    let r = f.post_ok("/client-review", review_body("accepted_with_changes", json!([{ "address": "tone", "answer": "accepted_with_changes" }])));
+    f.post_ok("/client-review/reopen", json!({ "answer": r["parts"][0] }));
+    let second = f.post_ok("/approve", json!({}))["decision"].as_str().unwrap().to_string();
+    f.restamp(&second, PAST);
+    f.restamp(&first, FUTURE);
+    let v = f.json_view();
+    assert_eq!(v["lock"]["reopened"], json!([]), "the second lock closed the part");
+    assert_eq!(v["client"]["available"], true);
+    assert_eq!(review::lock_of(&f.chain(), &f.doc).and_then(|d| d.id.clone()), Some(second));
+    // The history is shown in the order it was written, not by the clocks.
+    let shown: Vec<_> = f.view().decisions.iter().map(|b| b.decision.id.clone()).collect();
+    let written: Vec<_> = f.chain().decisions.iter().map(|d| d.id.clone()).collect();
+    assert_eq!(shown, written);
+}
+
+// ── locking again closes Ellis's open suggestions ───────────────────────────
+
+#[test]
+fn locking_again_closes_ellis_suggestions_nobody_confirmed() {
+    let f = locked();
+    let mut body = review_body("rejected", json!([]));
+    body["said"] = json!("Audience is wrong. The tone is off.");
+    let input = ClientReview::parse(&body.to_string()).unwrap();
+    let reply = json!({ "api": "napkin.middleware/1", "job": { "state": "done" }, "change": null,
+        "result": { "suggestions": [
+            { "address": "audience", "answer": "rejected", "quote": "Audience is wrong." },
+            { "address": "tone", "answer": "rejected", "quote": "The tone is off." } ] } });
+    let done = f.session.perform(f.session.ctx(), |c, d| cr::record(c, d, input, Ellis::Answered(reply))).unwrap();
+    let ids = done.reply["suggestions"]["decisions"].as_array().unwrap().clone();
+    let c = f.post_ok("/client-review/confirm", json!({ "suggestion": ids[0], "confirm": true }));
+    let (open, part) = (ids[1].as_str().unwrap().to_string(), c["decision"].as_str().unwrap().to_string());
+    f.post_ok("/client-review/reopen", json!({ "answer": part }));
+    assert_eq!(f.edit("audience", "Adults 30-45", Some(&part)).0, 200);
+    assert_eq!(f.codes(), vec![("client_part_suggested".into(), false)], "still asking");
+
+    let lock = f.post_ok("/approve", json!({}))["decision"].as_str().unwrap().to_string();
+    let chain = f.chain();
+    let d = &chain.decisions[0];
+    assert_eq!((d.kind.as_deref(), d.action.as_str()), (Some("client_review"), "dismiss_part"));
+    assert_eq!(chain.decisions[1].id.as_deref(), Some(lock.as_str()), "written after the lock");
+    assert_eq!(d.actor.as_deref(), Some("human:aoife"), "the person locking");
+    assert_eq!(d.extra["suggestion"].as_str(), Some(open.as_str()));
+    assert_eq!(d.extra["closed_by"].as_str(), Some(lock.as_str()));
+    assert_eq!(d.cites, vec![open.clone(), lock.clone()]);
+    assert_eq!(d.targets, vec![format!("{}#tone", f.doc)]);
+    assert!(d.rationale.starts_with("Closed by the new lock"), "{}", d.rationale);
+    assert_eq!(f.json_view()["client"]["suggestions"], json!([]));
+    assert!(f.codes().is_empty(), "{:?}", f.codes());
+    assert_eq!(f.refused("/client-review/confirm", json!({ "suggestion": open, "confirm": true })), 409);
+    let report = clan_sdk::validate(&ClanFile::open(f.id.as_str()).unwrap());
+    assert!(report.is_valid(), "{}", report.display());
 }

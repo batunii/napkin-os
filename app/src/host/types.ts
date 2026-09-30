@@ -122,6 +122,8 @@ export interface AttentionReason {
   code:
     | 'flagged' | 'low_certainty' | 'open_contest' | 'unverified_finding'
     | 'flagged_field' | 'bad_verdict' | 'unmerged_branch'
+    // A client's answer to the locked document (OS-layer contract §7.5.4).
+    | 'client_rejected' | 'client_rejected_parts_unknown' | 'client_change_asked' | 'client_part_suggested'
   text: string
   blocks_lock: boolean
 }
@@ -175,9 +177,195 @@ export interface DecisionsView {
   /** Lock blockers first. */
   attention: AttentionItem[]
   cites: Record<string, CiteInfo>
-  lock: { can_lock: boolean; blockers: number }
+  lock: {
+    can_lock: boolean
+    blockers: number
+    /** An `approve` of this document holds (§7.1). Absent from an older host. */
+    locked?: boolean
+    /** Parts reopened for a client's request since the lock (§7.5.6). */
+    reopened?: ReopenedPart[]
+  }
+  /** Client review (§7.5, §8.2 item 6). Absent from an older host. */
+  client?: ClientView
   /** Set when the chain could not be read. */
   problem?: string
+}
+
+// ── Client review (OS-layer contract §7.5, §8.2) ──────────────────────────────
+
+export type ClientAnswerKind = 'accepted' | 'accepted_with_changes' | 'rejected'
+export type ClientReason = 'off_brief' | 'wrong_audience' | 'tone' | 'facts_wrong' | 'budget' | 'other'
+export type ClientChannel = 'pasted_email' | 'file' | 'call' | 'none'
+
+/** Who answered, as the recorder typed it. Data, not identity. */
+export interface ClientWho {
+  name: string
+  email?: string
+}
+
+/** A part the app declared: a dotted data path and what to call it. */
+export interface ClientPartRef {
+  address: string
+  label: string
+}
+
+export interface ReopenedPart {
+  address: string
+  label: string
+  /** The `unlock`. */
+  decision: string
+  /** The part answer it was reopened for. */
+  answers: string
+}
+
+/** One document answer, as `/decisions` reads it. */
+export interface ClientAnswerView {
+  decision: string
+  answer: ClientAnswerKind
+  reasons?: ClientReason[]
+  /** The client's words, verbatim — or, on a call, the recorder's note of them. */
+  said?: string
+  client: ClientWho
+  channel?: ClientChannel
+  evidence: { asset?: string; sha256?: string; strength: 'strong' | 'weaker' }
+  recorded_by: { id: string; name: string }
+  at: string
+  seen: { version: string; doc_hash: string; parts: (ClientPartRef & { part_hash: string })[] }
+  /** It answers the version the lock names now. */
+  current: boolean
+  /** A part answer names it as its review. */
+  parts_known: boolean
+}
+
+export interface ClientPartView {
+  address: string
+  label: string
+  state: ClientAnswerKind
+  decision: string
+  review: string
+  /** `document`: an accepted document answer marks every part. */
+  found_by: 'person' | 'agent' | 'document'
+  quote?: string
+  client: ClientWho
+  at: string
+  stale: boolean
+  answered: boolean
+  reopened: boolean
+}
+
+/** One of Ellis's suggestions nobody has confirmed or dismissed yet. */
+export interface ClientSuggestionView {
+  decision: string
+  review: string
+  address: string
+  label: string
+  answer: ClientAnswerKind
+  quote: string
+}
+
+export interface ClientView {
+  /** `POST /client-review` would be accepted now: locked, nothing reopened. */
+  available: boolean
+  answer: ClientAnswerView | null
+  /** Every document answer, newest first. */
+  answers: ClientAnswerView[]
+  parts: ClientPartView[]
+  /** Oldest first. */
+  suggestions: ClientSuggestionView[]
+}
+
+/** `POST /client-review`. The recorder is whoever is signed in; never sent. */
+export interface ClientReviewBody {
+  answer: ClientAnswerKind
+  client: ClientWho
+  reasons?: ClientReason[]
+  channel: ClientChannel
+  said?: string
+  /** `human/assets/<name>`, stored first with `uploadAsset`. */
+  asset?: string
+  /** The app's whole list, every time. */
+  parts: ClientPartRef[]
+  /**
+   * The parts the recorder marked. `words` is what the recorder typed under
+   * the part; §8.2 has no field for it yet, so the host does not keep it.
+   */
+  marked?: { address: string; answer: ClientAnswerKind; words?: string }[]
+}
+
+export interface ClientReviewReply {
+  ok: boolean
+  decision: string
+  parts: string[]
+  suggestions: {
+    /** `none`: nothing was asked (accepted, parts marked, no parts, no words). */
+    status: 'none' | 'found' | 'unavailable'
+    decisions: string[]
+    dropped: number
+    reason?: string
+  }
+}
+
+/** `POST /client-review/confirm`: settle a suggestion, or mark a part after the fact. */
+export type ClientConfirmBody =
+  | { suggestion: string; confirm: boolean; answer?: ClientAnswerKind; rationale?: string }
+  | { review: string; address: string; answer: ClientAnswerKind; rationale?: string }
+
+export interface ClientConfirmReply {
+  ok: boolean
+  decision: string
+  targets: string[]
+}
+
+/** `POST /client-review/reopen`: what edit mode opens with. */
+export interface ClientReopenReply {
+  ok: boolean
+  decision: string
+  address: string
+  label: string
+  /** The part answer the edit answers: send it as the `/edit`'s `answers`. */
+  answers: string
+  /** "<client> asked: …" — the edit's reason, pre-filled. */
+  reason: string
+}
+
+/** `POST /upload-asset`. */
+export interface UploadedAsset {
+  ok: boolean
+  internal_path: string
+  extracted_chars: number
+}
+
+// ── What changed upstream (§8.1, item 6) ──────────────────────────────────────
+
+export interface UpstreamCarried {
+  document_id: string
+  data_sha256: string
+  facts_sha256?: string
+  findings_sha256?: string
+  sources_sha256?: string
+  last_decision?: string
+}
+
+export interface UpstreamEntry {
+  document_id: string
+  direct: boolean
+  in_store: boolean
+  title?: string
+  app_id?: string
+  version?: string
+  locked?: boolean
+  status: 'current' | 'changed' | 'not_compared' | 'unknown'
+  changed?: { data: boolean; facts: boolean; findings: boolean; sources: boolean }
+  decisions_since?: number | null
+  pins?: { id: string; change: 'added' | 'replaced' | 'changed'; label: string; replaced_by?: string }[]
+  findings?: { id: string; change: 'added' | 'verified' | 'rejected'; statement: string; reason?: string; cited_by: string[] }[]
+  contests?: { id: string; change: 'opened' | 'resolved'; key: string; chosen?: string; resolved_here: boolean }[]
+}
+
+export interface UpstreamView {
+  document_id: string
+  carried: UpstreamCarried | null
+  upstream: UpstreamEntry[]
 }
 
 /**
@@ -237,6 +425,23 @@ export interface Host {
   getDecisions(): Promise<DecisionsView>
   /** A person accepts an agent's call ("Looks right"): `/acknowledge`. */
   acknowledge(decision: string): Promise<void>
+  /** What changed upstream since this document was spun off (`GET /upstream`). */
+  upstream(): Promise<UpstreamView>
+
+  // ── Client review (OS-layer contract §7.5) ────────────────────────────────
+  /**
+   * Record a client's answer to the locked document: `POST /client-review`.
+   * Ellis is asked which parts it was about only where the host can reach the
+   * middleware; elsewhere the reply's `suggestions.status` is `unavailable`
+   * and says why.
+   */
+  clientReview(body: ClientReviewBody): Promise<ClientReviewReply>
+  /** Confirm or dismiss one of Ellis's suggestions, or mark a part after the fact. */
+  clientReviewConfirm(body: ClientConfirmBody): Promise<ClientConfirmReply>
+  /** "Make this change": reopen the one part a client's answer asked about. */
+  clientReviewReopen(answer: string): Promise<ClientReopenReply>
+  /** Store a file in the open document (`/upload-asset`) — the client's email or PDF. */
+  uploadAsset(name: string, bytes: Uint8Array): Promise<UploadedAsset>
 
   // ── The render surface ────────────────────────────────────────────────────
   setEditMode(active: boolean): Promise<void>

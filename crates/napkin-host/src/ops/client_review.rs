@@ -454,11 +454,12 @@ pub(crate) struct Reopened {
     pub answers: String,
 }
 
-/// True when decision `a` came after decision `b`: a later second, or the same
-/// second and earlier in the (newest-first) chain.
-pub(crate) fn after(chain: &DecisionChain, a: usize, b: usize) -> bool {
-    let at = |i: usize| decisions::stamp(&chain.decisions[i].timestamp);
-    (at(a), std::cmp::Reverse(a)) > (at(b), std::cmp::Reverse(b))
+/// True when decision `a` came after decision `b`: it sits nearer the head of
+/// the (newest-first) chain. Every "which came first" is the chain's order,
+/// never the stamps (owner, 2026-09-30): a stamp is for showing, since a
+/// clock can be wrong and a merge can interleave them.
+pub(crate) fn after(a: usize, b: usize) -> bool {
+    a < b
 }
 
 /// Every part of this document an `unlock`, not superseded, has reopened since
@@ -476,7 +477,7 @@ pub(crate) fn reopened(chain: &DecisionChain, doc_id: &str) -> Vec<Reopened> {
             d.kind.as_deref() == Some(UNLOCK)
                 && d.action == REOPEN_PART
                 && d.superseded_by.is_none()
-                && after(chain, *i, lock)
+                && after(*i, lock)
         })
         .filter_map(|(_, d)| {
             let (on, path) = d.targets.first()?.split_once('#')?;
@@ -1096,6 +1097,44 @@ pub fn confirm(ctx: &Ctx, doc: &Document, input: Confirm) -> HostResult<Outcome>
             commit(doc, vec![d], "a client's part marked", &now, reply)
         }
     }
+}
+
+/// Ellis's suggestions still open when the document is locked again, each
+/// closed by one dismissal written after the new lock (Contract 4 §7.5.3).
+/// They were about the version the client read, which the new lock replaces,
+/// so nobody can confirm them any more; left open they would ask for a look
+/// forever. The person locking is the recorder, and the dismissal names the
+/// lock as `closed_by` and says why.
+pub(crate) fn closed_by_lock(
+    ctx: &Ctx,
+    who: &str,
+    chain: &DecisionChain,
+    open: &[decisions::ClientSuggestion],
+    lock: &str,
+    now: &str,
+) -> HostResult<Vec<Decision>> {
+    let mut out = Vec::new();
+    for s in open {
+        let name = find(chain, &s.review).map(client_name).unwrap_or_else(|_| "the client".to_string());
+        let mut d = by_person(
+            ctx,
+            who,
+            DISMISS_PART,
+            vec![s.address.clone()],
+            vec![s.decision.clone(), lock.to_string()],
+            format!(
+                "Closed by the new lock: Ellis's suggestion that {name} meant {} was not confirmed before the document was locked again.",
+                s.label
+            ),
+            now,
+        );
+        put(&mut d, "covers", json!("part"))?;
+        put(&mut d, "review", json!(s.review))?;
+        put(&mut d, "suggestion", json!(s.decision))?;
+        put(&mut d, "closed_by", json!(lock))?;
+        out.push(d);
+    }
+    Ok(out)
 }
 
 // ── "Make this change" (§7.5.6) ─────────────────────────────────────────────

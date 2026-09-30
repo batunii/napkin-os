@@ -1,0 +1,326 @@
+/* Client review: the mode bar, the whole-document panel, and the band that
+   shows the client's answer above the document once it is saved. Colours
+   come from the tokens in index.css, plus the answer colours of the owner's
+   prototype (version 4) defined here for both themes: amber for a change
+   asked, red for rejected, green for accepted, Ellis's blue for what he
+   suggests. */
+
+:root,
+:root[data-theme='light'] {
+  --cr-chg: #B45309;
+  --cr-chg-soft: #FEF3E2;
+  --cr-chg-line: #F5A524;
+  --cr-ok-soft: #E6F7EC;
+  --cr-ok-ink: #177A3C;
+  --cr-rj: #B42318;
+  --cr-rj-soft: #FDECEA;
+  --cr-ellis-bg: #F1F4FC;
+  --cr-ellis-ink: #1E2A52;
+  --cr-ellis-sub: #3A4775;
+  --cr-ellis-line: #9AA6CF;
+  --cr-ellis-item: #FFFFFF;
+  --cr-ellis-item-line: #D5DBEF;
+  --cr-ellis-btn: #4A5A8C;
+  --cr-ellis-btn-fg: #FFFFFF;
+}
+:root[data-theme='dark'] {
+  --cr-chg: #F5B25C;
+  --cr-chg-soft: #35270F;
+  --cr-ok-soft: #15301F;
+  --cr-ok-ink: #6FD39A;
+  --cr-rj: #F08A80;
+  --cr-rj-soft: #3A1A17;
+  --cr-ellis-bg: #1B2238;
+  --cr-ellis-ink: #DCE2F7;
+  --cr-ellis-sub: #AEB8DE;
+  --cr-ellis-line: #3B4A7A;
+  --cr-ellis-item: #222A45;
+  --cr-ellis-item-line: #3B4A7A;
+  --cr-ellis-btn: #8C9BD0;
+  --cr-ellis-btn-fg: #0F1114;
+}
+
+/* ── the work area: the document, and the panel beside it ───────────────── */
+
+.ch-work { display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative; }
+.ch-work-main { flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); display: flex; flex-direction: column; }
+
+/* ── the bar: Client review, and the mode ───────────────────────────────── */
+
+/* The design's "go": Create, filled. */
+.ch-bar .ch-btn-big { height: 34px; padding: 0 16px; font-weight: 600; font-size: 13px; }
+.ch-bar .ch-btn-primary.ch-btn-big { background: var(--create); border-color: var(--create); color: var(--create-fg); }
+.ch-bar .ch-btn-primary.ch-btn-big:hover { background: color-mix(in srgb, var(--create) 88%, var(--ink)); }
+
+.ch-bar.ch-bar-mode { background: var(--cr-chg-soft); border-bottom-color: color-mix(in srgb, var(--cr-chg-line) 45%, var(--line-soft)); }
+.ch-bar-mode .ch-btn { height: 34px; padding: 0 16px; font-weight: 600; }
+.ch-modetag { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.ch-modetag-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cr-chg-line); }
+
+/* ── the panel ──────────────────────────────────────────────────────────── */
+
+.cr-panel {
+  flex-shrink: 0;
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  border-left: 1px solid var(--line-soft);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.cr-scroll { flex: 1; overflow-y: auto; padding: 16px 18px 40px; display: flex; flex-direction: column; gap: 14px; }
+
+.cr-speak { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: end; }
+.cr-say {
+  margin: 0;
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  border-radius: 16px;
+  padding: 9px 13px;
+  font-size: 14px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.cr-who { display: block; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink3); margin-bottom: 2px; }
+
+.cr-q { margin: 4px 0 0; font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+
+.cr-answers { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.cr-answer {
+  min-height: 56px;
+  border: 2px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 16px;
+  padding: 11px 14px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  font: inherit;
+}
+.cr-answer b { font-size: 15px; }
+.cr-answer span { font-size: 13px; color: var(--ink2); }
+.cr-answer:disabled { cursor: default; opacity: 0.7; }
+.cr-answer[aria-pressed='true'][data-kind='accepted'] { border-color: var(--status-green); box-shadow: 4px 4px 0 var(--status-green); }
+.cr-answer[aria-pressed='true'][data-kind='accepted_with_changes'] { border-color: var(--cr-chg); box-shadow: 4px 4px 0 var(--cr-chg); }
+.cr-answer[aria-pressed='true'][data-kind='rejected'] { border-color: var(--cr-rj); box-shadow: 4px 4px 0 var(--cr-rj); }
+
+.cr-sub { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line-soft); padding-top: 14px; }
+.cr-sub h3 { margin: 0; font-size: 14.5px; font-weight: 700; }
+
+.cr-how { display: flex; flex-wrap: wrap; gap: 8px; }
+.cr-how button {
+  min-height: 40px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.cr-how button[aria-pressed='true'] { border-color: var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+
+.cr-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cr-field label, .cr-label { font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+.cr-field label small { font-weight: 400; color: var(--ink3); }
+.cr-field textarea, .cr-field input[type='text'], .cr-field input[type='email'] {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.cr-field textarea:focus-visible, .cr-field input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+.cr-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.cr-drop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 56px;
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: var(--ink3);
+  font-size: 13.5px;
+  text-align: center;
+  cursor: pointer;
+}
+label.cr-drop { justify-content: center; }
+.cr-file-input:focus-visible + .cr-drop { outline: 2px solid var(--ink); outline-offset: 2px; }
+.cr-drop-over { border-color: var(--ink); color: var(--ink); }
+.cr-drop-got { border-style: solid; border-color: var(--status-green); background: var(--cr-ok-soft); color: var(--cr-ok-ink); cursor: default; text-align: left; }
+.cr-drop-got span { display: flex; flex-direction: column; overflow-wrap: anywhere; font-weight: 600; }
+.cr-drop-got small { font-weight: 400; }
+
+.cr-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+.cr-reasons button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: var(--r-pill);
+  padding: 6px 13px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cr-reasons button[aria-pressed='true'] { background: var(--cr-rj); border-color: var(--cr-rj); color: var(--paper); }
+.cr-reasons button:disabled { opacity: 0.6; cursor: default; }
+.cr-who-pick button { min-height: 44px; font-size: 14px; padding: 8px 16px; }
+.cr-who-pick button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.cr-hint { margin: 0; font-size: 13px; color: var(--ink2); }
+.cr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cr-version { margin: -6px 0 0; font-size: 12.5px; color: var(--ink3); }
+
+.cr-strength { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: 13px; }
+.cr-strength i { width: 8px; height: 8px; border-radius: 50%; background: var(--status-green); flex: none; }
+.cr-strength-weak i { background: var(--cr-chg-line); }
+
+.cr-err { margin: 0; font-size: 13px; color: var(--cr-rj); border: 1px solid color-mix(in srgb, var(--cr-rj) 40%, var(--line)); border-radius: 10px; padding: 8px 12px; }
+
+.cr-save { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+.cr-btn-go {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--r-pill);
+  padding: 0 22px;
+  background: var(--create);
+  color: var(--create-fg);
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cr-btn-go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.cr-link { border: 0; background: none; padding: 6px 4px; color: inherit; font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+/* ── the band, above the document ───────────────────────────────────────── */
+
+.cr-band {
+  flex-shrink: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+}
+.cr-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; border-radius: 14px; padding: 10px 14px; }
+.cr-banner-ok { background: var(--cr-ok-soft); color: var(--cr-ok-ink); }
+.cr-banner-chg { background: var(--cr-chg-soft); color: var(--cr-chg); }
+.cr-banner-rj { background: var(--cr-rj-soft); color: var(--cr-rj); }
+.cr-banner .cr-strength { color: inherit; }
+.cr-banner-fold { margin-left: auto; min-height: 36px; }
+
+.cr-said summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink2); min-height: 32px; display: flex; align-items: center; }
+.cr-said blockquote { margin: 6px 0 0; padding: 10px 14px; border-left: 3px solid var(--line); background: var(--soft); border-radius: 0 10px 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; }
+
+.cr-ellis {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  border: 2px solid var(--cr-ellis-line);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: var(--cr-ellis-bg);
+  color: var(--cr-ellis-ink);
+}
+.cr-ellis h3 { margin: 0 0 2px; font-size: 15px; }
+.cr-ellis p { margin: 0; font-size: 13.5px; color: var(--cr-ellis-sub); }
+.cr-ellis ul { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cr-ellis li {
+  background: var(--cr-ellis-item);
+  border: 1px solid var(--cr-ellis-item-line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.cr-ellis li b { font-weight: 600; }
+.cr-ellis li q { flex-basis: 100%; font-style: italic; color: var(--cr-ellis-sub); font-size: 13.5px; overflow-wrap: anywhere; }
+.cr-ellis li.cr-done { opacity: 0.7; background: transparent; }
+.cr-done-tag { font-size: 13px; font-weight: 600; min-height: 40px; display: inline-flex; align-items: center; }
+.cr-sp { flex: 1; }
+.cr-btn {
+  min-height: 40px;
+  border: 1.5px solid var(--cr-ellis-btn);
+  background: var(--cr-ellis-btn);
+  color: var(--cr-ellis-btn-fg);
+  border-radius: 10px;
+  padding: 6px 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cr-btn-quiet { background: transparent; color: var(--cr-ellis-btn); }
+.cr-btn:disabled { opacity: 0.55; cursor: default; }
+
+.cr-mark summary { cursor: pointer; font-size: 13.5px; font-weight: 600; min-height: 36px; display: flex; align-items: center; }
+/* A flex summary loses the browser's disclosure mark; draw it, so a fold
+   reads as one to open and not as a heading. */
+.cr-said summary::before, .cr-mark summary::before { content: '▸'; display: inline-block; width: 1em; margin-right: 4px; transition: transform 0.15s; }
+.cr-said[open] summary::before, .cr-mark[open] summary::before { transform: rotate(90deg); }
+.cr-mark .cr-reasons { margin-top: 6px; }
+.cr-mark .cr-reasons button { min-height: 40px; }
+
+/* The fold: shown only at phone width (below). */
+.cr-fold { display: none; align-items: center; justify-content: space-between; gap: 10px; }
+.cr-fold-sum { margin: 0; font-size: 14px; min-width: 0; }
+.cr-fold button {
+  min-height: 44px;
+  margin-left: auto;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: var(--r-pill);
+  padding: 0 16px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── narrow ─────────────────────────────────────────────────────────────── */
+
+/* At phone width the panel goes above the document, which stays in view
+   below it, so parts can still be marked on it. */
+@media (max-width: 760px) {
+  .ch-work-review { flex-direction: column-reverse; }
+  .ch-work-review .cr-panel { width: auto; max-height: 58vh; border-left: 0; border-bottom: 1px solid var(--line-soft); }
+  .cr-fold { display: flex; }
+  .cr-folded .cr-scroll { padding-bottom: 12px; gap: 10px; }
+  .cr-folded .cr-scroll > :not(.cr-keep) { display: none; }
+  .cr-scroll { padding: 14px 16px 24px; }
+  .cr-row { grid-template-columns: 1fr; }
+  .cr-band { padding: 10px 16px; max-height: 50vh; }
+  .cr-ellis { grid-template-columns: 1fr; }
+  .cr-ellis > .agent-figure, .cr-ellis > svg { display: none; }
+  .ch-bar-mode .ch-modetag { order: 3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cr-answer, .cr-how button, .cr-reasons button, .cr-said summary::before, .cr-mark summary::before { transition: none; }
+}

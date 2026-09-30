@@ -63,6 +63,15 @@ export function openInApp(ref: string, path?: string) {
   frame?.postMessage({ type: 'clan:open', ref, path }, '*')
 }
 
+/**
+ * Tell the app the document changed under it — a client's answer recorded,
+ * a suggestion settled — so its fields read `/decisions` again. The bridge
+ * in the frame turns this into the app's own `clan:dataupdated`.
+ */
+export function refreshApp() {
+  frame?.postMessage({ type: 'clan:dataupdated', source: 'shell' }, '*')
+}
+
 // ── steps the app can run again ──────────────────────────────────────────────
 // An app says which of its tasks the OS may ask for ("clan:can-run"); the
 // decision panel offers "Ask to redo" only for those, and the app runs them

@@ -189,6 +189,9 @@ export function agentOfDecision(d: WhoWrote): AgentKey | null {
   if (!who || who === 'human' || /^human:/.test(who)) return null
   if (d.kind === 'verdict' || d.polarity) return 'judge'
   if (d.kind === 'finding') return 'synthesis'
+  // The scorecard is the Judge's review, whichever worker the middleware
+  // tagged it with (briefs before 2026-09-30 carry `…/extract`).
+  if (String(d.action ?? '').toLowerCase() === 'score') return 'judge'
   const work = WORK_OF_STEP[lastPart(who)] ?? WORK_OF_STEP[String(d.action ?? '').toLowerCase()]
     ?? (/judge|critic/i.test(who) ? 'judge' : /extract|capture/i.test(who + ' ' + (d.action ?? '')) ? 'read'
       : /draft/i.test(who) ? 'draft' : undefined)
