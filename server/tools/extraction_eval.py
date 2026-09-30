@@ -128,7 +128,7 @@ def main():
         from napkin.config import Settings
         from napkin.model import ModelError, ModelPort, Usage, build_wire
         settings = Settings(model_api="anthropic", model_base_url=f"http://127.0.0.1:{port}", model_api_key="dummy")
-        port_ = ModelPort(build_wire(settings), "claude-opus-5", 600)
+        port_ = ModelPort(build_wire(settings), "claude-opus-5-5", 600)
 
         base = {"model": "recorded", "units": len(units), "runs": 1, "secs": 0.0,
                 **{k: 0 for k in ("returned", "kept", "evidence", "verbatim", "figure_ok", "in_wanted", "in_vocab", "errors")}}

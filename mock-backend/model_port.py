@@ -27,6 +27,8 @@ from common import ClaudeCall, ClaudeFailure, Config, Request, Response, Slots, 
 
 BASE_MODELS: dict[str, str] = {
     "claude-opus-5": "opus",
+    "claude-opus-5-5": "claude-opus-5-5",
+    "claude-sonnet-5-5": "claude-sonnet-5-5",
     "claude-sonnet-5": "sonnet",
     "claude-haiku-4-5": "haiku",
     "claude-haiku-4-5-20251001": "haiku",

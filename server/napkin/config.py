@@ -6,7 +6,7 @@ see any of it.
                                ANTHROPIC_BASE_URL); openai: the root /chat/completions is
                                appended to, including /v1 (required)
   NAPKIN_MODEL_API_KEY         anthropic: unset = the SDK's resolution; openai: the bearer key
-  NAPKIN_MODEL                 model id, sent verbatim (claude-opus-5)
+  NAPKIN_MODEL                 model id, sent verbatim (claude-opus-5-5)
   NAPKIN_VISION_MODEL          model id for image transcription (= NAPKIN_MODEL)
   NAPKIN_MODEL_EXTRA_BODY      openai only: a JSON object merged into every request body
   NAPKIN_MODEL_TIMEOUT         seconds per HTTP attempt (600)
@@ -49,7 +49,7 @@ class Settings:
     model_api: str = "anthropic"
     model_base_url: str | None = None
     model_api_key: str | None = None
-    model: str = "claude-opus-5"
+    model: str = "claude-opus-5-5"
     vision_model: str | None = None
     model_extra_body: dict = field(default_factory=dict)
     model_timeout: float = 600.0
@@ -86,7 +86,7 @@ class Settings:
         return cls(model_api=(e("NAPKIN_MODEL_API") or "anthropic").strip().lower(),
                    model_base_url=e("NAPKIN_MODEL_BASE_URL") or None,
                    model_api_key=e("NAPKIN_MODEL_API_KEY") or None,
-                   model=e("NAPKIN_MODEL") or "claude-opus-5",
+                   model=e("NAPKIN_MODEL") or "claude-opus-5-5",
                    vision_model=e("NAPKIN_VISION_MODEL") or None,
                    model_extra_body=extra_body,
                    model_timeout=float(e("NAPKIN_MODEL_TIMEOUT") or 600),

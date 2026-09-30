@@ -479,7 +479,7 @@ def test_image_attachment_is_transcribed_first(bserver):
                             "asset": "human/assets/brief-card.png", "image": {"media_type": "image/png", "data": PNG}}]}
     run(bserver, host, inp=inp)
     tr = next(c for c in bserver.model.calls if c[0] == "transcribe")
-    assert tr[2]["model"] == "claude-opus-5" and tr[2]["messages"][0]["content"][0]["type"] == "image"
+    assert tr[2]["model"] == "claude-opus-5-5" and tr[2]["messages"][0]["content"][0]["type"] == "image"
     mat = host.data["materials"][f"mat_{sha[:16]}"]
     assert mat["kind"] == "image" and mat["transcribed"]["model"] and mat["asset"] == "human/assets/brief-card.png"
     bg = next(d for d in host.chain if d.get("action") == "extract" and f"{DOC}#background" in d["targets"])
