@@ -1,0 +1,14 @@
+{
+ "about": "Sources a targeted search should try first, per market and lens (DRAFT, for a planner to approve). Names go into the search query; the tier of whatever is found still comes from rules/tiering.py by URL.",
+ "status": "draft",
+ "IE": {
+  "market_structure": ["Central Statistics Office (CSO)", "Revenue", "company annual reports", "Kantar Worldpanel", "Bord Bia", "Drinks Ireland (Ibec)", "Retail Ireland (Ibec)", "ComReg", "CRU", "SIMI"],
+  "brands_positioning": ["brand and company websites", "Checkout", "Shelflife", "Marketing.ie", "AdWorld", "Irish Advertising News", "IAPI"],
+  "consumer_culture": ["CSO", "Healthy Ireland Survey (gov.ie)", "Health Research Board", "safefood", "Bord Bia consumer research", "Kantar", "Red C", "Amarach", "ESRI"],
+  "category_codes": ["IAPI ADFX", "Marketing.ie", "AdWorld", "Irish Advertising News", "Kinsale Sharks", "ASAI rulings"],
+  "rhythm_moments": ["CSO retail sales index", "Kantar Worldpanel grocery reports", "Retail Excellence", "Retail Ireland", "Revenue"],
+  "media_spend": ["IAPI adspend report", "IAB Ireland", "Core Media outlook", "Nielsen", "TAM Ireland", "Coimisiun na Mean"],
+  "regulation_clearance": ["ASAI code and rulings", "Coimisiun na Mean", "Irish Statute Book", "Department of Health", "CCPC", "FSAI", "HPRA", "Central Bank of Ireland", "ComReg", "CRU", "GRAI", "Copy Clear", "European Commission"],
+  "effectiveness_evidence": ["IAPI ADFX effectiveness awards", "Effie Awards", "Kinsale Sharks", "Marketing.ie"]
+ }
+}

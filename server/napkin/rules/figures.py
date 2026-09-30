@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 
 NUM = re.compile(r"\d+(?:[.,]\d+)?")
+FALL = re.compile(r"\b(down|fell|fall(s|en|ing)?|declin\w*|decreas\w*|drop(s|ped|ping)?|lower|reduc\w*|"
+                  r"contract\w*|shr[ai]nk\w*|slump\w*|minus|loss)\b|[-\u2212]\s?\d", re.I)
 
 
 def allowed_for_pin(pin: dict) -> set[str]:
@@ -80,6 +82,10 @@ def quote_supports(value, unit: str, quote: str) -> bool:
         targets = [float(value)]
         if unit == "proportion":
             targets.append(float(value) * 100)
+        # A fall is usually written as a size and a word ("down 0.2%", "fell 5%"):
+        # a negative value matches its magnitude only when the quote says it fell.
+        if value < 0 and FALL.search(quote or ""):
+            targets += [abs(t) for t in targets]
         for t in targets:
             for c in cands:
                 if t == 0 and c == 0:

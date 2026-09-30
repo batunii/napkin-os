@@ -9,6 +9,9 @@ dependencies = [
     "anthropic>=0.60",
     "httpx>=0.27",
     "jsonschema>=4.22",
+    # category seeding (napkin/seed): the layers database, and PDF sources
+    "psycopg[binary]>=3.2",
+    "pypdf>=5.0",
 ]
 
 [dependency-groups]
