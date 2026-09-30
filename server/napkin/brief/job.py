@@ -146,6 +146,7 @@ class BriefJob:
         self.capture = None
         self.drafts = {}
         self.gaps = []           # [{stage, reason}]: every stage the job went on without
+        self.needs_input = {}    # {field: [rubric ids]}: checks left for a person until that field is filled
         self._abandoned = set()  # stages the job went on without while they still ran (their threads
                                  # are marked by jobs.abandon: nothing they write lands)
         self.thread = threading.Thread(target=self._run, name=f"{task}-{jid}", daemon=True)
@@ -599,17 +600,19 @@ class BriefJob:
                 judged_out[k] = {"outcome": outcome if k in live else ("kept" if k in self.locked else "absent"),
                                  "checks": [{x: c[x] for x in ("check", "method", "status", "note", "fix") if x in c}
                                             for c in res["checks"]]}
-            # place the value: drafted and passed -> write / propose; failed twice -> not written
+            # place the value: drafted -> write / propose. One that failed twice
+            # is written too, flagged with the Judge's reasons for a person to
+            # accept, edit or redo: an empty part helps nobody.
             refs = {}
             if drafted is not None:
                 if fails:
-                    for k in live:
-                        values[k] = get(self.W, k)  # the brief keeps what it had
-                        failed_keys.append(k)
-                    self.set_state(live, "failed", "judge")
+                    failed_keys += live
                     self.notes.append(clip("; ".join(f"{f['check']}: {f['reason']}" for f in fails), FIX_MAX))
-                else:
-                    refs = self._place_draft(drafted, live, res, first_clean, patch, decisions, passages_out)
+                refs = self._place_draft(drafted, live, res, first_clean, patch, decisions, passages_out,
+                                         failed=fails)
+                for c in res["checks"]:
+                    if c.get("needs"):
+                        self.needs_input.setdefault(c["needs"], []).append(rid)
             elif self.task == "regenerate_field" and self.fm[self.field]["class"] == "captured" and self.field in live:
                 refs = self._place_rederived(values[self.field], patch, decisions)
                 if fails:
@@ -646,7 +649,7 @@ class BriefJob:
             for fk, fr in prev.items():
                 if fk in self.fm and fr.get("outcome") == "failed":
                     bad = [c for c in fr.get("checks") or [] if c.get("status") == FAIL]
-                    if self.fm[fk]["class"] == "drafted" and not filled(values.get(fk)):
+                    if self.fm[fk]["class"] == "drafted":  # kept and flagged, or never written
                         failed_keys.append(fk)
                     elif self.fm[fk]["class"] == "captured" and bad:
                         bad_captured.append((fk, [{"check": bad[0]["check"], "reason": bad[0].get("note") or ""}]))
@@ -688,13 +691,18 @@ class BriefJob:
                     self.fields[k] = {"state": "absent" if not filled(get(self.W, k)) else "done", "by": "judge"}
 
     # -- placing a judged value ------------------------------------------------------
-    def _place_draft(self, d, live, res, first_clean, patch, decisions, passages_out) -> dict:
-        """Write (or propose) a judged draft. -> {key: decision id}."""
+    def _place_draft(self, d, live, res, first_clean, patch, decisions, passages_out, failed=()) -> dict:
+        """Write (or propose) a judged draft; `failed`, the checks it still
+        fails, flag it for a person. -> {key: decision id}."""
         raw = _figure_needs_pin(d.grounds)
         fallback = [rsn.point(f"Precedent: {p['citation']}", pid) for pid, p in list(d.passages.items())[:2]] or \
                    [rsn.point("Drafted from the working brief's captured fields")]
         action = "regenerate" if self.task == "regenerate_field" else "draft"
         attn = list(d.attention)
+        if failed:
+            attn.insert(0, "Jude's checks still fail after one revision: " + " ".join(
+                sentence(f"{f['check']}: {f['reason']}") + (f" Fix: {sentence(f['fix'])}" if f.get("fix") else "")
+                for f in failed[:3]) + " Check it, edit it, or ask for another draft.")
         r, notes = rsn.from_model(raw, decided=f"Drafted the {LABELS.get(d.group, d.group)}.", known=d.known,
                                   certainty_=rsn.certainty("low", "placeholder"), fallback=fallback,
                                   would_change_if="the working brief changes, or a person rewrites it",
@@ -704,7 +712,9 @@ class BriefJob:
         psg = [c for c in cites if c.startswith("psg_") and c in d.passages]
         packs = {d.passages[c]["pack"] for c in psg}
         pins = [c for c in cites if c.startswith("f_")]
-        if not psg:
+        if failed:
+            lvl, why = "low", "fails the Judge's checks after one revision"
+        elif not psg:
             lvl, why = "low", "grounded in no passage"
             if not attn:
                 r["attention"] = ((r.get("attention") or "") + " Drafted without a cited precedent passage.").strip()
@@ -781,7 +791,7 @@ class BriefJob:
         attn = []
         if bad:
             drafted = any(self.fm[k]["class"] == "drafted" for k in keys)
-            tail = " It failed twice and was not written." if drafted and outcome == "failed" else \
+            tail = " It failed twice; the best draft is kept, flagged for a person." if drafted and outcome == "failed" else \
                 " It is the client's words: take it back to the client." if not drafted else ""
             attn.append(f"{label} fails {', '.join(f['check'] for f in fails)}.{tail}")
         if review:
@@ -836,6 +846,12 @@ class BriefJob:
             v = next((x for key, x in vby.items() if fk in key and x.get("polarity") == "bad"), None)
             qs.append(f"Agree the {LABELS[fk]}.")
             pts.append(rsn.point(f"The {LABELS[fk]} failed the Judge twice", v["id"] if v else f"{self.doc}#{fk}"))
+        for need, rids in self.needs_input.items():
+            what = ", ".join(dict.fromkeys(RUBRIC_FIELDS[r]["label"].lower() for r in rids))
+            qs.append(f"{LABELS.get(need, need.replace('_', ' '))[0].upper() + LABELS.get(need, need.replace('_', ' '))[1:]}: "
+                      f"Jude needs it to finish checking the {what}.")
+            pts.append(rsn.point(f"The {what} can't be fully checked without the {LABELS.get(need, need)}",
+                                 f"{self.doc}#{need}"))
         for fk, fails in bad_captured:
             v = next((x for key, x in vby.items() if fk in key and x.get("polarity") == "bad"), None)
             qs.append(f"{LABELS[fk][0].upper() + LABELS[fk][1:]}: {fails[0]['reason']} — take this back to the client.")

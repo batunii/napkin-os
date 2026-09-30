@@ -126,8 +126,10 @@ def auto_checks(rid: str, value, competitor_context=None) -> list[dict]:
             status, note = AUTO[c["id"]](f, value)
             out.append({**base, "status": status, "note": note})
         elif c["id"] == "ownable" and not filled(competitor_context):
-            out.append({**base, "status": FAIL, "note": "needs competitor context to judge",
-                        "fix": "Fill the competitor context so the proposition can be judged ownable."})
+            # Not judgeable yet, so not failed: left for a person, and the
+            # brief asks for the competitors (job._questions).
+            out.append({**base, "method": "auto", "status": REVIEW, "note": "needs the competitor context to judge",
+                        "needs": "competitor_context"})
         else:
             out.append({**base, "status": REVIEW, "note": "the judge to decide" if c["method"] == "llm"
                         else "a person to confirm"})
