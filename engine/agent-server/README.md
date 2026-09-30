@@ -36,6 +36,13 @@ rationale says so. That's honest, not broken.
 
 - `POST /` `{request_kind, payload, clan}`; reply is 2xx **bare JSON of brief
   fields** (+ `rationale`, `context` meta keys the app strips).
+- `draft_brief` may carry `payload.upstream`, the research steps' output:
+  `{brand, category, competitors, facts, decisions}`, every key optional.
+  `facts` are verified fact rows (ADR 0014), `decisions` what people decided on
+  the research (ADR 0015); both reach the strategy writers only, never the
+  Loop-1 capture. It is passed to `parse_brief.run(upstream=...)`; a key of the
+  wrong type is dropped and logged, and with no `upstream` the draft runs
+  exactly as before.
 - Empty fields are **omitted**, never `""` — a second Generate must not blank
   planner-edited boxes.
 - `regenerate_field` replies use the **literal dotted key**

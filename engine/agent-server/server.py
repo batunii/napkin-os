@@ -9,6 +9,7 @@ expects a 2xx response whose body is a bare JSON object of brief fields.
 
 Tasks:
   draft_brief       → full pipeline: research dossier → parse_brief.run() → map_brief()
+                      (payload.upstream, when sent, → run(upstream=...))
   regenerate_field  → one focused LLM call, golden-brief rubric-enriched for insight/SMP
 
 Config (env; engine/.env is auto-loaded by parse_brief on import):
@@ -181,12 +182,39 @@ def _derive_names(text: str, clan_data: dict) -> dict:
             if k in ("project_name", "client") and v and not clan_data.get(k)}
 
 
+# The research steps' output, as parse_brief.run(upstream=...) reads it (ADR 0014, 0015).
+UPSTREAM_KEYS = {"brand": str, "category": str, "competitors": (list, str), "facts": list, "decisions": list}
+
+
+def _upstream(payload: dict) -> dict | None:
+    """payload["upstream"] checked lightly: an object whose known keys have the right type
+    (brand, category: text; competitors: a list or text; facts, decisions: lists). A wrong
+    key is dropped and logged, never an error (the brief works without research, Sai
+    2026-09-29); None when there is nothing usable, and run() is then called as before."""
+    up = payload.get("upstream")
+    if up is None:
+        return None
+    if not isinstance(up, dict):
+        print(f"[!] upstream is not an object ({type(up).__name__}); ignored", file=sys.stderr)
+        return None
+    out = {}
+    for k, v in up.items():
+        if k in UPSTREAM_KEYS and isinstance(v, UPSTREAM_KEYS[k]):
+            out[k] = v
+        else:
+            print(f"[!] upstream.{k} ignored ({'unknown key' if k not in UPSTREAM_KEYS else type(v).__name__})",
+                  file=sys.stderr)
+    return out or None
+
+
 def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
     """draft_brief: research dossier, then parse_brief.run(), then map_brief() to the app's
-    fields. Returns (HTTP status, fields). No input text is a 400. A failure with Loops
-    3-7 on is retried once without them, keeping the golden extraction, and the draft's
-    rationale starts "Degraded run (reason)". NoClaudeAvailable is re-raised, so the app
-    gets a non-2xx instead of a brief written by another model."""
+    fields. payload["upstream"] ({brand, category, competitors, facts, decisions}), when
+    sent, goes to run(upstream=...) as checked by _upstream. Returns (HTTP status, fields).
+    No input text is a 400. A failure with Loops 3-7 on is retried once without them,
+    keeping the golden extraction (and the upstream), and the draft's rationale starts
+    "Degraded run (reason)". NoClaudeAvailable is re-raised, so the app gets a non-2xx
+    instead of a brief written by another model."""
     clan_data = (clan or {}).get("data") or {}
     text = _assemble_text(payload, clan_data)
     if not text:
@@ -217,6 +245,8 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
             print("[!] research failed (continuing without dossier):", file=sys.stderr)
             traceback.print_exc()
     engine_input = text
+    up = _upstream(payload)
+    up_kw = {"upstream": up} if up else {}     # no upstream: run() is called exactly as before
 
     t0 = time.time()
     with _DRAFT_LOCK:
@@ -224,7 +254,7 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
             brief = parse_brief.run(None, client=clan_data.get("client"),
                                     project=clan_data.get("project_name"),
                                     loops37=loops37, golden=golden,
-                                    raw_text=engine_input, source_name="napkin-intake")
+                                    raw_text=engine_input, source_name="napkin-intake", **up_kw)
         except parse_brief.NoClaudeAvailable:
             raise                                   # a clear error, never another model's brief
         except Exception as e:
@@ -243,7 +273,7 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
             brief = parse_brief.run(None, client=clan_data.get("client"),
                                     project=clan_data.get("project_name"),
                                     loops37=False, golden=True,
-                                    raw_text=engine_input, source_name="napkin-intake")
+                                    raw_text=engine_input, source_name="napkin-intake", **up_kw)
             brief.setdefault("meta", {})["degraded"] = f"retrieval and strategy fill failed: {reason}"
     wall = time.time() - t0
 
