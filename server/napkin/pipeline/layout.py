@@ -19,14 +19,24 @@ from ..rules import layout as rule
 log = logging.getLogger("napkin.layout")
 
 PAGE_RULES = """The page (`html`) is HTML in a fixed vocabulary, and you have a free hand with it: order the sections as
-the research deserves (merge, split or drop a lens section), choose what leads, what becomes a big number, what
+the research deserves (merge or split lens sections, but keep every lens that has facts), choose what leads, what becomes a big number, what
 is charted, what is quoted, what sits in a band. Make it read like a considered piece of editorial work,
 specific to this research, not a template. The page presents your headline as its <h1 class="cl-title">. It may
 group, reorder and reword your summary and claims, but it may state nothing the ids it references do not hold.
 You decide how everything is shown: what is a heading, what is large or bold, the order, the grouping, what is
 charted or quoted. You do not decide whether: every fact, finding, contested value and gap in the input appears on
-the page, as a big number, a chart, a table row, a sentence or a cite. Anything you leave off is added at the
-end by code, in a plain list, so put it where it belongs instead.
+the page, as a big number, a chart, a table row, a sentence or a cite. Put each where it belongs: a check after
+you adds anything you leave off in a plain list at the end, and that list reads as an afterthought.
+
+Write for a planner who will not open the data. Each lens section opens with a short paragraph of two to four
+sentences on what its facts mean for this brief, then shows the evidence. Chart every group of three or more
+pins that measure the same thing in the same unit (across markets, channels or brands): numbers the page does
+not chart make it thin. Give a section a pull quote when one of its pins carries a strong quote. Keep tables
+for facts that have no place in the narrative.
+
+The html is a string inside JSON, and a double quote inside it that is not escaped breaks the whole answer and
+forces a rewrite. So write every attribute value in single quotes (class='cl-block', ref='f_...'), never double
+quotes, and keep each tag on one line.
 
 The vocabulary (a rule in code removes whatever breaks it):
 - Every figure is an element, never typed: <clan-field ref="f_..." as="big|stat|inline|cell"> for a pin

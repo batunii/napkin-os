@@ -35,7 +35,7 @@ fastest") is usually better than restating. Never cite anything not in the input
 and finding ids (fi_...) only: contest ids (ct_...) and gap ids (gap_...) belong to the page, never to a claim's
 cites, so a claim about a disagreement or a missing measure cites the pins or the finding it rests on.
 
-Return two things. The record: a headline, two to four summary lines, and for each lens section one to three
+Return two things. The record: a headline, two to four summary lines, and for each lens section two to four
 claims, each with its cites; these are the sentences you stand behind. And the page: `html`.
 
 """ + layout.PAGE_RULES + """

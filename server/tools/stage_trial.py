@@ -62,7 +62,8 @@ def page_metrics(html: str, clan: dict) -> dict:
     with_ev = {lens_of_key(f.get("key")) for f in pins.values()} - {None}
     on_page = {lens_of_key(pins[r]["key"]) for r in refs if r in pins} - {None}
     return {"sections": len(re.findall(r"<h2[\s>]", html)), "charts": html.count("<clan-chart"),
-            "quotes": html.count("<clan-quote"), "facts_on_page": len(refs & set(pins)), "facts_in_doc": len(pins),
+            "quotes": html.count("<clan-quote"), "tables": html.count("<table"),
+            "words": len(re.sub(r"<[^>]+>", " ", html).split()), "facts_on_page": len(refs & set(pins)), "facts_in_doc": len(pins),
             "findings_on_page": len({r for r in refs if r.startswith("fi_")}),
             "lenses_with_evidence": len(with_ev), "lenses_on_page": len(on_page & with_ev)}
 

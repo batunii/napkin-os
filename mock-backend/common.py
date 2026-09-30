@@ -255,8 +255,14 @@ def child_env() -> dict:
     return env
 
 
+def _streams(call: ClaudeCall) -> bool:
+    """Whether the CLI's events are streamed back: for images, for research (tool counts), and, with
+    MOCK_TRACE_MODEL=1, for any call that carries a schema, so a schema rejection can be recorded."""
+    return bool(call.images) or call.trace_tools or bool(os.environ.get("MOCK_TRACE_MODEL") and call.json_schema is not None)
+
+
 def claude_argv(cfg: Config, call: ClaudeCall, system_fd: int | None) -> list[str]:
-    stream = bool(call.images) or call.trace_tools
+    stream = _streams(call)
     cmd = [cfg.claude_bin, "-p", "--model", call.alias]
     if call.images:
         # Image blocks only travel through stream-json input, which requires
@@ -331,6 +337,57 @@ CALL_CTX: contextvars.ContextVar = contextvars.ContextVar("call_ctx", default={}
 _LEDGER_LOCK = threading.Lock()
 
 
+def _schema_errors(out: str) -> list[str]:
+    """The CLI's structured-output rejections in a stream-json run: the path and rule it names, cut short
+    (the allowed-values list it prints can be long). Each one is a turn the model had to redo."""
+    found = []
+    for line in out.splitlines():
+        if "does not match required schema" not in line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        content = ((ev.get("message") or {}).get("content")) if isinstance(ev, dict) else None
+        for b in content if isinstance(content, list) else []:
+            text = b.get("content") if isinstance(b, dict) else None
+            if isinstance(text, str) and "does not match required schema" in text:
+                found.append(text.replace("Output does not match required schema: ", "")[:160])
+    return found
+
+
+def _turn_trace(out: str) -> list[dict]:
+    """One entry per model message in a stream-json run: what it held (thinking, text, tool_use name), the
+    tokens it wrote and why it stopped, plus the first words of any tool result the CLI sent back. Shows what
+    each extra turn was."""
+    turns, seen = [], {}
+    for line in out.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        msg = ev.get("message") if isinstance(ev, dict) else None
+        if not isinstance(msg, dict):
+            continue
+        if ev.get("type") == "assistant":
+            mid = msg.get("id")
+            if mid not in seen:
+                seen[mid] = {"blocks": [], "out": None, "stop": None}
+                turns.append(seen[mid])
+            t = seen[mid]
+            t["blocks"] += [b.get("name") or b.get("type") for b in msg.get("content") or [] if isinstance(b, dict)]
+            t["out"] = (msg.get("usage") or {}).get("output_tokens", t["out"])
+            t["stop"] = msg.get("stop_reason") or t["stop"]
+        elif ev.get("type") == "user":
+            for b in msg.get("content") or []:
+                if isinstance(b, dict) and b.get("type") == "tool_result":
+                    c = b.get("content")
+                    turns.append({"tool_result": (c if isinstance(c, str) else json.dumps(c))[:120]})
+    return turns
+
+
 def _tool_uses(out: str) -> dict:
     """{tool name: count} from a stream-json run's assistant events."""
     counts: dict[str, int] = {}
@@ -360,7 +417,8 @@ def _by_model(usage) -> dict | None:
 
 
 def record_call(cfg: Config, call: ClaudeCall, secs: float, envelope: dict | None, ok: bool, tools: dict | None,
-                failure: str | None = None) -> None:
+                failure: str | None = None, schema_errors: list | None = None,
+                turn_trace: list | None = None) -> None:
     """One JSON line per `claude -p` subprocess in <MOCK_DATA>/metrics.jsonl:
     who asked (handler, job, from the request headers), what for (the model
     purpose, or the research lens and market, read from the prompt), how long,
@@ -380,7 +438,8 @@ def record_call(cfg: Config, call: ClaudeCall, secs: float, envelope: dict | Non
            "prompt_chars": len(call.prompt), "system_chars": len(call.system or ""),
            "web_searches": (tools or {}).get("WebSearch"), "web_fetches": (tools or {}).get("WebFetch"),
            "server_tool_use": u.get("server_tool_use"),
-           "by_model": _by_model(env.get("modelUsage")),
+           "by_model": _by_model(env.get("modelUsage")), "schema_rejections": schema_errors or None,
+           "turn_trace": turn_trace if (turn_trace and len(turn_trace) > 2) else None,
            "tools": tools}
     try:
         with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
@@ -398,7 +457,8 @@ def run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | N
         record_call(cfg, call, time.monotonic() - t0, None, False, None, f.kind)
         raise
     ok = not (env.get("_exit") or env.get("is_error"))
-    record_call(cfg, call, time.monotonic() - t0, env, ok, env.pop("_tools", None))
+    record_call(cfg, call, time.monotonic() - t0, env, ok, env.pop("_tools", None), schema_errors=env.pop("_schema_errors", None),
+                turn_trace=env.pop("_turn_trace", None))
     return env
 
 
@@ -408,7 +468,7 @@ def _run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | 
     rfd = wfd = None
     if call.system is not None:
         rfd, wfd = os.pipe()
-    stream = bool(call.images) or call.trace_tools
+    stream = _streams(call)
     try:
         if cwd_root is not None:
             cwd_root.mkdir(parents=True, exist_ok=True)
@@ -466,6 +526,9 @@ def _run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | 
     envelope.setdefault("_exit", proc.returncode)
     if call.trace_tools:
         envelope["_tools"] = _tool_uses(out)
+    if stream:
+        envelope["_schema_errors"] = _schema_errors(out)
+        envelope["_turn_trace"] = _turn_trace(out)
     return envelope
 
 
