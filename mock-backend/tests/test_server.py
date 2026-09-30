@@ -25,7 +25,7 @@ class Process(unittest.TestCase):
             self.assertEqual(h["fakes"]["retrieval"]["kinds"], ["digest"])
             self.assertEqual(h["fakes"]["retrieval"]["packs_dir"], "engine/packs_dist")
             self.assertEqual(h["fakes"]["layers"]["backend"], "sqlite")
-            self.assertEqual((h["concurrency"], h["in_flight"]), (4, 0))
+            self.assertEqual((h["concurrency"], h["in_flight"]), (8, 0))
         finally:
             s.close()
 

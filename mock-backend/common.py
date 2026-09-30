@@ -70,7 +70,7 @@ class Config:
             raise SystemExit(f"MOCK_FAKES: unknown famil{'ies' if len(unknown) > 1 else 'y'} "
                              f"{', '.join(unknown)} (known: {', '.join(FAMILIES)})")
         self.fakes = tuple(f for f in FAMILIES if f in fakes)
-        self.concurrency = max(1, env_int("MOCK_CONCURRENCY", 4))
+        self.concurrency = max(1, env_int("MOCK_CONCURRENCY", 8))
         self.timeout = {
             "model": env_float("MOCK_TIMEOUT_MODEL", 180.0),
             "research": env_float("MOCK_TIMEOUT_RESEARCH", 420.0),

@@ -70,6 +70,8 @@ shared by all families.
   | Model id | Alias |
   |---|---|
   | `claude-opus-5` | `opus` |
+  | `claude-opus-5-5` | `claude-opus-5-5` (full id) |
+  | `claude-sonnet-5-5` | `claude-sonnet-5-5` (full id) |
   | `claude-sonnet-5` | `sonnet` |
   | `claude-haiku-4-5` | `haiku` |
   | `claude-fable-5-1` | `fable` |
@@ -286,7 +288,7 @@ over a transport that calls `app.handle` instead of a socket.
 |---|---|---|
 | `MOCK_BACKEND_HOST` / `MOCK_BACKEND_PORT` | `127.0.0.1` / `8797` | refuses 8080, 8090, 8787, 8788, 8790, 8791, 8792, 8795, 8796 |
 | `MOCK_FAKES` | `model,research,retrieval,layers` | families served |
-| `MOCK_CONCURRENCY` | `4` | Claude subprocesses at once, all families |
+| `MOCK_CONCURRENCY` | `8` | Claude subprocesses at once, all families |
 | `MOCK_QUEUE_TIMEOUT` | the family's timeout | wait for a slot -> 529/503 |
 | `MOCK_TIMEOUT_MODEL` / `_RESEARCH` / `_RETRIEVAL` | `180` / `420` / `180` | seconds -> 504, process group killed |
 | `MOCK_MAX_BODY_BYTES` | `33554432` | -> 413 |
