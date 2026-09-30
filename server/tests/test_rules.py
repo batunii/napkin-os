@@ -273,3 +273,34 @@ def test_brand_from_text():
     assert found and opts[0]["value"]["ref"] == "brand/harbour-tonic" and opts[0]["origin"] == "stated"
     opts, _ = identify.brand_options_from_text("Kestrel", [])
     assert opts[0]["value"] == {"ref": "brand/kestrel", "name": "Kestrel"} and opts[-1]["id"] == "none"
+
+
+def _share_pins(value, unit="proportion"):
+    return {"f_1": {"id": "f_1", "value": value, "unit": unit, "as_of": "2025-06-01"}}
+
+
+def test_a_majority_claim_needs_a_cited_share_above_half():
+    ok, why = clean_claim("Display takes the majority of spend.", ["f_1"], _share_pins(0.62), {})
+    assert why is None and ok["cites"] == ["f_1"]
+    bad, why = clean_claim("Display takes the majority of spend.", ["f_1"], _share_pins(0.38), {})
+    assert bad is None and "above half" in why
+
+
+def test_a_minority_or_under_half_claim_needs_a_cited_share_below_half():
+    ok, _ = clean_claim("Fewer than half trust companies.", ["f_1"], _share_pins(0.41), {})
+    assert ok is not None
+    bad, why = clean_claim("Only a minority have adopted AI.", ["f_1"], _share_pins(0.71), {})
+    assert bad is None and "below half" in why
+
+
+def test_a_share_word_with_no_cited_share_is_dropped_but_a_finding_cite_is_not_checked():
+    bad, why = clean_claim("A majority of firms adopted it.", ["f_1"], _share_pins(1200, unit="count"), {})
+    assert bad is None and why
+    findings = {"fi_1": {"id": "fi_1", "statement": "Adoption is widespread.", "status": "active"}}
+    ok, _ = clean_claim("A majority of firms adopted it.", ["fi_1"], {}, findings)
+    assert ok is not None
+
+
+def test_most_is_not_read_as_a_share_word():
+    ok, _ = clean_claim("This is the most popular channel.", ["f_1"], _share_pins(0.2), {})
+    assert ok is not None
