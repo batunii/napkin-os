@@ -352,7 +352,13 @@ The two SDK checks passed as well: anthropic 1.4.0 and openai 3.19.2.
 ## Divergences from the real services
 
 - **Model:**
-  - `stop_reason` is always `end_turn`, and `max_tokens` is not enforced.
+  - `max_tokens` is checked after the reply, not during it: when the answer
+    turn the CLI reports (hidden thinking included) wrote more than
+    `max_tokens`, the reply is cut to the same share of its text and
+    `stop_reason` is `max_tokens` (`finish_reason` `length` on the OpenAI
+    wire). Usage still reports what the CLI actually wrote. A run with extra
+    dev-only turns (the CLI's broken-JSON retry) is not checked, since its
+    total spans more than one answer. Otherwise `stop_reason` is `end_turn`.
   - There is no prompt caching.
   - Token counts include Claude Code's own framing and structured-output
     tool, so they are not a cost number.

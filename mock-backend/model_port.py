@@ -120,6 +120,7 @@ class ModelCall:
     system: str | None = None
     schema: dict | None = None
     effort: str | None = None
+    max_tokens: int | None = None    # the reply budget the caller asked for (hidden thinking counts)
     images: list = field(default_factory=list)   # [(media_type, b64)]
     ignored: list = field(default_factory=list)
 
@@ -299,7 +300,8 @@ def build_anthropic(body: dict) -> ModelCall:
             raise invalid(f"output_config.effort: Input should be one of {sorted(EFFORT_LEVELS)}")
 
     return ModelCall(model=model, alias=MODELS[model], turns=turns, system=system, schema=schema,
-                     effort=effort, images=images, ignored=sorted(k for k in body if k in A_IGNORED))
+                     effort=effort, max_tokens=mt, images=images,
+                     ignored=sorted(k for k in body if k in A_IGNORED))
 
 
 _B62 = string.ascii_letters + string.digits
@@ -361,13 +363,35 @@ def reply_text(envelope: dict, call: ModelCall) -> str:
     return text
 
 
+def answer_tokens(envelope: dict) -> int | None:
+    """Output tokens of the answer turn, the number a real call's max_tokens caps (hidden thinking
+    included): the whole output when the run was one answer turn plus the CLI's short closing turn (a
+    slight overcount, so it errs towards cut-off). None when the run had extra dev-only turns (the CLI's
+    broken-JSON retry writes the reply again): the total spans requests production would not make. The
+    stream trace's per-turn counts are partial, never final, so they are not used."""
+    turns = envelope.get("num_turns")
+    if isinstance(turns, int) and turns > 2:
+        return None
+    return usage_of(envelope)[1] or None
+
+
+def cut_off(text: str, envelope: dict, call: ModelCall) -> str | None:
+    """The reply as a real call would return it when the answer turn wrote more than max_tokens: the same
+    share of its text as max_tokens is of what was written. None when it fits. The CLI itself has no
+    output cap, so without this a reply that production would truncate passes in development."""
+    n = answer_tokens(envelope)
+    if not call.max_tokens or n is None or n <= call.max_tokens:
+        return None
+    return text[:len(text) * call.max_tokens // n]
+
+
 def to_anthropic(envelope: dict, call: ModelCall) -> dict:
     text = reply_text(envelope, call)
     i, o = usage_of(envelope)
+    cut = cut_off(text, envelope, call)
     return {"id": message_id(), "type": "message", "role": "assistant", "model": call.model,
-            "content": [{"type": "text", "text": text}],
-            # Always end_turn: the CLI does not report truncation (documented divergence).
-            "stop_reason": "end_turn", "stop_sequence": None,
+            "content": [{"type": "text", "text": text if cut is None else cut}],
+            "stop_reason": "end_turn" if cut is None else "max_tokens", "stop_sequence": None,
             "usage": {"input_tokens": i, "output_tokens": o,
                       "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}
 
@@ -504,16 +528,19 @@ def build_openai(body: dict) -> ModelCall:
 
     system = "\n\n".join(system_parts) if system_parts else None
     return ModelCall(model=model, alias=MODELS[model], turns=turns, system=system, schema=schema,
-                     images=images, ignored=sorted(k for k in body if k in O_IGNORED))
+                     max_tokens=body.get("max_completion_tokens") or body.get("max_tokens"), images=images,
+                     ignored=sorted(k for k in body if k in O_IGNORED))
 
 
 def to_openai(envelope: dict, call: ModelCall) -> dict:
     text = reply_text(envelope, call)
     i, o = usage_of(envelope)
+    cut = cut_off(text, envelope, call)
     return {"id": "chatcmpl-" + _rand(), "object": "chat.completion", "created": int(time.time()),
             "model": call.model,
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": text, "refusal": None},
-                         "finish_reason": "stop", "logprobs": None}],
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": text if cut is None else cut,
+                                                 "refusal": None},
+                         "finish_reason": "stop" if cut is None else "length", "logprobs": None}],
             "usage": {"prompt_tokens": i, "completion_tokens": o, "total_tokens": i + o}}
 
 
