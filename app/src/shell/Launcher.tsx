@@ -127,6 +127,36 @@ function useNewApps(installed: InstalledApp[], loading: boolean) {
   return { isNew, opened }
 }
 
+// ── taken off the list ───────────────────────────────────────────────────────
+// A person may take work off their list; the document itself is untouched and
+// still opens from a file or a link. Kept in this browser.
+
+const HIDDEN_KEY = 'napkin.home.hidden-recent'
+
+function readHidden(): string[] {
+  try {
+    const v = localStorage.getItem(HIDDEN_KEY)
+    const list = v ? (JSON.parse(v) as unknown) : []
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function useHidden() {
+  const [hidden, setHidden] = useState<string[]>(readHidden)
+  const save = (next: string[]) => {
+    setHidden(next)
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(next)) } catch { /* kept for this visit */ }
+  }
+  return {
+    hidden,
+    hide: (path: string) => save([...hidden.filter(p => p !== path), path]),
+    unhide: (path: string) => save(hidden.filter(p => p !== path)),
+    showAll: () => save([]),
+  }
+}
+
 // ── the chip on recent work ──────────────────────────────────────────────────
 
 /** Only what the document's decisions back: no state, no chip. */
@@ -149,6 +179,9 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
   const [showAll, setShowAll] = useState(false)
   const [opening, setOpening] = useState<string | null>(null)
   const { isNew, opened } = useNewApps(installed, loading)
+  const { hidden, hide, unhide, showAll: unhideAll } = useHidden()
+  // The one just taken off, for Undo.
+  const [removed, setRemoved] = useState<{ path: string; title: string } | null>(null)
 
   const loadRecent = () => {
     let live = true
@@ -169,14 +202,16 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
     onLaunchApp(id)
   }
 
+  const visible = useMemo(() => (recent ?? []).filter(d => !hidden.includes(d.path)), [recent, hidden])
+  const hiddenHere = (recent ?? []).length - visible.length
   // Tools with work in the list, in the order they first appear.
   const tools = useMemo(() => {
     const ids: string[] = []
-    for (const d of recent ?? []) if (d.app_id && !ids.includes(d.app_id)) ids.push(d.app_id)
+    for (const d of visible) if (d.app_id && !ids.includes(d.app_id)) ids.push(d.app_id)
     return ids
-  }, [recent])
-  const filtering = (recent?.length ?? 0) > FILTER_FROM && tools.length > 1
-  const listed = (recent ?? []).filter(d => !filtering || filter === 'all' || d.app_id === filter)
+  }, [visible])
+  const filtering = visible.length > FILTER_FROM && tools.length > 1
+  const listed = visible.filter(d => !filtering || filter === 'all' || d.app_id === filter)
   const shown = showAll ? listed : listed.slice(0, RECENT_SHOWN)
 
   return (
@@ -257,14 +292,14 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
           {filtering && (
             <div className="ln-filter" role="group" aria-label="Show work from">
               <button aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-                All<small>{recent?.length}</small>
+                All<small>{visible.length}</small>
               </button>
               {tools.map(id => {
                 const app = appOf(id)
                 const label = capital(app?.home?.noun?.[1] ?? app?.name ?? 'Other')
                 return (
                   <button key={id} style={tint(app?.home)} aria-pressed={filter === id} onClick={() => setFilter(id)}>
-                    <i aria-hidden />{label}<small>{recent?.filter(d => d.app_id === id).length}</small>
+                    <i aria-hidden />{label}<small>{visible.filter(d => d.app_id === id).length}</small>
                   </button>
                 )
               })}
@@ -283,7 +318,7 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
             <span><b>We couldn’t load your recent work.</b> It’s all still saved.</span>
             <button className="ln-retry" onClick={loadRecent}>Try again</button>
           </div>
-        ) : recent.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="ln-empty">
             <AgentFigure agent="drafter" size={52} />
             <span><b>Nothing here yet.</b> Your work will wait for you here.</span>
@@ -294,21 +329,44 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
             const title = docTitle(d.title, d.app_id, app?.name, app?.home?.untitled)
             const noun = capital(app?.home?.noun?.[0] ?? app?.name ?? '')
             return (
-              <button key={d.path} className="ln-item" style={tint(app?.home)} onClick={() => onOpenDocument(d.path)}>
-                <span className="ln-tile" aria-hidden><Mark app={app} className="ln-tile-mark" /></span>
-                <span className="ln-item-text">
-                  <b className={title.untitled ? 'ln-item-untitled' : undefined}>{title.text}</b>
-                  <small>{noun && <span className="ln-sr">{noun}, </span>}{lastTouched(d.updated_at)}</small>
-                </span>
-                <Chip state={d.state} />
-                <span className="ln-item-go" aria-hidden>→</span>
-              </button>
+              <div key={d.path} className="ln-row" style={tint(app?.home)}>
+                <button className="ln-item" onClick={() => onOpenDocument(d.path)}>
+                  <span className="ln-tile" aria-hidden><Mark app={app} className="ln-tile-mark" /></span>
+                  <span className="ln-item-text">
+                    <b className={title.untitled ? 'ln-item-untitled' : undefined}>{title.text}</b>
+                    <small>{noun && <span className="ln-sr">{noun}, </span>}{lastTouched(d.updated_at)}</small>
+                  </span>
+                  <Chip state={d.state} />
+                  <span className="ln-item-go" aria-hidden>→</span>
+                </button>
+                <button
+                  className="ln-remove"
+                  aria-label={`Remove ${title.text} from this list`}
+                  title="Remove from this list"
+                  onClick={() => { hide(d.path); setRemoved({ path: d.path, title: title.text }) }}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              </div>
             )
           })
         )}
 
         {!showAll && listed.length > RECENT_SHOWN && (
           <button className="ln-more" onClick={() => setShowAll(true)}>Show all {listed.length}</button>
+        )}
+
+        {removed && hidden.includes(removed.path) ? (
+          <div className="ln-removed" role="status">
+            <span>Removed “{removed.title}” from this list. The file is still saved.</span>
+            <button onClick={() => { unhide(removed.path); setRemoved(null) }}>Undo</button>
+          </div>
+        ) : hiddenHere > 0 && (
+          <button className="ln-unhide" onClick={() => { unhideAll(); setRemoved(null) }}>
+            Show {hiddenHere} removed {hiddenHere === 1 ? 'item' : 'items'}
+          </button>
         )}
       </div>
 

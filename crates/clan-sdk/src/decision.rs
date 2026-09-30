@@ -39,6 +39,13 @@ pub struct DecisionChain {
     pub decisions: Vec<Decision>,
 }
 
+/// A person changing how the document looks, not what it says: the host's
+/// rolling `look` entry, and the actions Brief Maker wrote before it
+/// (`set style`, `set theme`, `style <key>`).
+pub fn is_look_action(action: &str) -> bool {
+    matches!(action, "look" | "set style" | "set theme") || action.starts_with("style ")
+}
+
 /// A single decision entry.
 ///
 /// Field order here is serialisation order. The original fields keep their

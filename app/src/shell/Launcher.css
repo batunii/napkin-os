@@ -22,7 +22,7 @@
 :root[data-theme='dark'] .ln { --band: 26%; --deep-to: #FFFFFF; --deep: 42%; }
 .ln > * { width: 100%; max-width: 900px; }
 
-.ln-app, .ln-item, .ln-filter button {
+.ln-app, .ln-row, .ln-filter button {
   --tc: var(--produce);
   --tband: color-mix(in oklab, var(--tc) var(--band), var(--card));
   --tdeep: color-mix(in oklab, var(--tc), var(--deep-to) var(--deep));
@@ -187,7 +187,7 @@
   cursor: pointer;
   transition: border-color var(--dur) var(--ease);
 }
-.ln-item:hover { border-color: var(--tdeep); }
+.ln-row:hover .ln-item { border-color: var(--tdeep); }
 .ln-tile { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: var(--tband); }
 .ln-tile-mark { width: 26px; height: 26px; }
 .ln-tile-mark.ln-mono { font-size: 18px; line-height: 26px; }
@@ -196,6 +196,57 @@
 .ln-item-text b.ln-item-untitled { color: var(--ink2); font-weight: 500; }
 .ln-item-text small { font-size: 13.5px; color: var(--ink3); }
 .ln-item-go { color: var(--ink3); font-size: 16px; }
+
+/* A row and the × that takes it off the list; the × stays out of the way
+   until the row is pointed at or focused, and is always there on touch. */
+.ln-row { position: relative; display: flex; }
+.ln-row .ln-item { flex: 1; min-width: 0; padding-right: 52px; }
+.ln-remove {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.ln-remove svg { width: 14px; height: 14px; }
+.ln-row:hover .ln-remove, .ln-remove:focus-visible { opacity: 1; }
+.ln-remove:hover { background: var(--soft); color: var(--ink); }
+@media (hover: none) { .ln-remove { opacity: 1; } }
+.ln-removed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 14px;
+  background: var(--soft);
+  color: var(--ink2);
+  font-size: 14.5px;
+}
+.ln-removed button, .ln-unhide {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ln-removed button:hover, .ln-unhide:hover { background: var(--line-soft); }
+.ln-unhide { align-self: center; color: var(--ink2); font-weight: 500; font-size: 14px; }
 .ln-state { justify-self: end; padding: 4px 11px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .ln-state-need { background: color-mix(in oklab, var(--create) 13%, var(--card)); color: color-mix(in oklab, var(--create), var(--deep-to) 25%); }
 .ln-state-ok { background: var(--ok-bg); color: var(--ok-fg); }

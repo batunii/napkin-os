@@ -23,7 +23,7 @@ use crate::ctx::Ctx;
 use crate::document::Document;
 use crate::error::{HostError, HostResult};
 use crate::log::log;
-use crate::ops::edit::{attributed, clan_appearance_keys, LOOK_ACTION, UPSTREAM_KEY};
+use crate::ops::edit::{attributed, clan_appearance_keys, UPSTREAM_KEY};
 use crate::ops::members::{self, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 use crate::store::{Change, DocId, DocStore};
 
@@ -293,7 +293,7 @@ fn is_blank_with(clan: &ClanFile, looks: &std::collections::BTreeSet<String>) ->
         return false;
     }
     let chain = chain_of(clan);
-    if chain.decisions.iter().any(|d| d.action != LOOK_ACTION) {
+    if chain.decisions.iter().any(|d| !clan_sdk::decision::is_look_action(&d.action)) {
         return false;
     }
     // Written with nothing decided: something no decision records, such as
