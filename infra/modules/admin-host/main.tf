@@ -70,6 +70,12 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy_attachment" "extra" {
+  for_each   = var.policy_arns
+  role       = aws_iam_role.admin.name
+  policy_arn = each.value
+}
+
 resource "aws_iam_role_policy" "admin" {
   name = "admin"
   role = aws_iam_role.admin.id

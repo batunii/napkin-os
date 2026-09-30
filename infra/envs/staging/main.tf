@@ -142,6 +142,51 @@ resource "aws_ssm_document" "provision_databases" {
   })
 }
 
+# Claude through Amazon Bedrock (peripherals.md §1.3a): the middleware and the
+# seeding job sign their calls with their role. One policy, attached to the
+# admin host now (it runs seeding) and to the stage 2 services later.
+#
+#   runtime (default)  bedrock:InvokeModel on the Claude inference profiles in
+#                      this region (eu. and global.) and on the Claude models
+#                      they route to, in any region (global. can land anywhere;
+#                      its models have no region in their ARN)
+#   mantle (option)    bedrock-mantle:CreateInference; no per-model resource type
+#                      in IAM yet, so the request region is the limit
+#
+# Model access itself is a Marketplace agreement per model, accepted once per
+# account (infra/README.md).
+resource "aws_iam_policy" "model_invoke" {
+  name        = "${local.name}-model-invoke"
+  description = "Call Claude on Amazon Bedrock from ${var.region}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ClaudeInferenceProfiles"
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:GetInferenceProfile"]
+        Resource = [
+          "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.me.account_id}:inference-profile/eu.anthropic.claude-*",
+          "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.me.account_id}:inference-profile/global.anthropic.claude-*",
+        ]
+      },
+      {
+        Sid      = "ClaudeModelsBehindTheProfiles"
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        Resource = ["arn:aws:bedrock:*::foundation-model/anthropic.claude-*", "arn:aws:bedrock:::foundation-model/anthropic.claude-*"]
+      },
+      {
+        Sid       = "ClaudeOnMantle"
+        Effect    = "Allow"
+        Action    = "bedrock-mantle:CreateInference"
+        Resource  = "*"
+        Condition = { StringEquals = { "aws:RequestedRegion" = var.region } }
+      },
+    ]
+  })
+}
+
 module "admin" {
   source                   = "../../modules/admin-host"
   name                     = local.name
@@ -157,6 +202,7 @@ module "admin" {
   parameter_arns    = [module.databases.list_parameter_arn]
   kms_key_arn       = aws_kms_key.data.arn
   corpus_bucket_arn = module.storage.bucket_arns["corpus"]
+  policy_arns       = { model_invoke = aws_iam_policy.model_invoke.arn }
 }
 
 # A monthly ceiling that emails before the bill surprises anyone. Account-wide:

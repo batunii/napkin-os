@@ -41,4 +41,8 @@ run "plans_with_two_agencies" {
     condition     = length(module.rag.store_secret_arns) == 4
     error_message = "house read-write + house read-only + one key per agency"
   }
+  assert {
+    condition     = contains(jsondecode(aws_iam_policy.model_invoke.policy).Statement[0].Action, "bedrock:InvokeModel")
+    error_message = "the admin host (seeding) may call Claude on Bedrock"
+  }
 }

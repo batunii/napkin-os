@@ -54,3 +54,8 @@ output "tunnel_rag_house" {
   description = "Run locally, then open http://localhost:6333/dashboard. For an agency store use its port (6340 + slot)."
   value       = "aws ssm start-session --region ${var.region} --target ${module.admin.instance_id} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters host=${module.rag.private_ip},portNumber=6333,localPortNumber=6333"
 }
+
+output "model_invoke_policy_arn" {
+  description = "Attach to any role that calls Claude on Bedrock (NAPKIN_MODEL_API=bedrock)."
+  value       = aws_iam_policy.model_invoke.arn
+}

@@ -41,3 +41,9 @@ variable "instance_type" {
   type    = string
   default = "t4g.small"
 }
+
+variable "policy_arns" {
+  description = "Managed policies attached to the host's role, by a fixed name (the ARNs are only known after apply), e.g. model invocation for the seeding job."
+  type        = map(string)
+  default     = {}
+}

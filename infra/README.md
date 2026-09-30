@@ -63,6 +63,40 @@ Before `apply`, check that the region offers the engine version:
 `aws rds describe-db-engine-versions --engine aurora-postgresql --query 'DBEngineVersions[].EngineVersion'`.
 Pausing at 0 ACU needs Aurora PostgreSQL 16.3 or later (or 15.7, 14.12, 13.15).
 
+### Claude on Amazon Bedrock
+
+Model calls go to Claude in Amazon Bedrock (`NAPKIN_MODEL_API=bedrock`, the
+`bedrock-runtime` endpoint by default; `docs/contracts/peripherals.md` §1.3a),
+signed with the caller's IAM role. The stack creates `napkin-<env>-model-invoke`
+(`bedrock:InvokeModel` on the Claude `eu.`/`global.` inference profiles, plus
+the Mantle action for the optional endpoint) and attaches it to the admin
+host, where seeding runs; stage 2 services attach the same policy
+(`terraform output model_invoke_policy_arn`).
+
+Once per account and per model, outside Terraform (the console's model catalog
+has no Enable button any more):
+
+1. **Agreement** ($0, pay per token), accepted by the account:
+   ```sh
+   tok=$(aws bedrock list-foundation-model-agreement-offers --model-id anthropic.claude-opus-5-5 \
+         --query 'offers[0].offerToken' --output text)
+   aws bedrock create-foundation-model-agreement --model-id anthropic.claude-opus-5-5 --offer-token "$tok"
+   ```
+   Check: `aws bedrock get-foundation-model-availability --model-id <id>` shows
+   `agreementAvailability.status: AVAILABLE`.
+2. **Quota above 0.** A new account can start a model at 0 tokens per minute
+   (the call then fails `403 … not available for this account` even with the
+   agreement). Service Quotas → Amazon Bedrock → "Global cross-region model
+   inference tokens per minute for Anthropic Claude <model>" → request the
+   default. Free.
+3. **Prove it** with one call (a few hundred tokens):
+   `cd server && NAPKIN_MODEL_API=bedrock NAPKIN_MODEL_REGION=eu-west-1 NAPKIN_MODEL=<profile id> uv run python scripts/model_smoke.py`
+
+Bedrock usage is billed per token on the AWS bill, outside the table below;
+the budget counts it, since the budget is account-wide. Whether promotional
+credits cover it shows the next day in Cost Explorer (record type Credit
+against Usage for Amazon Bedrock).
+
 Tests run with no AWS account, against mocked providers:
 
 ```sh
