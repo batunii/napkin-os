@@ -91,6 +91,15 @@ def build(run: Path) -> dict:
             b["cost"] += e.get("cost_usd") or 0
             b["tin"] += (e.get("in_fresh") or 0) + (e.get("cache_write") or 0) + (e.get("cache_read") or 0)
             b["tout"] += e.get("out") or 0
+    split = defaultdict(lambda: dict(cost=0.0, tin=0, tout=0))
+    for e in mock:
+        st = "research" if e["family"] == "research" else STAGE_OF.get(e.get("purpose"), e.get("purpose") or "?")
+        for m, u in (e.get("by_model") or {}).items():
+            x = split[(st, m)]
+            x["cost"] += u.get("cost") or 0
+            x["tin"] += (u.get("in") or 0) + (u.get("cache_write") or 0) + (u.get("cache_read") or 0)
+            x["tout"] += u.get("out") or 0
+    by_model = [dict(stage=st, model=m, **v) for (st, m), v in sorted(split.items())]
     tot = {k: sum(s[k] for s in stages.values()) for k in
            ("wall", "model_calls", "cost", "tin", "tout", "research_calls", "research_cached", "searches", "fetches",
             "list_cost", "failed_attempts", "failed_stage", "unpriced")}
@@ -98,7 +107,7 @@ def build(run: Path) -> dict:
     tot["units_reused"] = sum(1 for u in units if u["reused"])
     tot["units_zero_sources"] = sum(1 for u in units if not u["reused"] and not u["sources"])
     tot["units_with_facts"] = sum(1 for u in units if u["facts"] > 0)
-    return {"stages": stages, "units": units, "by_purpose": by_purpose, "totals": tot}
+    return {"stages": stages, "units": units, "by_purpose": by_purpose, "by_model": by_model, "totals": tot}
 
 
 def quality(run: Path) -> dict | None:
@@ -175,6 +184,10 @@ def table(r: dict) -> str:
              "|---|---|---|---|---|"]
     for k, b in sorted(r["by_purpose"].items()):
         rows.append(f"| {k} | {b['calls']} | {b['secs']:.0f} | {b['tin']:,} / {b['tout']:,} | {b['cost']:.2f} |")
+    if r.get("by_model"):
+        rows += ["", "| stage | model that ran | tokens in / out | CLI cost $ |", "|---|---|---|---|"]
+        for x in r["by_model"]:
+            rows.append(f"| {x['stage']} | {x['model']} | {x['tin']:,} / {x['tout']:,} | {x['cost']:.2f} |")
     q = r.get("quality")
     if q:
         rows += ["", "| quality | value |", "|---|---|",

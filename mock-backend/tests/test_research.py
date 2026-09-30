@@ -9,6 +9,7 @@ import unittest
 
 from harness import Server
 
+import common
 import research_port as rp
 
 
@@ -17,6 +18,15 @@ def body(mode, **kw):
 
 
 class Units(unittest.TestCase):
+    def test_ledger_splits_spend_by_model(self):
+        usage = {"claude-sonnet-5-5": {"inputTokens": 4, "outputTokens": 294, "cacheReadInputTokens": 4683,
+                                       "cacheCreationInputTokens": 2774, "costUSD": 0.015},
+                 "claude-haiku-4-5-20251001": {"inputTokens": 11751, "outputTokens": 188, "costUSD": 0.023}}
+        got = common._by_model(usage)
+        self.assertEqual(got["claude-sonnet-5-5"], {"in": 4, "out": 294, "cache_read": 4683, "cache_write": 2774, "cost": 0.015})
+        self.assertEqual(got["claude-haiku-4-5-20251001"]["cost"], 0.023)
+        self.assertIsNone(common._by_model(None))
+
     def test_request_rules(self):
         ok = rp.parse_request(b'{"query": "  a   b ", "lens": "media_spend", "market": "gb"}')
         self.assertEqual(ok, {"query": "a b", "lens": "media_spend", "market": "GB", "max_sources": 8})

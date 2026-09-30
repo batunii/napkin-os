@@ -116,3 +116,16 @@ def test_the_ledger_and_the_recorder_are_off_unless_switched_on(tmp_path, monkey
         metrics.UNIT.reset(token)
     assert json.loads((tmp_path / "led.jsonl").read_text())["unit"] == "media_spend/IE"
     assert json.loads((tmp_path / "rec" / "model_calls.jsonl").read_text())["reply"] == "r"
+
+
+def test_the_report_splits_a_units_spend_by_the_model_that_ran(tmp_path):
+    (tmp_path / "mock").mkdir()
+    (tmp_path / "middleware.jsonl").write_text("")
+    row = {"family": "research", "secs": 30, "cost_usd": 0.122, "turns": 8, "web_searches": 3, "web_fetches": 3,
+           "by_model": {"claude-sonnet-5-5": {"in": 10, "out": 1225, "cache_read": 30416, "cache_write": 7676, "cost": 0.049},
+                        "claude-haiku-4-5-20251001": {"in": 35247, "out": 1625, "cache_read": 0, "cache_write": 0, "cost": 0.073}}}
+    (tmp_path / "mock" / "metrics.jsonl").write_text(json.dumps(row) + "\n")
+    r = run_report.build(tmp_path)
+    assert {(x["stage"], x["model"]): round(x["cost"], 3) for x in r["by_model"]} == {
+        ("research", "claude-sonnet-5-5"): 0.049, ("research", "claude-haiku-4-5-20251001"): 0.073}
+    assert "claude-haiku-4-5-20251001" in run_report.table(r)

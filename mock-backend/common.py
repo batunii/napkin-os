@@ -348,6 +348,17 @@ def _tool_uses(out: str) -> dict:
     return counts
 
 
+def _by_model(usage) -> dict | None:
+    """{model id: {in, out, cache_read, cache_write, cost}} from the CLI's `modelUsage`. The CLI runs a
+    second, smaller model behind WebSearch and WebFetch; its spend is in `total_cost_usd` but not in the
+    main `usage` block, so only this split shows where a research unit's money went."""
+    if not isinstance(usage, dict):
+        return None
+    return {m: {"in": u.get("inputTokens"), "out": u.get("outputTokens"), "cache_read": u.get("cacheReadInputTokens"),
+                "cache_write": u.get("cacheCreationInputTokens"), "cost": u.get("costUSD")}
+            for m, u in usage.items() if isinstance(u, dict)}
+
+
 def record_call(cfg: Config, call: ClaudeCall, secs: float, envelope: dict | None, ok: bool, tools: dict | None,
                 failure: str | None = None) -> None:
     """One JSON line per `claude -p` subprocess in <MOCK_DATA>/metrics.jsonl:
@@ -369,6 +380,7 @@ def record_call(cfg: Config, call: ClaudeCall, secs: float, envelope: dict | Non
            "prompt_chars": len(call.prompt), "system_chars": len(call.system or ""),
            "web_searches": (tools or {}).get("WebSearch"), "web_fetches": (tools or {}).get("WebFetch"),
            "server_tool_use": u.get("server_tool_use"),
+           "by_model": _by_model(env.get("modelUsage")),
            "tools": tools}
     try:
         with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
