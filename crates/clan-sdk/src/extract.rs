@@ -1755,7 +1755,9 @@ impl<'a> Doc<'a> {
             };
             (g, "verdict", st, label, reason)
         } else if kind == "edit" {
-            if INTAKE_ACTIONS.contains(&action) {
+            // Intake, and how the document looks (the rolling `look` entry
+            // and the older look actions), say nothing about the work.
+            if INTAKE_ACTIONS.contains(&action) || is_look_action(action) {
                 return None;
             }
             reason.as_ref()?;
@@ -1898,6 +1900,13 @@ impl<'a> Doc<'a> {
 const SET_ASIDE: &str = "set_aside";
 
 /// Intake decisions: their result is in the campaign fields (§10.3).
+/// A person changing how the document looks: the host's rolling `look`
+/// entry, and the actions Brief Maker wrote before it (`set style`,
+/// `set theme`, `style <key>`).
+fn is_look_action(action: &str) -> bool {
+    matches!(action, "look" | "set style" | "set theme") || action.starts_with("style ")
+}
+
 const INTAKE_ACTIONS: &[&str] = &[
     "start_campaign",
     "create",

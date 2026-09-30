@@ -992,3 +992,102 @@ fn upstream_on_a_document_that_carries_nothing_is_empty() {
     assert_eq!(v["upstream"], serde_json::json!([]));
     assert!(v["document_id"].as_str().is_some());
 }
+
+// How the document looks is one rolling entry (OS-layer contract §4): a run of
+// a person's look changes updates it; other work starts a new one after it.
+#[test]
+fn a_run_of_look_changes_is_one_rolling_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = DocId::from(dir.path().join("looks.clan"));
+    let schema = r#"{"type":"object","properties":{
+        "brief_style":{"type":"string","x-clan-appearance":true},
+        "theme":{"type":"object","x-clan-appearance":true},
+        "insight":{"type":"string"}}}"#;
+    let bytes = clan_sdk::create(clan_sdk::CreateOptions {
+        title: "Looks".into(),
+        brief: "test brief".into(),
+        document_type: None,
+        no_render: false,
+        schema: Some(schema.into()),
+    })
+    .unwrap();
+    std::fs::write(id.as_str(), bytes).unwrap();
+    let session = Session::new(Arc::new(FsStore::new(dir.path().to_path_buf())));
+    session.open(id).unwrap();
+    let f = Fixture { _dir: dir, session };
+
+    let look = |patch: &str, said: &str| {
+        let body = format!(r#"{{"patch":{patch},"agent":"human","action":"look","rationale":"{said}"}}"#);
+        assert_eq!(post(&f, "/patch-data", &body).status, 200);
+    };
+    let chain = || -> Vec<serde_json::Value> {
+        json(&get(&f, "/decisions"))["decisions"].as_array().unwrap().iter().map(|b| b["decision"].clone()).collect()
+    };
+
+    look(r#"{"brief_style":"creative"}"#, "Studio brief");
+    look(r##"{"theme":{"accent":"#ff0000"}}"##, "Harbour palette");
+    look(r##"{"theme":{"accent":"#00ff00"}}"##, "Own brand colours");
+    look(r#"{"brief_style":"immersive"}"#, "Brand brief");
+    let c = chain();
+    assert_eq!(c.len(), 1, "four look changes, one entry: {c:?}");
+    assert_eq!(c[0]["action"], "look");
+    assert_eq!(c[0]["rationale"], "Changed the look: Brand brief; Own brand colours");
+    assert_eq!(c[0]["fields_changed"], serde_json::json!(["brief_style", "theme"]));
+
+    // Other work, then a look again: a new entry after it, so the order stays true.
+    let edit = r#"{"patch":{"insight":"people forget"},"agent":"human","action":"edit field","rationale":""}"#;
+    assert_eq!(post(&f, "/patch-data", edit).status, 200);
+    look(r#"{"brief_style":"basic"}"#, "Paper brief");
+    let c = chain();
+    let actions: Vec<_> = c.iter().map(|d| d["action"].as_str().unwrap().to_string()).collect();
+    assert_eq!(actions, ["look", "edit field", "look"]);
+    assert_eq!(c[0]["rationale"], "Changed the look: Paper brief");
+
+    // The look never asks a person for anything.
+    assert!(json(&get(&f, "/decisions"))["attention"].as_array().unwrap().is_empty());
+}
+
+// Changing only how a document looks is not work: it stays out of recent work.
+#[test]
+fn a_document_whose_look_alone_changed_is_still_blank() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = DocId::from(dir.path().join("looks.clan"));
+    let schema = r#"{"type":"object","properties":{
+        "brief_style":{"type":"string","x-clan-appearance":true},
+        "insight":{"type":"string"}}}"#;
+    let bytes = clan_sdk::create(clan_sdk::CreateOptions {
+        title: String::new(),
+        brief: "test brief".into(),
+        document_type: None,
+        no_render: false,
+        schema: Some(schema.into()),
+    })
+    .unwrap();
+    // As a fresh instance has it: no data yet.
+    let clan = clan_sdk::ClanFile::from_bytes(bytes).unwrap();
+    let mut b = clan_sdk::ClanBuilder::new(clan.manifest().clone());
+    for (path, data) in clan.read_all_entries().unwrap() {
+        if path != "manifest.yaml" && path != "shared/data.yaml" {
+            b.add_entry(path, data);
+        }
+    }
+    b.add_entry("shared/data.yaml", b"{}\n".to_vec());
+    std::fs::write(id.as_str(), b.build().unwrap()).unwrap();
+    let session = Session::new(Arc::new(FsStore::new(dir.path().to_path_buf())));
+    session.open(id.clone()).unwrap();
+    let f = Fixture { _dir: dir, session };
+    let blank = || {
+        napkin_host::library::is_blank(
+            &clan_sdk::ClanFile::from_bytes(std::fs::read(id.as_str()).unwrap()).unwrap(),
+        )
+    };
+    assert!(blank());
+
+    let look = r#"{"patch":{"brief_style":"creative"},"agent":"human","action":"look","rationale":"Studio brief"}"#;
+    assert_eq!(post(&f, "/patch-data", look).status, 200);
+    assert!(blank(), "a look change is not work");
+
+    let edit = r#"{"patch":{"insight":"people forget"},"agent":"human","action":"edit field","rationale":""}"#;
+    assert_eq!(post(&f, "/patch-data", edit).status, 200);
+    assert!(!blank(), "a field is work");
+}

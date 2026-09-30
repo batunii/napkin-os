@@ -567,7 +567,8 @@ Decisions are taken in chain order (§6.2). The first rule that matches wins.
    `napkin-spinoff`, action `seed`) is a record in `28-upkeep` and is its
    target's setter (§4.1).
 3. **Dropped**, and counted in `91-bundle.json`: kind `lease`; the
-   presentational actions `set style`, `style <key>` and `set theme`; Ellis's
+   presentational actions: the host's rolling `look` entry (Contract 4
+   §4, "How it looks") and the older `set style`, `style <key>` and `set theme`; Ellis's
    suggestions (`client_review`, action `suggest_part`), which count for
    nothing until a person confirms one (§3.6).
 4. **Folded** into another record (§3.7): kind `backref` (the index

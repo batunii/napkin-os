@@ -170,6 +170,11 @@ export function didWhat(block: DecisionBlock, view: DecisionsView): string {
         return `changed ${t ? partOf(t.label) : what}${asked ? `, as ${asked} asked` : typeof d.answers === 'string' ? ', as the client asked' : ''}`
       }
       case 'correct_fact': return `corrected ${t ? partOf(t.label) : what}`
+      // A run of look changes is one rolling entry (OS-layer contract §4).
+      case 'look': {
+        const said = d.rationale.replace(/^Changed the look:\s*/, '').split('; ').filter(Boolean)
+        return said.length ? `changed the look: ${said.join(', ')}` : 'changed the look'
+      }
     }
     if (d.kind === 'verdict') return `marked ${what} ${d.polarity === 'bad' ? 'wrong' : 'right'}`
     return `changed ${t ? partOf(t.label) : what}`

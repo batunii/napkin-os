@@ -269,6 +269,29 @@ layer serves generic views over it:
 `compress_chain` must stop splitting on full stops before rationales that cite
 paths can be shown (W2-A2).
 
+### How it looks is one rolling entry
+
+A person changing only how a document looks — its kind of brief, its palette,
+a field's styling — is not a decision about the work, and asks for no reason.
+An app marks those data keys in its schema, once, with
+`"x-clan-appearance": true` on the top-level property. The host reads the mark
+from the document's schema and from the installed app's.
+
+A person's `patch-data` whose keys are all marked is recorded as one entry,
+kind `edit`, action `look`:
+
+- When the newest decision in the chain is already that person's `look`, it is
+  updated in place: each key's latest words (`looks`, a mapping in the order
+  the keys were first changed), `fields_changed`, the rationale ("Changed the
+  look: Studio brief; Harbour palette") and the time, which is the latest
+  change's.
+- Otherwise a new `look` entry is added, so a look changed after other work
+  stands after it, and the chain's order stays true.
+
+The entry never blocks the lock and is never flagged. The extract drops it
+(clan-extract §1.7, rule 3), as it drops the older `set style`, `style <key>`
+and `set theme`. An agent's write to a marked key is an ordinary decision.
+
 ---
 
 ## 5. Spin-off carries everything (D6)

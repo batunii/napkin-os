@@ -84,3 +84,9 @@ test('the crew’s working words are said plainly', () => {
   b.targets = [{ address: 'd#campaign.name', path: 'campaign.name', label: 'Campaign › Name', kind: 'field', here: true }]
   assert.equal(didWhat(b, view), 'changed the campaign’s name')
 })
+
+test('a run of look changes reads as one line', () => {
+  const view: DecisionsView = { document_id: 'd', version: 'v', attention: [], cites: {}, lock: { can_lock: true, blockers: 0 }, decisions: [] }
+  const b = block({ action: 'look', rationale: 'Changed the look: Studio brief; Dark with orange palette' }, { kind: 'person', id: 'x', name: 'x', you: true })
+  assert.equal(didWhat(b, view), 'changed the look: Studio brief, Dark with orange palette')
+})

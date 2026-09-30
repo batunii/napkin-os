@@ -1004,7 +1004,7 @@ var ClanFields=(function(){
   // What happened to a thing, in plain words: who did what, when, and why.
   var DID={verdict:'checked it',verify:'said it is right',classify:'set who may see it',edit:'changed it',correct:'corrected it',resolve:'picked a value',approve:'locked it',finding:'worked it out',pin:'saved it',claim:'saved it',
     client_review:'recorded the client’s answer',unlock:'opened it for the client’s change',backref:'noted it was used'};
-  var DID_ACTION={propose:'proposed a new version',suggest_part:'thinks the client meant it',dismiss_part:'said the client did not mean it',looks_right:'said it looks right',set_aside:'set it aside',seed:'carried it over',extract:'took it from your material',draft:'drafted it',regenerate:'drafted it again'};
+  var DID_ACTION={propose:'proposed a new version',suggest_part:'thinks the client meant it',dismiss_part:'said the client did not mean it',looks_right:'said it looks right',set_aside:'set it aside',seed:'carried it over',extract:'took it from your material',draft:'drafted it',regenerate:'drafted it again',look:'changed the look'};
   function whoDid(b){
     var d=b.decision||{}, A=crew(), k=crewKey(d);
     if(b.who&&b.who.you) return 'You';

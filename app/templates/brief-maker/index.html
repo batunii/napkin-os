@@ -1352,6 +1352,8 @@
                hi:function(){ return 'A brand brief! I’m '+ELLIS+'. Add the client’s deck or pictures if you have them. You’ll pick the brand’s colours when the brief is ready.'; }}
   };
   function kindOf(s){ return KINDS[s]||KINDS.basic; }
+  // What a kind is called in the record of how the brief looks.
+  var KIND_NAME={basic:'Paper brief',creative:'Studio brief',immersive:'Brand brief'};
   function applyModeChrome(){
     document.documentElement.setAttribute('data-kind', kindOf(style()).look);
     if(style()==='immersive') { applyThemeLocal(); pushThemeToViewer(); }
@@ -1380,7 +1382,7 @@
   function pickKind(s, how){
     if(s===style()) return;
     PICKED=s; render();
-    var w=patch('brief_style',s,{actor:'human',pinned:false,action:'set style',rationale:how+' '+s+' template'});
+    var w=patch('brief_style',s,{actor:'human',pinned:false,action:'look',rationale:KIND_NAME[s]||s});
     if(w&&w.then) w.then(null,function(){ PICKED=null; render(); });
   }
   document.querySelectorAll('#kinds .kpick').forEach(function(b){ b.addEventListener('click',function(){ pickKind(b.getAttribute('data-style'),'Selected'); }); });
@@ -2029,7 +2031,7 @@
       if(reset){ delete styles[f.key]; }
       else { var ns={}; var fo=wrap.querySelector('.sfont').value,sz=wrap.querySelector('.ssize').value,co=wrap.querySelector('.scolor').value;
         if(fo)ns.font=fo; if(sz)ns.size=sz; if(co)ns.color=co; styles[f.key]=ns; }
-      patch('field_styles',styles,{actor:'human',pinned:false,action:'style '+f.key,rationale:(reset?'Reset styling on ':'Restyled ')+f.label});
+      patch('field_styles',styles,{actor:'human',pinned:false,action:'look',rationale:(reset?'Plain ':'Restyled ')+f.label});
       wrap.__close();
     }
     wrap.querySelector('.save').addEventListener('click',function(){commit(false);});
@@ -2210,7 +2212,9 @@
     $('thBg2Wrap').style.display=t.grad?'flex':'none';
     if(t.font) $('thFont').value=t.font;
   }
-  function setTheme(key,val){ var t=Object.assign({},get('theme')||{}); t[key]=val; patch('theme',t); applyThemeLocal(t); pushThemeToViewer(t); }
+  // Every colour and font change rolls into the brief's one look entry.
+  var OWN_COLOURS={actor:'human',pinned:false,action:'look',rationale:'Own brand colours'};
+  function setTheme(key,val){ var t=Object.assign({},get('theme')||{}); t[key]=val; patch('theme',t,OWN_COLOURS); applyThemeLocal(t); pushThemeToViewer(t); }
   // Bind BOTH 'input' and 'change': WebKitGTK's native colour chooser (Tauri on
   // Linux) fires only 'change' on commit, not the live 'input' Chromium fires.
   function onColor(id,key){ var el=$(id);
@@ -2219,7 +2223,7 @@
   $('thFont').addEventListener('change',function(e){ setTheme('font',e.target.value); renderStructured(); });
   $('thGradOn').addEventListener('change',function(e){ $('thBg2Wrap').style.display=e.target.checked?'flex':'none';
     var t=Object.assign({},get('theme')||{}); t.grad=e.target.checked; if(t.grad&&!t.bg2) t.bg2=mix(t.bg||DEF.bg,'#000000',.4);
-    patch('theme',t); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); });
+    patch('theme',t,OWN_COLOURS); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); });
 
   var PRESETS=[
     {name:'Dark with orange', bg:'#0F1114',bg2:'#1B1F25',grad:true,accent:'#FF4F2E',text:'#F2F3F5',font:'var(--ui)'},
@@ -2241,7 +2245,7 @@
     PRESETS.forEach(function(p){ var s=document.createElement('button'); s.className='preset'; s.type='button';
       s.style.background='linear-gradient(135deg,'+p.bg2+' 0%,'+p.accent+' 130%)'; s.title=p.name; s.setAttribute('aria-label',p.name);
       s.addEventListener('click',function(){ var t=paletteOf(p);
-        patch('theme',t,{actor:'human',pinned:false,action:'set theme',rationale:'Applied a brand palette'}); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); syncPresets(t); });
+        patch('theme',t,{actor:'human',pinned:false,action:'look',rationale:p.name+' palette'}); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); syncPresets(t); });
       pc.appendChild(s); });
   })();
 

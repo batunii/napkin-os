@@ -23,7 +23,7 @@ use crate::ctx::Ctx;
 use crate::document::Document;
 use crate::error::{HostError, HostResult};
 use crate::log::log;
-use crate::ops::edit::{attributed, UPSTREAM_KEY};
+use crate::ops::edit::{attributed, clan_appearance_keys, LOOK_ACTION, UPSTREAM_KEY};
 use crate::ops::members::{self, FACTS, FINDINGS, PROJECTION_KEY, SOURCES};
 use crate::store::{Change, DocId, DocStore};
 
@@ -164,7 +164,7 @@ pub fn scan_recent(store: &dyn DocStore) -> Vec<RecentDoc> {
         };
         // Opening a tool makes its document at once; until someone works in
         // it, it is not work to pick up.
-        if is_blank(&clan) {
+        if is_blank_in(store, &clan) {
             continue;
         }
         let m = clan.manifest();
@@ -250,22 +250,63 @@ fn allocate(store: &dyn DocStore, app_id: &str, bytes: &[u8]) -> HostResult<DocI
     store.new_document(app_id, &id_short)
 }
 
-/// A document nobody has worked in: never written since it was made, with no
-/// decision and no data. Anything a person did — a field, an attachment, an
-/// answer — writes it, and it stops being blank.
+/// A document nobody has worked in: no name of its own, nothing added, and
+/// nothing decided or written but how it looks. A new document takes its
+/// app's name as its title (instantiate); a look change (the rolling `look`
+/// entry, OS-layer contract §4) is not work. Anything else a person did — a
+/// field, an attachment, an answer, a name — makes it work.
 pub fn is_blank(clan: &ClanFile) -> bool {
+    is_blank_with(clan, &clan_appearance_keys(clan))
+}
+
+/// [`is_blank`], with the look keys the installed app marks as well: a
+/// document made before its app marked them has none in its own schema.
+pub fn is_blank_in(store: &dyn DocStore, clan: &ClanFile) -> bool {
+    let mut looks = clan_appearance_keys(clan);
+    if let Some(app) = clan.manifest().app.as_ref() {
+        if let Ok(t) = store
+            .read(&store.app_template(&app.app_id))
+            .and_then(|b| Ok(ClanFile::from_bytes(b)?))
+        {
+            looks.extend(clan_appearance_keys(&t));
+        }
+    }
+    is_blank_with(clan, &looks)
+}
+
+fn is_blank_with(clan: &ClanFile, looks: &std::collections::BTreeSet<String>) -> bool {
     let m = clan.manifest();
-    if m.document_type.as_deref() == Some("template") || m.updated_at != m.created_at {
+    if m.document_type.as_deref() == Some("template") {
         return false;
     }
-    if !chain_of(clan).decisions.is_empty() {
+    let title = m.title.trim();
+    if !title.is_empty() && m.app.as_ref().is_none_or(|a| a.name != title) {
+        return false;
+    }
+    let chain = chain_of(clan);
+    if chain.decisions.iter().any(|d| d.action != LOOK_ACTION) {
+        return false;
+    }
+    // Written with nothing decided: something no decision records, such as
+    // an attachment, may have been added.
+    if chain.decisions.is_empty() && m.updated_at != m.created_at {
+        return false;
+    }
+    // Templates ship no attachments; one here was added by a person.
+    let added = clan
+        .entry_paths()
+        .map(|ps| ps.iter().any(|p| p.starts_with("human/assets/")))
+        .unwrap_or(true);
+    if added {
         return false;
     }
     match clan.read_entry(DATA) {
         Err(_) => true,
         Ok(b) => match serde_yaml::from_slice::<serde_yaml::Value>(&b) {
             Ok(serde_yaml::Value::Null) => true,
-            Ok(serde_yaml::Value::Mapping(m)) => m.is_empty(),
+            Ok(serde_yaml::Value::Mapping(m)) => m
+                .keys()
+                .all(|k| k.as_str().is_some_and(|k| looks.contains(k))),
             _ => false,
         },
     }
@@ -281,7 +322,7 @@ pub fn blank_instance(store: &dyn DocStore, app_id: &str) -> Option<DocId> {
             continue;
         };
         let m = clan.manifest();
-        if m.app.as_ref().map(|a| a.app_id.as_str()) != Some(app_id) || !is_blank(&clan) {
+        if m.app.as_ref().map(|a| a.app_id.as_str()) != Some(app_id) || !is_blank_in(store, &clan) {
             continue;
         }
         if best.as_ref().is_none_or(|(at, _)| m.created_at > *at) {
