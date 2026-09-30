@@ -26,6 +26,9 @@ PRIMARY_DOMAINS = {
     # regulators and state agencies (IE / GB / EU)
     "seai.ie", "cru.ie", "comreg.ie", "centralbank.ie", "ccpc.ie", "asai.ie", "adstandards.ie", "hpra.ie", "grai.ie",
     "rsa.ie", "ndls.ie", "revenue.ie", "citizensinformation.ie", "epa.ie", "bai.ie", "cnam.ie",
+    # read on their own sites 2026-09-30: fsai.ie/about "a statutory, independent and science-based body";
+    # gtai.de/en/meta/about-us "the economic development agency of the Federal Republic of Germany"
+    "fsai.ie", "gtai.de",
     "asa.org.uk", "cap.org.uk", "ofcom.org.uk", "ofgem.gov.uk", "fca.org.uk", "cma.gov.uk",
     "dvla.gov.uk", "gov.ie", "gov.uk", "europa.eu", "ec.europa.eu", "eea.europa.eu",
     # company filings and registries
@@ -37,6 +40,13 @@ FILING_PATH = re.compile(r"/(investor[s-]?(relations)?|ir|annual[-_]?report[s]?|
                          r"quarterly[-_]?statement[s]?|results)(/|[-_.]|$)", re.I)
 SECONDARY_DOMAINS = {
     # industry bodies
+    # read on their own sites 2026-09-30: zaw.de/ziele-aufgaben "Spitzenverband der Werbewirtschaft in Deutschland";
+    # adassoc.org.uk/about-us "represents UK advertisers, agencies, media owners and tech companies";
+    # gwa.de/ueber-uns "Verband der fuehrenden Kommunikationsagenturen Deutschlands"; bvik.org "unabhaengiger
+    # Verband ... B2B-Kommunikation"; wettbewerbszentrale.de "Selbstkontrollinstitution zur Durchsetzung des Rechts
+    # gegen den unlauteren Wettbewerb" (an e.V.); bitkom.org: industry association of the German ICT industry
+    # (its own page gives only a headline, "Vom Branchenverband zum Themenverband zum Thinktank")
+    "zaw.de", "adassoc.org.uk", "gwa.de", "bvik.org", "wettbewerbszentrale.de", "bitkom.org",
     "simi.ie", "smmt.co.uk", "acea.auto", "acea.be", "evireland.ie", "ibec.ie", "drinksireland.ie",
     "iapi.ie", "ipa.co.uk", "iabireland.ie", "iabuk.com", "thinkbox.tv", "bordbia.ie", "fooddrinkeurope.eu",
     "effie.org", "warc.com", "nielsen.com", "kantar.com", "mintel.com", "statista.com", "euromonitor.com",

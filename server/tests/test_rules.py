@@ -304,3 +304,14 @@ def test_a_share_word_with_no_cited_share_is_dropped_but_a_finding_cite_is_not_c
 def test_most_is_not_read_as_a_share_word():
     ok, _ = clean_claim("This is the most popular channel.", ["f_1"], _share_pins(0.2), {})
     assert ok is not None
+
+
+def test_bodies_verified_on_their_own_sites_have_the_tier_their_type_implies():
+    assert tier_for("https://www.fsai.ie/enforcement-and-legislation/x") == "primary"
+    assert tier_for("https://www.gtai.de/en/invest/industries/digital-economy/artificial-intelligence") == "primary"
+    for url in ("https://zaw.de/jahresbilanz-2025-nettozahlen", "https://adassoc.org.uk/our-work/x",
+                "https://www.gwa.de/presse-meldungen/x", "https://bvik.org/blog/x",
+                "https://www.wettbewerbszentrale.de/x", "https://www.bitkom.org/Presse/x"):
+        assert tier_for(url) == "secondary", url
+    # a domain that was not verified stays where it was
+    assert tier_for("https://www.bundesnetzagentur.de/DE/Fachthemen/Digitales/KI/") == "tertiary"
