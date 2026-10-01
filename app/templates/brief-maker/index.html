@@ -355,8 +355,24 @@
   .ghost:active,.save-as:active{transform:translateY(1px)}
   .ghost.big{font-size:15px;padding:11px 20px;min-height:46px}
   /* The sheet: the brief on paper, tucked under the header. */
-  .sheet{position:relative;max-width:880px;width:calc(100% - 68px);margin:-10px auto 0;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:34px clamp(20px,6vw,60px) 34px;box-shadow:0 1px 0 var(--line),0 18px 40px -24px rgba(20,22,27,.4);transition:background-color .45s var(--ease),border-color .45s var(--ease)}
-  :root[data-kind="paper"] .sheet{background:var(--grain),linear-gradient(180deg,#FAF6EE,#F5F0E5);border-color:#E2DACB}
+  .sheet{position:relative;max-width:860px;width:calc(100% - 68px);margin:-10px auto 0;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:clamp(36px,6vw,64px) clamp(22px,7vw,76px) clamp(40px,6vw,68px);box-shadow:0 1px 0 var(--line),0 18px 40px -24px rgba(20,22,27,.4);transition:background-color .45s var(--ease),border-color .45s var(--ease)}
+  /* Paper: a real sheet. Lit from the top left, fibres in it, its edges a
+     shade warmer than its middle, the edges of two more sheets of the pad
+     under it, and it lifts off the desk with a soft contact shadow. */
+  :root[data-kind="paper"] .sheet{
+    background:
+      var(--grain),
+      radial-gradient(120% 90% at 18% 0%,rgba(255,253,247,.9),rgba(255,253,247,0) 60%),
+      radial-gradient(140% 120% at 50% 40%,rgba(0,0,0,0) 62%,rgba(120,96,56,.07) 100%),
+      linear-gradient(180deg,#FBF7EF,#F4EEE2);
+    border-color:#E2DACB;border-radius:3px;
+    box-shadow:
+      0 1px 1px rgba(60,44,20,.08),
+      0 5px 0 -2px #F3EDE1,0 5px 0 -1px #DBD1BE,
+      0 10px 0 -5px #EEE7D9,0 10px 0 -4px #D6CBB7,
+      0 3px 6px -2px rgba(60,44,20,.10),0 30px 50px -26px rgba(60,44,20,.40)}
+  :root[data-kind="paper"] #fields .row{border-top-color:rgba(120,100,70,.14)}
+  :root[data-kind="paper"] .sechead{border-top-color:rgba(120,100,70,.22)}
   :root[data-kind="paper"] .lab{color:var(--ink2)}
   :root[data-kind="studio"] .sheet{background:#F3F1EC;border-color:#E4E0D6}
   /* Studio: each part on a soft tinted panel, in turn */
@@ -381,9 +397,9 @@
   .themebar select,.editrow select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--r-pill);padding:5px 10px;font-size:12.5px}
   .gradtog{cursor:pointer;user-select:none}
 
-  .sechead{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--sec);margin:26px 0 2px;padding-top:14px;border-top:1px solid var(--rule);display:flex;align-items:center;gap:10px}
+  .sechead{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--sec);margin:44px 0 6px;padding-top:20px;border-top:1px solid var(--rule);display:flex;align-items:center;gap:10px}
   #fields > .sechead:first-child{border-top:none;margin-top:18px}
-  .row{padding:14px 0 15px;border-top:1px solid var(--rule);position:relative}
+  .row{padding:20px 0 22px;border-top:1px solid var(--rule);position:relative}
   .sechead + .row{border-top:none}
   .lab{display:flex;align-items:center;gap:9px;min-height:28px;font-size:12.5px;font-weight:600;letter-spacing:-.005em;color:var(--muted);flex-wrap:wrap}
   .lockbadge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.04em;line-height:17px;padding:0 8px;border-radius:var(--r-pill);color:var(--amber-ink);background:var(--amber-soft)}
@@ -402,7 +418,7 @@
   .iconbtn:hover{border-color:var(--faint);color:var(--text);box-shadow:var(--shadow-pill)}
   .iconbtn:disabled{cursor:default}
   .iconbtn.on{border-color:transparent;color:var(--amber-ink);background:var(--amber-soft)}
-  .val{font-family:var(--fieldFont);font-size:16px;line-height:1.6;color:var(--text);margin-top:4px;white-space:pre-wrap;max-width:68ch}
+  .val{font-family:var(--fieldFont);font-size:16.5px;line-height:1.68;color:var(--text);margin-top:6px;white-space:pre-wrap;max-width:64ch}
   .val.empty{color:var(--faint);font-family:var(--ui);font-size:14px}
   .val ul{margin:2px 0 0;padding-left:18px;white-space:normal}
   .val li{margin:4px 0}
