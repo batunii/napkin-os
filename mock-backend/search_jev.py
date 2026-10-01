@@ -28,7 +28,7 @@ from urllib.parse import urlsplit
 
 from common import ClaudeCall, ClaudeFailure, PeripheralError, dotenv_value, log, record_external, run_claude
 
-VERSION = "2"                     # bump when selection changes, so cached answers miss
+VERSION = "3"                     # bump when selection changes, so cached answers miss
 MAX_CANDIDATES = int(os.environ.get("MOCK_JEV_CANDIDATES", "12"))
 # Each CLI web search also runs a Haiku helper (~$0.023 a search, measured 2026-10-01), so searches are capped.
 MAX_SEARCHES = int(os.environ.get("MOCK_JEV_SEARCHES", "2"))
@@ -47,6 +47,31 @@ CRITERIA = {"true": ("PASSAGE states a specific number, share, amount, date, nam
                      "that market."),
             "false": ("PASSAGE is navigation, a menu, a cookie notice, marketing copy with no fact, about another "
                       "market or topic, or too vague to cite as evidence.")}
+
+# The qualitative lenses ask about how brands present themselves, not about numbers: with the figure question above,
+# category_codes came back empty in every market of an IBM run (jev ranked survey percentages over creative
+# descriptions, and the search had found pages about AI-generated ads and ad rules instead).
+LENS_QUESTION = {
+    "category_codes": (
+        "Does PASSAGE describe how brands in this category present themselves in their communication?",
+        {"true": ("PASSAGE names or describes recurring visual, verbal or tonal conventions of the category's "
+                  "advertising or branding: typical imagery, colours, language, taglines, claims, tone, campaign "
+                  "themes, or a code that is worn out or emerging, concretely enough to cite."),
+         "false": ("PASSAGE is about something else: advertising rules or regulation, survey figures about "
+                   "advertising in general, product features, navigation, or marketing copy that only sells.")}),
+    "brands_positioning": (
+        "Does PASSAGE state how the brand or a named competitor positions itself or what it claims?",
+        {"true": ("PASSAGE states a brand's positioning, promise, claim, tagline, price tier, target audience, "
+                  "launch or campaign, or how it differs from a named competitor, concretely enough to cite."),
+         "false": "PASSAGE is navigation, generic copy with no positioning, or about an unrelated brand or topic."}),
+}
+SEARCH_HINT = {
+    "category_codes": ("Look for analyses and examples of how brands in this category advertise and brand themselves: "
+                       "campaign reviews, creative or brand-language trend pieces, agency commentary. Not advertising "
+                       "regulation, and not articles about AI-generated advertising."),
+    "brands_positioning": ("Look for the brand's and its named competitors' own positioning: campaign launches, "
+                           "brand platforms, taglines, press releases and reviews of their campaigns."),
+}
 
 CANDIDATES_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["candidates", "queries"],
@@ -79,7 +104,8 @@ def candidates_prompt(req: dict, lens_text: str, today: str) -> str:
         f"1. Run at most {MAX_SEARCHES} WebSearch queries aimed at this lens in this market"
         + (", the last one in the market's language when it is not English." if MAX_SEARCHES > 1 else "."),
         "   Prefer primary sources (regulators, official statistics, government, company filings and press",
-        "   releases), then industry bodies and trade press, then reputable news.",
+        "   releases), then industry bodies and trade press, then reputable news."
+        + (f" {SEARCH_HINT[req['lens']]}" if req["lens"] in SEARCH_HINT else ""),
         f"2. Return up to {MAX_CANDIDATES} distinct page URLs taken from the search results, best first: pages whose",
         "   title or snippet suggests figures, dates, named rules or concrete findings for this lens and market.",
         "   Never invent a URL, and skip paywalled pages, forums and aggregators that only restate others.",
@@ -174,13 +200,15 @@ def jev_state(req: dict, lens_text: str) -> dict:
             "category": req.get("category", ""), "entity": req.get("entity", "")}
 
 
-def score_passages(state: dict, passages: list[str]) -> tuple[list[float], int]:
-    """(one probability per passage, input tokens billed). 50 questions per request, sent concurrently."""
+def score_passages(state: dict, passages: list[str], lens: str = "") -> tuple[list[float], int]:
+    """(one probability per passage, input tokens billed). 50 questions per request, sent concurrently. The
+    qualitative lenses get their own question (LENS_QUESTION)."""
     client, scores, tokens = jev_client(), [0.0] * len(passages), 0
+    question, criteria = LENS_QUESTION.get(lens, (QUESTION, CRITERIA))
 
     def batch(b):
-        qs = {f"p{n:04d}": {"type": "noul", "instructions": {"question": QUESTION, "passage": passages[n]},
-                            "criteria": CRITERIA} for n in range(b, min(b + 50, len(passages)))}
+        qs = {f"p{n:04d}": {"type": "noul", "instructions": {"question": question, "passage": passages[n]},
+                            "criteria": criteria} for n in range(b, min(b + 50, len(passages)))}
         for attempt in range(3):
             try:
                 return qs, client.system_one(state=state, questions=qs, model="jev-latest")
@@ -283,7 +311,7 @@ def run(research, req: dict, lens_text: str, today: str) -> dict:
 
     flat = [w[2] for p in pages for w in p["windows"]]
     try:
-        scores, tokens = score_passages(jev_state(req, lens_text), flat)
+        scores, tokens = score_passages(jev_state(req, lens_text), flat, req["lens"])
     except PeripheralError:
         raise
     except Exception as e:

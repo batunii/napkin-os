@@ -100,6 +100,29 @@ class SearchJev(unittest.TestCase):
         self.assertTrue(any(q in w[2] for w in ws))
 
 
+class LensQuestions(unittest.TestCase):
+    def test_qualitative_lenses_get_their_own_jev_question_and_search_hint(self):
+        seen = []
+
+        class Rec:
+            def system_one(self, state, questions, model):
+                seen.extend(q["instructions"]["question"] for q in questions.values())
+                return SimpleNamespace(nouls={k: SimpleNamespace(noul=0.5) for k in questions},
+                                       usage=SimpleNamespace(input_tokens=1))
+        orig = sj._client
+        sj._client = Rec()
+        try:
+            sj.score_passages({}, ["a passage"], "category_codes")
+            sj.score_passages({}, ["a passage"], "market_structure")
+        finally:
+            sj._client = orig
+        self.assertIn("present themselves", seen[0])
+        self.assertEqual(seen[1], sj.QUESTION)
+        req = {"query": "q", "lens": "category_codes", "market": "IE"}
+        self.assertIn("campaign reviews", sj.candidates_prompt(req, "category codes", "2026-10-01"))
+        self.assertNotIn("campaign reviews", sj.candidates_prompt(dict(req, lens="media_spend"), "x", "2026-10-01"))
+
+
 class DefaultUntouched(unittest.TestCase):
     def test_the_default_backend_is_still_the_agent(self):
         saved = os.environ.pop("MOCK_RESEARCH_BACKEND", None)
