@@ -17,11 +17,14 @@ tasks:
   draft_brief:
     handler: draft_brief@1
     job: long
-    stages: [extract, draft, judge]
+    stages: [extract, context, draft, judge]
     reads:
       - materials, with host-extracted text (the client's words, the only thing capture reads)
       - the retrieval port, per drafter, for the packs of its loop
       - shared/facts.yaml and shared/findings.yaml, per drafter, the selection of §10.13 only
+      - the context stage: the brief's pins and findings and a research spin-off's audience and
+        headline, to fill a part the client's words leave empty — written as Sam's (from_research,
+        citing the facts) or Dara's assumption (assume), never as the client's words
     never:
       - feeds a pin, finding, contest, report or upstream value to capture, or cites one from a captured field
       - sends an item whose newest classify mark has model false to any model call (§10.13 item 6)

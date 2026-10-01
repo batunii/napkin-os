@@ -37,6 +37,7 @@ from ..jobs import Abandoned, abandon, abandoned, bounded
 from ..model import ModelError
 from ..util import TaskError, iso, uid
 from . import capture as cap_stage
+from . import fill as fill_stage
 from .drafters import DraftContext, Drafter, _query, run_drafters
 from .fields import (KEYS, LABELS, RUBRIC_FIELDS, address, clean, drafter_of, field_map, field_paths, filled, get,
                      group_keys, holder, last_writer, locked, put, read_of, rubric_groups)
@@ -49,13 +50,15 @@ STAGE_TIMEOUT = 60 * 60  # seconds a stage may run; one still running is left be
 IN_FLIGHT = ("waiting", "extracting", "drafting", "judging", "revising")
 
 # A gap's decision: the action of the stage's own work, and the worker who does it.
-GAP_ACTION = {"extract": ("capture", "extract"), "draft": ("draft", "drafter"), "judge": ("review", "judge")}
+GAP_ACTION = {"extract": ("capture", "extract"), "context": ("from_research", "synthesise"),
+              "draft": ("draft", "drafter"), "judge": ("review", "judge")}
 # Why a stage did not finish, in words (no figures: a reasons point states none uncited).
 WHY = {"refusal": "the model declined the call", "timeout": "it ran out of time",
        "invalid_output": "the model's answer did not validate", "model": "the model call failed",
        "task": "it could not run", "raised": "it stopped with an error"}
 # What the job does without the stage.
 WITHOUT = {"extract": "the captured fields stay as the document had them, and the drafters draft from what it holds",
+           "context": "the parts the client's words leave empty stay empty, and the drafters draft from what it holds",
            "draft": "no field is drafted, and the Judge reviews what the brief holds",
            "judge": "no draft is written unjudged, and the brief keeps what it had"}
 
@@ -121,7 +124,7 @@ class BriefJob:
         self.doc, self.base, self.clan = req.doc, req.base, req.clan
         self.caps, self.scope = caps, caps.scope
         self.mats, self.field, self.guidance = mats or [], field, guidance
-        self.stages = ["extract", "draft", "judge"] if task == "draft_brief" else ["draft", "judge"]
+        self.stages = ["extract", "context", "draft", "judge"] if task == "draft_brief" else ["draft", "judge"]
         self.data0 = copy.deepcopy(ctx_data(req.clan))
         self.W = copy.deepcopy(self.data0)
         self.chain = ctx_decisions(req.clan)
@@ -147,6 +150,7 @@ class BriefJob:
         self.drafts = {}
         self.gaps = []           # [{stage, reason}]: every stage the job went on without
         self.needs_input = {}    # {field: [rubric ids]}: checks left for a person until that field is filled
+        self.basis = {}          # {field: "research" | "assumption"}: a context part not in the client's words
         self._abandoned = set()  # stages the job went on without while they still ran (their threads
                                  # are marked by jobs.abandon: nothing they write lands)
         self.thread = threading.Thread(target=self._run, name=f"{task}-{jid}", daemon=True)
@@ -319,7 +323,8 @@ class BriefJob:
         elif v["stage"] == "draft" and drafting:
             s = f"Drafting {len(drafting)} field(s) in parallel."
         else:
-            s = {"extract": "Reading the material.", "draft": "Drafting.", "judge": "The Judge is reviewing."}[v["stage"]]
+            s = {"extract": "Reading the material.", "context": "Filling what the material leaves open.",
+                 "draft": "Drafting.", "judge": "The Judge is reviewing."}[v["stage"]]
         out = {"summary": s, "fields": fields, "proposals": props}
         if gaps:  # display only: what the job went on without, and why (§10.11)
             out["gaps"] = gaps
@@ -399,6 +404,10 @@ class BriefJob:
                 continue
             got = wb.get(k)
             value = clean(k, got["value"]) if got else None
+            if value is not None and cap_stage.echoes_request(
+                    value, [cap["items"][c].get("quote") or "" for c in got["caps"]] + [got.get("quote") or ""]):
+                value = None  # the person's request to the crew, not the client's brief
+                self.notes.append(f"Ellis left the {LABELS[k]} empty: what was there only restated the request.")
             if value is None:
                 abstained.append(k)
                 self.set_state([k], "absent", "extract")
@@ -461,6 +470,54 @@ class BriefJob:
             sdec = self.dec(("score",), "edit", "score", ["review"], mat_ids, sr, "judge")  # the Judge's review
             scored = [sdec]
         self.add_chunk("extract", patch, [cdec] + scored + decisions)
+
+    # =============================================================================
+    # context: what the client's words leave empty, from the research or assumed
+    # =============================================================================
+    def stage_context(self):
+        empty = [k for k in KEYS if k in fill_stage.PARTS and self.fm[k]["class"] == "captured"
+                 and k not in self.locked and not self.held.get(k) and not filled(get(self.W, k))]
+        if not empty:
+            return
+        view = fill_stage.research_view(self.clan, self.data0)
+        researched = bool(view["facts"] or view["findings"] or view["research"])
+        with self.lock:
+            prev = {k: dict(self.fields[k]) for k in empty}
+        self.set_state(empty, "drafting", "synthesis" if researched else "drafter")
+        said = "\n\n".join(m["text"] for m in cap_stage.material_payload(self.mats))
+        working = {k: v for k, v in self._values().items() if self.fm[k]["class"] == "captured" and filled(v)}
+        got = fill_stage.fill(self.caps.model, said, working, empty, view)
+        patch, decisions = {}, []
+        for k in empty:
+            r = got.get(k)
+            if r is None:  # left as the capture left it
+                with self.lock:
+                    if self.fields[k]["state"] != "kept":
+                        self.fields[k] = prev[k]
+                continue
+            research = r["basis"] == "research"
+            lab = fill_stage.label(k)
+            pts = [rsn.point(r["why"] or (f"The research it cites" if research else "What is generally known about "
+                                          "this brand and category"), r["cites"])]
+            rr = rsn.make(f"Wrote the {lab} from the research." if research
+                          else f"Proposed the {lab} as an assumption: the client's words do not give it.", pts,
+                          rsn.certainty("medium" if research else "low",
+                                        "rests on the research facts it cites" if research
+                                        else "a planner's assumption, nothing in the brief or the research behind it"),
+                          "the client says otherwise, the research changes, or a person edits it",
+                          only_option="the client's words leave it empty",
+                          attention=("From the research, not the client's words: check it against the facts it "
+                                     "cites." if research else
+                                     "An assumption, not the client's words: confirm it with the client."))
+            d = self.dec(("context", k), "edit", "from_research" if research else "assume", [k], r["cites"], rr,
+                         "synthesise" if research else "drafter", basis=r["basis"])
+            decisions.append(d)
+            put(patch, k, r["value"])
+            self.writer[k] = d["id"]
+            self.basis[k] = r["basis"]
+            self.set_state([k], "done", "synthesis" if research else "drafter")
+        if decisions:
+            self.add_chunk("context", patch, decisions)
 
     # =============================================================================
     # draft
@@ -719,7 +776,7 @@ class BriefJob:
             if not attn:
                 r["attention"] = ((r.get("attention") or "") + " Drafted without a cited precedent passage.").strip()
         elif d.revised:
-            lvl, why = "low", "passed the Judge only after one revision"
+            lvl, why = "medium", "passed the Judge after one revision"
         elif first_clean and (len(packs) >= 2 or pins):
             lvl, why = "high", "every rubric check passed first time; grounded in two packs, or a pin and a passage"
         else:
@@ -791,7 +848,10 @@ class BriefJob:
         attn = []
         if bad:
             drafted = any(self.fm[k]["class"] == "drafted" for k in keys)
+            basis = {self.basis.get(k) for k in keys} - {None}
             tail = " It failed twice; the best draft is kept, flagged for a person." if drafted and outcome == "failed" else \
+                " It came from the research: check it against the facts it cites." if "research" in basis else \
+                " It is an assumption: confirm it with the client." if "assumption" in basis else \
                 " It is the client's words: take it back to the client." if not drafted else ""
             attn.append(f"{label} fails {', '.join(f['check'] for f in fails)}.{tail}")
         if review:
@@ -854,7 +914,9 @@ class BriefJob:
                                  f"{self.doc}#{need}"))
         for fk, fails in bad_captured:
             v = next((x for key, x in vby.items() if fk in key and x.get("polarity") == "bad"), None)
-            qs.append(f"{LABELS[fk][0].upper() + LABELS[fk][1:]}: {fails[0]['reason']} — take this back to the client.")
+            back = {"research": "check it against the research", "assumption": "confirm it with the client"}.get(
+                self.basis.get(fk), "take this back to the client")
+            qs.append(f"{LABELS[fk][0].upper() + LABELS[fk][1:]}: {fails[0]['reason']} — {back}.")
             pts.append(rsn.point(f"The client's {LABELS[fk]} fails {fails[0]['check']}", v["id"] if v else f"{self.doc}#{fk}"))
         qs = clean(k, list(dict.fromkeys(qs)))
         if qs is None:

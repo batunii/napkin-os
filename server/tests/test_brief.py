@@ -52,9 +52,11 @@ class Host:
         self.version = 1
         self.pipeline = pipeline
         self.changes = []
+        self.facts = []
 
     def clan(self):
-        c = {"id": DOC, "version": f"v{self.version}", "revision": "r", "data": copy.deepcopy(self.data), "facts": [],
+        c = {"id": DOC, "version": f"v{self.version}", "revision": "r", "data": copy.deepcopy(self.data),
+             "facts": copy.deepcopy(self.facts),
              "findings": [], "decision_chain": {"decisions": copy.deepcopy(self.chain)}}
         if self.pipeline:
             c["pipeline"] = self.pipeline
@@ -143,7 +145,7 @@ def test_draft_brief_end_to_end(bserver):
     replies = run(bserver, host)
     last = replies[-1]
     assert last["job"]["state"] == "done" and last["task"] == "draft_brief" and last["handler"] == "draft_brief@1.0"
-    assert last["job"]["progress"] == {"done": 3, "total": 3} and last["job"]["question"] is None
+    assert last["job"]["progress"] == {"done": 4, "total": 4} and last["job"]["question"] is None
     assert replies[0]["job"]["state"] == "queued" and replies[0]["change"] is None  # a long task, polled
     for r in replies:
         assert set(r["result"]["fields"]) == set(KEYS) and r["job"]["stage"] in ("extract", "draft", "judge")
@@ -225,7 +227,9 @@ def test_extract_is_rag_free(bserver):
             assert not any(c.startswith("psg_") for c in d["cites"])
     # retrieval never ran before the capture was done: its first request follows the scorecard call
     first_draft = next(i for i, c in enumerate(calls) if c[0].startswith("draft_"))
-    assert all(c[0] in ("capture", "scorecard", "transcribe") for c in calls[:first_draft] if not c[0].startswith("draft"))
+    # (the context fill reads the capture and the research, never retrieval)
+    assert all(c[0] in ("capture", "scorecard", "transcribe", "fill_context") for c in calls[:first_draft]
+               if not c[0].startswith("draft"))
 
 
 def test_capture_view_cannot_reach_retrieval(store):
@@ -270,7 +274,7 @@ def test_judge_failure_gets_one_revision(tmp_path):
     v = next(d for d in host.chain if d["kind"] == "verdict" and d["targets"] == [f"{DOC}#insight"])
     assert v["polarity"] == "good" and "after one revision" in v["reasoning"]["decided"]
     draft = next(d for d in host.chain if d.get("action") == "draft" and f"{DOC}#insight" in d["targets"])
-    assert draft["reasoning"]["certainty"]["level"] == "low"  # passed only after revision
+    assert draft["reasoning"]["certainty"]["level"] == "medium"  # passed after one revision: not low
     assert host.data["review"]["judge"]["fields"]["insight"]["outcome"] == "revised"
 
 
@@ -619,3 +623,55 @@ def test_the_pipeline_declaration_resolves():
                                                          "regenerate_field": "regenerate_field@1"}
     resolved = registry.resolve_at_startup([str(path)])
     assert set(resolved.values()) == {"draft_brief@1.0", "regenerate_field@1.0"}
+
+
+def test_what_the_client_leaves_empty_is_filled_from_the_research_or_assumed(tmp_path):
+    # A thin brief: Sam writes a part from the research, citing its facts; Dara proposes
+    # what the research does not cover, marked as an assumption; a "research" value that
+    # cites nothing the brief holds is kept as an assumption. Nothing is the client's words.
+    model = FakeModel()
+
+    def fill(p):
+        out = {k: None for k in p["empty_parts"]}
+        assert [f["id"] for f in p["facts"]] == ["f_01JA0B3P4Q"], "the research reaches the fill"
+        if "audience" in out:
+            out["audience"] = {"value": "Irish coffee drinkers who won't trade quality", "basis": "research",
+                               "cites": ["f_01JA0B3P4Q"], "why": "65% won't compromise on quality"}
+        if "tone_and_world" in out:
+            out["tone_and_world"] = {"value": ["warm", "confident"], "basis": "assumption", "cites": [],
+                                     "why": "how coffee chains talk"}
+        if "mandatories" in out:
+            out["mandatories"] = {"value": ["the logo"], "basis": "research", "cites": ["f_NOTINBRIEF"],
+                                  "why": "made up"}
+        return out
+    model.overrides["fill_context"] = fill
+    s = Server(tmp_path, model=model, retrieval=retrieval())
+    try:
+        host = Host()
+        host.facts = [{"id": "f_01JA0B3P4Q", "entity": "category/qsr.coffee_chains",
+                       "key": "consumer.segment_share_no_quality_compromise", "value": 0.65, "unit": "proportion",
+                       "market": "IE", "as_of": "2025"}]
+        run(s, host, inp={"prompt": "Brewline, an Irish coffee chain, is launching an oat-milk iced latte this "
+                                    "summer. Can you research the market and the competition?", "attachments": []})
+    finally:
+        s.stop()
+    by = {t.split("#", 1)[1]: d for d in host.chain for t in d["targets"] if d.get("action") in ("from_research", "assume")}
+    a = by["audience"]
+    assert a["action"] == "from_research" and a["agent"].endswith("/synthesise") and a["cites"] == ["f_01JA0B3P4Q"]
+    assert "not the client's words" in a["reasoning"]["attention"]
+    t = by["tone_and_world"]
+    assert t["action"] == "assume" and t["agent"].endswith("/drafter") and t["cites"] == []
+    assert "confirm it with the client" in t["reasoning"]["attention"]
+    assert by["mandatories"]["action"] == "assume", "a research claim citing nothing the brief holds is an assumption"
+    assert host.data["tone_and_world"] == ["warm", "confident"]
+
+
+def test_a_request_to_the_crew_is_never_captured_as_the_clients_brief():
+    from napkin.brief.capture import echoes_request, is_request
+    ask = "Can you research on the market, competition and other things?"
+    assert is_request(ask) and is_request("Lets write a brief for Monster Protein powder.")
+    assert not is_request("Brewline, an Irish coffee chain, is launching an oat-milk iced latte this summer.")
+    assert echoes_request("Market and competition research requested", [ask])
+    q = "Make a brief on bulmers cider, they want to enter the beer market and target young people in Dublin."
+    assert echoes_request("A brief on Bulmers cider's beer market entry", [q])
+    assert not echoes_request("Enter the beer market", [q]) and not echoes_request("Young people in Dublin", [q])

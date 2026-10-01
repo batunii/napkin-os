@@ -856,6 +856,7 @@
   var CREW_OK=typeof NapkinAgents==='object';
   var CREW=[
     {w:'read',  k:'extract', name:'Extract'},
+    {w:'synthesise', k:'synthesis', name:'Synthesis'},
     {w:'draft', k:'drafter', name:'Drafter'},
     {w:'judge', k:'judge',   name:'Judge'}
   ];
@@ -863,7 +864,7 @@
   // app (NapkinAgents.given). Without the snippet, the old role names stand.
   if(CREW_OK) CREW.forEach(function(c){ c.k=NapkinAgents.forWork(c.w); c.name=NapkinAgents.given[c.k]||NapkinAgents.name[c.k]; });
   var AGENT_NAME={}; CREW.forEach(function(c){ AGENT_NAME[c.k]=c.name; });
-  var ELLIS=AGENT_NAME.extract, DARA=AGENT_NAME.drafter, JUDE=AGENT_NAME.judge;
+  var ELLIS=AGENT_NAME.extract, SAM=AGENT_NAME.synthesis, DARA=AGENT_NAME.drafter, JUDE=AGENT_NAME.judge;
   // How an agent signs what it says: "Jude · checks".
   function sayer(k){ return (CREW_OK&&NapkinAgents.who(k))||AGENT_NAME[k]||''; }
   // A speech bubble: the agent speaks in the first person, signed.
@@ -1549,13 +1550,15 @@
   // ---------- working: the crew and a tile per field, as the job reports them ----------
   var DRAFT=null;              // the running draft_brief job
   var BUSY={extracting:1, drafting:1, judging:1, revising:1};
-  var STAGES=['extract','draft','judge'];
+  var STAGES=['extract','context','draft','judge'];
+  // Who works each stage: the context stage is Sam's, writing from the research.
+  var STAGE_K={extract:'extract', context:'synthesis', draft:'drafter', judge:'judge'};
   function stateText(f, fs){
     var v=get(f.key);
     switch(fs.state){
       case 'waiting': return 'Waiting';
       case 'extracting': return ELLIS+' is reading what you sent';
-      case 'drafting': return DARA+' is writing it';
+      case 'drafting': return fs.by==='synthesis'?SAM+' is writing it from the research':DARA+' is writing it';
       case 'judging': return JUDE+' is checking it';
       case 'revising': return DARA+' is rewriting it on '+JUDE+'’s note';
       case 'done': return hasVal(v)?(Array.isArray(v)?v.join(' · '):String(v)):'Written';
@@ -1576,16 +1579,17 @@
   // The crew's state from the fields: a worker works while a field it is on is
   // busy; before that it waits, after its stage it is done.
   function crewStates(j){
-    var fs=j.fields||{}, busy={extract:[], drafter:[], judge:[]}, failed=0, passed=0;
+    var fs=j.fields||{}, busy={extract:[], synthesis:[], drafter:[], judge:[]}, failed=0, passed=0;
     FIELDS.forEach(function(f){ var x=fs[f.key]||{}; if(BUSY[x.state]&&busy[x.by]) busy[x.by].push(f.key); if(x.state==='failed') failed++; if(x.state==='done') passed++; });
     var at=STAGES.indexOf(j.stage), end=j.state==='done';
     function st(k, i){ return busy[k].length?'working':(end||at>i)?'done':at===i&&(j.state==='queued'||j.state==='running')?'working':'idle'; }
     var label=function(k){ var f=FIELDS.filter(function(x){ return x.key===k; })[0]; return f?(f.sec==='Desired response'?'“'+f.label.toLowerCase()+'”':f.label.toLowerCase()):k; };
     return {
-      states:{extract:st('extract',0), drafter:st('drafter',1), judge:end&&failed?'needs-you':st('judge',2)},
+      states:{extract:st('extract',0), synthesis:st('synthesis',1), drafter:st('drafter',2), judge:end&&failed?'needs-you':st('judge',3)},
       texts:{
         extract:busy.extract.length?'Reading the material: '+busy.extract.length+' fields to capture.':at>0||end?'Read the material.':null,
-        drafter:busy.drafter.length?busy.drafter.length+' drafting at once: '+busy.drafter.map(label).join(', ')+'.':at>1||end?'Drafts are in.':null,
+        synthesis:busy.synthesis.length?'Writing '+busy.synthesis.map(label).join(', ')+' from the research.':at>1||end?'Done.':null,
+        drafter:busy.drafter.length?busy.drafter.length+' drafting at once: '+busy.drafter.map(label).join(', ')+'.':at>2||end?'Drafts are in.':null,
         judge:busy.judge.length?'Checking '+busy.judge.map(label).join(', ')+'.':end?('Passed '+passed+(failed?', failed '+failed:'')+'.'):null
       }
     };
@@ -1594,10 +1598,11 @@
   // fields move on to the next agent: Ellis's parts (and those it filled),
   // Dara's parts.
   function track(j){
-    var fs=j.fields||{}; j.ek=j.ek||{}; j.eDone=j.eDone||{}; j.dk=j.dk||{};
+    var fs=j.fields||{}; j.ek=j.ek||{}; j.eDone=j.eDone||{}; j.dk=j.dk||{}; j.sk=j.sk||{};
     FIELDS.forEach(function(f){ var x=fs[f.key]; if(!x) return;
       if(x.by==='extract'){ j.ek[f.key]=1; if(x.state==='done'||x.state==='proposed') j.eDone[f.key]=1; }
-      if(x.by==='drafter') j.dk[f.key]=1; });
+      if(x.by==='drafter') j.dk[f.key]=1;
+      if(x.by==='synthesis') j.sk[f.key]=1; });
   }
   // Dara's parts, and how many are written: drafted (waiting for Jude),
   // being checked, done or suggested, and those Jude turned down, which she
@@ -1620,7 +1625,8 @@
     if(n) w.push(num(n)+' '+(n===1?'file':'files'));
     return w.length?': '+listWords(w):'';
   }
-  var MEET=['extract','drafter','judge'];
+  // Sam joins the crew on screen when the research fills a part.
+  function meetOf(j){ return Object.keys(j.sk||{}).length?['extract','synthesis','drafter','judge']:['extract','drafter','judge']; }
   function renderProc(){
     var j=DRAFT; if(!j) return;
     track(j);
@@ -1629,11 +1635,13 @@
     var stopAt=!live&&j.state!=='done'?Math.max(at,0):-1;
     var H={done:'Your brief is ready', failed:'We had to stop', unsent:'We couldn’t start', stalled:'We lost touch with the work'};
     $('procH').textContent=H[j.state]||'Meet your crew';
-    $('procS').textContent=j.error?j.error:j.state==='done'?'Opening it now…':'Three of us are on your brief. We’ll tell you what we’re doing as we go.';
+    var MEET=meetOf(j);
+    $('procS').textContent=j.error?j.error:j.state==='done'?'Opening it now…':(MEET.length===4?'Four':'Three')+' of us are on your brief. We’ll tell you what we’re doing as we go.';
     $('procS').classList.toggle('err', !!j.error);
     var d=daraCount(j), eN=Object.keys(j.eDone).length, failed=FIELDS.filter(function(f){ return (fs[f.key]||{}).state==='failed'; }).length;
     var busyDraft=FIELDS.filter(function(f){ var x=fs[f.key]||{}; return x.by==='drafter'&&BUSY[x.state]; });
-    var st={extract:c.states.extract, drafter:c.states.drafter, judge:c.states.judge};
+    var st={extract:c.states.extract, synthesis:c.states.synthesis, drafter:c.states.drafter, judge:c.states.judge};
+    var sN=Object.keys(j.sk||{}).filter(function(k){ return (fs[k]||{}).state==='done'; }).length;
     if(live&&at<=0&&st.extract==='idle') st.extract='working';   // sending, picking up: Ellis is first
     var M={
       extract:{
@@ -1650,6 +1658,11 @@
           :st.drafter==='working'&&at===2?['', 'Rewriting '+esc(listWords(busyDraft.map(partName)))+' on '+esc(JUDE)+'’s note.']
           :st.drafter==='working'?['', '<span class="pbar" aria-hidden="true"><i style="width:'+(d.n?Math.round(100*d.k/d.n):4)+'%"></i></span>'+(d.n?d.k+' of my '+d.n+' written':'Starting…')]
           :['', 'Waiting for '+esc(ELLIS)]},
+      synthesis:{
+        intro:'<b>I’m '+esc(SAM)+'.</b> '+(st.synthesis==='done'?'I filled what your words left open from the research.'
+          :'I’m filling what your words leave open from the research, and I cite every fact I use.'),
+        st:st.synthesis==='done'?['ok','✓ Done. I wrote '+parts(sN)+' from the research, for you to check.']
+          :['', esc(c.texts.synthesis||'Reading the research…')]},
       judge:{
         intro:'<b>And I’m '+esc(JUDE)+'.</b> '+(st.judge==='working'?'I’m checking every part, then the whole brief.'
           :st.judge==='done'||st.judge==='needs-you'?'I checked every part, then the whole brief.'
@@ -1660,9 +1673,9 @@
           :['', 'Waiting for '+esc(DARA)]}
     };
     var el=$('meet');
-    if(!el.childNodes.length) el.innerHTML=MEET.map(function(k){ return '<div class="mate" data-k="'+k+'"><div class="mfig"></div><div class="say up"></div></div>'; }).join('');
+    if(el.childNodes.length!==MEET.length) el.innerHTML=MEET.map(function(k){ return '<div class="mate" data-k="'+k+'"><div class="mfig"></div><div class="say up"></div></div>'; }).join('');
     MEET.forEach(function(k,i){
-      var m=el.querySelector('.mate[data-k="'+k+'"]'), s=st[k], stop=stopAt===i;
+      var m=el.querySelector('.mate[data-k="'+k+'"]'), s=st[k], stop=stopAt>=0&&STAGE_K[STAGES[stopAt]]===k;
       var fst=stop||s==='needs-you'?'needs-you':s==='working'?'working':'idle';
       // redraw the figure only when its state changes, so it keeps its motion
       if(m.getAttribute('data-st')!==fst){ m.setAttribute('data-st',fst); m.querySelector('.mfig').innerHTML=fig(k,{state:fst,label:sayer(k)}); }

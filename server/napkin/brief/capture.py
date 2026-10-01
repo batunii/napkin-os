@@ -299,6 +299,38 @@ def material_payload(mats: list[Material]) -> list[dict]:
 # Loop 1 — no-loss capture
 # ---------------------------------------------------------------------------
 
+# A sentence asking the crew to do something ("Can you research the market?",
+# "Write a brief for Monster Protein") is an instruction to the tool, never the
+# client's brief: it is not captured into any part.
+_ASK = re.compile(
+    r"^\s*(?:(?:hi|hey|ok(?:ay)?|so)[,!\s]+)?(?:(?:can|could|would|will) (?:you|we|u)|please|pls|let'?s|let us|"
+    r"i(?:'d| would)? (?:like|want|need) (?:you )?to|we need (?:you )?to|help me|i need)\b"
+    r"|^\s*(?:make|write|draft|create|prepare|produce|generate|build|do|research|look into|give me)\b"
+    r".{0,60}\b(?:brief|research|market|competition|competitors)\b", re.I)
+_ASK_TAIL = re.compile(r"\b(?:research|brief|look into|find out|dig into)\b", re.I)
+
+
+def is_request(text) -> bool:
+    """True when `text` asks the crew for work rather than saying something about the client."""
+    t = " ".join(str(text or "").split())
+    if not t:
+        return False
+    m = _ASK.search(t)
+    if not m:
+        return False
+    # "Can you…" / "Please…" count only when what follows asks for brief work
+    return bool(_ASK_TAIL.search(t)) or m.group(0).lower().startswith(("make", "write", "draft", "create",
+                                                                     "prepare", "produce", "generate", "build"))
+
+
+def echoes_request(value, quotes) -> bool:
+    """A captured value that only restates a request to the crew ("A brief on Bulmers'
+    beer entry", "market research requested") rather than what the request says about the
+    client ("enter the beer market", "young people in Dublin" are kept)."""
+    v = " ".join(value) if isinstance(value, list) else str(value or "")
+    return bool(_ASK_TAIL.search(v)) and any(is_request(q) for q in quotes if q)
+
+
 def cap_id(key: str, value: str, mid: str) -> str:
     return "cap_" + hashlib.sha256(f"{key}\n{value}\n{mid}".encode()).hexdigest()[:16]
 

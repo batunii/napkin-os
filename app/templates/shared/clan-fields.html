@@ -616,6 +616,9 @@ var ClanFields=(function(){
     if(act==='extract') return 'from your material';
     if(act==='draft'||act==='regenerate'){ var g=givenOf(crewKey(d)); return 'drafted by '+(g||'the agent'); }
     if(act==='seed') return 'carried over';
+    // Not the client's words: what the research gave, or the crew's assumption.
+    if(act==='from_research') return 'from the research';
+    if(act==='assume') return 'assumed: confirm with the client';
     return '';
   }
   // What needs a person on this path, from the host's list: a field citing a

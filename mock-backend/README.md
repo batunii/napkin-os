@@ -20,6 +20,17 @@ NAPKIN_RETRIEVAL_URL=http://127.0.0.1:8797
 NAPKIN_LAYERS_URL=http://127.0.0.1:8797
 ```
 
+Which drafter writes a brief is one setting. With `NAPKIN_BRIEF_ENGINE_URL` unset (the
+default), `draft_brief` runs the middleware's own crew: Ellis captures, Sam fills what the
+client left open from the research (or Dara proposes it as an assumption), Dara drafts and
+Jude judges. Set it to the engine's agent server (`python3 serve.py --claude-code` listens on
+:8787) and the engine writes the brief instead, falling back to the middleware's crew when it
+cannot; the capture decision's attention note says which ran and why:
+
+```
+NAPKIN_BRIEF_ENGINE_URL=http://127.0.0.1:8787   # Sai's engine; unset = the middleware's crew
+```
+
 Python 3.11+, **standard library only**: no dependency to justify. The
 Claude-backed families need `claude` on `PATH`, signed in. The process refuses
 to start without it unless `MOCK_FAKES=layers`.

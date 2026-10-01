@@ -297,6 +297,8 @@ class EngineBriefJob(BriefJob):
 
     def __init__(self, jid, task, handler, req, caps, *, mats, port: EnginePort):
         super().__init__(jid, task, handler, req, caps, mats=mats)
+        # The engine fills context itself: no middleware context stage on this path.
+        self.stages = ["extract", "draft", "judge"]
         self.port = port
         self.upstream = upstream_of(req.clan)
         self.withheld = model_false(self.doc, self.chain)  # never sent, never written

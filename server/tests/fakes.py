@@ -429,7 +429,11 @@ def brief_responder(model, purpose):
                             else {"verdict": "pass", "reason": "holds together", "fix": None})
         return out
 
+    def fill_context(p):  # by default the context fill leaves every empty part as it is
+        return {k: None for k in p["empty_parts"]}
+
     table = {"capture": capture, "scorecard": scorecard, "transcribe": transcribe, "draft_insight": draft_insight,
+             "fill_context": fill_context,
              "draft_smp": draft_smp, "rank_insight": rank, "rank_smp": rank, "sharpen_insight": sharpen_insight,
              "sharpen_smp": sharpen_smp, "draft_reasons_to_believe": draft_rtb, "draft_desired_response": draft_dr,
              "judge_coherence": coherence}
