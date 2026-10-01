@@ -325,7 +325,8 @@ class ModelPort:
             raise ModelError(f"purpose {purpose!r} is not a slug", "invalid_request")
         images = check_images(images)
         model = model or self.model
-        user = f"Task: {purpose}\n\n<input>\n{json.dumps(payload, ensure_ascii=False, indent=1)}\n</input>"
+        # Compact JSON: indentation was 5-21% of every payload's characters (21% of the report's), paid as input.
+        user = f"Task: {purpose}\n\n<input>\n{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n</input>"
         first = {"role": "user", "text": user, "images": images}
         turns = [first]
         api_schema = strip_unsupported(schema)
