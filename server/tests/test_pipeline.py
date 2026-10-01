@@ -311,6 +311,22 @@ def test_the_report_call_runs_at_low_effort(store):
     assert kw["output_config"]["effort"] == "low"
 
 
+def test_the_report_and_synthesis_models_see_short_ids_only(store):
+    import re as _re
+    model = FakeModel()
+    caps = caps_for(store, model=model)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    clan = dict(rclan(["IE"]), facts=rch["facts_append"])
+    _, sch, _ = synthesise.run_synthesis(DOC, "3", clan, {}, "t@1.0", caps)
+    rpt, _, _, _ = report.compose(DOC, dict(clan, findings=sch["findings_append"]), "t@1.0", caps)
+    for purpose in ("synthesise", "report"):
+        sent = json.dumps(next(c[1] for c in model.calls if c[0] == purpose))
+        assert not _re.search(r"\bfi?_[0-9A-Z]{6,}\b", sent), purpose     # the model never sees a long id
+    cited = {c for s in rpt["sections"] for b in s["blocks"] for c in b.get("cites", [])}
+    assert cited and all(_re.fullmatch(r"fi?_[0-9A-Z]{6,}", c) for c in cited)  # the record holds real ids
+
+
 def test_report_claims_are_checked_in_code(store):
     caps = caps_for(store)
     _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],

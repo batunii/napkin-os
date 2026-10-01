@@ -23,6 +23,7 @@ from ..doc import (CAMPAIGN_FIELDS, LENS_TITLES, LENSES, ctx_data, ctx_facts, ct
 from ..rules.cite import clean_claim
 from ..util import bad, canon_sha, iso
 from .. import reasoning as rsn
+from ..aliases import Aliases
 from . import layout
 
 log = logging.getLogger("napkin.report")
@@ -138,8 +139,10 @@ def compose(doc, clan, handler, caps):
             # Low effort: replayed on the IBM run it cost ~22% less than the default and wrote as many claims
             # and as much prose, because the page rules ask for the depth outright (three to four claims per
             # section, a paragraph of three to five sentences per lens).
-            raw = caps.model.structured("report", SYSTEM, payload, schema(sorted(pin_by) + sorted(fi_by), lenses_with),
-                                        max_tokens=32000, effort="low")
+            al = Aliases(sorted(pin_by) + sorted(fi_by) + sorted(contested) + sorted(gap_by))
+            raw = al.decode(caps.model.structured("report", SYSTEM, al.encode(payload),
+                                                  schema(al.short(sorted(pin_by) + sorted(fi_by)), lenses_with),
+                                                  max_tokens=32000, effort="low"))
         except Exception as e:  # the structure still composes; the prose falls back to lines built here
             log.warning("report prose unavailable: %s", e)
             dropped.append(f"model: {e}")
