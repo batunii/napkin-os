@@ -369,7 +369,7 @@ def test_a_to_confirm_request_is_not_an_invented_figure(monkeypatch):
     assert pb._numbers_not_in(["Ready in 30 seconds"], allowed) == ["30"]
     import jev_checks
     seen = []
-    monkeypatch.setattr(jev_checks, "figures_supported", lambda text, items: seen.extend(items) or [0.02] * len(items))
+    monkeypatch.setattr(jev_checks, "figures_supported", lambda text, items, **k: seen.extend(items) or [0.02] * len(items))
     field = {"id": "reasons_to_believe"}
     out = pb._jev_figure_failures(field, [{"value": ["Ready in 30 seconds", "TO CONFIRM: proof of the 30 seconds claim"]}], allowed)
     assert seen == ["Ready in 30 seconds"] and list(out) == [0]          # the request never reaches jev

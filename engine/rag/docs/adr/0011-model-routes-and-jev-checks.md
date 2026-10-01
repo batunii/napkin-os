@@ -124,3 +124,20 @@ Extraction (capture and golden extraction) moves to Opus 5.5, with Opus 4.6 as i
 Sonnet 5.5, the current Sonnet at the same price. `BRIEF_EFFORT_<JOB>` overrides one job's effort, so an
 effort change can be measured on whole runs before `ROUTE_EFFORT` changes. The grader (golden_critic) and the
 evaluation tools keep their Sonnet 5 judge, so scores stay comparable with earlier checkpoints.
+
+
+## Amendment 2026-10-01 (b): jev reads the whole brief
+
+The Samaritans youth brief (228,237 characters of direction and tender documents, 94 research facts)
+lost its reasons to believe and desired response: the writer cited the research facts correctly,
+and the figure check failed every item because jev was given only the first 60,000 characters of
+the brief with the facts pasted after it, so it saw neither most of the tender nor any fact. Sai's
+rule is that nothing from the input is left out. The figure check, the fact-conflict check, and the
+evaluation's claim and open-question checks now send the whole brief, in pieces of at most 60,000
+characters overlapping by 2,000, and take each question's best piece; research fact lines go in their
+own `verified_research_facts` slot of every state, split into parts of 15,000 characters when there
+are more. A brief of up to 60,000 characters without research sends exactly the state it sent before,
+so earlier checkpoints stay comparable. With research the figure question also accepts a figure a
+fact states; that wording is not lab-measured, like claims_supported's research variant. jev costs
+about $0.04 per million input tokens, so four or more pieces per check add well under a cent a brief.
+

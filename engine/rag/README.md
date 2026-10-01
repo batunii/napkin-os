@@ -382,7 +382,11 @@ python3 judge.py check --backends jev,local --deadline 5
 and desired-response figures (fail at p(unsupported) >= 0.9), scorecard verdicts
 (disputes flagged at p >= 0.9, verdict kept), the retrieval category when no upstream
 category is given (p >= 0.85, never `other`), and synthesis sentences against their cited
-passages (marked in the review file). `BRIEF_JEV_CHECKS=0` turns them off.
+passages (marked in the review file). `BRIEF_JEV_CHECKS=0` turns them off. The figure, fact-conflict,
+claim and open-question checks read the whole brief: a brief over 60,000 characters goes in
+overlapping pieces and each question takes its best piece; research fact lines sit in their
+own slot of every state (2026-10-01; before, a long tender was cut at 60,000 characters and
+the facts appended after it never reached jev).
 
 **What it is.** The TypeSafe jev backend for the validation stage. For each retrieved passage it asks jev one calibrated yes/no question (a *Noul*): "Is PASSAGE directly useful evidence for this brief?" It is the only calibrated backend in the chain: `score` is jev's own probability, `value` is `score >= threshold`, and `why` is always None. It can be written and tested without access; when a key arrives, install the SDK, set the key and put `jev` first in `RAG_VALIDATOR`.
 

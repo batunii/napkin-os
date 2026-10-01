@@ -1,5 +1,8 @@
 # Napkin Briefing Tool
 
+> **New here, or an agent picking this up?** Start with [`RUNBOOK.md`](RUNBOOK.md): setup, making and
+> grading a brief, long inputs, research facts, checkpoints, costs and the known traps.
+
 Takes a client brief in any format (Word / PDF / text / email / scraps) and produces a
 clean, structured, **RAG-grounded** agency brief — with provenance on every value and a
 no-loss guarantee on capture.
