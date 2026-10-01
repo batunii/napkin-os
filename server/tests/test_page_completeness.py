@@ -54,3 +54,13 @@ def test_a_built_page_needs_no_completion():
     out, by, _ = finish(None)
     assert by == "built" and "Also in the research" not in out
     assert ids(out) == {"f_AAAAAA", "f_BBBBBB", "f_CCCCCC", "fi_DDDDDD", "ct_EE", "gap_FF"}
+
+
+def test_gaps_the_agent_leaves_off_go_in_their_own_closing_section_before_the_sources():
+    html = GOOD.replace("</section>", '<p>More. <clan-cite refs="f_CCCCCC"></clan-cite><clan-field ref="fi_DDDDDD" as="claim">'
+                        '</clan-field><clan-field ref="ct_EE"></clan-field></p></section>')
+    out, by, dropped = finish(html)
+    assert by == "agent" and "gap_FF" in ids(out)
+    assert "Also in the research" not in out                      # nothing else was missing
+    gaps_at = out.index("What the research could not find")
+    assert gaps_at < out.index("<clan-sources") and out.index("<h3>The market</h3>", gaps_at) > gaps_at

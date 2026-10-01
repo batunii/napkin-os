@@ -24,8 +24,9 @@ is charted, what is quoted, what sits in a band. Make it read like a considered 
 specific to this research, not a template. The page presents your headline as its <h1 class="cl-title">. It may
 group, reorder and reword your summary and claims, but it may state nothing the ids it references do not hold.
 You decide how everything is shown: what is a heading, what is large or bold, the order, the grouping, what is
-charted or quoted. You do not decide whether: every fact, finding, contested value and gap in the input appears on
-the page, as a big number, a chart, a table row, a sentence or a cite. Put each where it belongs: a check after
+charted or quoted. You do not decide whether: every fact, finding and contested value in the input appears on
+the page, as a big number, a chart, a table row, a sentence or a cite. Gaps are listed by code in a closing
+section, so write no <clan-gap> elements; a sentence may still say a measure was not found. Put each where it belongs: a check after
 you adds anything you leave off in a plain list at the end, and that list reads as an afterthought.
 
 Write for a planner who will not open the data. Each lens section opens with a paragraph of three to five
@@ -52,7 +53,7 @@ The vocabulary (a rule in code removes whatever breaks it):
   numbers only; kind="stack" may add rest="label" for an unmeasured remainder.
 - The ask a person gave or confirmed (problem, objective, markets...) is <clan-field ref="campaign.problem">;
   the person can edit it there. Use it for their words, never to restate a figure.
-- A pin with a quote may be a pull quote: <clan-quote ref="f_...">. A gap: <clan-gap ref="gap_...">.
+- A pin with a quote may be a pull quote: <clan-quote ref="f_...">.
 - End with <clan-sources></clan-sources>.
 - Elements: section div header footer article aside h1 h2 h3 p span strong em b i small br hr ol ul li
   table thead tbody tr td th figure figcaption blockquote, and the clan-* ones. No script, style, links,
@@ -73,10 +74,12 @@ def label(p) -> str:
 
 def complete(html: str, report: dict, pins: dict, contests: dict, gaps: dict) -> str:
     """The agent decides how the page shows things, never whether: add, in a plain list before the sources, every
-    fact, finding, contested value and gap of the report that the page does not reference, under its section."""
+    fact, finding and contested value of the report that the page does not reference, under its section. Gaps are
+    code's: every gap the page does not already show goes in its own closing section, so the model does not spend
+    output writing one element per gap (61 on the IBM job)."""
     e = lambda x: escape(str(x or ""), quote=True)
     shown = set(re.findall(r"\b(?:f|fi|ct|gap)_[0-9A-Za-z_]+", html))
-    parts = []
+    parts, missing = [], []
     for sec in report["sections"]:
         rows, more = [], []
         for b in sec["blocks"]:
@@ -87,16 +90,22 @@ def complete(html: str, report: dict, pins: dict, contests: dict, gaps: dict) ->
             elif b["kind"] == "contest" and b["contest_id"] in contests and b["contest_id"] not in shown:
                 more.append(f'<p>Sources disagree: <clan-field ref="{e(b["contest_id"])}"></clan-field></p>')
             elif b["kind"] == "gap" and b["gap_id"] in gaps and b["gap_id"] not in shown:
-                more.append(f'<clan-gap ref="{e(b["gap_id"])}"></clan-gap>')
+                missing.append((sec["title"], b["gap_id"]))
         if rows:
             more.insert(0, '<table class="cl-table"><tbody>' + "".join(
                 f'<tr><td>{e(label(pins[i]))}</td><td><clan-field ref="{e(i)}" as="cell"></clan-field></td></tr>'
                 for i in rows) + "</tbody></table>")
         if more:
             parts.append(f'<h3>{e(sec["title"])}</h3>' + "".join(more))
-    if not parts:
+    block = ('<section class="cl-block"><h2>Also in the research</h2>' + "".join(parts) + "</section>") if parts else ""
+    if missing:
+        groups: dict[str, list[str]] = {}
+        for title, gid in missing:
+            groups.setdefault(title, []).append(f'<clan-gap ref="{e(gid)}"></clan-gap>')
+        block += ('<section class="cl-block"><h2>What the research could not find</h2>'
+                  + "".join(f'<h3>{e(t)}</h3>' + "".join(g) for t, g in groups.items()) + "</section>")
+    if not block:
         return html
-    block = '<section class="cl-block"><h2>Also in the research</h2>' + "".join(parts) + "</section>"
     for marker in ('<footer', "<clan-sources"):
         at = html.find(marker)
         if at >= 0:
