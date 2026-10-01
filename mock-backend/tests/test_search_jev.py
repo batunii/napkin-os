@@ -46,7 +46,9 @@ class SearchJev(unittest.TestCase):
             "structured_output": {"candidates": self.candidates, "queries": ["irish tea market size"]},
             "total_cost_usd": 0.02}
         self.texts = {"https://www.example.ie/a": PAGE_A, "https://www.example.ie/b": PAGE_B}
-        sj.fetch = lambda url: {"text": self.texts[url], "date": "2025-06-01"} if url in self.texts else None
+        self.fails = {}
+        sj.fetch = lambda url: ({"text": self.texts[url], "date": "2025-06-01"} if url in self.texts
+                                else {"failed": self.fails.get(url, "http_error")})
         sj._client = FakeJev()
         self.req = {"query": "How big is the tea market?", "lens": "market_structure", "market": "IE", "max_sources": 6}
 
@@ -90,6 +92,30 @@ class SearchJev(unittest.TestCase):
         self.assertEqual(len(jev), 1)
         self.assertAlmostEqual(jev[0]["cost_usd"], sj._client.requests * 1000 * sj.JEV_USD_PER_TOKEN)
 
+    def test_the_reader_line_counts_pages_passages_and_what_was_kept(self):
+        sj.UNIT_CHARS = 1500
+        self.candidates.append({"url": "https://www.example.ie/walled", "title": "x", "publisher": "x"})
+        self.candidates.append({"url": "https://www.example.ie/gone", "title": "y", "publisher": "y"})
+        self.fails = {"https://www.example.ie/walled": "bot_wall", "https://www.example.ie/gone": "http_error"}
+        out = self.rs.research(self.req, fresh=True)
+        rows = [json.loads(l) for l in open(self.tmp.name + "/metrics.jsonl")]
+        r = [x for x in rows if x.get("alias") == "jev"][0]["reader"]
+        self.assertEqual((r["candidates"], r["read"], r["fallback"]), (4, 2, False))
+        self.assertEqual(r["failed"], {"bot_wall": 1, "http_error": 1})
+        self.assertEqual(r["sources"], len(out["sources"]))
+        self.assertEqual(r["kept_chars"], sum(len(e["quote"]) for x in out["sources"] for e in x["excerpts"]))
+        self.assertGreater(r["passages"], 0)
+        self.assertEqual(r["jev_tokens"], sj._client.requests * 1000)
+
+    def test_a_fallback_unit_leaves_a_reader_line_with_no_cost(self):
+        self.texts = {}
+        self.rs._run_agent = lambda req: {"output": {"sources": [], "queries": []}, "cost_usd": 0.1}
+        self.rs.research(self.req, fresh=True)
+        rows = [json.loads(l) for l in open(self.tmp.name + "/metrics.jsonl")]
+        r = [x for x in rows if x.get("alias") == "reader"]
+        self.assertEqual(len(r), 1)
+        self.assertEqual((r[0]["reader"]["fallback"], r[0]["reader"]["read"], r[0]["cost_usd"]), (True, 0, 0.0))
+
     def test_the_cache_key_is_its_own(self):
         self.assertNotEqual(rp.cache_key(self.req, "search-jev"), rp.cache_key(self.req, "sonnet"))
 
@@ -98,6 +124,42 @@ class SearchJev(unittest.TestCase):
         ws = sj.windows(text)
         q = " ".join(f"word{i}" for i in range(700, 730))          # ~240 characters
         self.assertTrue(any(q in w[2] for w in ws))
+
+
+class FetchReasons(unittest.TestCase):
+    """fetch() says why a page could not be used."""
+    def fetched(self, body=b"", status=200, exc=None):
+        import io
+        import urllib.error
+
+        class R(io.BytesIO):
+            headers = {"Content-Type": "text/html"}
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        orig = sj.urllib.request.urlopen
+
+        def fake(req, timeout):
+            if exc == "http":
+                raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+            if exc == "net":
+                raise urllib.error.URLError("no route")
+            return R(body)
+        sj.urllib.request.urlopen = fake
+        try:
+            return sj.fetch("https://www.example.ie/p")
+        finally:
+            sj.urllib.request.urlopen = orig
+
+    def test_each_reason(self):
+        self.assertEqual(self.fetched(exc="http"), {"failed": "http_error"})
+        self.assertEqual(self.fetched(exc="net"), {"failed": "network"})
+        wall = b"<html><body><p>Our systems think that you are a bot. Please verify you are human to continue.</p></body></html>"
+        self.assertEqual(self.fetched(wall), {"failed": "bot_wall"})
+        self.assertEqual(self.fetched(b"<html><body><p>Too short to use here at all.</p></body></html>"), {"failed": "thin_text"})
+        good = ("<html><body><article>" + "".join(f"<p>Paragraph {i}: the Irish tea market was worth EUR 85 million "
+                f"in 2025, and survey wave {i} found {40 + i}% of adults drink tea daily.</p>" for i in range(12))
+                + "</article></body></html>").encode()
+        self.assertIn("EUR 85 million", self.fetched(good)["text"])
 
 
 class LensQuestions(unittest.TestCase):

@@ -354,14 +354,15 @@ def _envelope_from(out: str, stream: bool):
 
 
 def record_external(cfg: Config, family: str, req: dict, secs: float, ok: bool, cost_usd: float | None,
-                    searches: int, alias: str, failure: str | None = None) -> None:
+                    searches: int, alias: str, failure: str | None = None, extra: dict | None = None) -> None:
     """A ledger line for a call that is not a claude subprocess (jev, a search API): the same fields the report
-    reads, so its cost and searches count in the research stage."""
+    reads, so its cost and searches count in the research stage. `extra` adds fields of its own (search-jev's
+    per-unit `reader` counts)."""
     rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(), "family": family,
            "purpose": None, "lens": req.get("lens"), "market": req.get("market"), "alias": alias,
            "secs": round(secs, 2), "ok": ok, "failure": failure, "cost_usd": cost_usd, "turns": None,
            "in_fresh": None, "cache_write": None, "cache_read": None, "out": None,
-           "web_searches": searches, "web_fetches": 0, "by_model": None}
+           "web_searches": searches, "web_fetches": 0, "by_model": None, **(extra or {})}
     try:
         with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")

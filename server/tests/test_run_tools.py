@@ -129,3 +129,51 @@ def test_the_report_splits_a_units_spend_by_the_model_that_ran(tmp_path):
     assert {(x["stage"], x["model"]): round(x["cost"], 3) for x in r["by_model"]} == {
         ("research", "claude-sonnet-5-5"): 0.049, ("research", "claude-haiku-4-5-20251001"): 0.073}
     assert "claude-haiku-4-5-20251001" in run_report.table(r)
+
+
+def _jev_run(tmp_path, rows, log=""):
+    (tmp_path / "mock").mkdir()
+    (tmp_path / "middleware.jsonl").write_text("")
+    (tmp_path / "mock" / "metrics.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows))
+    (tmp_path / "mock.log").write_text(log)
+    return run_report.build(tmp_path)
+
+
+def test_search_jev_lines_are_not_research_calls_and_jev_has_its_own_row(tmp_path):
+    agent = {"family": "research", "alias": "sonnet", "secs": 20, "cost_usd": 0.08, "web_searches": 2, "web_fetches": 0,
+             "by_model": {"claude-sonnet-5-5": {"in": 10, "out": 500, "cache_read": 0, "cache_write": 0, "cost": 0.08}}}
+    jev = {"family": "research", "alias": "jev", "secs": 2, "cost_usd": 0.005, "web_searches": 0, "web_fetches": 0,
+           "reader": {"candidates": 10, "read": 8, "failed": {"bot_wall": 1, "http_error": 1}, "fallback": False,
+                      "passages": 300, "kept_chars": 4100, "sources": 4, "jev_tokens": 120000}}
+    fell = {"family": "research", "alias": "reader", "secs": 1, "cost_usd": 0.0, "web_searches": 0, "web_fetches": 0,
+            "reader": {"candidates": 3, "read": 0, "failed": {"network": 3}, "fallback": True,
+                       "passages": 0, "kept_chars": 0, "sources": 0, "jev_tokens": 0}}
+    r = _jev_run(tmp_path, [agent, jev, agent, fell])
+    assert r["stages"]["research"]["research_calls"] == 2                 # two agents; the reader lines are not calls
+    assert round(r["stages"]["research"]["cost"], 3) == 0.165              # but their cost is in the stage
+    rows = {(x["stage"], x["model"]): x for x in r["by_model"]}
+    assert round(rows[("research", "jev (TypeSafe)")]["cost"], 3) == 0.005 and rows[("research", "jev (TypeSafe)")]["tin"] == 120000
+    rd = r["reader"]
+    assert rd["recorded"] and (rd["units"], rd["candidates"], rd["read"], rd["fallback_units"]) == (2, 13, 8, 1)
+    assert rd["failed"] == {"bot_wall": 1, "http_error": 1, "network": 3}
+    assert (rd["passages"], rd["kept_chars"], rd["sources"], rd["jev_tokens"]) == (300, 4100, 4, 120000)
+    md = run_report.table(r)
+    assert "page reader (search-jev)" in md and "bot_wall 1" in md and "13 / 8 (62%)" in md
+
+
+def test_an_older_run_gets_its_reader_counts_from_the_mock_log(tmp_path):
+    log = ("[mock-backend 10:31:14] search-jev category_codes/IE: 8 candidates, 7 readable\n"
+           "[mock-backend 10:31:15] search-jev: could not read www.example.com: HTTPError\n"
+           "[mock-backend 10:31:18] search-jev media_spend/GB: 3 candidates, 0 readable\n"
+           "[mock-backend 10:31:19] search-jev: could not read www.x.com: URLError\n")
+    jev = {"family": "research", "alias": "jev", "secs": 2, "cost_usd": 0.004, "web_searches": 0, "web_fetches": 0}
+    rd = _jev_run(tmp_path, [jev], log)["reader"]
+    assert not rd["recorded"] and (rd["units"], rd["candidates"], rd["read"], rd["fallback_units"]) == (2, 11, 7, 1)
+    assert rd["failed"] == {"http_error": 1, "network": 1, "bot_wall_or_thin_text": 2}
+    assert rd["passages"] is None and rd["jev_cost"] == 0.004
+
+
+def test_a_run_without_search_jev_has_no_reader_section(tmp_path):
+    agent = {"family": "research", "alias": "sonnet", "secs": 20, "cost_usd": 0.1, "web_searches": 3, "web_fetches": 3}
+    r = _jev_run(tmp_path, [agent])
+    assert r["reader"] is None and "page reader" not in run_report.table(r)

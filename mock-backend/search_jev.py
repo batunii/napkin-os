@@ -23,6 +23,7 @@ import io
 import os
 import re
 import time
+import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -145,19 +146,29 @@ def page_text(body: bytes, ctype: str, url: str) -> tuple[str, str | None]:
     return main + "\n" + "\n".join(extra), date if isinstance(date, str) and re.match(r"\d{4}-\d{2}-\d{2}$", date) else None
 
 
-def fetch(url: str) -> dict | None:
-    """One page, or None when it cannot be read (an error, a bot wall, or under 500 characters of text)."""
+def fetch(url: str) -> dict:
+    """One page: {"text", "date"} when it can be read, else {"failed": reason}: "http_error" (a 4xx/5xx answer),
+    "network" (no answer, a timeout, TLS), "bot_wall", "thin_text" (under 500 characters) or "error" (it could not
+    be parsed). A page that cannot be read is skipped, never fatal; the reasons are counted in the reader line."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "en,de;q=0.8"})
         with urllib.request.urlopen(req, timeout=25) as r:
             ctype, body = r.headers.get("Content-Type", ""), r.read(20_000_000)
         text, date = page_text(body, ctype, url)
-    except Exception as e:  # a page that cannot be read is skipped, never fatal
+    except urllib.error.HTTPError as e:
+        log(f"search-jev: could not read {urlsplit(url).hostname}: HTTP {e.code}")
+        return {"failed": "http_error"}
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
         log(f"search-jev: could not read {urlsplit(url).hostname}: {type(e).__name__}")
-        return None
+        return {"failed": "network"}
+    except Exception as e:
+        log(f"search-jev: could not read {urlsplit(url).hostname}: {type(e).__name__}")
+        return {"failed": "error"}
     text = re.sub(r"[ \t]+", " ", text)[:MAX_PAGE_CHARS]
-    if len(text) < 500 or BOT.search(text[:2000]):
-        return None
+    if BOT.search(text[:2000]):
+        return {"failed": "bot_wall"}
+    if len(text) < 500:
+        return {"failed": "thin_text"}
     return {"text": text, "date": date}
 
 
@@ -298,14 +309,19 @@ def run(research, req: dict, lens_text: str, today: str) -> dict:
     t0 = time.monotonic()
     with cf.ThreadPoolExecutor(8) as ex:
         got = list(ex.map(lambda c: fetch(c["url"]), cands))
-    pages = []
+    pages, failed = [], {}
     for c, g in zip(cands, got):
-        if g:
-            ws = windows(g["text"])
-            if ws:
-                pages.append({**c, **g, "windows": ws})
+        ws = windows(g["text"]) if "text" in g else []
+        if ws:
+            pages.append({**c, **g, "windows": ws})
+        else:
+            why = g.get("failed") or "thin_text"
+            failed[why] = failed.get(why, 0) + 1
     log(f"search-jev {req['lens']}/{req['market']}: {len(cands)} candidates, {len(pages)} readable")
+    reader = {"candidates": len(cands), "read": len(pages), "failed": failed, "fallback": not pages,
+              "passages": 0, "kept_chars": 0, "sources": 0, "jev_tokens": 0}
     if not pages:  # nothing readable: the ordinary agent does the unit
+        record_external(cfg, "research", req, time.monotonic() - t0, True, 0.0, 0, "reader", extra={"reader": reader})
         fb = research._run_agent(req)
         return {"output": fb["output"], "cost_usd": agent_cost + (fb["cost_usd"] or 0.0)}
 
@@ -315,14 +331,14 @@ def run(research, req: dict, lens_text: str, today: str) -> dict:
     except PeripheralError:
         raise
     except Exception as e:
-        record_external(cfg, "research", req, time.monotonic() - t0, False, None, 0, "jev", type(e).__name__)
+        record_external(cfg, "research", req, time.monotonic() - t0, False, None, 0, "jev", type(e).__name__,
+                        extra={"reader": dict(reader, passages=len(flat))})
         raise PeripheralError(502, "upstream_failed", f"jev scoring failed ({type(e).__name__})") from None
     k = 0
     for p in pages:
         p["scores"] = scores[k:k + len(p["windows"])]
         k += len(p["windows"])
     jev_cost = tokens * JEV_USD_PER_TOKEN
-    record_external(cfg, "research", req, time.monotonic() - t0, True, jev_cost, 0, "jev")
 
     sources = []
     for p, spans, _best in select(pages, UNIT_CHARS):
@@ -336,4 +352,7 @@ def run(research, req: dict, lens_text: str, today: str) -> dict:
         if p.get("date"):
             item["published_at"] = p["date"]
         sources.append(item)
+    reader.update(passages=len(flat), kept_chars=sum(len(e["quote"]) for x in sources for e in x["excerpts"]),
+                  sources=len(sources), jev_tokens=tokens)
+    record_external(cfg, "research", req, time.monotonic() - t0, True, jev_cost, 0, "jev", extra={"reader": reader})
     return {"output": {"sources": sources, "queries": out.get("queries") or []}, "cost_usd": agent_cost + jev_cost}

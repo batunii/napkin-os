@@ -9,6 +9,7 @@ what each `claude -p` cost, its tokens and its WebSearch/WebFetch uses).
 Writes `report.json` and `report.md` beside them and prints the table.
 """
 import json
+import re
 import sys
 from collections import defaultdict
 import sqlite3
@@ -38,6 +39,49 @@ def list_cost(model: str, tin: int, tout: int, breakdown: dict | None) -> float 
             + b.get("cache_read", 0) * p["cache_read"] + tout * p["out"]) / 1e6
 
 
+# search-jev writes one extra ledger line per unit beside its search agent: "jev" (the passage ranking, with its cost
+# and the unit's reader counts) or "reader" (no page could be read; the unit fell back to the agent). They are not
+# research calls of their own.
+READER_ALIASES = ("jev", "reader")
+READ_LOG = re.compile(r"search-jev (\w+)/(\w+): (\d+) candidates, (\d+) readable")
+FAIL_LOG = re.compile(r"search-jev: could not read [^:]+: (HTTP \d+|\w+)")
+
+
+def reader(run: Path, mock: list) -> dict | None:
+    """What search-jev's page reading did, from the ledger's reader lines; for a run recorded before those lines
+    existed, the counts the mock log holds (candidates, read, fallbacks, fetch errors), with the rest marked not
+    recorded. None for a run that did not use search-jev."""
+    lines = [e["reader"] for e in mock if e.get("alias") in READER_ALIASES and isinstance(e.get("reader"), dict)]
+    jev_cost = sum(e.get("cost_usd") or 0 for e in mock if e.get("alias") == "jev")
+    if lines:
+        failed = defaultdict(int)
+        for r in lines:
+            for k, v in (r.get("failed") or {}).items():
+                failed[k] += v
+        return {"recorded": True, "units": len(lines), "candidates": sum(r["candidates"] for r in lines),
+                "read": sum(r["read"] for r in lines), "failed": dict(failed),
+                "fallback_units": sum(1 for r in lines if r.get("fallback")),
+                "passages": sum(r.get("passages") or 0 for r in lines), "kept_chars": sum(r.get("kept_chars") or 0 for r in lines),
+                "sources": sum(r.get("sources") or 0 for r in lines), "jev_tokens": sum(r.get("jev_tokens") or 0 for r in lines),
+                "jev_cost": jev_cost}
+    log = run / "mock.log"
+    text = log.read_text(errors="replace") if log.is_file() else ""
+    units = READ_LOG.findall(text)
+    if not units:
+        return None
+    failed = defaultdict(int)
+    for why in FAIL_LOG.findall(text):
+        failed["http_error" if why.startswith("HTTP") or why == "HTTPError" else "network" if why in ("URLError", "TimeoutError")
+               else "error"] += 1
+    cands, read = sum(int(u[2]) for u in units), sum(int(u[3]) for u in units)
+    logged = sum(failed.values())
+    if cands - read - logged > 0:
+        failed["bot_wall_or_thin_text"] = cands - read - logged   # not told apart before the reader lines existed
+    return {"recorded": False, "units": len(units), "candidates": cands, "read": read, "failed": dict(failed),
+            "fallback_units": sum(1 for u in units if u[3] == "0"), "passages": None, "kept_chars": None,
+            "sources": None, "jev_tokens": None, "jev_cost": jev_cost}
+
+
 def build(run: Path) -> dict:
     mw, mock = load(run / "middleware.jsonl"), load(run / "mock" / "metrics.jsonl")
     stages = defaultdict(lambda: dict(wall=0.0, model_calls=0, model_secs=0.0, cost=0.0, tin=0, tout=0,
@@ -60,7 +104,8 @@ def build(run: Path) -> dict:
         s["tout"] += e.get("out") or 0
         s["turns"] += e.get("turns") or 0
         if e["family"] == "research":
-            s["research_calls"] += 1
+            if e.get("alias") not in READER_ALIASES:
+                s["research_calls"] += 1
             s["research_secs"] += e["secs"]
             s["searches"] += e.get("web_searches") or 0
             s["fetches"] += e.get("web_fetches") or 0
@@ -99,6 +144,11 @@ def build(run: Path) -> dict:
             x["cost"] += u.get("cost") or 0
             x["tin"] += (u.get("in") or 0) + (u.get("cache_write") or 0) + (u.get("cache_read") or 0)
             x["tout"] += u.get("out") or 0
+    for e in mock:
+        if e.get("alias") == "jev":   # jev reports no by_model split: its cost and tokens are its own row
+            x = split[("research", "jev (TypeSafe)")]
+            x["cost"] += e.get("cost_usd") or 0
+            x["tin"] += (e.get("reader") or {}).get("jev_tokens") or 0
     by_model = [dict(stage=st, model=m, **v) for (st, m), v in sorted(split.items())]
     tot = {k: sum(s[k] for s in stages.values()) for k in
            ("wall", "model_calls", "cost", "tin", "tout", "research_calls", "research_cached", "searches", "fetches",
@@ -107,7 +157,8 @@ def build(run: Path) -> dict:
     tot["units_reused"] = sum(1 for u in units if u["reused"])
     tot["units_zero_sources"] = sum(1 for u in units if not u["reused"] and not u["sources"])
     tot["units_with_facts"] = sum(1 for u in units if u["facts"] > 0)
-    return {"stages": stages, "units": units, "by_purpose": by_purpose, "by_model": by_model, "totals": tot}
+    return {"stages": stages, "units": units, "by_purpose": by_purpose, "by_model": by_model, "totals": tot,
+            "reader": reader(run, mock)}
 
 
 def quality(run: Path) -> dict | None:
@@ -188,6 +239,19 @@ def table(r: dict) -> str:
         rows += ["", "| stage | model that ran | tokens in / out | CLI cost $ |", "|---|---|---|---|"]
         for x in r["by_model"]:
             rows.append(f"| {x['stage']} | {x['model']} | {x['tin']:,} / {x['tout']:,} | {x['cost']:.2f} |")
+    rd = r.get("reader")
+    if rd:
+        na = lambda v, f=str: "not recorded" if v is None else f(v)
+        why = ", ".join(f"{k} {v}" for k, v in sorted(rd["failed"].items())) or "none"
+        rows += ["", "| page reader (search-jev) | value |", "|---|---|",
+                 f"| units / fell back to the agent | {rd['units']} / {rd['fallback_units']} |",
+                 f"| pages found / read | {rd['candidates']} / {rd['read']} ({rd['read'] / max(1, rd['candidates']):.0%}) |",
+                 f"| pages not used, by reason | {why} |",
+                 f"| passages scored by jev | {na(rd['passages'], lambda v: f'{v:,}')} |",
+                 f"| characters kept / sources returned | {na(rd['kept_chars'], lambda v: f'{v:,}')} / {na(rd['sources'])} |",
+                 f"| jev tokens / cost $ | {na(rd['jev_tokens'], lambda v: f'{v:,}')} / {rd['jev_cost']:.3f} |"]
+        if not rd["recorded"]:
+            rows.append("(recorded before the reader lines existed: counts from the mock log)")
     q = r.get("quality")
     if q:
         rows += ["", "| quality | value |", "|---|---|",
