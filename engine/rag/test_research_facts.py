@@ -269,3 +269,21 @@ def test_with_no_research_at_all_everything_runs_as_before(monkeypatch):
     monkeypatch.setattr(pb, "score_betterbriefs", lambda text, fields=None: {})
     out = pb.run(None, raw_text="A bakery.")
     assert "research_facts" not in out["meta"]
+
+
+
+def test_a_share_or_a_large_amount_may_be_written_the_way_a_planner_writes_it():
+    """The research tool stores shares as 0-1 and money in units; a writer quoting '27% (2014)' or
+    'EUR 85 million' is quoting the fact, not misquoting it (one-line test, 2026-10-01: every RTB
+    built from research facts was rejected for this)."""
+    facts = {"f-s": {"id": "f-s", "value": 0.27, "unit": "proportion", "as_of": "2014-10-06"},
+             "f-m": {"id": "f-m", "value": 85000000, "unit": "eur", "as_of": "2025-06-01"}}
+    assert rf.forms(facts["f-s"]) == ["27%"] and rf.forms(facts["f-m"]) == ["85 million"]
+    assert "0.27 proportion (27%)" in rf.line(facts["f-s"]) and "(85 million)" in rf.line(facts["f-m"])
+    assert rf.citation_failures(["Barry's holds 27% of the market (2014) [F:f-s]",
+                                 "The category is worth EUR 85 million [F:f-m]"], facts, "Barry's Tea brief.") == []
+    assert rf.citation_failures(["Barry's holds 31% of the market [F:f-s]"], facts, "x") == [
+        "fact citation: 31 is not in the fact it cites (F:f-s) (item 0)"]               # a misquote still fails
+    assert rf.citation_failures(["About 27% of drinkers"], facts, "x") == [
+        "fact citation: 27 comes from the research (F:f-s) but is not cited (item 0)"]  # uncited research still fails
+    assert rf.citation_failures(["Launch in 2014"], facts, "x") == []                  # a date alone is not research
