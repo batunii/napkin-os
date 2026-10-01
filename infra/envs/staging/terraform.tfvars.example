@@ -1,6 +1,6 @@
 # Copy to terraform.tfvars. Every value here has a default; set only what differs.
 
-# budget_email       = "you@example.com"
+# budget_emails      = ["you@example.com", "team@example.com"]
 # monthly_budget_usd = 150
 
 # Aurora: 0 = pause when idle (up to ~15 s to resume); 0.5 = never pause.

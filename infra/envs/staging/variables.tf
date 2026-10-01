@@ -17,7 +17,7 @@ variable "vpc_cidr" {
 
 variable "aurora_engine_version" {
   type    = string
-  default = "16.8"
+  default = "16.15"
 }
 
 variable "aurora_min_acu" {
@@ -69,13 +69,24 @@ variable "qdrant_version" {
   default = "v1.19.1"
 }
 
-variable "budget_email" {
-  description = "Where budget alerts go; empty = no budget."
-  type        = string
-  default     = ""
+variable "budget_emails" {
+  description = "Where budget alerts go; empty = no budgets."
+  type        = list(string)
+  default     = []
 }
 
+# Two budgets, because promotional credits pay most of the bill:
+#   burn  everything the stack uses, credits or not: are we spending the credit
+#         faster than planned?
+#   card  only what the credits do not cover: is real money leaving the card?
 variable "monthly_budget_usd" {
-  type    = number
-  default = 150
+  description = "The burn budget: gross monthly cost, credits ignored."
+  type        = number
+  default     = 150
+}
+
+variable "monthly_card_budget_usd" {
+  description = "The card budget: monthly cost after credits."
+  type        = number
+  default     = 5
 }

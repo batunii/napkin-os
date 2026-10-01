@@ -23,7 +23,7 @@ mock_provider "aws" {
 mock_provider "random" {}
 
 variables {
-  budget_email = "alerts@example.com"
+  budget_emails = ["alerts@example.com", "hello@example.com"]
   agencies = {
     acme   = { slot = 1 }
     globex = { slot = 2 }
@@ -44,5 +44,9 @@ run "plans_with_two_agencies" {
   assert {
     condition     = contains(jsondecode(aws_iam_policy.model_invoke.policy).Statement[0].Action, "bedrock:InvokeModel")
     error_message = "the admin host (seeding) may call Claude on Bedrock"
+  }
+  assert {
+    condition     = aws_budgets_budget.monthly["card"].cost_types[0].include_credit && !aws_budgets_budget.monthly["burn"].cost_types[0].include_credit
+    error_message = "card = after credits, burn = before credits"
   }
 }

@@ -205,23 +205,36 @@ module "admin" {
   policy_arns       = { model_invoke = aws_iam_policy.model_invoke.arn }
 }
 
-# A monthly ceiling that emails before the bill surprises anyone. Account-wide:
-# a tag filter would read $0 until the Env tag is activated for cost
-# allocation in Billing, which is exactly when an alert is needed most.
+# Two account-wide budgets (see variables.tf). Account-wide: a tag filter would
+# read $0 until the Env tag is activated for cost allocation in Billing, which
+# is exactly when an alert is needed most.
+locals {
+  budgets = length(var.budget_emails) == 0 ? {} : {
+    burn = { limit = var.monthly_budget_usd, include_credit = false }
+    card = { limit = var.monthly_card_budget_usd, include_credit = true }
+  }
+}
+
 resource "aws_budgets_budget" "monthly" {
-  count        = var.budget_email == "" ? 0 : 1
-  name         = "${local.name}-monthly"
+  for_each     = local.budgets
+  name         = "${local.name}-monthly-${each.key}"
   budget_type  = "COST"
-  limit_amount = tostring(var.monthly_budget_usd)
+  limit_amount = tostring(each.value.limit)
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
+
+  # include_credit = true: credits count against the cost, so this reads what
+  # the card pays. false: the gross cost, what the credits are paying for.
+  cost_types {
+    include_credit = each.value.include_credit
+  }
 
   notification {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 80
     threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.budget_email]
+    subscriber_email_addresses = var.budget_emails
   }
 
   notification {
@@ -229,6 +242,6 @@ resource "aws_budgets_budget" "monthly" {
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.budget_email]
+    subscriber_email_addresses = var.budget_emails
   }
 }

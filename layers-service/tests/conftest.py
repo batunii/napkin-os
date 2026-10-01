@@ -21,6 +21,9 @@ DATABASES = {
     "napkin_category": ("category", None),
     "napkin_agency_acme": ("agency", "org/acme"),
     "napkin_agency_globex": ("agency", "org/globex"),
+    # copy.py: a finished source and an empty target, each migrated like Aurora
+    "napkin_category_copy_src": ("category", None),
+    "napkin_category_copy_dst": ("category", None),
 }
 
 

@@ -216,8 +216,10 @@ directly.
 | Aurora storage, KMS, Secrets Manager, Route 53, S3 | 5–10 |
 | **Total, 3 agencies** | **~115–130** |
 
-Set `budget_email` to get an email when the forecast passes 80% of
-`monthly_budget_usd`.
+Set `budget_emails` to get two budgets, each emailing when the forecast passes
+80% or the actual passes 100%: **burn** (`monthly_budget_usd`, $150, the gross
+cost the credits are paying for) and **card** (`monthly_card_budget_usd`, $5,
+what is left after credits, i.e. real money).
 
 ## What comes next
 
