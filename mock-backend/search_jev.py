@@ -32,7 +32,7 @@ VERSION = "2"                     # bump when selection changes, so cached answe
 MAX_CANDIDATES = int(os.environ.get("MOCK_JEV_CANDIDATES", "12"))
 # Each CLI web search also runs a Haiku helper (~$0.023 a search, measured 2026-10-01), so searches are capped.
 MAX_SEARCHES = int(os.environ.get("MOCK_JEV_SEARCHES", "2"))
-UNIT_CHARS = int(os.environ.get("MOCK_JEV_UNIT_CHARS", "8000"))
+UNIT_CHARS = int(os.environ.get("MOCK_JEV_UNIT_CHARS", "4000"))
 WIN, STEP = 500, 250              # a quote under 250 characters always sits whole inside one window
 MAX_PAGE_CHARS = 150_000
 MAX_QUOTE_CHARS, MAX_EXCERPTS = 1500, 5
