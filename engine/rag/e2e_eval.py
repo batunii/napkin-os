@@ -59,7 +59,7 @@ def _pick() -> list[str]:
 
 
 # Order matters: matching is by substring, so "claude-opus-5-5" must precede "claude-opus-5".
-PRICES = {"claude-opus-4-6": (5, 25), "claude-opus-5-5": (4, 20), "claude-opus-5": (5, 25), "claude-sonnet-5": (2, 10),
+PRICES = {"claude-opus-4-6": (5, 25), "claude-opus-5-5": (4, 20), "claude-opus-5": (5, 25), "claude-sonnet-5-5": (2, 10), "claude-sonnet-5": (2, 10),
           "claude-haiku-4-5": (1, 5), "claude-fable-5-1": (10, 50)}
 JUDGE_MODEL = "claude-sonnet-5"
 

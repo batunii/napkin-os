@@ -116,3 +116,11 @@ instead: fixed per-job routes, low effort on judges and mechanical jobs, the gra
 of 3 samples, and the noise line every checkpoint report carries (ADR 0013). Closed as won't do;
 revisit only if a model on the routes accepts the parameter again.
 
+
+## Amendment 2026-10-01 (Sai)
+
+Extraction (capture and golden extraction) moves to Opus 5.5, with Opus 4.6 as its fallback: Opus 5.5 is
+20% cheaper per token. Every Sonnet 5 route (judge, mechanical, synth, the hero judge's fallback) moves to
+Sonnet 5.5, the current Sonnet at the same price. `BRIEF_EFFORT_<JOB>` overrides one job's effort, so an
+effort change can be measured on whole runs before `ROUTE_EFFORT` changes. The grader (golden_critic) and the
+evaluation tools keep their Sonnet 5 judge, so scores stay comparable with earlier checkpoints.
