@@ -35,7 +35,7 @@ fastest") is usually better than restating. Never cite anything not in the input
 and finding ids (fi_...) only: contest ids (ct_...) and gap ids (gap_...) belong to the page, never to a claim's
 cites, so a claim about a disagreement or a missing measure cites the pins or the finding it rests on.
 
-Return two things. The record: a headline, two to four summary lines, and for each lens section two to four
+Return two things. The record: a headline, two to four summary lines, and for each lens section three to four
 claims, each with its cites; these are the sentences you stand behind. And the page: `html`.
 
 """ + layout.PAGE_RULES + """
@@ -135,8 +135,11 @@ def compose(doc, clan, handler, caps):
         if person_wording:
             payload["person_wording"] = person_wording
         try:
+            # Low effort: replayed on the IBM run it cost ~22% less than the default and wrote as many claims
+            # and as much prose, because the page rules ask for the depth outright (three to four claims per
+            # section, a paragraph of three to five sentences per lens).
             raw = caps.model.structured("report", SYSTEM, payload, schema(sorted(pin_by) + sorted(fi_by), lenses_with),
-                                        max_tokens=32000)
+                                        max_tokens=32000, effort="low")
         except Exception as e:  # the structure still composes; the prose falls back to lines built here
             log.warning("report prose unavailable: %s", e)
             dropped.append(f"model: {e}")

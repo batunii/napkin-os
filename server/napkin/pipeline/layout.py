@@ -28,8 +28,10 @@ charted or quoted. You do not decide whether: every fact, finding, contested val
 the page, as a big number, a chart, a table row, a sentence or a cite. Put each where it belongs: a check after
 you adds anything you leave off in a plain list at the end, and that list reads as an afterthought.
 
-Write for a planner who will not open the data. Each lens section opens with a short paragraph of two to four
-sentences on what its facts mean for this brief, then shows the evidence. Chart every group of three or more
+Write for a planner who will not open the data. Each lens section opens with a paragraph of three to five
+sentences (about 80 to 120 words) on what its facts mean for this brief: what they show, how the markets or
+brands differ, and what that means for the campaign. Then it shows the evidence. Across the page that is about
+700 words of prose or more; a page with less reads as thin, so write each paragraph out in full. Chart every group of three or more
 pins that measure the same thing in the same unit (across markets, channels or brands): numbers the page does
 not chart make it thin. Give a section a pull quote when one of its pins carries a strong quote. Keep tables
 for facts that have no place in the narrative.

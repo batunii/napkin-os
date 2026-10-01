@@ -111,7 +111,7 @@ def main():
             def call(self, purpose, system, payload, schema, **kw):
                 if kw.get("model") is None and purpose in by_model:
                     kw["model"] = by_model[purpose]
-                if kw.get("effort") is None and purpose in by_effort:
+                if purpose in by_effort:   # overrides a stage's own effort, so any level can be tried
                     kw["effort"] = by_effort[purpose]
                 return super().call(purpose, system, payload, schema, **kw)
 

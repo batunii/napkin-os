@@ -301,6 +301,16 @@ def test_synthesis_drops_a_statement_with_an_unsourced_figure(store):
     assert result["dropped"] and all(f["status"] == "proposed" for f in change["findings_append"])
 
 
+def test_the_report_call_runs_at_low_effort(store):
+    model = FakeModel()
+    caps = caps_for(store, model=model)
+    _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
+                           ["automotive.ev_charging"]).run()
+    report.compose(DOC, dict(rclan(["IE"]), facts=rch["facts_append"]), "t@1.0", caps)
+    kw = next(c[2] for c in model.calls if c[0] == "report")
+    assert kw["output_config"]["effort"] == "low"
+
+
 def test_report_claims_are_checked_in_code(store):
     caps = caps_for(store)
     _, rch, _ = Researcher(DOC, "3", rclan(["IE"]), "t@1.0", caps, ["media_spend"], ["IE"],
