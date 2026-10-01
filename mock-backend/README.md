@@ -296,6 +296,8 @@ over a transport that calls `app.handle` instead of a socket.
 | `MOCK_CLAUDE_BIN` | `claude` | the tests point it at `tests/fake_claude.py` |
 | `MOCK_MODEL_ALIASES` | the three NIM ids above | JSON `{"<id>": "<alias>"}` |
 | `MOCK_RESEARCH_MODEL` / `MOCK_RETRIEVAL_MODEL` | `sonnet` / `sonnet` | CLI aliases |
+| `MOCK_RESEARCH_BACKEND` | `claude-code` | `search-jev`: the agent only searches (WebSearch, no WebFetch); code fetches the pages (trafilatura, pypdf) and jev picks the passages (`search_jev.py`; needs `TYPESAFE_API_KEY` and those packages) |
+| `MOCK_JEV_SEARCHES` / `MOCK_JEV_CANDIDATES` / `MOCK_JEV_UNIT_CHARS` | `2` / `12` / `8000` | search-jev: searches per unit, pages read per unit, characters of passages kept per unit |
 | `MOCK_RETRIEVAL_MAX_CHARS` | `150000` | above this, the lexical prefilter |
 | `MOCK_PACKS_DIR` | `engine/packs_dist` | house packs |
 | `BRIEF_CORPUS` | unset | the full corpus; replaces `MOCK_PACKS_DIR` |

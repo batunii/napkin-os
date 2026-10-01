@@ -37,6 +37,32 @@ def env_float(name: str, default: float) -> float:
     return float(v) if v else default
 
 
+def dotenv_value(name: str) -> str:
+    """One value from engine/.env or the repo-root .env (both git-ignored), read only when the environment does
+    not set it. Only the named key is read and it is never logged."""
+    v = os.environ.get(name, "").strip()
+    if v:
+        return v
+    for path in (REPO / "engine" / ".env", REPO / ".env"):
+        try:
+            for line in path.read_text(encoding="utf-8-sig").splitlines():
+                k, sep, val = line.partition("=")
+                k = k.strip()
+                k = k[7:].strip() if k.startswith("export ") else k
+                if not (sep and k == name):
+                    continue
+                val = val.strip()
+                if val[:1] in ("'", '"') and val.count(val[0]) >= 2:
+                    val = val[1:val.index(val[0], 1)]
+                else:
+                    val = val.split(" #")[0].strip()
+                if val:
+                    return val
+        except OSError:
+            continue
+    return ""
+
+
 def env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no", "off")
 
@@ -82,6 +108,11 @@ class Config:
         self.max_turns = env_int("MOCK_MAX_TURNS", 4)
         self.claude_bin = os.environ.get("MOCK_CLAUDE_BIN", "claude")
         self.research_model = os.environ.get("MOCK_RESEARCH_MODEL", "sonnet")
+        # "claude-code" (the default: one claude -p per unit with WebSearch and WebFetch) or "search-jev" (the agent
+        # only searches; code reads the pages and jev picks the passages: search_jev.py)
+        self.research_backend = os.environ.get("MOCK_RESEARCH_BACKEND", "").strip().lower() or "claude-code"
+        if self.research_backend not in ("claude-code", "search-jev"):
+            raise SystemExit(f"MOCK_RESEARCH_BACKEND must be claude-code or search-jev, not {self.research_backend!r}")
         self.retrieval_model = os.environ.get("MOCK_RETRIEVAL_MODEL", "sonnet")
         self.retrieval_max_chars = env_int("MOCK_RETRIEVAL_MAX_CHARS", 150_000)
         self.packs_dir = Path(os.environ.get("MOCK_PACKS_DIR") or REPO / "engine" / "packs_dist")
@@ -320,6 +351,22 @@ def _envelope_from(out: str, stream: bool):
     if last is None:
         raise json.JSONDecodeError("no result event", out, 0)
     return last
+
+
+def record_external(cfg: Config, family: str, req: dict, secs: float, ok: bool, cost_usd: float | None,
+                    searches: int, alias: str, failure: str | None = None) -> None:
+    """A ledger line for a call that is not a claude subprocess (jev, a search API): the same fields the report
+    reads, so its cost and searches count in the research stage."""
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(), "family": family,
+           "purpose": None, "lens": req.get("lens"), "market": req.get("market"), "alias": alias,
+           "secs": round(secs, 2), "ok": ok, "failure": failure, "cost_usd": cost_usd, "turns": None,
+           "in_fresh": None, "cache_write": None, "cache_read": None, "out": None,
+           "web_searches": searches, "web_fetches": 0, "by_model": None}
+    try:
+        with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def record_cache_hit(cfg: Config, req: dict) -> None:

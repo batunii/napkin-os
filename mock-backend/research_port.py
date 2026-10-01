@@ -140,6 +140,11 @@ def parse_request(raw: bytes) -> dict:
 
 
 def cache_key(req: dict, model: str) -> str:
+    if model == "search-jev":  # searched by the agent, read by code, picked by jev
+        import search_jev
+        return sha256_hex(canon({**req, "query": req["query"].lower(), "_backend": "search-jev", "_sj": search_jev.VERSION,
+                                  "_n": search_jev.MAX_CANDIDATES, "_u": search_jev.UNIT_CHARS,
+                                  "_s": search_jev.MAX_SEARCHES}))
     return sha256_hex(canon({**req, "query": req["query"].lower(), "_model": model, "_v": PROMPT_VERSION,
                               **({"_p": prompt_variant()} if prompt_variant() else {})}))
 
@@ -312,6 +317,13 @@ class Research:
         return {"api": API, "backend": BACKEND, "model": self.cfg.research_model}
 
     def _run(self, req: dict) -> dict:
+        if self.cfg.research_backend == "search-jev":
+            import search_jev
+            return search_jev.run(self, req, LENSES[req["lens"]], today())
+        return self._run_agent(req)
+
+    def _run_agent(self, req: dict) -> dict:
+        """The default: one claude -p agent that searches, reads and quotes."""
         cfg = self.cfg
         call = ClaudeCall(alias=cfg.research_model, prompt=build_prompt(req), json_schema=SOURCES_SCHEMA,
                           tools=["WebSearch", "WebFetch"], permission_mode="dontAsk", trace_tools=True)
@@ -335,7 +347,8 @@ class Research:
         return {"output": out, "cost_usd": env.get("total_cost_usd")}
 
     def research(self, req: dict, fresh: bool) -> dict:
-        key = cache_key(req, self.cfg.research_model)
+        b = self.cfg.research_backend
+        key = cache_key(req, b if b == "search-jev" else self.cfg.research_model)
         with self.cache.lock(key):  # one run per key; a concurrent duplicate reads the cache
             if not fresh and not self.cfg.no_cache:
                 hit = self.cache.get(key)
@@ -349,7 +362,8 @@ class Research:
             sources, drops = validate_sources(out.get("sources"), req["max_sources"], today())
             queries = [_clean(q) for q in out.get("queries") or [] if isinstance(q, str) and _clean(q)]
             response = {"sources": sources,
-                        "trace": {"backend": BACKEND, "queries": queries, "model": self.cfg.research_model}}
+                        "trace": {"backend": "search-jev" if b == "search-jev" else BACKEND, "queries": queries,
+                                  "model": self.cfg.research_model}}
             log(f"research {req['lens']}/{req['market']}: {len(sources)} sources in "
                 f"{time.monotonic() - t0:.1f}s, dropped {drops}, cost {result['cost_usd']}")
             # The query parameters (a public-web question) and public excerpts only. An empty answer is
