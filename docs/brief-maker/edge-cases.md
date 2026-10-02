@@ -14,6 +14,13 @@ and a status. No client text goes in here: name the input by its file stem or de
 Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line refs as of `7cbe533`) and offline probes
 (EC-060 to EC-081: no model calls; probe scripts kept with the session notes, to be added as tests when each is fixed).
 
+## Requirements (hard gates for every test)
+
+- **REQ-01 (Sai, 2026-10-02): every one of the 11 brief fields is filled, on every input.** An empty
+  field fails the run. Where the client gave nothing, the field carries a labelled proposal or
+  assumption with its basis and an open question, never an invented client fact.
+- **REQ-02 (Sai, 2026-10-01): nothing from the input is left unread.** See EC-002, EC-030.
+
 ## Found so far
 
 | ID | Harness | Kind | Sev | What happens | Repro | Status |
@@ -72,6 +79,7 @@ Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line re
 | EC-080 | engine | bug | S3 | Render: dict items in objectives/desired_response are not scrubbed; `{}`/None `meta` or a None open question raises; lists print as Python lists; a `# heading` inside a value renders as a heading. | `probe_g.py` | open |
 | EC-081 | engine | drop | S2 | PDF via pandoc/xelatex: CJK, Arabic and emoji become missing-glyph boxes yet the render reports success; HTML tags in values pass through unescaped. | `probe_g.py` | open |
 | EC-040 | drafter | drop | S1 | Capture's output cap (12,000 tokens) is hit on ordinary briefs (employer 8.6k chars, OMV 19k chars): the capture is cut off, every client field comes out empty, and the job still ends "done" with one gap line. Health 34 and 0 vs the engine's 83 and 75. | drafter on employer-awareness / omv-btl-brief, 2026-10-02 | open |
+| EC-041 | engine | drop | S1 | Fields left empty (REQ-01): budget_scope when the client gives no budget (mamaliga, friskies); desired_response when every draft fails a gate (mamaliga, OMV); competitor_context (employer, every Samaritans run). | test-five checkpoint_test5_routes55 | open |
 | EC-050 | env | env | S3 | `mock-backend` FetchReasons test needs `trafilatura`, not installed in the default Python. | `pytest mock-backend/tests/test_search_jev.py` | open |
 
 ## The brief's job (gaps against what a brief is for)
