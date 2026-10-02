@@ -141,3 +141,17 @@ so earlier checkpoints stay comparable. With research the figure question also a
 fact states; that wording is not lab-measured, like claims_supported's research variant. jev costs
 about $0.04 per million input tokens, so four or more pieces per check add well under a cent a brief.
 
+## Update 2026-10-02: hero writer on Opus 5.5 at high effort, sharpen on (Sai)
+
+Measured through the middleware on `integrate/jev-hardening`
+(`engine/outputs/harness_2026_10_02`, one run per input):
+- **Before:** in a blind Fable 5.1 head-to-head (both orders; a side wins only if it wins both)
+  against the research tool's drafter, the engine won 2 of 7 inputs, tied 1 and lost 4. The drafter
+  writes on Opus 5.5 with a sharpen and revise loop.
+- **The change:** the `hero` route moves to Opus 5.5 at `high` effort, and the sharpen pass is back on.
+- **After:** 3 wins, 3 ties and 1 loss. The 14-test job check rose by 1 to 3 on each brief, for about
+  +$0.05 and +10-30 s per short brief.
+- **Judging:** the hero judge now runs on Sonnet 5.5, because a judge never runs on its writer's model.
+
+The earlier finding that Opus 4.6 writes better hero lines came from the critic. The blind judge,
+which this time compared against an outside writer, disagreed.

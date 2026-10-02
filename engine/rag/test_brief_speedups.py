@@ -248,6 +248,7 @@ def test_hero_fields_batched_calls_and_parallel_waves(monkeypatch):
     _fake_models(monkeypatch, calls, gate=threading.Barrier(2, timeout=5))
     for v in ("BRIEF_PARALLEL", "BRIEF_HERO_CANDIDATES", "BRIEF_SMP_CANDIDATES", "BRIEF_SHARPEN"):
         monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("BRIEF_SHARPEN", "0")   # the 9-call shape without the sharpen pass (on by default)
     fills, _qs = _fill(monkeypatch)
     assert set(fills) == set(pb.GEN_ZONE3_ORDER)
     assert len(calls) == 9, calls

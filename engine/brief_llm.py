@@ -592,7 +592,7 @@ HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-5-5"
 ROUTES = {
     "extract":         ("claude-opus-5-5", "claude-opus-4-6"),   # capture, golden extraction
-    "hero":            ("claude-opus-4-6", "claude-opus-5-5"),   # insight/SMP drafts, refine, other fields
+    "hero":            ("claude-opus-5-5", "claude-opus-4-6"),   # insight/SMP drafts, refine, other fields (5.5 + high effort since 2026-10-02)
     "grounded_writer": ("claude-opus-5-5", "claude-opus-4-6"),   # RTB, desired response: 0/8 vs 11 invented figures
     "hero_judge":      ("claude-opus-5-5", SONNET),              # insight/SMP judges, territory map
     "judge":           (SONNET, HAIKU),                          # every other field's judge
@@ -601,7 +601,7 @@ ROUTES = {
 }
 # Effort per job on thinking models (Opus 5.5, Sonnet 5): judges and mechanical calls
 # answer a rule, so they think little. None = the model's own default.
-ROUTE_EFFORT = {"hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
+ROUTE_EFFORT = {"hero": "high", "hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
 
 
 def route_effort(route: "str | None") -> "str | None":

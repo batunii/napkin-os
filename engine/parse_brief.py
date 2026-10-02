@@ -1533,10 +1533,12 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
             return None, qs
 
         # Sharpen the winning hero line once; keep the refinement only if it still clears the gate.
-        # Off by default since 2026-09-29 (Sai, phase C change 1): on the three test briefs the
-        # A/B gave health 234 without against 236 with (noise), the same insight/SMP check
-        # failures, and 15% less time and 17% less Claude cost without. BRIEF_SHARPEN=1 turns it on.
-        if fid in ("insight", "smp") and os.environ.get("BRIEF_SHARPEN", "0").lower() in ("1", "true", "yes"):
+        # On by default again since 2026-10-02 (Sai), with the hero writer on Opus 5.5 at high effort:
+        # a blind head-to-head against the research tool's drafter went from 2 engine wins and 4
+        # losses to 3 wins, 3 ties and 1 loss over 7 inputs, for about +$0.05 and +10-30 s a brief
+        # (engine/outputs/harness_2026_10_02). It had been off since 2026-09-29, when the critic saw
+        # no gain (234 vs 236). BRIEF_SHARPEN=0 turns it off.
+        if fid in ("insight", "smp") and os.environ.get("BRIEF_SHARPEN", "1").lower() in ("1", "true", "yes"):
             refined = _refine_field(field, chosen["value"], chosen.get("_judge_why", ""))
             if refined:
                 # gate_one includes the territory tests for the SMP: never let the sharpen

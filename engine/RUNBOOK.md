@@ -168,9 +168,9 @@ Each call names its job; the job picks the model (`brief_llm.ROUTES`, ADR 0011):
 | Job | Model (fallback) | Effort |
 |---|---|---|
 | extract (capture, golden extraction) | Opus 5.5 (Opus 4.6) | model default |
-| hero writer (insight, SMP) | Opus 4.6 (Opus 5.5) | model default |
+| hero writer (insight, SMP) | Opus 5.5 (Opus 4.6) | high, plus a sharpen pass |
 | grounded writer (RTB, desired response) | Opus 5.5 (Opus 4.6) | model default |
-| hero judge | Opus 5.5 (Sonnet 5.5) | low |
+| hero judge | Sonnet 5.5 (a judge never runs on its writer's model, so Opus 5.5 is skipped) | low |
 | judge, mechanical, synth | Sonnet 5.5 (Haiku 4.5) | low / medium |
 
 - `BRIEF_ROUTE_<JOB>` overrides one job's models, and `BRIEF_EFFORT_<JOB>` one job's effort.

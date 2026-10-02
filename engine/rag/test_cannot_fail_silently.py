@@ -852,6 +852,7 @@ def test_the_tournament_record_keeps_every_other_draft_with_its_checks(monkeypat
     import brief_render
     _fake_models(monkeypatch)
     monkeypatch.setenv("BRIEF_SMP_CANDIDATES", "6"); monkeypatch.setenv("BRIEF_HERO_CANDIDATES", "6")
+    monkeypatch.setenv("BRIEF_SHARPEN", "0")   # with sharpen on, the unsharpened winner is a 4th alternative
     gf, _fills, _qs = _fill(monkeypatch)
     ins = gf["insight"]
     assert len(ins["alternatives"]) == 3                 # the fake writer returns 4 drafts: all kept
@@ -940,14 +941,14 @@ def test_app_rationale_names_the_kept_drafts():
     assert "DRAFTS TO REVIEW (failed their checks): smp" in mapping.build_rationale(brief)
 
 
-def test_the_sharpen_pass_is_off_by_default(monkeypatch):
-    """Off since 2026-09-29 (phase C change 1): no refine call for the hero lines by default;
-    BRIEF_SHARPEN=1 turns it back on."""
+def test_the_sharpen_pass_is_on_by_default(monkeypatch):
+    """On again since 2026-10-02 (it was off from 2026-09-29): a refine call for the hero lines by
+    default; BRIEF_SHARPEN=0 turns it off."""
     monkeypatch.delenv("BRIEF_SHARPEN", raising=False)
     calls = _fake_models(monkeypatch)
     _fill(monkeypatch)
-    assert not any(k == "refine" for k, _u, _s in calls)
+    assert any(k == "refine" for k, _u, _s in calls)
     calls2 = _fake_models(monkeypatch)
-    monkeypatch.setenv("BRIEF_SHARPEN", "1")
+    monkeypatch.setenv("BRIEF_SHARPEN", "0")
     _fill(monkeypatch)
-    assert any(k == "refine" for k, _u, _s in calls2)
+    assert not any(k == "refine" for k, _u, _s in calls2)

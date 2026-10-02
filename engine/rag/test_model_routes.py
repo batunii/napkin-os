@@ -142,7 +142,7 @@ def test_every_pipeline_call_names_its_job(monkeypatch):
     routes = [c[0] for c in calls]
     for r in ("mechanical", "extract", "hero_judge", "hero", "judge"):
         assert r in routes, (r, routes)
-    assert ("hero_judge", "claude-opus-4-6") in calls and ("judge", "claude-opus-5-5") in calls
+    assert ("hero_judge", "claude-opus-5-5") in calls and ("judge", "claude-opus-5-5") in calls
 
 
 def test_extraction_label_names_the_extraction_model(monkeypatch):
