@@ -10,9 +10,10 @@ set for the brief system (Slack, #wiki, 2026-06-05).
 The tool's current checks are **presence checks** (is there an objective? an
 audience? a budget?). BetterBriefs says the dominant failure mode is
 **present-but-vague**: 78% of marketers think their briefs give clear
-strategic direction, only 5% of agencies agree. 65% of agencies can't picture
-the target audience from the brief. 88% aren't clear how the work will be
-evaluated. So the upgrade is from "did the client fill the slot?" to "does
+strategic direction, only 5% of agencies agree. Two thirds of brands cannot say
+who they are for (and who they are not for) in their strategic planning (Ritson,
+*The issues with briefs*, BetterBriefs/IPA). Only 30% of brands set evaluation
+criteria for the work (*The best way for a client to brief an agency*, UK 2021). So the upgrade is from "did the client fill the slot?" to "does
 what they wrote pass the quality test for that slot?"
 
 ## 1. Schema additions (brief_object.schema.json + EXTRACTION_SYSTEM)
@@ -71,7 +72,7 @@ Current shape: problem / objective / audience / scope. Add:
 Rank generated open questions by the industry-criticality the reports give:
 1. Objectives (61% of marketers / 71% of agencies: most critical element)
 2. Evaluation criteria (only 30% of clients have them; #2 quality proxy)
-3. Audience vividness (65% of agencies can't picture the target)
+3. Audience vividness (two thirds of brands cannot say who they are for)
 4. Single key message / strategic angle
 5. Budget–objective interlock
 

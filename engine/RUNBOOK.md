@@ -184,8 +184,10 @@ Each call names its job; the job picks the model (`brief_llm.ROUTES`, ADR 0011):
 
 ## 7. Known limits and traps (read before trusting a result)
 
-- **Clips still in the code:** golden extraction (`BRIEF_CLIP_EXTRACT_CHARS`, 40,000 by
-  default) and the judges' view of the brief (`BRIEF_CLIP_CHARS`, 6,500).
+- **Clips still in the code:** the capture, golden extraction, scorecard, how-to-win and
+  territory calls read the first `BRIEF_CLIP_EXTRACT_CHARS` (40,000 by default, read once at
+  import, so set it before `import parse_brief`). Judges never receive the brief itself, so
+  `BRIEF_CLIP_CHARS` no longer changes anything.
   - jev's category, scorecard and capture-fallback checks read the first 60,000 characters.
   - jev's figure, fact-conflict, claim and open-question checks read the whole brief in
     pieces (fixed 2026-10-01).
