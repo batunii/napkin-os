@@ -52,9 +52,38 @@ pub fn find_pdf_renderer() -> Option<String> {
     None
 }
 
-/// Write the export HTML to a persistent temp file (removed by [`finish_export`]).
+/// The OS's legibility check, run in every export as it renders (in the PDF
+/// renderer, and in the browser that opens an HTML export). A theme can leave
+/// text the colour of what is behind it — an app's dark tokens on the white of
+/// paper, a pale accent on white. Any text under 3:1 against its own background
+/// is set to ink or white, whichever reads; nothing else is touched. The count
+/// it fixed is left on `<html data-napkin-legible>`.
+const LEGIBLE: &str = r#"<script data-napkin-legible>(function(){
+function rgb(s){var m=/rgba?\(([^)]+)\)/.exec(s||'');if(!m)return null;var p=m[1].split(',').map(Number);return {r:p[0],g:p[1],b:p[2],a:p.length>3?p[3]:1};}
+function lum(c){function f(v){v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);}return .2126*f(c.r)+.7152*f(c.g)+.0722*f(c.b);}
+function bg(el){for(;el&&el.nodeType===1;el=el.parentElement){var cs=getComputedStyle(el);if(cs.backgroundImage&&cs.backgroundImage!=='none')return null;var c=rgb(cs.backgroundColor);if(c&&c.a>.5)return c;}return {r:255,g:255,b:255,a:1};}
+function run(){var n=0,seen=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+while(w.nextNode()){var t=w.currentNode,el=t.parentElement;if(!el||!t.textContent.trim()||seen.indexOf(el)>=0)continue;seen.push(el);
+var fg=rgb(getComputedStyle(el).color),b=bg(el);if(!fg||!b)continue;var x=lum(fg),y=lum(b);
+if((Math.max(x,y)+.05)/(Math.min(x,y)+.05)<3){el.style.setProperty('color',y>.4?'#14161B':'#FFFFFF','important');n++;}}
+document.documentElement.setAttribute('data-napkin-legible',String(n));}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();
+window.addEventListener('beforeprint',run);})();</script>"#;
+
+/// The export with the legibility check spliced in before its last `</body>`
+/// (an app's own strings can hold a `</body>` earlier on), or appended.
+pub fn with_legibility_check(html: &str) -> String {
+    match html.to_ascii_lowercase().rfind("</body>") {
+        Some(i) => format!("{}{}{}", &html[..i], LEGIBLE, &html[i..]),
+        None => format!("{html}{LEGIBLE}"),
+    }
+}
+
+/// Write the export HTML to a persistent temp file (removed by [`finish_export`]),
+/// with the legibility check in it.
 pub fn write_temp_html(html: &str) -> HostResult<String> {
     use std::io::Write;
+    let html = with_legibility_check(html);
     let tf = tempfile::Builder::new()
         .prefix("napkin-export-")
         .suffix(".html")
@@ -110,4 +139,19 @@ pub fn finish_export(kind: &str, tmp_html: &str, dest: &str) -> HostResult<Strin
     };
     let _ = std::fs::remove_file(tmp_html);
     result.map(|_| dest.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_legibility_check_goes_before_the_last_body_close() {
+        let html = "<html><body><script>var s='</body>';</script><p>x</p></BODY></html>";
+        let out = with_legibility_check(html);
+        let at = out.find("data-napkin-legible").unwrap();
+        assert!(at > out.find("<p>x</p>").unwrap(), "after the content, not at an app's '</body>' string");
+        assert!(out.ends_with("</BODY></html>"));
+        assert!(with_legibility_check("<p>no body</p>").contains("data-napkin-legible"));
+    }
 }

@@ -151,11 +151,44 @@ pub fn query_param(query: &str, key: &str) -> Option<String> {
     query.split('&').find_map(|kv| {
         let (k, v) = kv.split_once('=')?;
         if k == key {
-            Some(v.replace('+', " "))
+            Some(uri_decode(&v.replace('+', " ")))
         } else {
             None
         }
     })
+}
+
+/// `%XX` escapes decoded as UTF-8 (a value `encodeURIComponent` wrote); a malformed escape is kept
+/// as it stands.
+pub fn uri_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+}
+
+/// `encodeURIComponent`: what a browser sent for a name, so a file stored under that spelling is found.
+pub fn uri_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &c in s.as_bytes() {
+        if c.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&c) {
+            out.push(c as char);
+        } else {
+            out.push_str(&format!("%{c:02X}"));
+        }
+    }
+    out
 }
 
 /// True for the routes that must be awaited. The desktop shell spawns these so
@@ -634,7 +667,13 @@ pub fn dispatch(
 
         p if p.starts_with("/assets/") => {
             let rel = p.strip_prefix("/assets/").unwrap_or("");
-            match session.serve_asset(rel) {
+            // a URL's path arrives percent-encoded; a file uploaded before names were decoded is
+            // stored under that spelling, one uploaded since under the name itself: try both
+            let found = session.serve_asset(rel).or_else(|e| {
+                let plain = uri_decode(rel);
+                if plain != rel { session.serve_asset(&plain) } else { Err(e) }
+            });
+            match found {
                 Ok((ct, bytes)) => {
                     let mut resp = HostResponse::new(200, &ct, bytes);
                     resp.headers
@@ -646,5 +685,22 @@ pub fn dispatch(
         }
 
         _ => HostResponse::unknown_route(),
+    }
+}
+
+#[cfg(test)]
+mod uri_tests {
+    use super::*;
+
+    #[test]
+    fn an_uploaded_name_is_decoded_and_its_old_spelling_can_be_rebuilt() {
+        // the owner's tender files, 2026-10-01: stored as `a%20b.pdf`, asked for as `a b.pdf`
+        let sent = "2_Samaritans%20nfpPublic%20Ireland%20EDITED.pdf";
+        assert_eq!(query_param(&format!("name={sent}&agent=human"), "name").unwrap(),
+                   "2_Samaritans nfpPublic Ireland EDITED.pdf");
+        assert_eq!(uri_encode("2_Samaritans nfpPublic Ireland EDITED.pdf"), sent);
+        assert_eq!(uri_decode("caf%C3%A9%20%E2%82%AC.pdf"), "café €.pdf");
+        assert_eq!(uri_decode("100%"), "100%");
+        assert_eq!(uri_decode("a%zzb"), "a%zzb");
     }
 }

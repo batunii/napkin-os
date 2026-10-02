@@ -1,3 +1,4 @@
+import re
 from napkin.rules import budget, identify, markets, merge
 from napkin.rules.cite import clean_claim
 from napkin.rules.confidence import coverage_of, fact_confidence, finding_confidence, merge_coverage
@@ -195,3 +196,25 @@ def test_brand_from_text():
     assert found and opts[0]["value"]["ref"] == "brand/harbour-tonic" and opts[0]["origin"] == "stated"
     opts, _ = identify.brand_options_from_text("Kestrel", [])
     assert opts[0]["value"] == {"ref": "brand/kestrel", "name": "Kestrel"} and opts[-1]["id"] == "none"
+
+
+def test_different_statements_under_one_key_are_a_list_not_a_contest():
+    # the owner, 2026-10-01: four Nintendo dates were shown as "the sources disagree"
+    vals = ["Star Fox release on Switch 2: 25 June 2026", "Splatoon Raiders release on Switch 2: 23 July 2026"]
+    cands = [{**c("brand/nintendo", "rhythm.key_moment", v, "GB"), "unit": "text"} for v in vals]
+    out = merge.merge(cands, {}, set())
+    assert not out["contests"] and len(out["pins"]) == 2
+    keys = sorted(p["key"] for p in out["pins"])
+    assert keys[0].startswith("rhythm.key_moment.splatoon_raiders_release_on_swit_")
+    assert keys[1].startswith("rhythm.key_moment.star_fox_release_on_switch_2_25_")
+    assert all(re.fullmatch(r"[a-z0-9_]+(\.[a-z0-9_]+)*", k) for k in keys)
+    # two numbers for one measure still disagree
+    nums = [{**c("category/a.b", "market.size", v, "IE"), "unit": "eur"} for v in (4, 5)]
+    assert len(merge.merge(nums, {}, set())["contests"]) == 1
+
+
+def test_a_region_word_is_read_as_its_markets():
+    from napkin.rules import markets
+    assert markets.from_text("Global") == ["US", "GB", "DE", "FR", "JP", "CN", "IN", "BR"]
+    assert markets.region_in("launch it across the Nordics")[1] == ["SE", "NO", "DK", "FI"]
+    assert markets.from_text("Ireland and GB") == ["IE", "GB"] and markets.region_in("Ireland and GB") is None

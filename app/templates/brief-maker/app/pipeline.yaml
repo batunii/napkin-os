@@ -22,9 +22,12 @@ tasks:
       - materials, with host-extracted text (the client's words, the only thing capture reads)
       - the retrieval port, per drafter, for the packs of its loop
       - shared/facts.yaml and shared/findings.yaml, per drafter, the selection of §10.13 only
-      - the context stage: the brief's pins and findings and a research spin-off's audience and
-        headline, to fill a part the client's words leave empty — written as Sam's (from_research,
-        citing the facts) or Dara's assumption (assume), never as the client's words
+      - "the context stage (Sam): the brief's pins and findings, a research spin-off's audience and headline,
+        and the library, to plan the whole brief part by part; then the research the plan asks for, pinned
+        with its sources"
+      - "the draft stage (Dara): every part at once, from the plan, the client's words, the facts and the
+        library, each part saying what it rests on (the client, the research, the library or an assumption)"
+      - "the judge stage (Jude): jev flags the parts that need rewriting, Jude says why, Dara rewrites them"
     never:
       - feeds a pin, finding, contest, report or upstream value to capture, or cites one from a captured field
       - sends an item whose newest classify mark has model false to any model call (§10.13 item 6)

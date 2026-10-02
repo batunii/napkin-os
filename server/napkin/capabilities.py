@@ -22,10 +22,12 @@ trusted not to.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
 
+from . import runlog
 from .model import ModelError, ModelPort, Usage
 from .research import ResearchError, ResearchPort
 from .retrieval import RetrievalError, RetrievalPort
@@ -35,8 +37,10 @@ log = logging.getLogger("napkin.caps")
 
 
 class ModelCap:
-    def __init__(self, port: ModelPort | None, usage: Usage, attribution: dict, semaphore: threading.Semaphore | None):
+    def __init__(self, port: ModelPort | None, usage: Usage, attribution: dict, semaphore: threading.Semaphore | None,
+                 runlog_of=lambda: runlog.NULL):
         self._port, self._usage, self._attr, self._sem = port, usage, attribution, semaphore
+        self._log = runlog_of
 
     @property
     def model_id(self) -> str | None:
@@ -55,39 +59,104 @@ class ModelCap:
         if self._port is None:
             raise ModelError("no model is configured", "server")
         attr = _attr_str(self._attr)
-        kw = dict(usage=self._usage, attribution=attr, max_tokens=max_tokens, effort=effort, images=images,
-                  model=self._port.vision_model if vision else None,
+        mine = Usage()  # this call's own tokens and attempts, for the run log; folded into the job's below
+        model = self._port.vision_model if vision else None
+        kw = dict(usage=mine, attribution=attr, max_tokens=max_tokens, effort=effort, images=images,
+                  model=model,
                   headers={"X-Napkin-Handler": str(self._attr.get("handler") or "-"),
                            "X-Napkin-Job": str(self._attr.get("job") or "-")})
-        if self._sem is None:
-            return self._port.call(purpose, system, payload, schema, **kw)
-        with self._sem:
-            return self._port.call(purpose, system, payload, schema, **kw)
+        t0, out, err = time.monotonic(), None, None
+        try:
+            if self._sem is None:
+                out = self._port.call(purpose, system, payload, schema, **kw)
+            else:
+                with self._sem:
+                    out = self._port.call(purpose, system, payload, schema, **kw)
+            return out
+        except Exception as e:
+            err = f"{getattr(e, 'kind', type(e).__name__)}: {str(e)[:300]}"
+            raise
+        finally:
+            with self._usage._lock:
+                self._usage.calls += mine.calls
+                self._usage.input_tokens += mine.input_tokens
+                self._usage.output_tokens += mine.output_tokens
+            log_ = self._log()
+            if log_.on:
+                body = runlog.bodies()
+                pj = json.dumps(payload, ensure_ascii=False, default=str)
+                log_.model(purpose=purpose, model=model or self._port.model, secs=time.monotonic() - t0,
+                           tin=mine.input_tokens, tout=mine.output_tokens, attempts=mine.calls, ok=err is None,
+                           error=err, payload_chars=len(pj) + len(system or ""),
+                           reply_chars=len(json.dumps(out, ensure_ascii=False)) if out is not None else None,
+                           payload={"system": system, "payload": payload} if body else None, reply=out if body else None)
 
 
 class ResearchCap:
-    def __init__(self, port: ResearchPort | None, attribution: dict, semaphore: threading.Semaphore):
+    def __init__(self, port: ResearchPort | None, attribution: dict, semaphore: threading.Semaphore,
+                 runlog_of=lambda: runlog.NULL):
         self._port, self._attr, self._sem = port, attribution, semaphore
+        self._log = runlog_of
 
     def search(self, query: str, lens: str, market: str, entity: str | None = None, category: str | None = None,
                max_sources: int = 6) -> dict:
         if self._port is None:
             raise ResearchError("no research service is configured")
         with self._sem:
-            t0 = time.monotonic()
+            t0, out, err = time.monotonic(), None, None
             try:
-                return self._port.search(query, lens, market, entity=entity, category=category,
-                                         max_sources=max_sources, attribution=dict(self._attr))
+                out = self._port.search(query, lens, market, entity=entity, category=category,
+                                        max_sources=max_sources, attribution=dict(self._attr))
+                return out
+            except Exception as e:
+                err = f"{type(e).__name__}: {str(e)[:300]}"
+                raise
             finally:
                 log.info("research %s/%s %.1fs [%s]", lens, market, time.monotonic() - t0, _attr_str(self._attr))
+                tr = (out or {}).get("trace") or {}
+                self._log().research(lens=lens, market=market, query=query, secs=time.monotonic() - t0,
+                                     sources=len((out or {}).get("sources") or []) if out is not None else None,
+                                     urls=[x.get("url") for x in (out or {}).get("sources") or []][:12] or None,
+                                     cost=tr.get("cost_usd"), cached=tr.get("cached"), error=err,
+                                     queries=tr.get("queries") or None)
+
+
+class JevCap:
+    """jev's yes/no and choice answers about one text (napkin.jev). `configured` False when no
+    key is set: a caller then goes on unchecked."""
+
+    def __init__(self, port, runlog_of=lambda: runlog.NULL):
+        self._port, self._log = port, runlog_of
+
+    @property
+    def configured(self) -> bool:
+        return self._port is not None
+
+    def ask(self, state: dict, questions: dict, what: str = "-") -> dict:
+        from .jev import JevError
+        if self._port is None:
+            raise JevError("no jev key is configured")
+        t0, out, err = time.monotonic(), None, None
+        chars = len(json.dumps(state, ensure_ascii=False, default=str)) + len(json.dumps(questions))
+        try:
+            out = self._port.ask(state, questions)
+            return out
+        except Exception as e:
+            err = f"{type(e).__name__}: {str(e)[:300]}"
+            raise
+        finally:
+            # jev bills input tokens only, about $0.04 per million (Sai's 2026-09-24 lab); ~4 chars a token
+            self._log().jev(check=what, questions=len(questions), secs=time.monotonic() - t0, state_chars=chars,
+                            cost=round(chars / 4 / 1e6 * 0.04, 6), error=err)
 
 
 class RetrievalCap:
     """Passages from the knowledge packs, under the bound scope. The packs list
     is read once per job."""
 
-    def __init__(self, port: RetrievalPort | None, scope: dict, attribution: dict):
+    def __init__(self, port: RetrievalPort | None, scope: dict, attribution: dict, runlog_of=lambda: runlog.NULL):
         self._port, self._scope, self._attr = port, scope, attribution
+        self._log = runlog_of
         self._packs = None
         self._lock = threading.Lock()
 
@@ -106,12 +175,21 @@ class RetrievalCap:
     def retrieve(self, query: str, k: int, packs=None, where=None, purpose: str | None = None) -> dict:
         if self._port is None:
             raise RetrievalError("no retrieval service is configured")
-        t0 = time.monotonic()
+        t0, out, err = time.monotonic(), None, None
         try:
-            return self._port.retrieve(self._scope, dict(self._attr), query, k, packs=packs, where=where,
-                                       purpose=purpose)
+            out = self._port.retrieve(self._scope, dict(self._attr), query, k, packs=packs, where=where,
+                                      purpose=purpose)
+            return out
+        except Exception as e:
+            err = f"{type(e).__name__}: {str(e)[:300]}"
+            raise
         finally:
             log.info("retrieval %s %.1fs [%s]", purpose or "-", time.monotonic() - t0, _attr_str(self._attr))
+            found = None
+            if isinstance(out, dict):
+                found = len(out.get("passages") or out.get("hits") or [])
+            self._log().retrieval(purpose=purpose, k=k, secs=time.monotonic() - t0, found=found, error=err,
+                                  query=query)
 
 
 class JobCap:
@@ -145,14 +223,17 @@ class Capabilities:
 
     def __init__(self, *, handler: str, scope: dict, model_port, research_port, layer_store,
                  research_semaphore: threading.Semaphore, jobs: JobCap | None = None, retrieval_port=None,
-                 model_semaphore: threading.Semaphore | None = None):
+                 model_semaphore: threading.Semaphore | None = None, jev_port=None):
         self._scope = dict(scope)
         self.handler = handler
         self.attribution = {"handler": handler, "job": "-", "org": scope["org"], "brand": scope["brand"]}
         self.usage = Usage()
-        self.model = ModelCap(model_port, self.usage, self.attribution, model_semaphore)
-        self.research = ResearchCap(research_port, self.attribution, research_semaphore)
-        self.retrieval = RetrievalCap(retrieval_port, self._scope, self.attribution)
+        self.runlog = runlog.NULL  # the dogfood run log, opened when a job is bound
+        of = lambda: self.runlog  # noqa: E731
+        self.model = ModelCap(model_port, self.usage, self.attribution, model_semaphore, of)
+        self.research = ResearchCap(research_port, self.attribution, research_semaphore, of)
+        self.retrieval = RetrievalCap(retrieval_port, self._scope, self.attribution, of)
+        self.jev = JevCap(jev_port, of)
         try:
             self.layers = layer_store.open(self._scope, self.attribution)
         except TypeError:  # a store whose open() takes the scope only
@@ -160,8 +241,9 @@ class Capabilities:
         self.jobs = jobs or JobCap()
 
     def bind_job(self, job_id: str):
-        """The job id every later call is attributed to."""
+        """The job id every later call is attributed to, and the job's run log."""
         self.attribution["job"] = job_id
+        self.runlog = runlog.open_log(job_id, self.handler)
 
     def capture_view(self) -> CaptureView:
         return CaptureView(self.model, self.jobs, self.handler)

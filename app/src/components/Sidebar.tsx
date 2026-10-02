@@ -2,12 +2,29 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import type { ManifestInfo } from '../host'
+import { useEffect, useState } from 'react'
+import { host } from '../host'
+import type { ManifestInfo, UpstreamEntry } from '../host'
 import './chrome.css'
 
 interface Props {
   manifest: ManifestInfo | null
   path: string | null
+  /** Open a document of the store: the "Made from" link to the one this was spun off from. */
+  onOpenDocument?: (path: string) => void
+}
+
+/** What this document was made from, as the host finds it (`GET /upstream`). */
+function useMadeFrom(path: string | null): UpstreamEntry[] {
+  const [up, setUp] = useState<UpstreamEntry[]>([])
+  useEffect(() => {
+    let live = true
+    setUp([])
+    if (!path) return
+    host.upstream().then(v => { if (live) setUp(v.upstream ?? []) }, () => {})
+    return () => { live = false }
+  }, [path])
+  return up
 }
 
 function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
@@ -19,7 +36,8 @@ function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   )
 }
 
-export default function Sidebar({ manifest, path }: Props) {
+export default function Sidebar({ manifest, path, onOpenDocument }: Props) {
+  const madeFrom = useMadeFrom(manifest ? path : null)
   if (!manifest) return <div className="ch-side ch-side-left"><p className="ch-empty">Open a .clan file to begin.</p></div>
 
   return (
@@ -41,6 +59,20 @@ export default function Sidebar({ manifest, path }: Props) {
         <Row k="ID" v={manifest.id} mono />
         <Row k="SHA-256" v={manifest.sha256.slice(0, 20) + '…'} mono />
       </div>
+
+      {madeFrom.length > 0 && (
+        <div className="ch-section">
+          <div className="eyebrow">Made from</div>
+          {madeFrom.map(u => (
+            <div className="ch-row" key={u.document_id}>
+              <span className="ch-val">{u.title || 'A document not in this workspace'}{u.direct ? '' : ' (further back)'}</span>
+              {u.path && onOpenDocument && (
+                <button type="button" className="ch-link" onClick={() => onOpenDocument(u.path!)}>Open ↗</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {manifest.lineage ? (
         <div className="ch-section">

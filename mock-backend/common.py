@@ -253,7 +253,7 @@ def claude_argv(cfg: Config, call: ClaudeCall, system_fd: int | None) -> list[st
     stream = bool(call.images)
     cmd = [cfg.claude_bin, "-p", "--model", call.alias]
     if stream:
-        # Image blocks only travel through stream-json input, which requires
+        # Image and document blocks only travel through stream-json input, which requires
         # stream-json output (verified against Claude Code 2.1.281).
         cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
     else:
@@ -283,7 +283,8 @@ def claude_argv(cfg: Config, call: ClaudeCall, system_fd: int | None) -> list[st
 def _stdin_for(call: ClaudeCall) -> str:
     if not call.images:
         return call.prompt
-    content = [{"type": "image", "source": {"type": "base64", "media_type": mt, "data": data}}
+    content = [{"type": "document" if mt == "application/pdf" else "image",
+                "source": {"type": "base64", "media_type": mt, "data": data}}
                for mt, data in call.images]
     content.append({"type": "text", "text": call.prompt})
     return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"

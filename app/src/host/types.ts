@@ -396,6 +396,8 @@ export interface UpstreamEntry {
   in_store: boolean
   title?: string
   app_id?: string
+  /** Where the shell opens it (the store's id for it); absent when it is not in the store. */
+  path?: string
   version?: string
   locked?: boolean
   status: 'current' | 'changed' | 'not_compared' | 'unknown'

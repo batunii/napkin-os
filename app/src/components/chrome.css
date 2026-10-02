@@ -487,3 +487,8 @@
   color: var(--paper);
   border-color: var(--ink);
 }
+
+/* the sidebar's "Made from" link back to the document this one was spun off from */
+.ch-link{border:0;background:none;padding:2px 0;font:inherit;font-size:12.5px;color:var(--ink,inherit);
+  text-decoration:underline;text-underline-offset:3px;cursor:pointer;white-space:nowrap}
+.ch-link:hover{opacity:.75}

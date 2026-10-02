@@ -21,7 +21,7 @@ use axum::http::{header, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use axum::Router;
-use napkin_host::{HostRequest, HostResponse};
+use napkin_host::{HostEvent, HostRequest, HostResponse};
 
 use crate::state::AppCtx;
 
@@ -89,7 +89,22 @@ async fn dispatch(
     // The grant, not the request, says who this is: an app frame cannot name
     // its own actor or scope.
     let resp = napkin_host::dispatch_async(&grant.tenant.ctx(), &session, &*ctx.config, req).await;
-    ctx.events.publish_all(&grant.tenant, &resp.events);
+    // An app that builds its own export (`clan://export`) gets back a temp file
+    // on this server. The browser cannot fetch a server path, so it is stashed
+    // behind a handle here, as `/export` does for the export the OS composes.
+    let events: Vec<HostEvent> = resp
+        .events
+        .iter()
+        .map(|e| match e {
+            HostEvent::ExportRequest { kind, filename, tmp_html } => HostEvent::ExportRequest {
+                kind: kind.clone(),
+                filename: filename.clone(),
+                tmp_html: ctx.exports.stash(&grant.tenant, tmp_html.clone(), filename.clone()),
+            },
+            other => other.clone(),
+        })
+        .collect();
+    ctx.events.publish_all(&grant.tenant, &events);
     into_response(resp)
 }
 

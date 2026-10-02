@@ -26,8 +26,10 @@ def start(req, caps, settings, jid):
         if not isinstance(m, dict) or norm_sha(m.get("sha256", "")) != norm_sha(a["sha256"]):
             raise bad("an attachment's material_id is not in clan.data.materials with that sha256 "
                       "(the view indexes a file before it starts the campaign)")
+    # the PDF itself and a Word file's or deck's pictures travel with it too, for reading.py
     xinp = {"prompt": prompt, "attachments": [{"name": a["name"], "sha256": a["sha256"], "material_id": a["material_id"],
-                                               **({"text": a["text"]} if "text" in a else {})} for a in atts]}
+                                               **{k: a[k] for k in ("text", "document", "images") if k in a}}
+                                              for a in atts]}
     build_materials(xinp, ctx_data(req.clan))  # validates the hashes
     if not (prompt.strip() or any(isinstance(a.get("text"), str) and a["text"].strip() for a in atts)):
         raise bad("nothing to read: input.prompt is empty and no attachment carries text")

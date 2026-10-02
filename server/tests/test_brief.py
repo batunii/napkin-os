@@ -71,6 +71,8 @@ class Host:
             return
         self.changes.append(change)
         self.data = apply_patch(self.data, change["data_patch"])
+        self.facts += [f for f in change.get("facts_append") or [] if f["id"] not in {x["id"] for x in self.facts}]
+        self.sources = getattr(self, "sources", []) + list(change.get("sources_append") or [])
         # The host's chain is newest first: it prepends each decision it
         # appends, in the order the change lists them.
         self.chain = list(reversed(new)) + self.chain
@@ -130,10 +132,12 @@ def check_change_rules(host):
                 ok = (c.startswith("cap_") and c in (data.get("capture") or {}).get("items", {})) or \
                      (c.startswith("psg_") and c in (data.get("passages") or {})) or \
                      (c.startswith("mat_") and c in (data.get("materials") or {})) or \
-                     (c.startswith("d_") and c in ids) or c.startswith(f"{DOC}#")
+                     (c.startswith("d_") and c in ids) or c.startswith(f"{DOC}#") or \
+                     (c.startswith("f_") and c in {f["id"] for f in host.facts}) or \
+                     (c.startswith("src_") and c in {x["id"] for x in getattr(host, "sources", [])})
                 assert ok, f"{d['id']} cites {c}, which does not resolve"
         assert d["handler"].startswith(("draft_brief@1", "regenerate_field@1"))
-        assert d["agent"].rsplit("/", 1)[-1] in ("extract", "drafter", "judge")
+        assert d["agent"].rsplit("/", 1)[-1] in ("extract", "synthesise", "drafter", "judge")
     # the document validates against Brief Maker's schema, the §10.4 blocks included
     jsonschema.Draft7Validator(BRIEF_SCHEMA).validate(data)
 

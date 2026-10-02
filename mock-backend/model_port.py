@@ -28,6 +28,9 @@ from common import ClaudeCall, ClaudeFailure, Config, Request, Response, Slots, 
 BASE_MODELS: dict[str, str] = {
     "claude-opus-5": "opus",
     "claude-sonnet-5": "sonnet",
+    # exact ids, passed to the CLI as they are, so a call names the model that answered it
+    "claude-opus-5-5": "claude-opus-5-5",
+    "claude-sonnet-5-5": "claude-sonnet-5-5",
     "claude-haiku-4-5": "haiku",
     "claude-haiku-4-5-20251001": "haiku",
     "claude-fable-5-1": "fable",
@@ -59,6 +62,8 @@ MODELS = model_map()
 
 EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+DOC_TYPES = {"application/pdf"}   # a `document` block: the CLI reads a PDF's pages as pictures and text
+MAX_DOC_BYTES = 32 * 1024 * 1024
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGES = 20
 
@@ -140,16 +145,18 @@ def flatten(turns: list) -> str:
 
 
 def check_image(media_type, data, where: str) -> tuple[str, str]:
-    if media_type not in IMAGE_TYPES:
-        raise invalid(f"{where}: image media type must be one of {sorted(IMAGE_TYPES)}")
+    if media_type not in IMAGE_TYPES | DOC_TYPES:
+        raise invalid(f"{where}: image media type must be one of {sorted(IMAGE_TYPES)}, or a PDF document")
     if not isinstance(data, str) or not data:
         raise invalid(f"{where}: image data must be a non-empty base64 string")
     try:
         raw = base64.b64decode(data, validate=True)
     except (binascii.Error, ValueError):
         raise invalid(f"{where}: image data is not valid base64") from None
-    if len(raw) > MAX_IMAGE_BYTES:
-        raise invalid(f"{where}: image is {len(raw)} bytes decoded; the limit is {MAX_IMAGE_BYTES}")
+    limit = MAX_DOC_BYTES if media_type in DOC_TYPES else MAX_IMAGE_BYTES
+    if len(raw) > limit:
+        raise invalid(f"{where}: {'document' if media_type in DOC_TYPES else 'image'} is {len(raw)} bytes decoded; "
+                      f"the limit is {limit}")
     return media_type, data
 
 
@@ -204,21 +211,23 @@ def _anthropic_blocks(blocks, where: str, images: list | None) -> str:
             if not isinstance(b.get("text"), str):
                 raise invalid(f"{w}.text: Field required")
             parts.append(b["text"])     # cache_control, citations: accepted and dropped
-        elif t == "image":
+        elif t in ("image", "document"):
             if images is None:
-                raise invalid(f"{w}: image blocks are accepted only in user turns")
+                raise invalid(f"{w}: {t} blocks are accepted only in user turns")
             src = b.get("source")
             if not isinstance(src, dict):
                 raise invalid(f"{w}.source: Field required")
             if src.get("type") != "base64":
                 raise invalid(f"{w}.source.type: the mock accepts only `base64` image sources (never a URL: "
                               "the bytes are client-confidential and must not be fetched from a link)")
+            if (t == "document") != (src.get("media_type") in DOC_TYPES):
+                raise invalid(f"{w}: a document block carries a PDF, an image block a picture")
             images.append(check_image(src.get("media_type"), src.get("data"), w))
         elif t in ("tool_use", "tool_result", "server_tool_use", "mcp_tool_use", "mcp_tool_result"):
             raise invalid(f"{w}: the mock does not support `{t}` blocks (it does not support tools)")
         else:
-            raise invalid(f"{w}: the mock does not support `{t}` content blocks; only `text` and `image` "
-                          "(documents are extracted to text by the host; audio needs the real API)")
+            raise invalid(f"{w}: the mock does not support `{t}` content blocks; only `text`, `image` and "
+                          "`document` (a PDF); audio needs the real API")
     return "\n\n".join(parts)
 
 

@@ -392,6 +392,12 @@ section.start{margin-top:40px}
 .ans.primary small{color:inherit;opacity:.75}
 .ans[disabled]{opacity:.55;cursor:wait;box-shadow:none}
 .answers.sm .ans{padding:8px 14px;min-height:44px;font-size:14.5px;border-radius:12px}
+.rc-opts{display:grid;gap:12px;margin-top:14px}
+.rc-opt{display:grid;gap:6px;justify-items:start}
+.rc-opt .ans{padding:8px 14px;min-height:44px;font-size:14.5px;border-radius:12px}
+.rc-src{margin:0 0 0 4px;font-size:13px;line-height:1.45;color:var(--ink2);max-width:62ch}
+.rc-src q{font-style:italic}
+.rc-src a{color:var(--ink);text-underline-offset:3px;white-space:nowrap}
 
 /* the start: one question, one box, the crew standing on it */
 .rs-start{min-height:calc(100vh - 110px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:12px 0 40px;text-align:center}
@@ -2773,24 +2779,37 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
     return -1;
   }
-  // Out of date (Contract 3 §17): the member hashes it was composed from are
-  // not the projection's, or a campaign/selection decision came after it —
-  // after the decision that wrote it, in the chain's order (newest first),
-  // never by the clock. A locked report is the version agreed to: it is
-  // never out of date, and there is nothing to refresh (the host refuses
-  // jobs on a locked document).
+  // Out of date (Contract 3 §17): something came after the decision that wrote
+  // the report (in the chain's order, newest first, never by the clock) that
+  // would change what it says. What the report already shows live does not
+  // count: a point verified, a disagreement resolved, a figure corrected, the
+  // wording edited — the member hashes change with those, so they are not the
+  // test. A locked report is the version agreed to: it is never out of date,
+  // and there is nothing to refresh (the host refuses jobs on a locked document).
   function reportLocked(){ return !!(window.ClanFields&&ClanFields.locked&&ClanFields.locked()); }
+  var STALE_BY={
+    research_run:'new research', research_merge:'new research', lookup:'new research', open_contest:'new research',
+    synthesise_finding:'new points', propose_audience:'a new audience', reject_finding:'a point rejected'
+  };
+  function touchesExcluded(d){ return arr(d.targets).some(function(a){ return /^selection\.excluded/.test(pathOf(a)); }); }
+  function touchesCampaign(d){
+    var re=/^campaign(\.|\[|$)/;
+    return arr(d.targets).length?arr(d.targets).some(function(a){ return re.test(pathOf(a)); }):arr(d.fields_changed).some(function(f){ return re.test(String(f)); });
+  }
   function reportStale(r){
-    var out=[], p=proj(), b=isObj(r.based_on)?r.based_on:{};
+    var out=[];
     if(reportLocked()) return out;
-    if(p&&isObj(p.built_from)){
-      if(b.facts_sha256&&p.built_from.facts_sha256&&b.facts_sha256!==p.built_from.facts_sha256) out.push('The pinned facts have changed since.');
-      if(b.findings_sha256&&p.built_from.findings_sha256&&b.findings_sha256!==p.built_from.findings_sha256) out.push('The findings have changed since (verified, rejected or new).');
-    }
-    var w=reportWriter();
-    var newer=w<0?[]:decs().slice(0,w).filter(touchesAsk);
-    if(newer.length) out.push(newer.length+' decision'+(newer.length===1?'':'s')+' about the ask or the selection since ('+newer.slice(0,3).map(function(d){ return (d.action||d.kind||'edit')+' by '+human(d.actor||d.agent); }).join('; ')+(newer.length>3?'; …':'')+').');
-    return out;
+    var w=reportWriter(); if(w<0) return out;
+    var why={};
+    decs().slice(0,w).forEach(function(d){
+      var k=STALE_BY[d.action]||(touchesExcluded(d)?'a fact excluded':touchesCampaign(d)&&d.action!=='verified'?'the ask changed':'');
+      if(k) why[k]=(why[k]||0)+1;
+    });
+    return Object.keys(why);
+  }
+  // "Since this report: new research and a point rejected."
+  function staleText(kinds){
+    return 'Since this report: '+(kinds.length>1?kinds.slice(0,-1).join(', ')+' and '+kinds[kinds.length-1]:kinds[0])+'.';
   }
   // Refresh report: highlighted only when the report is out of date; on a
   // locked report it is not offered to press (it would be refused).
@@ -2809,7 +2828,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       // The agent's layout, over the record: the OS renders every figure in it.
       var stale=reportStale(r);
       var bar='<div class="rep-bar no-print"><span class="derived">'+ICON.agent+(r.layout_by==='agent'?'laid out by '+esc(given('drafter')):'laid out from the report')+'</span><span>written '+esc(fmtWhen(r.built_at))+'</span><span class="sp"></span>'
-        +(stale.length?'<span style="color:var(--create-ink)">The document has moved on since.</span>':'')
+        +(stale.length?'<span style="color:var(--create-ink)">'+esc(staleText(stale))+' Refresh to include it.</span>':'')
         +'<button type="button" class="btn sm ghost" data-act="show-run">How it ran</button>'
         +refreshBtn(stale, '')+'</div>'
         +(CHAT.reportErr?'<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>':'');
@@ -2826,7 +2845,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var h='<div class="rep"><div class="rep-top"><span class="eyebrow">Report</span><span class="derived">'+ICON.agent+'written by '+esc(given('drafter'))+'</span><span class="sp"></span>'
       +'<span class="srcline">'+esc(fmtWhen(r.built_at))+'</span>'
       +refreshBtn(stale, 'compose_report: re-compose from the document as it stands')+'</div>';
-    if(stale.length) h+='<div class="rep-stale" role="status"><div><b>Out of date.</b> The document has moved on since this report was composed.<ul>'+stale.map(function(s){ return '<li>'+esc(s)+'</li>'; }).join('')+'</ul></div></div>';
+    if(stale.length) h+='<div class="rep-stale" role="status"><div><b>Out of date.</b> '+esc(staleText(stale))+' Refresh the report to include it.</div></div>';
     if(CHAT.reportErr) h+='<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>';
     h+='<div class="rep-hl"><h2 class="headline" id="h-report">'+esc(hl.text)+'</h2>'+citeChips(hl.cites)+'</div>';
     if(arr(r.summary).length) h+='<ul class="rep-sum">'+arr(r.summary).map(function(s){ return '<li><span>'+esc(s&&s.text)+' '+citeChips(s&&s.cites)+'</span></li>'; }).join('')+'</ul>';
@@ -3018,9 +3037,12 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
           +'<button type="button" class="ans primary" data-act="chk-use" data-ref="'+ref+'"'+off+'>'+(busy?'Saving…':'Use '+esc(fmtAny(pv)))+'</button>'
           +'<button type="button" class="ans" data-act="chk-cancel" data-ref="'+ref+'"'+off+'>Back</button></div></div>';
       } else if(!locked){
-        h2+='<div class="answers sm">'+vs.map(function(v){
-          return '<button type="button" class="ans" data-act="chk-pick" data-ref="'+ref+'" data-fid="'+esc(v.fact_id)+'"><span>'+esc(fmtAny(v))+'</span><small>'+esc(fromName(v))+'</small></button>'; }).join('')
-          +'<button type="button" class="ans" data-act="chk-why" data-ref="'+ref+'">Where did this come from?</button></div>';
+        // Each choice carries what its source said and a way to go and read it: a pick is made on evidence.
+        h2+='<div class="rc-opts">'+vs.map(function(v){
+          var sid=arr(v.sources).filter(function(x){ return /^src_/.test(x); })[0]||'', s=srcRecs()[sid]||{}, q=(v.quotes||{})[sid], web=/^https?:\/\//.test(s.uri||'');
+          return '<div class="rc-opt"><button type="button" class="ans" data-act="chk-pick" data-ref="'+ref+'" data-fid="'+esc(v.fact_id)+'"><span>'+esc(fmtAny(v))+'</span><small>'+esc(fromName(v))+'</small></button>'
+            +(q||web?'<p class="rc-src">'+(q?'<q>'+esc(q)+'</q> ':'')+(web?'<a href="'+esc(s.uri)+'" target="_blank" rel="noopener noreferrer">Open the source ↗</a>':'')+'</p>':'')+'</div>'; }).join('')
+          +'</div><div class="answers sm"><button type="button" class="ans" data-act="chk-why" data-ref="'+ref+'">Where did this come from?</button></div>';
       }
       return h2+'</div></div>';
     }
@@ -3272,12 +3294,23 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   // ════════════════════════════════════════════════════════════════════════
   function buildExportHTML(){
     var clone=$('doc').cloneNode(true);
+    // The OS's fields draw their values as buttons (a tap opens the evidence):
+    // on paper they are the values, so they stay, as text. Every other button
+    // is a control and goes.
+    clone.querySelectorAll('.clf-textbar,[data-clf-cr],[data-clf-lock]').forEach(function(n){ n.remove(); });
+    clone.querySelectorAll('clan-field button,clan-cite button,clan-chart button,clan-quote button,clan-gap button,clan-sources button,clan-tray button').forEach(function(b){
+      var s=document.createElement('span'); s.className=b.className; s.innerHTML=b.innerHTML;
+      ['data-ref','style','title'].forEach(function(a){ if(b.hasAttribute(a)) s.setAttribute(a,b.getAttribute(a)); });
+      b.parentNode.replaceChild(s,b);
+    });
     clone.querySelectorAll('.ctl,.no-print,button,dialog,select').forEach(function(n){ n.remove(); });
     // The report, the submitted request and its answers travel; the start
     // screen, the open question and every control do not.
     clone.querySelectorAll('details').forEach(function(n){ n.setAttribute('open',''); });
     clone.querySelectorAll('[hidden]').forEach(function(n){ n.remove(); });
-    var css=$('cr-style').textContent;
+    // The app's styles and the OS fields' (charts, chips, quotes): without the
+    // second a bar prints as a black block over its own label.
+    var css=$('cr-style').textContent+'\n'+(($('clan-fields-css')||{}).textContent||'');
     var title=researchTitle()||'Campaign research';
     return '<!DOCTYPE html><html lang="en" data-theme="light" data-color-scheme="light"><head><meta charset="UTF-8"><title>'+esc(title)+'</title>'
       +'<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">'

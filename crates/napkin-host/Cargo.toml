@@ -20,6 +20,8 @@ base64 = { workspace = true }
 # The client-review match folds text to NFC before it compares words
 # (os-layer §7.5.2a); pure Rust, so the browser build keeps it.
 unicode-normalization = "0.1"
+# A client's .docx brief and .pptx deck are zip archives of XML: their text is read from them.
+zip = { workspace = true }
 
 # Everything below is native-only. A browser build drops all of it: there is no
 # filesystem to write a temp file to, no process to spawn a renderer in, and the

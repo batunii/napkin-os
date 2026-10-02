@@ -75,22 +75,28 @@ def _why(e) -> tuple[str, str]:
 
 
 class Chunk:
-    def __init__(self, stage, base, patch, read, decisions):
+    def __init__(self, stage, base, patch, read, decisions, facts=(), sources=()):
         self.stage, self.base, self.patch, self.read, self.decisions = stage, base, patch, read, decisions
+        self.facts, self.sources = list(facts), list(sources)  # pins the stage researched, and their sources
         self.ids = {d["id"] for d in decisions}
 
 
 def combine(doc, chunks):
     if not chunks:
         return None
-    patch, read, decs = {}, {}, []
+    patch, read, decs, facts, srcs = {}, {}, [], [], []
     for c in chunks:
         patch = deep_merge(patch, c.patch)
         for k, v in c.read.items():
             read.setdefault(k, v)  # what the EARLIEST writer of the path read
         decs += [d for d in c.decisions if d["id"] not in {x["id"] for x in decs}]
-    return {"doc": doc, "base_version": chunks[0].base, "read": read if patch else {}, "data_patch": patch,
-            "facts_append": [], "findings_append": [], "decisions": decs}
+        facts += [f for f in c.facts if f["id"] not in {x["id"] for x in facts}]
+        srcs += [s for s in c.sources if s["id"] not in {x["id"] for x in srcs}]
+    out = {"doc": doc, "base_version": chunks[0].base, "read": read if patch else {}, "data_patch": patch,
+           "facts_append": facts, "findings_append": [], "decisions": decs}
+    if srcs:
+        out["sources_append"] = srcs
+    return out
 
 
 def _known_ids(clan) -> set:
@@ -173,7 +179,7 @@ class BriefJob:
                 if k in self.fields and self.fields[k]["state"] != "kept":
                     self.fields[k] = {"state": state, "by": by}
 
-    def add_chunk(self, stage, patch, decisions):
+    def add_chunk(self, stage, patch, decisions, facts=(), sources=()):
         if abandoned():
             raise Abandoned(stage)  # the job went on without this stage: what it would write is dropped
         paths = field_paths(patch)
@@ -191,7 +197,8 @@ class BriefJob:
                 owner = next((d for d in writers if pid in (d.get("cites") or [])), None) or \
                     next((d for d in writers if d.get("action") == "review"), None)
             (owner or writers[0])["targets"].append(a)
-        c = Chunk(stage, self.base, copy.deepcopy(patch), read_of(self.W, patch), decisions)
+        self.caps.runlog.decisions(decisions, stage)
+        c = Chunk(stage, self.base, copy.deepcopy(patch), read_of(self.W, patch), decisions, facts, sources)
         with self.lock:
             self.chunks.append(c)
             self.W = apply_patch(self.W, patch)
@@ -204,6 +211,10 @@ class BriefJob:
     def _run(self):
         with self.lock:
             self.state = "running"
+        rl = self.caps.runlog
+        rl.start(self.task, self.doc, self.stages, model=self.caps.model.model_id, engine=type(self).__name__,
+                 materials=[{"kind": m.kind, "chars": len(m.text or "") if hasattr(m, "text") else None}
+                            for m in self.mats], field=self.field, guidance=bool(self.guidance))
         try:
             for i, stage in enumerate(self.stages):
                 with self.lock:
@@ -213,17 +224,28 @@ class BriefJob:
             log.error("%s %s runner failed: %s\n%s", self.task, self.id, e, traceback.format_exc())
             self._fail(self.stages[min(self.stage_idx, len(self.stages) - 1)], "internal",
                        f"the job's runner failed ({type(e).__name__})")
+            self._log_end()
             return
         with self.lock:
             self.stage_idx = len(self.stages)
             self.state, self.finished_at = "done", iso()
+        self._log_end()
+
+    def _log_end(self):
+        try:
+            res = self.result()
+            self.caps.runlog.end(self.state, summary=res.get("summary"), fields=res.get("fields"),
+                                 gaps=res.get("gaps"), proposals=len(res.get("proposals") or []))
+        except Exception:  # noqa: BLE001 - the log never stops a job
+            log.exception("%s %s: the run log's end could not be written", self.task, self.id)
 
     def _stage(self, stage):
         """One stage, in its own thread for at most STAGE_TIMEOUT. However it
         fails, it is a gap and the next stage runs: never the job's end."""
         with self.lock:
             before = {k: f["state"] for k, f in self.fields.items()}
-        _, err, left = bounded(getattr(self, "stage_" + stage), STAGE_TIMEOUT, f"{self.task}-{self.id}-{stage}")
+        with self.caps.runlog.stage(stage):
+            _, err, left = bounded(getattr(self, "stage_" + stage), STAGE_TIMEOUT, f"{self.task}-{self.id}-{stage}")
         if left is not None or err is not None:
             self._unplace(stage, before)
         if left is not None:
@@ -260,6 +282,7 @@ class BriefJob:
         without it. It targets no field, so it never stands as a field's last
         writer (a later job would take it for the field's holder)."""
         action, worker = GAP_ACTION[stage]
+        self.caps.runlog.gap(stage, kind, detail[:300])
         with self.lock:
             self.gaps.append({"stage": stage, "reason": kind, "detail": detail[:200]})
             n = len(self.gaps)
@@ -355,9 +378,13 @@ class BriefJob:
         readable = [m for m in self.mats if m.readable]
         if not readable:
             raise TaskError(400, "invalid_input", "nothing readable: " + "; ".join(tnotes or ["no text"]))
-        cap = cap_stage.run_capture(view, self.mats)
+        # the capture and the client brief's scorecard read the same material: both at once
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f_score = ex.submit(cap_stage.run_scorecard, view, self.mats)
+            cap = cap_stage.run_capture(view, self.mats)
         try:
-            score = cap_stage.run_scorecard(view, self.mats)
+            score = f_score.result()
         except Exception as e:  # the capture stands; the review waits for a scorecard that can be made
             kind, detail = _why(e)
             log.warning("%s %s: the scorecard did not answer (%s): %s", self.task, self.id, kind, detail)

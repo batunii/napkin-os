@@ -68,8 +68,9 @@ class ResearchServer(unittest.TestCase):
         self.assertNotIn("published_at", s[2])                          # not an ISO date
         today = time.strftime("%Y-%m-%d", time.gmtime())
         self.assertTrue(all(x["retrieved_at"] == today for x in s))
-        self.assertEqual(r["trace"], {"backend": "claude-code-websearch", "queries": ["ireland ev registrations"],
-                                      "model": "sonnet"})
+        self.assertEqual({k: v for k, v in r["trace"].items() if k not in ("cost_usd", "cached")},
+                         {"backend": "claude-code-websearch", "queries": ["ireland ev registrations"], "model": "sonnet"})
+        self.assertFalse(r["trace"]["cached"])  # and what the search cost, as the CLI reports it
 
     def test_cli_flags(self):
         self.post(body("ok", entity="brand/flags"), "?fresh=1")
@@ -86,7 +87,10 @@ class ResearchServer(unittest.TestCase):
         st1, r1 = self.post(b)
         st2, r2 = self.post({**b, "query": "  IRISH ev market   MODE:ok ", "market": "IE"})
         self.assertEqual((st1, st2), (200, 200))
-        self.assertEqual(r1, r2)
+        # the repeat is the same answer, marked as a cache hit that cost nothing
+        self.assertEqual(r2["sources"], r1["sources"])
+        self.assertEqual({**r2["trace"], "cached": False, "cost_usd": r1["trace"]["cost_usd"]}, r1["trace"])
+        self.assertEqual((r1["trace"]["cached"], r2["trace"]["cached"], r2["trace"]["cost_usd"]), (False, True, 0.0))
         self.assertEqual(self.calls(), n0 + 1)          # a normalised repeat is a hit
         self.assertEqual(self.post(b, "?fresh=1")[0], 200)
         self.assertEqual(self.calls(), n0 + 2)          # fresh bypasses

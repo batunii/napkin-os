@@ -194,6 +194,10 @@
   .hello .lede{color:var(--muted);font-size:17px;line-height:1.5;max-width:560px;transition:color .35s var(--ease)}
   .kindline{display:block;margin-top:8px;font-weight:600;color:var(--go);transition:color .35s var(--ease)}
   .stage{width:min(760px,100%);display:flex;flex-direction:column}
+.madefrom{margin-top:6px;font-size:13.5px;color:var(--ink2)}
+.madefrom b{color:var(--ink);font-weight:600}
+.madefrom .linkbtn{padding:2px 0;font-size:13.5px}
+#redraft.armed{border-color:var(--ink);color:var(--ink)}
   .onbox{position:relative;z-index:2;display:flex;justify-content:center;align-items:flex-end;gap:64px;min-height:200px;padding:0 24px}
   .onbox .m{position:relative;display:flex;flex-direction:column;align-items:center;border-radius:12px}
   .onbox .agent-figure{width:64px;height:85px;margin-bottom:-7px}
@@ -646,13 +650,14 @@
   <section id="structured">
     <header class="band docband">
       <div class="dtop">
-        <div><div class="ident" id="docIdent"></div><div class="proj" id="hProj"></div><div class="dtitle" id="hDerived" hidden></div><div class="cli" id="hCli"></div></div>
+        <div><div class="ident" id="docIdent"></div><div class="proj" id="hProj"></div><div class="dtitle" id="hDerived" hidden></div><div class="cli" id="hCli"></div><div class="madefrom" id="madeFrom" hidden></div></div>
         <span class="spacer"></span>
         <div class="lookpick" id="modes" role="group" aria-label="Which kind of brief">
           <button type="button" data-style="basic" aria-pressed="false"><span class="kpv kp-paper" aria-hidden="true"><i class="h"></i><i></i><i></i></span>Paper brief</button>
           <button type="button" data-style="creative" aria-pressed="false"><span class="kpv kp-studio" aria-hidden="true"><i class="h"></i><i></i><em></em></span>Studio brief</button>
           <button type="button" data-style="immersive" aria-pressed="false"><span class="kpv kp-brand" aria-hidden="true"><i class="h"></i><i></i><span class="kpics"><u></u><u></u><u></u></span></span>Brand brief</button>
         </div>
+        <button type="button" class="bghost" id="redraft" title="Run the whole crew again on the same ask: Ellis, Sam, Dara and Jude. Parts you wrote yourself are kept, with a suggestion beside them."><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V5h-2.5"/></svg>Draft it again</button>
         <button type="button" class="bghost" id="newDraft" title="Start again from a new brief"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New brief</button>
       </div>
       <div class="bcrew" id="crewline" aria-live="polite"></div>
@@ -1625,8 +1630,8 @@
     if(n) w.push(num(n)+' '+(n===1?'file':'files'));
     return w.length?': '+listWords(w):'';
   }
-  // Sam joins the crew on screen when the research fills a part.
-  function meetOf(j){ return Object.keys(j.sk||{}).length?['extract','synthesis','drafter','judge']:['extract','drafter','judge']; }
+  // Four of us: Sam plans the whole brief (and runs the research it needs) before Dara writes.
+  function meetOf(j){ return ['extract','synthesis','drafter','judge']; }
   function renderProc(){
     var j=DRAFT; if(!j) return;
     track(j);
@@ -1650,23 +1655,24 @@
         st:st.extract==='done'?['ok','✓ Done.'+(eN?' I picked out '+eN+ofAll()+'.':'')]
           :['', j.state==='sending'||j.state==='checking'||j.state==='queued'?'Getting started…':'Reading now…']},
       drafter:{
-        intro:st.drafter==='idle'&&at<1?'<b>I’m '+esc(DARA)+'.</b> I’ll write each part of your brief from what '+esc(ELLIS)+' finds.'
+        intro:st.drafter==='idle'&&at<2?'<b>I’m '+esc(DARA)+'.</b> I’ll write your whole brief from '+esc(SAM)+'’s plan.'
           :st.drafter==='done'&&!d.n?'<b>I’m '+esc(DARA)+'.</b> There was nothing for me to write this time.'
           :st.drafter==='done'&&!d.w?'<b>I’m '+esc(DARA)+'.</b> None of my parts went into the brief this time.'
-          :'<b>I’m '+esc(DARA)+'.</b> '+(st.drafter==='done'?'I wrote '+d.w:'I’m writing '+(d.n?d.n:'my share'))+esc(ofAll())+', each from what '+esc(ELLIS)+' found.',
+          :'<b>I’m '+esc(DARA)+'.</b> '+(st.drafter==='done'?'I wrote '+d.w:'I’m writing '+(d.n?d.n:'my share'))+esc(ofAll())+', all at once from '+esc(SAM)+'’s plan.',
         st:st.drafter==='done'?['ok','✓ Done.'+(d.props.length?' I’ve a new version of '+esc(listWords(d.props.map(partName)))+' for you. You hold '+(d.props.length===1?'that part':'those parts')+', so I didn’t change '+(d.props.length===1?'it':'them')+'.':'')]
-          :st.drafter==='working'&&at===2?['', 'Rewriting '+esc(listWords(busyDraft.map(partName)))+' on '+esc(JUDE)+'’s note.']
+          :st.drafter==='working'&&at===3?['', 'Rewriting '+esc(listWords(busyDraft.map(partName)))+' on '+esc(JUDE)+'’s note.']
           :st.drafter==='working'?['', '<span class="pbar" aria-hidden="true"><i style="width:'+(d.n?Math.round(100*d.k/d.n):4)+'%"></i></span>'+(d.n?d.k+' of my '+d.n+' written':'Starting…')]
-          :['', 'Waiting for '+esc(ELLIS)]},
+          :['', 'Waiting for '+esc(SAM)]},
       synthesis:{
-        intro:'<b>I’m '+esc(SAM)+'.</b> '+(st.synthesis==='done'?'I filled what your words left open from the research.'
-          :'I’m filling what your words leave open from the research, and I cite every fact I use.'),
-        st:st.synthesis==='done'?['ok','✓ Done. I wrote '+parts(sN)+' from the research, for you to check.']
-          :['', esc(c.texts.synthesis||'Reading the research…')]},
+        intro:'<b>I’m '+esc(SAM)+'.</b> '+(st.synthesis==='done'?'I planned the whole brief and looked up what it needed.'
+          :'I plan the whole brief first, so every part serves one idea, and I look up what it needs.'),
+        st:st.synthesis==='done'?['ok','✓ Done. The plan is with '+esc(DARA)+'.']
+          :st.synthesis==='working'?['', 'Planning, then researching what the plan needs…']
+          :['', 'Waiting for '+esc(ELLIS)]},
       judge:{
-        intro:'<b>And I’m '+esc(JUDE)+'.</b> '+(st.judge==='working'?'I’m checking every part, then the whole brief.'
-          :st.judge==='done'||st.judge==='needs-you'?'I checked every part, then the whole brief.'
-          :'When '+esc(DARA)+'’s done, I check every part, then the whole brief, and tell you what needs you.'),
+        intro:'<b>And I’m '+esc(JUDE)+'.</b> '+(st.judge==='working'?'I’m reading the whole brief and checking what rests on the research.'
+          :st.judge==='done'||st.judge==='needs-you'?'I read the whole brief and checked what rests on the research.'
+          :'When '+esc(DARA)+'’s done, I read the whole brief, check what rests on the research, and tell you what needs you.'),
         st:st.judge==='needs-you'?['err', '✓ Done. '+esc(Num(failed)+' '+(failed===1?'part needs':'parts need'))+' you.']
           :st.judge==='done'?['ok','✓ Done. Every part I checked holds up.']
           :st.judge==='working'?['', esc(c.texts.judge||'Checking…')]
@@ -1882,7 +1888,9 @@
     if(c.findings) n.push('<b>'+c.findings+'</b> '+(c.findings===1?'finding':'findings')+(c.checked?' ('+c.checked+' checked)':''));
     if(c.pins) n.push('<b>'+c.pins+'</b> '+(c.pins===1?'fact':'facts'));
     if(c.sources) n.push('<b>'+c.sources+'</b> '+(c.sources===1?'source':'sources'));
-    var h='<div><div class="fu-k">From research</div><div class="fu-t">'+esc(t||'The research this brief started from')+'</div></div>'
+    var ue=upEntry(), up_=ue&&ue.path;
+    var h='<div><div class="fu-k">From research</div><div class="fu-t">'+esc(t||'The research this brief started from')+'</div>'
+      +(up_?'<button type="button" class="linkbtn" id="openUpIn">Open the research ↗</button>':'')+'</div>'
       +(hl?'<blockquote>'+esc(hl)+'</blockquote>':'')
       +(n.length||c.open?'<p class="fu-n">'+(n.length?'It carries '+listWords(n)+'.':'')+(c.open?' Its sources disagree in '+esc(num(c.open))+' '+(c.open===1?'place':'places')+'.':'')+'</p>':'')
       +'<p class="note">'+esc(mats.length
@@ -1891,6 +1899,8 @@
     if(items.length) h+='<div class="locklist">'+lockListHtml(items, 'Before the brief can lock, '+(items.length===1?'this needs':'these need')+' you. Settle '+(items.length===1?'it':'them')+' now, or once the brief is drafted.')+'</div>';
     var up=upNoteInner(); if(up) h+='<div class="upnote" role="status">'+up+'</div>';
     el.innerHTML=h; bindLkItems(el);
+    var oi=$('openUpIn'); if(oi) oi.addEventListener('click',function(){
+      fetch(clanScheme+'/open',{method:'POST',body:JSON.stringify({path:up_})}); });
   }
   // "The research has changed since this brief started", and what changed:
   // findings marked wrong there first, with where this brief uses them.
@@ -1926,7 +1936,7 @@
     UP.t=setTimeout(function(){
       fetch(clanScheme+'/upstream').then(function(r){ return r.ok?r.json():null; })
         .then(function(v){ if(v&&typeof v==='object'){ UP.res=v; UP.state='ok'; } }, function(){ UP.state='unavailable'; })
-        .then(function(){ if(phase==='intake'){ renderFromUp(); syncKind(); } else if(phase==='doc') renderUpNote($('upNote')); syncTitle(); });
+        .then(function(){ if(phase==='intake'){ renderFromUp(); syncKind(); } else if(phase==='doc'){ renderUpNote($('upNote')); renderMadeFrom(); } syncTitle(); });
     }, 300);
   }
 
@@ -1934,6 +1944,8 @@
   var REGEN={};   // field key → true while its Drafter is redrafting it
   function renderStructured(){
     $('docIdent').innerHTML=IDENT;
+    renderMadeFrom();
+    $('redraft').hidden=approveLocked();
     var pn=String(get('project_name')||'').trim(), dt=pn?'':derivedTitle();
     $('hProj').textContent=pn||dt||'Untitled campaign';
     $('hProj').classList.toggle('derived', !pn&&!!dt);
@@ -2299,10 +2311,19 @@
       : '<p'+(f.hero?' class="spp"':'')+'>'+esc(String(v))+'</p>';
     return '<div class="f"><div class="fl">'+esc(f.label)+'</div>'+val+'</div>';
   }
+  function readsOnWhite(hex){
+    var m=/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex||'').trim()); if(!m) return false;
+    var h=m[1].length===3?m[1].replace(/./g,'$&$&'):m[1];
+    var l=[0,2,4].map(function(i){ var v=parseInt(h.substr(i,2),16)/255; return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4); });
+    return 1.05/(.2126*l[0]+.7152*l[1]+.0722*l[2]+.05)>=3;
+  }
   function buildExportHTML(){
     return inlineImages().then(function(images){
+      // Paper is white: a theme's pale accent would leave the headings faint,
+      // so an accent under 3:1 on white prints as the house accent's ink.
       var accent=get('theme.accent')||'#FF4F2E';
-      var proj=esc(get('project_name')||'Untitled brief');
+      if(!readsOnWhite(accent)) accent='#B8321A';
+      var proj=esc(workingTitle()||((window.__CLAN__||{}).manifest||{}).title||'Untitled brief');
       var client=esc(get('client')||'');
       var secs={},order=[];
       FIELDS.forEach(function(f){ if(f.key==='project_name'||f.key==='client') return; var h=exportField(f); if(!h) return;
@@ -2327,7 +2348,7 @@
         +".boards .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}"
         +"figure{page-break-inside:avoid;break-inside:avoid}figure img{width:100%;border-radius:6px;display:block}"
         +"figcaption{font-family:ui-sans-serif,sans-serif;font-size:8pt;color:#9a9a9a;margin-top:4px}"
-        +"footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e2e2;font-family:ui-sans-serif,sans-serif;font-size:8.5pt;color:#aaa;text-align:center}";
+        +"footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e2e2;font-family:ui-sans-serif,sans-serif;font-size:8.5pt;color:#767676;text-align:center}";
       // NB: keep closing tags escaped (<\/head>, <\/body>) so the host's
       // bridge/style injectors can never mistake these literals for the
       // document's real closing tags.
@@ -2360,6 +2381,28 @@
 
   // ---------- footer actions ----------
   $('newDraft').addEventListener('click',function(){ forceIntake=true; handWrite=false; render(); });
+  // Draft it again: the whole crew on the same ask and the same files. One click arms it, a second runs it,
+  // so a stray click never redrafts a brief.
+  (function(){
+    var b=$('redraft'), armed=null, label=b.innerHTML;
+    b.addEventListener('click',function(){
+      if(!armed){ b.innerHTML=label.replace('Draft it again','Click again to redraft'); b.classList.add('armed');
+        armed=setTimeout(function(){ armed=null; b.innerHTML=label; b.classList.remove('armed'); }, 4000); return; }
+      clearTimeout(armed); armed=null; b.innerHTML=label; b.classList.remove('armed');
+      draftNow('');
+    });
+  })();
+  // "Made from" the research this brief started from, with a way back to it.
+  function renderMadeFrom(){
+    var el=$('madeFrom'); if(!el) return;
+    if(!isResearchFed()){ el.hidden=true; el.innerHTML=''; return; }
+    var e=upEntry(), t=upTitle()||'the research', p=e&&e.path;
+    el.hidden=false;
+    el.innerHTML='Made from the research <b>'+esc(t)+'</b>'+(p?' · <button type="button" class="linkbtn" id="openUp">Open the research ↗</button>'
+      :(UP.state==='ok'?' · <span class="muted">not in this workspace</span>':''));
+    var o=$('openUp'); if(o) o.addEventListener('click',function(){
+      fetch(clanScheme+'/open',{method:'POST',body:JSON.stringify({path:p})}); });
+  }
   $('saveBtn').addEventListener('click',function(){ if(window.clan&&window.clan.requestSave) window.clan.requestSave(); toast('Saving a copy of this .clan…'); });
   // ---------- the lock: the shared one (os-layer §7) ----------
   // Lock brief is /approve, which the host refuses while its lock list holds

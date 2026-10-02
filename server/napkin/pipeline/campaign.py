@@ -306,6 +306,7 @@ class CampaignJob:
             a = f"{self.doc}#{address(p)}"
             if not any(a == t or t.startswith(a + "[") for d in decisions for t in d["targets"]):
                 decisions[0]["targets"].append(a)
+        self.caps.runlog.decisions(decisions, stage)
         c = Chunk(stage, base if base is not None else self.W_version, patch,
                   read_of(read_from if read_from is not None else self.W, patch), facts, findings, decisions, message,
                   sources, gap=gap)
@@ -328,12 +329,17 @@ class CampaignJob:
         return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else globals()[name.upper()]
 
     def _run(self):
+        self.caps.runlog.start("start_campaign", self.doc, STAGES, model=self.caps.model.model_id)
         try:
             self._loop()
         except Exception as e:  # the runner itself, not a stage: the job still ends, and says so
             log.error("start_campaign %s runner failed: %s\n%s", self.id, e, traceback.format_exc())
             self.fail(STAGES[min(self.stage_idx, len(STAGES) - 1)], "internal",
                       f"the job's runner failed ({type(e).__name__})")
+        finally:
+            with self.lock:
+                state, err, gaps = self.state, self.error, list(self.gaps)
+            self.caps.runlog.end(state, summary=(err or {}).get("message"), gaps=gaps)
 
     def _loop(self):
         while True:
@@ -389,7 +395,8 @@ class CampaignJob:
         (finished, or went on without it), False (asked the person), None (run
         it again). What it raises, however it fails, is a gap, never the end."""
         limit = self._limit("stage_timeout")
-        value, err, left = bounded(getattr(self, "stage_" + stage), limit, f"campaign-{self.id}-{stage}")
+        with self.caps.runlog.stage(stage):
+            value, err, left = bounded(getattr(self, "stage_" + stage), limit, f"campaign-{self.id}-{stage}")
         if left is not None:
             with self.lock:
                 abandon(left)
@@ -411,6 +418,10 @@ class CampaignJob:
         return value
 
     def skip(self, stage, kind, detail, refused=None):
+        self.caps.runlog.gap(stage, kind, detail)
+        self._record_skip(stage, kind, detail, refused)
+
+    def _record_skip(self, stage, kind, detail, refused=None):
         """Record a stage the job goes on without: a decision carrying the
         stage's own action (so "Ask to redo" can run it again), its reason and
         what the job does without it, and a chat message. `refused` is the
@@ -600,6 +611,7 @@ class CampaignJob:
         return f"{v['stage']}: {self.stage_idx} of {len(STAGES)} stage(s) done"
 
     def answer(self, clan, inp):
+        self.caps.runlog.answer("identify", inp)
         """answer_question: validate, record, continue. Raises TaskError."""
         from ..util import bad
         with self.lock:
@@ -755,6 +767,7 @@ class CampaignJob:
                        msg_decision=d)
         with self.lock:
             self.question = q
+        self.caps.runlog.question("identify", text, [o.get("label") for o in options])
         return False
 
     def went_on(self):
@@ -1010,13 +1023,23 @@ class CampaignJob:
             pt = self.pending_text if (self.pending_text or {}).get("field") == "markets" else None
             self.pending_text = None
             p, ds = flush()
+            if not pt:  # the request names a region ("global", "Europe"): read it, offer it to confirm
+                said = " ".join(m.text for m in self.materials() if getattr(m, "text", None))
+                reg = market_rules.region_in(said)
+                if reg:
+                    pt = {"field": "markets", "text": reg[0], "region": reg}
             if pt:
                 codes = market_rules.from_text(pt["text"])
                 if codes:
-                    opts = [{"id": "markets", "label": market_list(codes), "value": codes, "origin": "stated"},
-                            {"id": "other", "label": "Something else"}]
-                    return self.ask("markets", "Which markets is it for?", opts, True, f"From \"{pt['text']}\":",
-                                    ds, p, facts)
+                    reg = pt.get("region") or market_rules.region_in(pt["text"])
+                    opts = [{"id": "markets", "label": market_list(codes), "value": codes, "origin": "stated"}]
+                    if reg and len(codes) > 3:  # research runs once per market: offer the biggest three too
+                        opts.append({"id": "markets_top3", "label": market_list(codes[:3]), "value": codes[:3],
+                                     "origin": "stated"})
+                    opts.append({"id": "other", "label": "Something else"})
+                    intro = (f"I read “{reg[0]}” as these {len(codes)} markets. Research runs once per market, so "
+                             f"more markets take longer and cost more:" if reg else f"From \"{pt['text']}\":")
+                    return self.ask("markets", "Which markets is it for?", opts, True, intro, ds, p, facts)
                 return self.ask("markets", "Which markets is it for? Name the countries.", [], True,
                                 f"\"{pt['text']}\" does not name a country I can research.", ds, p, facts)
             return self.ask("markets", "Which markets is it for? Name the countries.", [], True,

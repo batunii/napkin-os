@@ -242,6 +242,8 @@ clan-tray{display:block}
 .clf-opt{position:relative;display:grid;gap:6px;padding:14px 16px;border:1.5px solid var(--clf-ink);border-radius:14px;cursor:pointer;background:var(--clf-paper)}
 .clf-opt:hover{box-shadow:3px 3px 0 var(--clf-ink)}
 .clf-opt input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.clf-optsrc{margin:-2px 0 4px 16px;font-size:13px}
+.clf-optsrc a{color:var(--clf-ink);text-underline-offset:3px}
 .clf-opt:focus-within{outline:2px solid var(--clf-create);outline-offset:2px}
 .clf-opt:has(input:checked){background:var(--clf-ink);color:var(--clf-paper)}
 .clf-opt:has(input:checked) .q,.clf-opt:has(input:checked) .s{color:inherit;opacity:.85}
@@ -1211,7 +1213,7 @@ var ClanFields=(function(){
           var from=String(vs[0]&&vs[0].from||'').split('/')[0], A=crew(), ak=agentOf('selection.contested['+ref+']',c.key)||(A&&arr(A.lenses).indexOf(from)!==-1?A.forWork('research',from)||'':'');
           b+=say(ak,vs.map(function(v){ var w=said(v); return (w[0]?'<b>'+esc(w[0])+'</b>':'One source')+' says '+esc(fmt(v))+(w[1]?' ('+esc(w[1])+')':''); }).join('. ')+'.','needs-you');
           b+='<form class="clf-form bare" data-clf-form="resolve"><div class="clf-sec"><h3 class="ask">Which one should the report use?</h3><div class="clf-answers">'+vs.map(function(v){ var sid=arr(v.sources)[0], s=sources()[sid]||{}, q=obj(v.quotes)[sid], line=srcLine(s,v);
-            return '<label class="clf-opt"><input type="radio" name="pick" value="'+esc(v.fact_id)+'" required><span class="v'+(fmt(v).length>24?' long':'')+'">'+esc(fmt(v))+'</span>'+(line?'<span class="s">'+esc(line)+(v.from==='pinned'?' · already in the report':'')+'</span>':'')+(q?'<span class="q">“'+esc(q)+'”</span>':'')+'</label>'; }).join('')+'</div></div>'
+            return '<label class="clf-opt"><input type="radio" name="pick" value="'+esc(v.fact_id)+'" required><span class="v'+(fmt(v).length>24?' long':'')+'">'+esc(fmt(v))+'</span>'+(line?'<span class="s">'+esc(line)+(v.from==='pinned'?' · already in the report':'')+'</span>':'')+(q?'<span class="q">“'+esc(q)+'”</span>':'')+'</label>'+(/^https?:\/\//.test(s.uri||'')?'<p class="clf-optsrc">'+openLink(s.uri).replace('Open it ↗','Open the source ↗')+'</p>':''); }).join('')+'</div></div>'
             +'<div class="clf-then"><label><span>Why this one? <span class="req">needed</span></span><textarea name="why" required></textarea></label><div class="clf-err" hidden></div><div class="clf-answers"><button type="submit" class="clf-btn big primary">Use this one</button></div><p class="clf-muted">'+(vs.length>2?'The others stay on record, marked as not picked.':'The other stays on record, marked as not picked.')+'</p></div></form>';
         } else {
           var ch=vs.filter(function(v){ return v.fact_id===c.chosen; })[0];

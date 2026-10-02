@@ -68,7 +68,11 @@ YYYY-MM-DD, never in the future, or null), whether it is specific to this market
 evidence: the source_id and the exact quote from that source's excerpts (character for
 character). Numbers: a percentage is a proportion between 0 and 1; money in the currency
 stated (eur / gbp / usd), as a plain number. Never compute, convert beyond that, or use
-outside knowledge. List the wanted facts you could not find in not_found."""
+outside knowledge. List the wanted facts you could not find in not_found.
+Statements are facts too: what a brand claims or stands for, a habit, an occasion, a cultural tension,
+a moment in the calendar, a rule. Give each as value_text (a short phrase in the source's own terms,
+unit "text"), one fact per item, with the quote it rests on. When `focus` is given, it is what the brief
+needs from this lens: extract what answers it first."""
 
 
 def _obj(props: dict) -> dict:
@@ -125,7 +129,7 @@ class Researcher:
     """One research_lens run (or start_campaign's research stage)."""
 
     def __init__(self, doc, base, clan, handler, caps, lenses, markets, cats, pairs=None, reuse_days=30,
-                 concurrency=4, seed=None):
+                 concurrency=4, seed=None, competitors=None, subject=None):
         self.doc, self.base, self.clan, self.handler, self.caps = doc, base, clan, handler, caps
         self.data = ctx_data(clan)
         self.lenses, self.markets, self.cats = lenses, markets, cats
@@ -136,6 +140,12 @@ class Researcher:
         self.subject = subject if isinstance(subject, dict) and subject.get("ref") else None
         self.comps = [c for c in (field_value(self.data, "competitor_set") or [])
                       if isinstance(c, dict) and c.get("ref")]
+        # a caller without a campaign (Brief Maker's plan) names the brand and its competitors itself
+        if subject and not self.subject:
+            self.subject = subject
+        for c in competitors or []:
+            if isinstance(c, dict) and c.get("ref") and c["ref"] not in {x["ref"] for x in self.comps}:
+                self.comps.append(c)
         self.leaf_names = {l["code"]: l["name"] for l in caps.layers.leaves()}
         self.done = 0
         self.hits = []
@@ -150,7 +160,7 @@ class Researcher:
         return out
 
     # -- one unit ----------------------------------------------------------------
-    def unit(self, lens: str, market: str) -> dict:
+    def unit(self, lens: str, market: str, focus: str | None = None) -> dict:
         ns = LENS_NAMESPACE[lens]
         u = {"lens": lens, "market": market, "cands": [], "gaps": [], "reused": 0, "sources": [], "error": None,
              "queries": []}
@@ -162,7 +172,7 @@ class Researcher:
                     continue
                 u["cands"].append(self._cand_from_row(row, lens, market))
                 u["reused"] += 1
-        if u["reused"]:
+        if u["reused"] and not focus:  # a focused ask (what the brief needs) searches even when facts are fresh
             self.hits += [{"id": c["row"]["id"], "scope": c["layer"], "source": c["row"]["origin"]} for c in u["cands"]]
             return u
         # 1. research
@@ -171,7 +181,8 @@ class Researcher:
         question, wanted = LENS_QUESTIONS[lens]
         query = (f"{question} Category: {', '.join(cat_names)}. Market: {market_list([market])} ({market})."
                  + (f" Brand: {brand}." if brand else "")
-                 + (f" Comparators: {', '.join(c['name'] for c in self.comps)}." if self.comps else ""))
+                 + (f" Comparators: {', '.join(c['name'] for c in self.comps)}." if self.comps else "")
+                 + (f" What the brief needs: {focus}" if focus else ""))
         try:
             res = self.caps.research.search(query, lens, market, entity=self.subject["ref"] if self.subject else None,
                                             category=self.cats[0])
@@ -200,7 +211,7 @@ class Researcher:
             return u
         # 3. the model extracts; the rules check
         comp_names = [c["name"] for c in self.comps]
-        payload = {"lens": lens, "lens_question": question, "key_namespace": ns, "wanted": wanted,
+        payload = {"lens": lens, "lens_question": question, "key_namespace": ns, "wanted": wanted, "focus": focus,
                    "market": market, "subject_brand": brand, "comparators": comp_names,
                    "categories": [{"code": c, "name": self.leaf_names.get(c, c)} for c in self.cats],
                    "sources": [{"source_id": s["sid"], "url": s["url"], "publisher": s["publisher"],

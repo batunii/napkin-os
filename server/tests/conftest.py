@@ -50,14 +50,16 @@ def layers(store):
 
 
 class Server:
-    def __init__(self, tmp_path, model=None, research=None, retrieval=None, settings_kw=None):
+    def __init__(self, tmp_path, model=None, research=None, retrieval=None, settings_kw=None, jev=None):
         from napkin.config import _default_pipelines
         self.model, self.research = model or FakeModel(), research or FakeResearch()
         self.retrieval = retrieval
         self.layers = layer_store()
-        settings = Settings(pipelines=_default_pipelines(), port=free_port(), **(settings_kw or {}))
+        # the field-by-field brief flow unless a test asks for the planned one (test_planned_brief.py)
+        settings = Settings(pipelines=_default_pipelines(), port=free_port(),
+                            **{"brief_flow": "fields", **(settings_kw or {})})
         self.app = create_app(settings, model_client=self.model, research_port=self.research,
-                              layer_store=self.layers, retrieval_port=retrieval)
+                              layer_store=self.layers, retrieval_port=retrieval, jev_port=jev)
         self.url = f"http://127.0.0.1:{settings.port}"
         cfg = uvicorn.Config(self.app, host="127.0.0.1", port=settings.port, log_level="warning")
         self.srv = uvicorn.Server(cfg)

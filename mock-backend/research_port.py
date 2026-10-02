@@ -316,14 +316,17 @@ class Research:
                 hit = self.cache.get(key)
                 if hit and isinstance(hit.get("response"), dict):
                     log(f"research cache hit {key[:12]} {req['lens']}/{req['market']}")
-                    return hit["response"]
+                    resp = dict(hit["response"])
+                    resp["trace"] = {**(resp.get("trace") or {}), "cached": True, "cost_usd": 0.0}
+                    return resp
             t0 = time.monotonic()
             result = self._run(req)
             out = result["output"]
             sources, drops = validate_sources(out.get("sources"), req["max_sources"], today())
             queries = [_clean(q) for q in out.get("queries") or [] if isinstance(q, str) and _clean(q)]
             response = {"sources": sources,
-                        "trace": {"backend": BACKEND, "queries": queries, "model": self.cfg.research_model}}
+                        "trace": {"backend": BACKEND, "queries": queries, "model": self.cfg.research_model,
+                                  "cost_usd": result["cost_usd"], "cached": False}}
             log(f"research {req['lens']}/{req['market']}: {len(sources)} sources in "
                 f"{time.monotonic() - t0:.1f}s, dropped {drops}, cost {result['cost_usd']}")
             # The query parameters (a public-web question) and public excerpts only.

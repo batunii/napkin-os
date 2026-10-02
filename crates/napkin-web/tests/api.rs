@@ -505,6 +505,35 @@ async fn sandbox_writes_reach_the_shell_as_events() {
 }
 
 #[tokio::test]
+async fn an_export_the_app_builds_reaches_the_browser_as_a_handle_it_can_fetch() {
+    let s = server(40);
+    let b = browser(&s).await;
+    let (_doc, token) = upload(&s, &b, "Export").await;
+
+    let tenant = napkin_web::tenant::TenantId::parse(&b.tenant).unwrap();
+    let mut rx = s.ctx.events.subscribe(&tenant);
+
+    // What Brief Maker and Research do: build the HTML, hand it to clan://export.
+    let r = post(
+        &s,
+        &format!("/s/{token}/export"),
+        &b.cookie,
+        r#"{"kind":"html","filename":"brief","html":"<!DOCTYPE html><html><body><h1>Probe</h1></body></html>"}"#,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+
+    let event = rx.try_recv().expect("the export must reach the shell");
+    assert_eq!(event.name, "clan-export-request");
+    let handle = event.data["tmpHtml"].as_str().unwrap().to_string();
+    assert!(!handle.contains('/'), "the browser is given a handle, never a server path: {handle}");
+
+    let dl = get(&s, &format!("/api/t/{}/export/{handle}?kind=html", b.tenant), Some(&b.cookie)).await;
+    assert_eq!(dl.status, StatusCode::OK, "the shell's download of that handle must work");
+    assert!(String::from_utf8_lossy(&dl.body).contains("Probe"));
+}
+
+#[tokio::test]
 async fn unknown_sandbox_paths_are_not_part_of_the_api_surface() {
     let s = server(40);
     let b = browser(&s).await;

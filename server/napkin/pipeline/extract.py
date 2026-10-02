@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import json
 import re
 
@@ -39,6 +41,9 @@ Slugs are lowercase snake_case (tv, bvod, ooh, audio, social_meta, tvc_30, socia
 The grounds are for what was filled and what was left out: cite the material_id each point rests on.""" + rsn.GUIDE
 
 _Q = {"quote": {"type": "string"}, "material_id": {"type": "string"}}
+
+
+log = logging.getLogger("napkin.extract")
 
 
 def _obj(props: dict) -> dict:
@@ -267,6 +272,11 @@ def material_payload(mats) -> list:
 
 def run_extract(doc, base, clan, inp, handler, caps, skip=(), did=None, action="extract_ask"):
     """-> (result, change, hits). `skip`: fields another stage owns."""
+    # a PDF or a deck goes to the model whole first: its charts, layout and image-only pages are read
+    # (reading.py), and the reading is the attachment's text from here on
+    from .. import reading
+    for n in reading.read_inputs(caps.model, inp, caps.runlog.note):
+        log.warning("%s: %s", handler, n)
     data = ctx_data(clan)
     facts = ctx_facts(clan)
     decisions = ctx_decisions(clan)

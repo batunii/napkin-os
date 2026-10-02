@@ -21,6 +21,7 @@ pub mod decisions;
 pub mod edit;
 pub mod members;
 pub mod middleware;
+pub mod office;
 pub mod read;
 pub mod review;
 
@@ -34,7 +35,7 @@ pub use edit::{attribute, attributed};
 /// Cap on extracted text we cache + send, to bound the agent's token cost
 /// (~6k tokens). The full asset always stays in the archive; this only limits
 /// what the agent reads.
-pub(crate) const MAX_EXTRACT_CHARS: usize = 24_000;
+pub(crate) const MAX_EXTRACT_CHARS: usize = 150_000; // about 60 pages: a client's report or deck, not its first 8
 
 /// What an operation produced: the reply for whoever asked, and the changes
 /// that would make it true. No changes means nothing needs writing — a no-op
@@ -108,13 +109,16 @@ pub fn sanitize_asset_name(name: &str) -> Option<String> {
 /// Pull readable text out of an uploaded asset so the agent sees document
 /// *contents*, not just a filename. Plain-text family is decoded directly;
 /// PDFs go through `pdf_extract` (wrapped in `catch_unwind` — malformed PDFs
-/// can panic deep in the parser). Returns None for binary formats and empties.
+/// can panic deep in the parser); Word and PowerPoint files through `office`.
+/// Returns None for other binary formats and empties.
 fn extract_text(name: &str, bytes: &[u8]) -> Option<String> {
     let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     let raw = match ext.as_str() {
         "txt" | "text" | "md" | "markdown" | "csv" | "tsv" | "json" | "yaml" | "yml" | "log" => {
             String::from_utf8_lossy(bytes).into_owned()
         }
+        // a client's Word brief or PowerPoint deck: the text of its paragraphs and slides
+        "docx" | "pptx" => office::text(&ext, bytes)?,
         #[cfg(feature = "native")]
         "pdf" => {
             let owned = bytes.to_vec();
@@ -153,6 +157,8 @@ pub fn content_type_for(rel: &str) -> &'static str {
         Some("webp") => "image/webp",
         Some("svg") => "image/svg+xml",
         Some("pdf") => "application/pdf",
+        Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        Some("pptx") => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         Some("css") => "text/css",
         Some("js") => "text/javascript",
         Some("json") => "application/json",

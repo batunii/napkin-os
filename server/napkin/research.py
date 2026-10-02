@@ -74,5 +74,10 @@ class ResearchPort:
                           "published_at": (str(s["published_at"])[:10] if s.get("published_at") else None),
                           "excerpts": ex})
         tr = out.get("trace") if isinstance(out.get("trace"), dict) else {}
+        cost = tr.get("cost_usd")
         return {"sources": clean, "trace": {"backend": str(tr.get("backend") or ""),
-                                            "queries": [q for q in tr.get("queries") or [] if isinstance(q, str)]}}
+                                            "queries": [q for q in tr.get("queries") or [] if isinstance(q, str)],
+                                            # what the service says the search cost, and whether it was a cache hit
+                                            # (the run log's; neither steers anything)
+                                            "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
+                                            "cached": bool(tr.get("cached")) if "cached" in tr else None}}

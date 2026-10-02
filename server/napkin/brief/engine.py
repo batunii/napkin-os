@@ -321,7 +321,17 @@ class EngineBriefJob(BriefJob):
             try:
                 body = request_body(self.mats, self.data0, self.upstream, self.withheld,
                                     getattr(self.port, "loops37", True))
-                reply = self.port.draft(body, dict(self.caps.attribution))
+                import time as _t
+                t0 = _t.monotonic()
+                try:
+                    reply = self.port.draft(body, dict(self.caps.attribution))
+                finally:
+                    self.caps.runlog.note("engine_call", secs=round(_t.monotonic() - t0, 2), url=self.port.url)
+                meta = reply.get("meta") if isinstance(reply, dict) and isinstance(reply.get("meta"), dict) else {}
+                self.caps.runlog.note("engine_reply", fields=sorted((reply.get("brief") or reply.get("fields") or {})
+                                                                    if isinstance(reply, dict) else []),
+                                      llm_stats=meta.get("llm_stats"), extraction_mode=meta.get("extraction_mode"),
+                                      model_chain=meta.get("model_chain"))
                 if self._land(reply, tnotes):
                     with self.lock:
                         self.engine_state = "used"
@@ -351,7 +361,7 @@ class EngineBriefJob(BriefJob):
     def _transcribe(self) -> list:
         """Pictures become text first (§1.6), so the engine, which reads text only, reads
         them too. A picture that cannot be read is recorded unread."""
-        if not any(m.image and not m.readable for m in self.mats):
+        if not any((m.image and not m.readable) or m.document or m.pictures for m in self.mats):
             return []
         return cap_stage.transcribe(self.caps.capture_view(), self.mats)
 

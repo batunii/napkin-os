@@ -64,6 +64,14 @@ class Settings:
     retrieval_token: str | None = None
     retrieval_timeout: float = 120.0
     brief_engine_url: str | None = None
+    runlog_dir: str | None = None
+    jev_api_key: str | None = None
+    jev_model: str = "jev-latest"
+    jev_base_url: str | None = None
+    brief_flow: str = "planned"
+    brief_research_max: int = 3
+    brief_judge: str = "review"
+    runlog_bodies: bool = False
     brief_engine_loops37: bool = True
     layers_url: str | None = None
     layers_token: str | None = None
@@ -103,6 +111,14 @@ class Settings:
                    retrieval_token=e("NAPKIN_RETRIEVAL_TOKEN") or None,
                    retrieval_timeout=float(e("NAPKIN_RETRIEVAL_TIMEOUT") or 120),
                    brief_engine_url=e("NAPKIN_BRIEF_ENGINE_URL") or None,
+                   runlog_dir=e("NAPKIN_RUNLOG_DIR") or None,
+                   jev_api_key=e("NAPKIN_JEV_API_KEY") or e("TYPESAFE_API_KEY") or None,
+                   jev_model=e("NAPKIN_JEV_MODEL") or "jev-latest",
+                   jev_base_url=e("NAPKIN_JEV_BASE_URL") or None,
+                   brief_flow=(e("NAPKIN_BRIEF_FLOW") or "planned").strip().lower(),
+                   brief_research_max=int(e("NAPKIN_BRIEF_RESEARCH_MAX") or 3),
+                   brief_judge=(e("NAPKIN_BRIEF_JUDGE") or "review").strip().lower(),
+                   runlog_bodies=(e("NAPKIN_RUNLOG_BODIES") or "0").strip().lower() in ("1", "true", "yes", "on"),
                    brief_engine_loops37=(e("NAPKIN_BRIEF_ENGINE_LOOPS37") or "1").strip().lower()
                    not in ("0", "false", "off", "no"),
                    layers_url=e("NAPKIN_LAYERS_URL") or None,

@@ -11,13 +11,14 @@ and a message never carries request content. Never a 200 with a fallback.
 from __future__ import annotations
 
 import json
+import os
 import logging
 import threading
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import API, backend, registry, set_model_wire
+from . import API, backend, registry, runlog, set_model_wire
 from .capabilities import Capabilities
 from .config import Settings
 from .doc import STAGES
@@ -42,10 +43,11 @@ class Req:
 
 class Middleware:
     def __init__(self, settings: Settings, model_client=None, research_port=None, layer_store=None,
-                 retrieval_port=None, model_transport=None):
+                 retrieval_port=None, model_transport=None, jev_port=None):
         """Each port from configuration (peripherals.md §7); the keyword
         arguments replace one with a test double."""
         self.settings = settings
+        runlog.configure(settings.runlog_dir, settings.runlog_bodies, os.environ.get("NAPKIN_PRICES"))
         self.resolved = registry.resolve_at_startup(settings.pipelines)
         wire = model_client if hasattr(model_client, "send") and hasattr(model_client, "api") else \
             build_wire(settings, client=model_client, transport=model_transport)
@@ -58,6 +60,13 @@ class Middleware:
         if retrieval_port is None and settings.retrieval_url:
             retrieval_port = RetrievalPort(settings.retrieval_url, settings.retrieval_token, settings.retrieval_timeout)
         self.retrieval_port = retrieval_port
+        self.jev_port = jev_port
+        if self.jev_port is None and settings.jev_api_key:
+            from .jev import JevPort
+            try:
+                self.jev_port = JevPort(settings.jev_api_key, settings.jev_model, settings.jev_base_url)
+            except Exception as e:  # noqa: BLE001 - no jev: the check loop goes on unchecked
+                log.warning("jev not available: %s", e)
         if layer_store is None:
             if not settings.layers_url:
                 raise SystemExit("NAPKIN_LAYERS_URL is required: the knowledge layers are a service "
@@ -72,7 +81,7 @@ class Middleware:
         return Capabilities(handler=handler, scope=self.settings.scope, model_port=self.model_port,
                             research_port=self.research_port, layer_store=self.layer_store,
                             research_semaphore=self.research_sem, retrieval_port=self.retrieval_port,
-                            model_semaphore=self.model_sem)
+                            model_semaphore=self.model_sem, jev_port=self.jev_port)
 
     # -- envelope -----------------------------------------------------------
     def trace(self, caps: Capabilities | None, hits=()) -> dict:

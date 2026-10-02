@@ -366,6 +366,7 @@ export default function App() {
       {screen === 'app' && running ? (
         <AppHost
           running={running}
+          onOpenDocument={openPath}
           onHome={goHome}
           onOpenFile={handleOpenFile}
           onSave={saveCurrent}

@@ -27,6 +27,7 @@ pub mod tokens;
 use std::path::Path;
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::response::Html;
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
@@ -65,19 +66,24 @@ fn shell_service(static_dir: Option<&Path>) -> Router<Arc<AppCtx>> {
 
 /// Assemble the whole service. Kept separate from `main` so tests can drive the
 /// real router rather than a rehearsal of it.
+/// The largest request body: a client's deck or PDF attached to a brief or a research is
+/// often several megabytes, and axum's own default (2 MB) refused a 4.7 MB file — the browser
+/// reported it as a CORS error, the refusal carrying no CORS header (the owner, 2026-10-01).
+pub const UPLOAD_MAX: usize = 64 * 1024 * 1024;
+
 pub fn router(ctx: Arc<AppCtx>, static_dir: Option<&Path>, secure_cookie: bool) -> Router {
     Router::new()
         // The shell API is the only part that runs on a cookie session.
         .nest(
             "/api",
-            api::router().layer(axum::middleware::from_fn_with_state(
+            api::router().layer(DefaultBodyLimit::max(UPLOAD_MAX)).layer(axum::middleware::from_fn_with_state(
                 secure_cookie,
                 tenant::layer,
             )),
         )
         // The sandbox authenticates with its token and nothing else, so the
         // session layer deliberately does not apply to it.
-        .nest("/s", sandbox::router())
+        .nest("/s", sandbox::router().layer(DefaultBodyLimit::max(UPLOAD_MAX)))
         .merge(shell_service(static_dir))
         .layer(TraceLayer::new_for_http())
         .with_state(ctx)

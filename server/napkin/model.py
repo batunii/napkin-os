@@ -32,6 +32,10 @@ import jsonschema
 log = logging.getLogger("napkin.model")
 
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
+# A PDF goes to the model whole, as a document: Claude reads each page as a picture and as text,
+# so a deck's charts, layout and image-only slides are read too (the owner, 2026-10-01).
+DOC_TYPES = ("application/pdf",)
+MAX_DOC_BYTES = 32 * 1024 * 1024
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGES = 20
 PURPOSE_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -93,13 +97,15 @@ def check_images(images) -> list[dict]:
     out = []
     for im in images or []:
         mt, data = (im or {}).get("media_type"), (im or {}).get("data")
-        if mt not in IMAGE_TYPES or not isinstance(data, str):
-            raise ModelError("an image part is not png, jpeg, gif or webp base64", "invalid_request")
+        if mt not in IMAGE_TYPES + DOC_TYPES or not isinstance(data, str):
+            raise ModelError("an image part is not png, jpeg, gif or webp base64, nor a PDF", "invalid_request")
         try:
             raw = base64.b64decode(data, validate=True)
         except (ValueError, TypeError) as e:
             raise ModelError("an image part is not valid base64", "invalid_request") from e
-        if len(raw) > MAX_IMAGE_BYTES:
+        if mt in DOC_TYPES and len(raw) > MAX_DOC_BYTES:
+            raise ModelError("a PDF part is over 32 MB decoded", "invalid_request")
+        if mt in IMAGE_TYPES and len(raw) > MAX_IMAGE_BYTES:
             raise ModelError("an image part is over 5 MB decoded", "invalid_request")
         out.append({"media_type": mt, "data": data})
     if len(out) > MAX_IMAGES:
@@ -121,7 +127,8 @@ class AnthropicWire:
     def _content(turn):
         if not turn.get("images"):
             return turn["text"]
-        parts = [{"type": "image", "source": {"type": "base64", "media_type": im["media_type"], "data": im["data"]}}
+        parts = [{"type": "document" if im["media_type"] in DOC_TYPES else "image",
+                  "source": {"type": "base64", "media_type": im["media_type"], "data": im["data"]}}
                  for im in turn["images"]]
         return parts + [{"type": "text", "text": turn["text"]}]
 
@@ -213,6 +220,8 @@ class OpenAIWire:
     def _content(turn):
         if not turn.get("images"):
             return turn["text"]
+        if any(im["media_type"] in DOC_TYPES for im in turn["images"]):
+            raise ModelError("the OpenAI-compatible wire takes no PDF documents", "unsupported")
         parts = [{"type": "image_url", "image_url": {"url": f"data:{im['media_type']};base64,{im['data']}"}}
                  for im in turn["images"]]
         return parts + [{"type": "text", "text": turn["text"]}]

@@ -34,10 +34,12 @@ interface Props {
   onSpinoff: (appId: string) => void
   /** Each change is kept as it is made, so the bar may say "Saved" (Toolbar). */
   saved?: boolean
+  /** Open another document of the store (the sidebar's "Made from" link). */
+  onOpenDocument?: (path: string) => void
 }
 
 /** Chrome for one running app: toolbar + (collapsible) sidebar + render surface + panels. */
-export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff, saved }: Props) {
+export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOffline, banner, onExport, onSpinoff, saved, onOpenDocument }: Props) {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false) // collapsed by default
   // Edit mode is the OS's: the app's fields become editable while it is on.
@@ -171,7 +173,7 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
       />
       {banner}
       <div className={`ch-work ${clientOn ? 'ch-work-review' : ''}`}>
-        {sidebarOpen && <Sidebar manifest={open.manifest} path={open.path} />}
+        {sidebarOpen && <Sidebar manifest={open.manifest} path={open.path} onOpenDocument={onOpenDocument} />}
         <main className="ch-work-main">
           {!clientOn && decisions.view && (
             <ClientReviewBand

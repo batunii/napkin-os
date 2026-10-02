@@ -228,6 +228,18 @@ pub fn compose_export(
     Ok((html, base))
 }
 
+/// An uploaded asset's bytes by the name a task gives it. Before 2026-10-01 an upload's name
+/// was stored as the browser sent it, percent-encoded (`a%20b.pdf`, `query_param` did not
+/// decode it), while a task names it as written (`a b.pdf`): the lookup missed and the agent
+/// read nothing. Both spellings are tried, so files uploaded then are found without rewriting
+/// their documents.
+fn asset_bytes(doc: &Document, dir: &str, name: &str, suffix: &str) -> Option<Vec<u8>> {
+    let clan = doc.clan();
+    clan.read_entry(&format!("{dir}{name}{suffix}"))
+        .ok()
+        .or_else(|| clan.read_entry(&format!("{dir}{}{suffix}", crate::routes::uri_encode(name))).ok())
+}
+
 /// For each attachment carrying a `name`, read its cached extracted-text
 /// sidecar and splice it in. Read at call time so the text never has to live
 /// in the data layer or be re-extracted.
@@ -246,6 +258,55 @@ pub fn attach_extracted_text(doc: &Document, payload: &mut Value) {
         .get_mut("input")
         .and_then(|i| i.get_mut("attachments"));
     splice_images(doc, under_input);
+    let under_input = payload
+        .get_mut("input")
+        .and_then(|i| i.get_mut("attachments"));
+    splice_documents(doc, under_input);
+}
+
+/// The most bytes one PDF `document` may carry, decoded: the model API's own limit.
+pub const DOCUMENT_MAX_BYTES: usize = 32 * 1024 * 1024;
+
+/// For each middleware attachment that is a PDF, send the file itself as `document:
+/// {media_type, data}` beside its extracted text; for a `.docx` or `.pptx`, the pictures
+/// inside it as `images: [...]` (at most 20). The middleware decides which to send on to
+/// the model (reading.py): a deck, an image-heavy or scanned PDF is read page by page as a
+/// person sees it; a text-heavy report keeps to its text. This replaces the page rendering
+/// the TODO above asked of the host: the model reads the PDF's pages itself.
+fn splice_documents(doc: &Document, attachments: Option<&mut Value>) {
+    use base64::Engine as _;
+    let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let Some(atts) = attachments.and_then(|v| v.as_array_mut()) else {
+        return;
+    };
+    for a in atts.iter_mut() {
+        if a.get("document").is_some() || a.get("images").is_some() {
+            continue;
+        }
+        let Some(name) = a.get("name").and_then(Value::as_str).map(str::to_string) else {
+            continue;
+        };
+        let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        if !matches!(ext.as_str(), "pdf" | "docx" | "pptx") {
+            continue;
+        }
+        let Some(bytes) = asset_bytes(doc, "human/assets/", &name, "") else {
+            continue;
+        };
+        let Some(obj) = a.as_object_mut() else { continue };
+        if ext == "pdf" {
+            if bytes.len() <= DOCUMENT_MAX_BYTES {
+                obj.insert("document".into(), serde_json::json!({"media_type": "application/pdf", "data": b64(&bytes)}));
+            }
+        } else {
+            let pics = super::office::pictures(&ext, &bytes, 20, IMAGE_MAX_BYTES);
+            if !pics.is_empty() {
+                obj.insert("images".into(), Value::Array(pics.iter().map(|(mt, b)| {
+                    serde_json::json!({"media_type": mt, "data": b64(b)})
+                }).collect()));
+            }
+        }
+    }
 }
 
 /// The picture types a middleware task takes as `image` (middleware-api §10.1,
@@ -290,7 +351,7 @@ fn splice_images(doc: &Document, attachments: Option<&mut Value>) {
         if !IMAGE_TYPES.contains(&media_type.as_str()) {
             continue;
         }
-        let Ok(bytes) = doc.clan().read_entry(&format!("human/assets/{name}")) else {
+        let Some(bytes) = asset_bytes(doc, "human/assets/", &name, "") else {
             continue;
         };
         if bytes.len() > IMAGE_MAX_BYTES {
@@ -316,8 +377,9 @@ fn splice_text(doc: &Document, attachments: Option<&mut Value>, key: &str) {
         let Some(name) = a.get("name").and_then(|v| v.as_str()).map(str::to_string) else {
             continue;
         };
-        let sidecar = format!("human/assets/.extracted/{name}.txt");
-        if let Ok(text) = doc.clan().read_entry_string(&sidecar) {
+        if let Some(text) = asset_bytes(doc, "human/assets/.extracted/", &name, ".txt")
+            .and_then(|b| String::from_utf8(b).ok())
+        {
             if let Some(obj) = a.as_object_mut() {
                 obj.insert(key.into(), Value::String(text));
             }
@@ -525,15 +587,18 @@ pub fn upstream_status(doc: &Document, parent: impl Fn(&str) -> Option<Document>
             };
             let pm = p.clan().manifest();
             let app_id = pm.app.as_ref().map(|a| a.app_id.clone());
+            // where the shell opens it (`POST /open {path}`): the store's own id for it
+            let path = p.id().to_string();
             if !direct {
                 return json!({
                     "document_id": id, "direct": false, "in_store": true,
-                    "title": pm.title, "app_id": app_id, "status": "not_compared",
+                    "title": pm.title, "app_id": app_id, "status": "not_compared", "path": path,
                 });
             }
             let mut entry = compare(doc, &data, carried, &p);
             entry["title"] = pm.title.clone().into();
             entry["app_id"] = json!(app_id);
+            entry["path"] = path.into();
             entry
         })
         .collect();

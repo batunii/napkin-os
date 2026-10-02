@@ -18,7 +18,7 @@ import base64
 import hashlib
 import re
 
-from .. import backend
+from .. import backend, reading
 from ..rules.quotes import contains_word, find_quote
 from ..util import bad
 
@@ -32,7 +32,7 @@ SCORECARD_DIMENSIONS = ["objectives_quality", "audience_vividness", "single_mind
 OBJECTIVE_TYPES = ["commercial", "behavioural", "attitudinal"]
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 MAX_IMAGE = 5 * 1024 * 1024
-MAX_CHARS = 60000
+MAX_CHARS = 200000  # all the client's material Ellis reads in one capture (decks and reports run long)
 
 TRANSCRIBE_SYSTEM = (
     "Transcribe this document image into clean, faithful text for an advertising-brief pipeline.\n"
@@ -178,9 +178,12 @@ def material_id(sha_hex: str) -> str:
 
 
 class Material:
-    def __init__(self, mid, kind, name, sha, text=None, media_type=None, asset=None, image=None, known=False):
+    def __init__(self, mid, kind, name, sha, text=None, media_type=None, asset=None, image=None, known=False,
+                 document=None, pictures=None):
         self.id, self.kind, self.name, self.sha = mid, kind, name, sha
         self.text, self.media_type, self.asset, self.image, self.known = text, media_type, asset, image, known
+        # the PDF itself, and the pictures inside a Word file or a deck, for reading.py
+        self.document, self.pictures = document, list(pictures or [])
         self.transcribed = None  # {model, backend} when its text is a vision transcription
 
     @property
@@ -196,8 +199,8 @@ class Material:
             e["asset"] = self.asset
         if not self.readable:
             e["unread"] = True
-        if self.transcribed:
-            e["transcribed"] = dict(self.transcribed)
+        if self.transcribed:  # the schema's two keys only: why it was read as pages is in the run log
+            e["transcribed"] = {k: self.transcribed[k] for k in ("model", "backend") if k in self.transcribed}
         return e
 
 
@@ -250,11 +253,15 @@ def build_materials(inp: dict, data: dict) -> list[Material]:
         mid = material_id(sha)
         if any(m.id == mid for m in mats):
             continue
+        doc_ = a.get("document") if isinstance(a.get("document"), dict) and \
+            a["document"].get("media_type") == "application/pdf" and isinstance(a["document"].get("data"), str) else None
+        pics = [x for x in (a.get("images") or []) if isinstance(x, dict) and x.get("media_type") in IMAGE_TYPES
+                and isinstance(x.get("data"), str)][:20]
         mats.append(Material(mid, _kind(a["name"], mt, image is not None and not text), a["name"], sha, text=text,
                              media_type=mt, asset=a.get("asset") if isinstance(a.get("asset"), str) else None,
-                             image=image if not text else None, known=mid in known))
-    if not any(m.readable or m.image for m in mats):
-        raise bad("nothing to read: no prompt, no attachment text and no image")
+                             image=image if not text else None, known=mid in known, document=doc_, pictures=pics))
+    if not any(m.readable or m.image or m.document or m.pictures for m in mats):
+        raise bad("nothing to read: no prompt, no attachment text, no image and no PDF")
     return mats
 
 
@@ -262,6 +269,27 @@ def transcribe(view, mats: list[Material]) -> list[str]:
     """Each picture becomes its material's text (§1.6). Returns notes on any
     picture that could not be read (it is then recorded unread)."""
     notes = []
+    # a PDF, or a Word file's or a deck's pictures: the model reads the pages themselves, every file at once
+    todo = [m for m in mats if (m.document or m.pictures) and reading.should_read(m.name, m.text, m.document,
+                                                                                  m.pictures)[0]]
+
+    def one(m):
+        try:
+            return m, reading.read(view.model, m.name, m.text, m.document, m.pictures), None
+        except Exception as e:  # the text layer stands
+            return m, None, e
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, min(4, len(todo)))) as ex:
+        done = list(ex.map(one, todo))
+    for m, t, err in done:
+        if err is not None:
+            notes.append(f"{m.name} could not be read as pages ({getattr(err, 'kind', type(err).__name__)}); its "
+                         f"text layer was used")
+            continue
+        if t:
+            m.text = t if not m.readable else t + ("\n\n[The file's own text layer]\n" + m.text
+                                                   if len(m.text) > len(t) * 1.5 else "")
+            m.transcribed = {"model": view.model.vision_model_id or "", "backend": backend()}
     for m in mats:
         if m.readable or not m.image:
             continue

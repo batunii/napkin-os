@@ -17,6 +17,7 @@ import pytest
 from napkin.brief import engine
 from napkin.brief.fields import KEYS
 from napkin.brief.job import BriefJob
+from napkin.brief.planned import PlannedBriefJob
 from napkin.config import Settings
 from napkin.handlers import draft_brief
 from napkin.reasoning import problems
@@ -150,7 +151,9 @@ def check_engine_change(host, extra_ok=()):
                 assert f"{DOC}#{path}" in targets, f"{path} written without a decision naming it"
         for d in ch["decisions"]:
             assert problems(d["reasoning"]) == [], (d["id"], problems(d["reasoning"]))
-            assert d["agent"] == "draft_brief@1.0/drafter" and d["handler"] == "draft_brief@1.0"
+            # the engine's brief is Dara's; the check loop's review is Jude's (brief_judge=jev)
+            assert d["agent"] in ("draft_brief@1.0/drafter", "draft_brief@1.0/judge") and \
+                d["handler"] == "draft_brief@1.0"
             for c in list(d["cites"]) + [c for p in d["reasoning"]["because"] for c in p.get("cites") or []]:
                 assert (c.startswith("mat_") and c in host.data.get("materials", {})) or c in facts or c in findings \
                     or c in extra_ok, f"{d['id']} cites {c}, which does not resolve"
@@ -485,8 +488,10 @@ def test_the_handler_picks_the_job_by_the_setting():
 
     class Caps:
         scope = {"org": "o", "brand": "b"}
-    job = draft_brief.start(Req, Caps, Settings(), "job_x")
+    job = draft_brief.start(Req, Caps, Settings(brief_flow="fields"), "job_x")
     assert type(job) is BriefJob
+    job = draft_brief.start(Req, Caps, Settings(), "job_p")
+    assert type(job) is PlannedBriefJob
     job = draft_brief.start(Req, Caps, Settings(brief_engine_url=ENGINE_URL), "job_y")
     assert isinstance(job, engine.EngineBriefJob) and job.port.url == ENGINE_URL + "/"
 
@@ -531,3 +536,37 @@ def test_a_reply_that_cannot_be_mapped_falls_back_with_nothing_of_it_left(eserve
     props = last["result"]["proposals"]
     assert props and all(p["decision"] in ids for p in props)  # the engine's proposal did not survive
     assert not any(x.get("drafted_by") == "brief-engine" for x in host.chain)
+
+
+def test_the_engine_brief_goes_through_the_check_loop(tmp_path, stub):
+    # Sai's engine writes; jev flags; Jude explains; Dara rewrites the flagged part and fills one the
+    # engine left empty; the review is jev's reading.
+    from fakes import FakeModel
+    from test_planned_brief import FakeJev
+    stub(Engine(reply={**REPLY, "insight": "A vague insight about people."}))
+    m, seen = FakeModel(), {}
+
+    def explain(p):
+        seen["explain"] = p
+        return {"parts": {k: {"rework": True, "why": f"the {k} needs work", "instruction": "write it"}
+                          for k in list(p["flagged"]) + p["empty"] if k in ("insight", "competitor_context")},
+                "chain": {"issue": None, "parts": []}, "dimensions": [], "questions": []}
+    m.overrides["explain_flags"] = lambda p: (explain(p) if True else None) and {
+        **explain(p), "parts": {**{k: {"rework": False, "why": "fine", "instruction": ""}
+                                   for k in list(p["flagged"]) + p["empty"]}, **explain(p)["parts"]}}
+    m.overrides["rewrite_brief_parts"] = lambda p: {k: {"value": f"A sharp {k}", "basis": "assumption", "cites": [],
+                                                         "builds_on_client": False, "why": "x"} for k in p["parts"]}
+    s = Server(tmp_path, model=m, retrieval=retrieval(), jev=FakeJev(),
+               settings_kw={"brief_engine_url": ENGINE_URL, "brief_judge": "jev"})
+    try:
+        host = research_host()
+        replies = run(s, host, inp=inp())
+    finally:
+        s.stop()
+    assert replies[-1]["job"]["state"] == "done"
+    assert "insight" in seen["explain"]["flagged"] and "competitor_context" in seen["explain"]["empty"]
+    assert host.data["insight"] == "A sharp insight" and host.data["competitor_context"] == "A sharp competitor_context"
+    rw = [d for d in host.chain if d.get("action") == "regenerate"]
+    assert {t.split("#", 1)[1] for d in rw for t in d["targets"]} == {"insight", "competitor_context"}
+    assert host.data["review"]["scorecard"]["dimensions"][0]["verdict"] == "pass"
+    check_engine_change(host, extra_ok=("review", f"{DOC}#review") + tuple(d["id"] for d in host.chain))

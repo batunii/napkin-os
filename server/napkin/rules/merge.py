@@ -15,6 +15,7 @@ the layers and minting ids is the caller's.
 from __future__ import annotations
 
 import json
+import re
 
 
 def identity(c: dict) -> tuple:
@@ -36,13 +37,40 @@ def _quotes(cs: list[dict]) -> dict:
     return out
 
 
+def _slug(v) -> str:
+    """A readable key part for one list item, unique by a short hash of the whole value."""
+    import hashlib
+    base = re.sub(r"[^a-z0-9]+", "_", str(v).lower()).strip("_")[:32].strip("_") or "item"
+    return f"{base}_{hashlib.sha256(str(v).encode()).hexdigest()[:6]}"
+
+
+def split_lists(candidates: list[dict]) -> list[dict]:
+    """Different free-text values under one identity are items of a list (four launch dates, three
+    claims), not a disagreement: each becomes its own fact, keyed by its value. Numbers and
+    yes/no answers that differ still contest (two market sizes cannot both be right). The
+    owner, 2026-10-01: four Nintendo dates were shown as "the sources disagree"."""
+    groups: dict[tuple, list[dict]] = {}
+    for c in candidates:
+        groups.setdefault(identity(c), []).append(c)
+    out = []
+    for cs in groups.values():
+        vals = {_vkey(c["value"]) for c in cs}
+        # statements only: a date, a year or a code for one thing still has one right answer
+        if len(vals) > 1 and all(isinstance(c["value"], str) and c.get("unit") in ("text", None) for c in cs):
+            for c in cs:
+                out.append({**c, "key": f"{c['key']}.{_slug(c['value'])}"})
+        else:
+            out += cs
+    return out
+
+
 def merge(candidates: list[dict], pinned: dict[tuple, dict], open_contest_keys: set[str]) -> dict:
     """candidates: [{entity, key, market?, value, unit, sources: [src ids], run: '<lens>/<market>', ...}]
     pinned: identity -> the pin the document holds.
     Returns {"pins": [merged candidate], "contests": [{key, values: [candidate | pin]}],
              "already": [identity]}."""
     groups: dict[tuple, list[dict]] = {}
-    for c in candidates:
+    for c in split_lists(candidates):
         groups.setdefault(identity(c), []).append(c)
     pins, contests, already = [], [], []
     for ident, cs in groups.items():
