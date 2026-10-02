@@ -11,7 +11,8 @@ and a status. No client text goes in here: name the input by its file stem or de
   S3 slow, costly or misleading to a developer.
 - **Status:** `open`, `fixed <commit>`, `xfail <test>` (pinned by a test that expects the bug), `wontfix`.
 
-Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line refs as of `7cbe533`).
+Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line refs as of `7cbe533`) and offline probes
+(EC-060 to EC-081: no model calls; probe scripts kept with the session notes, to be added as tests when each is fixed).
 
 ## Found so far
 
@@ -48,6 +49,28 @@ Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line re
 | EC-037 | drafter | bug | S3 | The same "no target number" critique is attached to all three objective levels. | one-line Barry's Tea | open |
 | EC-038 | drafter | fragile | S2 | Captured fields are filled with "Implied: ..." values on a one-line brief: inferred content sits in client-fact slots. | one-line Barry's Tea | open |
 | EC-039 | drafter | slow | S2 | One-line brief: 27 calls, 385 s (judge stage 210 s), about $0.86; 74k cache-write tokens. | one-line Barry's Tea | open |
+| EC-060 | engine | drop | S1 | .eml: only the first body part is read; a forwarded original (`message/rfc822`) or a second text part is dropped. | `probe_a.py` | open |
+| EC-061 | engine | drop | S2 | .eml attachments (pdf/docx/txt) are never read, with no note; HTML-only mail loses link URLs and glues table cells ("Budget5m"). | `probe_a.py` | open |
+| EC-062 | engine | bug | S2 | .eml with an unknown charset or attachments only crashes with a raw `LookupError`/`KeyError`. | `probe_a.py` | open |
+| EC-063 | engine | drop | S1 | .txt in UTF-16 (BOM) decodes as garbage; cp1252 turns "€"/"é" into U+FFFD ("�5m"); no warning. | `probe_a.py` | open |
+| EC-064 | engine | drop | S1 | .docx drops nested tables, tracked insertions (`w:ins`), content controls (SDT), smart tags, text boxes, footnotes and comments, silently. | `probe_docx.py` | open |
+| EC-065 | engine | drop | S2 | .docx `HYPERLINK` field-code links keep the text and lose the URL (native links are fine). | `probe_docx.py` | open |
+| EC-066 | engine | fragile | S2 | No empty-input guard: an image-only docx or a scan without vision gives "" and `run()` still spends calls (11 open questions from nothing). | `probe_run_empty.py` | open |
+| EC-067 | engine | fragile | S3 | Corrupt or encrypted docx/pdf and 0-byte files raise raw library errors with no readable message. | `probe_a.py` | open |
+| EC-068 | engine | drop | S2 | `_numbered` adds `[i] ` per sentence but `_clip_report` counts raw chars: a brief just under 40,000 reports no clip while capture loses its last sentences (about 5% of a near-limit brief). | `probe_b.py` | open |
+| EC-069 | engine | gap | S3 | The clip note names an 80-char snippet, not which attachment was cut (always the last). | `probe_b.py` | open |
+| EC-070 | engine | fragile | S2 | Prompt fences: `</client_brief>` in the client text is not neutralised; capture, how-to-win, the agent server's name call, competitor/rival lines, loop synthesis and regeneration guidance embed client-derived text with no "data, not instructions" fence; `</research>` inside a fact value closes its fence. | `probe_b.py`, code reading | open |
+| EC-071 | engine | bug | S2 | A fact row with a list/dict `id` (or int `sources`) raises `TypeError` in `research_facts.current/line`; `run()` has no guard, so bad research kills the brief (breaks "upstream is optional"). Same for a non-hashable decision `kind`/`role`. | `probe_c.py`, `probe_d.py` | open |
+| EC-072 | engine | bug | S1 | Duplicate fact ids with different versions: the first wins, even when it is the older version. | `probe_c.py` | open |
+| EC-073 | engine | bug | S2 | Fact status "draft"/"unverified"/unknown and values `[]`, `{}`, False, NaN count as current and usable. | `probe_c.py` | open |
+| EC-074 | engine | fragile | S2 | Fact lines are not sanitised: a multi-line value can forge `[F:...]` lines; a 10k-char value goes to every writer; no cap on fact count (decisions cap at 40, and that cap can drop `rejected_finding` rows). | `probe_c.py`, `probe_d.py` | open |
+| EC-075 | engine | bug | S2 | Citation forms the strip regex misses (`[F:a, F:b]`, `[f:a]`, `[F: a]`, `(F:a v1)`, `[F:a v1.2]`) leak into client prose; a cited version different from the given one is accepted. Same for `[D:...]`. | `probe_e.py` | open |
+| EC-076 | engine | fragile | S2 | Figure checks fail honest writing: "20% decline" for -0.2, "1.2k"/"1.2 million" for 1,234,567, "28%" for 0.275, "1,200" vs European "1.200"; full-width and Arabic-Indic digits bypass the check; a small-integer fact (3) flags any uncited "3 pillars". | `probe_c.py` | open |
+| EC-077 | engine | bug | S3 | `rivals()` turns None/"12%"/-3 into rival names; `scope()` does not recognise `competitor/`, `brand/`, `category/` entities; nested values print as Python reprs. | `probe_c.py` | open |
+| EC-078 | engine | cost | S3 | `_upstream` accepts 100k fact or decision rows with no cap; an unknown category falls back to the model's pick with no message. | `probe_e.py` | open |
+| EC-079 | engine | bug | S2 | `_scrub_markers` deletes any `[digits]` and "sentence N" from the client's own words ("Budget [5] million"). | `probe_g.py` | open |
+| EC-080 | engine | bug | S3 | Render: dict items in objectives/desired_response are not scrubbed; `{}`/None `meta` or a None open question raises; lists print as Python lists; a `# heading` inside a value renders as a heading. | `probe_g.py` | open |
+| EC-081 | engine | drop | S2 | PDF via pandoc/xelatex: CJK, Arabic and emoji become missing-glyph boxes yet the render reports success; HTML tags in values pass through unescaped. | `probe_g.py` | open |
 | EC-050 | env | env | S3 | `mock-backend` FetchReasons test needs `trafilatura`, not installed in the default Python. | `pytest mock-backend/tests/test_search_jev.py` | open |
 
 ## The brief's job (gaps against what a brief is for)
