@@ -127,3 +127,16 @@ Batch API at -50% for the map step when time allows. Prices are per million toke
 
 There is no long-context surcharge on the 4.6+ models, and the new tokenizer produces about 30% more
 tokens.
+
+## Gap-filler (Sai, 2026-10-02)
+
+When a field is empty or thin after drafting, a gap-filler looks for the material in two tiers:
+1. **Stored facts first.** That means the research CLAN's facts, findings and human decisions
+   (rejected findings blocked), plus facts cached from earlier research runs in the knowledge-layers
+   store. jev picks the relevant ones ("does FACT answer what this field needs?", yes/no with p).
+   There are none stored yet; they will be cached as research runs.
+2. **The web only when nothing is stored:** one targeted search per empty field through the research
+   tool's search port. What it finds is cached for the next brief.
+
+The field is then written as a labelled proposal: "Proposed (not given by the client): ... based on
+[F:id] ... To confirm: ...". It is never presented as the client's words.
