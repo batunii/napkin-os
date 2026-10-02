@@ -43,6 +43,11 @@ Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line re
 | EC-032 | drafter | drop | S2 | Capture items capped at 40; background_context dropped when business_problem exists; key_message, proof_points, evaluation_criteria, strategic_angle, anti_target, decision_makers map to no field. | read `drafters.py:472` | open |
 | EC-033 | drafter | slow | S3 | 8 rubric-group judge calls run one after another. | any draft | open |
 | EC-034 | drafter | gap | S3 | No CLI, no cost record; how_to_win and the scorecard are never passed to the writers. | — | open |
+| EC-035 | drafter | bug | S3 | Open questions duplicated (timeline, mandatories, decision makers, key message: once from capture, once from the core-gap rule); the second copy reads "What is the mandatories?". | one-line Barry's Tea | open |
+| EC-036 | drafter | bug | S3 | Severity tags (`[blocker]`, `[important]`, `[nice_to_have]`) are stored inside the open-question text. | one-line Barry's Tea | open |
+| EC-037 | drafter | bug | S3 | The same "no target number" critique is attached to all three objective levels. | one-line Barry's Tea | open |
+| EC-038 | drafter | fragile | S2 | Captured fields are filled with "Implied: ..." values on a one-line brief: inferred content sits in client-fact slots. | one-line Barry's Tea | open |
+| EC-039 | drafter | slow | S2 | One-line brief: 27 calls, 385 s (judge stage 210 s), about $0.86; 74k cache-write tokens. | one-line Barry's Tea | open |
 | EC-050 | env | env | S3 | `mock-backend` FetchReasons test needs `trafilatura`, not installed in the default Python. | `pytest mock-backend/tests/test_search_jev.py` | open |
 
 ## The brief's job (gaps against what a brief is for)
@@ -58,3 +63,4 @@ reasoned argument, not an information dump. Neither harness yet writes these:
 | GAP-04 | Evaluation criteria for the work | only 30% of brands set them; "on brief" is the #2 way ideas are judged |
 | GAP-05 | Springboard / territories marked as stimulus (never executions) | points where to look without prescribing |
 | GAP-06 | how_to_win and the SMP territory are computed but not shown in the client brief (engine) | work already paid for |
+| GAP-07 | Measured 2026-10-02: 8 engine briefs (test-five, Samaritans x2, Barry's Tea) pass 2-6 of 14 "does a brief's job" tests (Sonnet judge, 1 sample); all 8 fail problem, linked objectives, vivid audience, provenance, evaluation | the critic's health (70-88) measures completeness, not whether the brief argues |
