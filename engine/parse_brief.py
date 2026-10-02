@@ -122,7 +122,7 @@ from brief_ingest import (  # noqa: E402,F401
     _IMAGE_MIME,
     _INGEST_NOTES,
     _VISION_PROMPT,
-    _pdf_vision_transcribe,
+    _pdf_pages_with_vision, _page_needs_vision,
     _strip_html,
     _vision_transcribe,
     docx_text,

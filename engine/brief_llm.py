@@ -597,11 +597,12 @@ ROUTES = {
     "hero_judge":      ("claude-opus-5-5", SONNET),              # insight/SMP judges, territory map
     "judge":           (SONNET, HAIKU),                          # every other field's judge
     "mechanical":      (SONNET, HAIKU),                          # scorecard, how-to-win, rerank
-    "synth":           (SONNET, HAIKU),                          # loop syntheses (Sai: Sonnet, not Haiku)
+    "synth":           (SONNET, HAIKU),
+    "vision":          (SONNET, "claude-opus-5-5"),            # page images and image files -> text (2026-10-02)                          # loop syntheses (Sai: Sonnet, not Haiku)
 }
 # Effort per job on thinking models (Opus 5.5, Sonnet 5): judges and mechanical calls
 # answer a rule, so they think little. None = the model's own default.
-ROUTE_EFFORT = {"hero": "high", "hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
+ROUTE_EFFORT = {"vision": "low", "hero": "high", "hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
 
 
 def route_effort(route: "str | None") -> "str | None":
@@ -717,6 +718,103 @@ def transport_used() -> str:
 
 
 _CLI_WORKDIR: str | None = None
+
+
+# Page images (chart and scanned PDF pages, image files) are read by Claude, never by another model
+# (ADR 0006; 2026-10-02, Sai: the client tracker's chart pages were never read and an older figure was
+# used). Sonnet 5.5 at low effort reads chart labels and values; Opus 5.5 if Sonnet cannot.
+_VISION_ASK = "Transcribe this page."
+
+
+def _vision_message(b64: str, mime: str) -> list:
+    """The user content for one image: the image block, then the one-line ask."""
+    return [{"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
+            {"type": "text", "text": _VISION_ASK}]
+
+
+def _vision_cli(b64: str, mime: str, prompt: str, model: str) -> str:
+    """One image through the Claude Code CLI: the image goes in a stream-json user message (the CLI
+    runs with no tools, so it cannot open a file). Usage is recorded like _chat_claude_cli's."""
+    import shutil
+    import subprocess
+    if not shutil.which("claude"):
+        raise RuntimeError("claude CLI not on PATH (BRIEF_CLAUDE_TRANSPORT=cli)")
+    _stats_call(f"anthropic:{model}", len(prompt) + len(b64) // 4)
+    cmd = ["claude", "-p", "--model", model, "--system-prompt", prompt, "--tools", "", "--max-turns", "1",
+           "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+           "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config"]
+    env = {**os.environ, "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(MAXTOK_EXTRACT + _thinking_headroom(model))}
+    if _thinking_headroom(model):
+        cmd += ["--effort", route_effort("vision") or "low"]
+    else:
+        env["MAX_THINKING_TOKENS"] = "0"
+    env.pop("ANTHROPIC_API_KEY", None)
+    msg = {"type": "user", "message": {"role": "user", "content": _vision_message(b64, mime)}}
+    try:
+        proc = subprocess.run(cmd, input=json.dumps(msg) + "\n", capture_output=True, text=True,
+                              timeout=CLI_TIMEOUT_S, env=env, cwd=_cli_workdir())
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"claude CLI timed out after {CLI_TIMEOUT_S:.0f}s") from e
+    res = {}
+    for line in (proc.stdout or "").splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "result":
+            res = ev
+    if proc.returncode != 0 or not res or res.get("is_error") or res.get("subtype") not in (None, "success"):
+        detail = str(res.get("result") or proc.stderr or "")[:300]
+        if re.search(r"usage limit|rate limit|429|overloaded", detail, re.I):
+            raise _RateLimited(f"claude CLI: {detail}")
+        raise RuntimeError(f"claude CLI vision failed (exit {proc.returncode}): {detail}")
+    text = str(res.get("result") or "")
+    u = res.get("usage") or {}
+    _stats_usage({"prompt_tokens": int(u.get("input_tokens") or 0),
+                  "completion_tokens": int(u.get("output_tokens") or 0),
+                  "cache_read_tokens": int(u.get("cache_read_input_tokens") or 0),
+                  "cache_creation_tokens": int(u.get("cache_creation_input_tokens") or 0)}, len(text))
+    if res.get("stop_reason") == "max_tokens":
+        _stats_bump("truncations")
+        raise _Truncated(f"claude-cli:{model}: page transcription hit the output cap")
+    return text
+
+
+def _vision_api(b64: str, mime: str, prompt: str, model: str) -> str:
+    """One image through the Anthropic API (the image block, then the ask)."""
+    client = _anthropic_client()
+    _stats_call(f"anthropic:{model}", len(prompt) + len(b64) // 4)
+    kw = {"output_config": {"effort": route_effort("vision") or "low"}} if _thinking_headroom(model) else {}
+    msg = client.messages.create(model=model, max_tokens=MAXTOK_EXTRACT + _thinking_headroom(model), system=prompt,
+                                 messages=[{"role": "user", "content": _vision_message(b64, mime)}], **kw)
+    text = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), "")
+    u = getattr(msg, "usage", None)
+    _stats_usage({"prompt_tokens": getattr(u, "input_tokens", 0) or 0,
+                  "completion_tokens": getattr(u, "output_tokens", 0) or 0,
+                  "cache_read_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
+                  "cache_creation_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0} if u else None, len(text))
+    if getattr(msg, "stop_reason", None) == "max_tokens":
+        _stats_bump("truncations")
+        raise _Truncated(f"anthropic:{model}: page transcription hit the output cap")
+    return text
+
+
+def transcribe_image(data: bytes, mime: str, prompt: str, label: str = "image") -> str:
+    """Faithful text of one image, by Claude (the 'vision' route's models in order, over the CLI or
+    the API as BRIEF_CLAUDE_TRANSPORT says). '' when no model could read it; the caller marks the page
+    as unread instead of dropping it silently."""
+    import base64
+    b64 = base64.b64encode(data).decode()
+    use_cli = _claude_transport() == "cli" or _cli_fallback_active()
+    for model in route_models("vision"):
+        try:
+            text = (_vision_cli if use_cli else _vision_api)(b64, mime, prompt, model)
+        except Exception as e:  # noqa: BLE001 - the next model tries; the caller handles ''
+            print(f"[i] {label}: Claude vision on {model} failed ({type(e).__name__}: {str(e)[:120]})", file=sys.stderr)
+            continue
+        if text.strip():
+            return text.strip()
+    return ""
 
 
 def _cli_workdir() -> str:

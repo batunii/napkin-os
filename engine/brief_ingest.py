@@ -1,9 +1,10 @@
 """
 brief_ingest.py — reading a client brief into text (split out of parse_brief.py, 2026-09-27).
 
-  ingest(path)         .txt / .md / .docx / .pdf / .eml / images -> (text, mime); scanned PDFs
-                       and images go through the vision model and are tagged in
-                       _INGEST_NOTES["transcribed"] so run() can say so (audit critic-G8)
+  ingest(path)         .txt / .md / .docx / .pdf / .eml / images -> (text, mime); every PDF page
+                       with little text or mostly pictures, and every image, is also read by
+                       Claude from its image (2026-10-02) and tagged in _INGEST_NOTES["transcribed"]
+                       so run() can say so (audit critic-G8)
   docx_text(path)      a .docx in document order, tables where they sit (audit critic-G1)
                        and each hyperlink's address kept as 'text <url>' (2026-09-28)
   ingest_email_text    an .eml body as text
@@ -13,16 +14,11 @@ Re-exported by parse_brief; new code should import from here.
 """
 from __future__ import annotations
 
-import base64
-import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-from brief_llm import PROVIDERS, _HTTP_UA
 
 
 # ---------------------------------------------------------------------------
@@ -38,80 +34,81 @@ _VISION_PROMPT = (
     "(4) Do NOT summarise, interpret, or invent — transcribe only. Output only the transcription."
 )
 
-# image input → faithful text, via a NIM vision model (no-loss capture stays intact)
 _IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}
 
+# A PDF page is read from its image as well as its text layer when it has little text or is mostly
+# pictures (charts, scans, slides). Measured 2026-10-02 on the Samaritans tracker: 5 of 8 pages, the
+# chart pages whose current figures the text layer did not hold.
+PAGE_MIN_CHARS = 300
+PAGE_IMAGE_SHARE = 0.3
+VISION_WORKERS = 4
+
+
+def _vision_cache_dir() -> Path:
+    """Where page transcriptions are kept between runs, keyed by image and prompt (BRIEF_VISION_CACHE,
+    default ~/.cache/napkin/vision): a rerun on the same document reads no page twice."""
+    d = Path(os.environ.get("BRIEF_VISION_CACHE") or Path.home() / ".cache" / "napkin" / "vision")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 
 def _vision_transcribe(image_bytes: bytes, mime: str, label: str = "image") -> str:
-    """Transcribe one image to text with a vision model (default NIM nemotron-nano-vl).
-    Returns '' and warns on failure rather than crashing the run."""
-    # Vision endpoint is independent of the main model: point it at NIM (default) or a
-    # local Ollama (keyless) via BRIEF_VISION_BASE/MODEL — e.g. gemma3 for image->text.
-    base = os.environ.get("BRIEF_VISION_BASE", PROVIDERS["nim"][0])
-    model = os.environ.get("BRIEF_VISION_MODEL", "nvidia/llama-3.1-nemotron-nano-vl-8b-v1")
-    key = os.environ.get("BRIEF_VISION_API_KEY") or os.environ.get("NVIDIA_API_KEY")
-    is_local = "localhost" in base or "127.0.0.1" in base   # e.g. Ollama — no key needed
-    if not key and not is_local:
-        print(f"[i] {label}: image ingest needs a vision key (NVIDIA_API_KEY / BRIEF_VISION_API_KEY) "
-              "or a local endpoint (BRIEF_VISION_BASE=http://localhost:11434/v1) — skipping.",
-              file=sys.stderr)
-        return ""
-    headers = {"Content-Type": "application/json", "User-Agent": _HTTP_UA}
-    if key:
-        headers["Authorization"] = f"Bearer {key}"
-    payload = {
-        "model": model, "temperature": 0.0,
-        "max_tokens": 4000,
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": _VISION_PROMPT},
-            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}"}},
-        ]}],
-    }
-    req = urllib.request.Request(
-        base.rstrip("/") + "/chat/completions", data=json.dumps(payload).encode(),
-        headers=headers, method="POST")
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=300) as r:
-                content = json.loads(r.read())["choices"][0]["message"].get("content") or ""
-                return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", "replace")[:200]
-            if e.code in (429, 500, 502, 503) and attempt < 2:
-                import time
-                time.sleep(5 * (attempt + 1)); continue
-            print(f"[i] {label}: vision model HTTP {e.code}: {detail}", file=sys.stderr)
-            return ""
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
-            if attempt < 2:
-                import time
-                time.sleep(3 * (attempt + 1)); continue
-            print(f"[i] {label}: vision model unreachable: {e}", file=sys.stderr)
-            return ""
-    return ""
+    """Transcribe one image to text with Claude (brief_llm.transcribe_image, the 'vision' route), cached.
+    Returns '' when no model could read it, so the caller can mark it unread."""
+    import hashlib
+    from brief_llm import transcribe_image
+    key = hashlib.sha256(image_bytes + _VISION_PROMPT.encode()).hexdigest()
+    hit = _vision_cache_dir() / f"{key}.txt"
+    if hit.is_file():
+        return hit.read_text(encoding="utf-8")
+    text = transcribe_image(image_bytes, mime, _VISION_PROMPT, label)
+    if text:
+        hit.write_text(text, encoding="utf-8")
+    return text
 
 
-def _pdf_vision_transcribe(path: Path, max_pages: int = 20) -> str:
-    """Render an image-only / slide-deck PDF page by page and transcribe each."""
+def _page_needs_vision(page) -> bool:
+    """Does this pdfplumber page carry content its text layer may not hold: little text, or pictures
+    covering PAGE_IMAGE_SHARE of it (charts, scans, slide art)?"""
+    text = (page.extract_text() or "").strip()
+    area = float(page.width * page.height) or 1.0
+    pictures = sum(max(0.0, im["x1"] - im["x0"]) * max(0.0, im["bottom"] - im["top"]) for im in page.images)
+    return len(text) < PAGE_MIN_CHARS or pictures / area >= PAGE_IMAGE_SHARE
+
+
+def _pdf_pages_with_vision(path: Path, pages_text: list, needs: list) -> "tuple[list, int, int]":
+    """Every page's text, with a Claude transcription of each flagged page's image added after it (the
+    text layer is kept: nothing is replaced). All pages, in parallel, never a page limit. -> (texts,
+    pages read from images, pages that could not be read). An unreadable page gets an inline marker so
+    the brief raises it instead of losing it."""
+    flagged = [i for i, n in enumerate(needs) if n]
+    if not flagged:
+        return pages_text, 0, 0
     try:
         import fitz  # PyMuPDF
     except ImportError:
-        print(f"[i] {path.name}: looks image-only but PyMuPDF isn't installed "
-              "(pip install pymupdf) — can't transcribe.", file=sys.stderr)
-        return ""
+        print(f"[!] {path.name}: {len(flagged)} page(s) carry images but PyMuPDF is not installed "
+              "(pip install pymupdf); they are marked unread.", file=sys.stderr)
+        out = list(pages_text)
+        for i in flagged:
+            out[i] += f"\n[page {i + 1}: picture content not read (no PDF renderer)]"
+        return out, 0, len(flagged)
     doc = fitz.open(str(path))
-    n = min(len(doc), max_pages)
-    if len(doc) > max_pages:
-        print(f"[i] {path.name}: image-PDF — transcribing first {max_pages} of {len(doc)} pages.",
-              file=sys.stderr)
-    parts = []
-    for i in range(n):
-        png = doc[i].get_pixmap(dpi=150).tobytes("png")
-        t = _vision_transcribe(png, "image/png", f"{path.name} p{i + 1}")
-        if t:
-            parts.append(f"--- page {i + 1} ---\n{t}")
-    return "\n\n".join(parts)
+    pngs = {i: doc[i].get_pixmap(dpi=150).tobytes("png") for i in flagged}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=VISION_WORKERS) as ex:
+        got = dict(zip(flagged, ex.map(lambda i: _vision_transcribe(pngs[i], "image/png", f"{path.name} p{i + 1}"),
+                                       flagged)))
+    out, read, unread = list(pages_text), 0, 0
+    for i in flagged:
+        if got[i]:
+            out[i] = (out[i] + f"\n[page {i + 1}, read from the page image]\n" + got[i]).strip()
+            read += 1
+        else:
+            out[i] += f"\n[page {i + 1}: picture content could not be read]"
+            unread += 1
+    return out, read, unread
 
 
 def _strip_html(html: str) -> str:
@@ -210,24 +207,22 @@ def ingest(path: Path) -> tuple[str, str]:
             import pdfplumber
         except ImportError:
             sys.exit("Need pdfplumber for .pdf:  pip install pdfplumber")
-        out = []
+        texts, needs = [], []
         with pdfplumber.open(str(path)) as pdf:
             for page in pdf.pages:
-                out.append(page.extract_text() or "")
-        text = "\n".join(out)
-        # Image-only / slide-deck PDFs carry little or no text layer — fall back to
-        # rendering each page and transcribing it with the vision model.
-        if len(text.strip()) < max(200, 40 * max(1, len(out))):
-            print(f"[i] {path.name}: thin text layer — transcribing pages with the vision model.",
-                  file=sys.stderr)
-            transcribed = _pdf_vision_transcribe(path)
-            if transcribed:
-                _INGEST_NOTES["transcribed"] = f"scanned PDF, {len(out)} pages, vision model"
-            text = transcribed or text
+                texts.append(page.extract_text() or "")
+                needs.append(_page_needs_vision(page))
+        texts, read, unread = _pdf_pages_with_vision(path, texts, needs)
+        if read or unread:
+            print(f"[i] {path.name}: {read} of {len(texts)} page(s) also read from the page image by Claude"
+                  + (f"; {unread} could not be read" if unread else ""), file=sys.stderr)
+            _INGEST_NOTES["transcribed"] = (f"PDF, {read} of {len(texts)} pages read from page images by Claude"
+                                            + (f", {unread} unreadable" if unread else ""))
+        text = "\n".join(texts)
         return text, "application/pdf"
     if suffix in _IMAGE_MIME:
         mime = _IMAGE_MIME[suffix]
-        _INGEST_NOTES["transcribed"] = f"image ({suffix}), vision model"
+        _INGEST_NOTES["transcribed"] = f"image ({suffix}), read by Claude"
         return _vision_transcribe(path.read_bytes(), mime, path.name), mime
     sys.exit(f"Unsupported file type: {suffix}. Use .txt, .md, .docx, .pdf, .eml, "
              "or an image (.png/.jpg/.jpeg/.webp) — or paste with --text / '-' for stdin.")
@@ -275,7 +270,7 @@ MOVED_NAMES = (
     '_IMAGE_MIME',
     '_INGEST_NOTES',
     '_VISION_PROMPT',
-    '_pdf_vision_transcribe',
+    '_pdf_pages_with_vision', '_page_needs_vision',
     '_strip_html',
     '_vision_transcribe',
     'docx_text',
