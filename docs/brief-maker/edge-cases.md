@@ -71,6 +71,7 @@ Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line re
 | EC-079 | engine | bug | S2 | `_scrub_markers` deletes any `[digits]` and "sentence N" from the client's own words ("Budget [5] million"). | `probe_g.py` | open |
 | EC-080 | engine | bug | S3 | Render: dict items in objectives/desired_response are not scrubbed; `{}`/None `meta` or a None open question raises; lists print as Python lists; a `# heading` inside a value renders as a heading. | `probe_g.py` | open |
 | EC-081 | engine | drop | S2 | PDF via pandoc/xelatex: CJK, Arabic and emoji become missing-glyph boxes yet the render reports success; HTML tags in values pass through unescaped. | `probe_g.py` | open |
+| EC-040 | drafter | drop | S1 | Capture's output cap (12,000 tokens) is hit on ordinary briefs (employer 8.6k chars, OMV 19k chars): the capture is cut off, every client field comes out empty, and the job still ends "done" with one gap line. Health 34 and 0 vs the engine's 83 and 75. | drafter on employer-awareness / omv-btl-brief, 2026-10-02 | open |
 | EC-050 | env | env | S3 | `mock-backend` FetchReasons test needs `trafilatura`, not installed in the default Python. | `pytest mock-backend/tests/test_search_jev.py` | open |
 
 ## The brief's job (gaps against what a brief is for)
