@@ -10,7 +10,7 @@ from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parent.parent
 READ = re.compile(r"""(?:os\.environ\.get|os\.getenv|environ\.get|env\.get|os\.environ\[|os\.environ\.setdefault|_setting\([^,]+,\s*env,)\s*\(?\s*["']([A-Z][A-Z0-9_]{2,})["']""")
-PATTERNS = {"BRIEF_ROUTE_": "BRIEF_ROUTE_<JOB>"}    # documented as a family
+PATTERNS = {"BRIEF_ROUTE_": "BRIEF_ROUTE_<JOB>", "BRIEF_EFFORT_": "BRIEF_EFFORT_<JOB>"}    # documented as families
 
 
 def code_vars() -> dict:

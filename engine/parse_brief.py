@@ -824,11 +824,13 @@ def _check_ids(fails) -> list:
     return out
 
 
-def _jev_figure_failures(field, candidates, allowed_text) -> dict:
+def _jev_figure_failures(field, candidates, allowed_text, brief_text=None, research=None) -> dict:
     """{candidate index: [hard failure, ...]} for RTB and desired-response drafts whose
     figures jev says are not in the brief at p(unsupported) >= jev_checks.FIGURE_FAIL_P
     (Sai, 2026-09-26; lab: AUC 0.997, precision 1.0 at that line). One jev request for
-    every item of every draft. {} for other fields, when there is no brief text, or when
+    every item of every draft and every piece of a long brief. Given `brief_text`, jev reads
+    the whole brief and the run's research fact lines (`research`) in their own slot; else
+    `allowed_text` as the brief. {} for other fields, when there is no brief text, or when
     jev cannot answer (the code number check still runs; the gap is logged once)."""
     if allowed_text is None or field.get("id") not in GROUNDED_FIELDS:
         return {}
@@ -841,7 +843,9 @@ def _jev_figure_failures(field, candidates, allowed_text) -> dict:
         import jev_checks
     except Exception:          # noqa: BLE001 — retrieval package unavailable: no jev
         return {}
-    ps = jev_checks.figures_supported(allowed_text, [it for _, it in flat])
+    items = [it for _, it in flat]
+    ps = (jev_checks.figures_supported(brief_text, items, research=research or None) if brief_text is not None
+          else jev_checks.figures_supported(allowed_text, items))
     out: dict = {}
     for (i, it), pr in zip(flat, ps or []):
         if pr is not None and (1.0 - pr) >= jev_checks.FIGURE_FAIL_P:
@@ -1004,7 +1008,8 @@ def _judge_and_gate(field, candidates, brand_lines: str = "", ctx: str = "", ter
              if (isinstance(i, int) and not isinstance(i, bool)) or (isinstance(i, str) and i.isdigit())]
     order = [i for i in order if 0 <= i < n]
     order = list(dict.fromkeys(order)) + [i for i in range(n) if i not in order]
-    jev_bad = _jev_figure_failures(field, candidates, allowed_text)
+    jev_bad = _jev_figure_failures(field, candidates, allowed_text, brief_text=brief_text or None,
+                                   research=[_facts_mod.line(f) for f in (facts or {}).values()])
     out = []
     for rank, i in enumerate(order):
         c = candidates[i]

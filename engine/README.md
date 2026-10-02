@@ -1,5 +1,8 @@
 # Napkin Briefing Tool
 
+> **New here, or an agent picking this up?** Start with [`RUNBOOK.md`](RUNBOOK.md): setup, making and
+> grading a brief, long inputs, research facts, checkpoints, costs and the known traps.
+
 Takes a client brief in any format (Word / PDF / text / email / scraps) and produces a
 clean, structured, **RAG-grounded** agency brief — with provenance on every value and a
 no-loss guarantee on capture.
@@ -76,8 +79,9 @@ callers (`parse_brief._json_call`, `parse_brief.docx_text`, ...) keep working.
 | `GROQ_API_KEY` / `CEREBRAS_API_KEY` | fast free-tier chat links (recommended) |
 | `QDRANT_CLUSTER_ENDPOINT` + `QDRANT_API_KEY` (+`QDRANT_COLLECTION`) | remote RAG (`RAG_STORE=qdrant`) |
 | `BRIEF_MODEL_CHAIN` / `BRIEF_MODEL` | override the model fallback chain |
-| `BRIEF_ROUTES` | `1` (default): each call runs on its job's model (ADR 0011): extraction and insight/SMP drafts on Opus 4.6, RTB and desired response on Opus 5.5, insight/SMP judges and the territory map on Opus 5.5 (low effort), other judges, scorecard and how-to-win on Sonnet 5 (low effort), loop syntheses on Sonnet 5; a judge never runs on its writer's model. `0`, or setting `BRIEF_MODEL` / `BRIEF_MODEL_CHAIN`, restores one model for every call. The routes a run used are in `meta.model_routes` |
+| `BRIEF_ROUTES` | `1` (default): each call runs on its job's model (ADR 0011): extraction on Opus 5.5, insight/SMP drafts on Opus 4.6, RTB and desired response on Opus 5.5, insight/SMP judges and the territory map on Opus 5.5 (low effort), other judges, scorecard and how-to-win on Sonnet 5.5 (low effort), loop syntheses on Sonnet 5.5; a judge never runs on its writer's model. `0`, or setting `BRIEF_MODEL` / `BRIEF_MODEL_CHAIN`, restores one model for every call. The routes a run used are in `meta.model_routes` |
 | `BRIEF_ROUTE_<JOB>` | override one job's models, `model[,fallback]`; jobs: `EXTRACT`, `HERO`, `GROUNDED_WRITER`, `HERO_JUDGE`, `JUDGE`, `MECHANICAL`, `SYNTH` |
+| `BRIEF_EFFORT_<JOB>` | override one job's effort on thinking models (`low`, `medium`, `high`, `xhigh`, `max`); same jobs; unset = the table in `brief_llm.ROUTE_EFFORT`, else the model's default |
 | `BRIEF_JEV_CHECKS` | `1` (default; needs `TYPESAFE_API_KEY`): jev checks RTB and desired-response figures (a figure not in the brief fails the draft), the scorecard's verdicts (disputes flagged), picks the retrieval category when no upstream category is given, and marks synthesis sentences their cited sources do not support. `0` turns all four off. See `rag/jev_checks.py`, ADR 0011 |
 | `BRIEF_LOOPS37` / `BRIEF_RERANK` / `BRIEF_HERO_CANDIDATES` | stage toggles |
 | `BRIEF_PARALLEL` | `1` (default): stages run as a dependency graph; `0`: one step at a time |

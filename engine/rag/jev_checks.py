@@ -33,6 +33,14 @@ Four uses, each measured in the 2026-09-24 jev lab (engine/outputs/audit_2026_09
                       points (bord-gais and friskies on ragAdded: 4 of 4) from those that do not (0).
                       Never used inside the pipeline.
 
+The whole brief is read (2026-10-01, Sai: never leave anything from the input): a brief longer
+than STATE_CHARS goes to jev in overlapping pieces (brief_chunks) and each question takes its
+best piece; research fact lines sit in their own slot of every state, in as many parts as
+they need. Before, every check saw only the first 60,000 characters, so a 228k-character
+tender lost three quarters of itself and the facts appended after it. choose_category,
+check_scorecard and sort_segments still read the first STATE_CHARS: they judge the brief as
+a whole, and how to combine their answers over pieces is not decided.
+
 Every function returns None when jev cannot answer (no TYPESAFE_API_KEY, SDK missing,
 timeout, bad response, BRIEF_JEV_CHECKS=0) and prints one line saying so; callers record
 that the check did not run and carry on unchecked, never blocked.
@@ -45,6 +53,8 @@ import sys
 import threading
 
 STATE_CHARS = 60_000             # ~15k tokens: well inside jev's 32k state-plus-question rule
+CHUNK_OVERLAP = 2_000            # a longer brief is read in pieces that overlap by this much
+RESEARCH_CHARS = 15_000          # research fact lines per state; more go in further states
 BATCH = 40                       # questions per request (jev accepts 50; the lab used <= 40)
 FIGURE_FAIL_P = 0.9              # p(unsupported) at which a figure fails a draft (lab: P 1.0, R 0.91)
 CATEGORY_MIN_P = 0.85            # lowest correct category probability in the lab
@@ -76,6 +86,13 @@ FIGURE_T = ("Each figure (percentage, count, price, duration, year, age) in the 
             "the brief and refers to the same thing there.")
 FIGURE_F = ("At least one figure in the item is absent from the brief, is computed or rounded from "
             "other figures, or refers to something different in the brief.")
+FIGURE_Q_RESEARCH = ("Does every number in ITEM appear in the client brief or in the verified research "
+                     "facts in the state, used for the same thing?")
+FIGURE_T_RESEARCH = ("Each figure (percentage, count, price, duration, year, age) in the item is stated in "
+                     "the brief or in a research fact (a share may be written as a percentage) and refers "
+                     "to the same thing there.")
+FIGURE_F_RESEARCH = ("At least one figure in the item is in neither the brief nor the research facts, is "
+                     "computed or rounded from other figures, or refers to something different there.")
 
 SCORECARD_DEFS = {
     "objectives_quality": "a handful of objectives at most, benchmarked and time-stamped, the commercial, "
@@ -154,22 +171,101 @@ def _noul(question: str, true: str, false: str, **instructions) -> dict:
             "criteria": {"true": true, "false": false}}
 
 
+def brief_chunks(text: str, size: int = STATE_CHARS) -> list:
+    """The whole of `text` in pieces of at most `size` characters that overlap by
+    CHUNK_OVERLAP, each cut at a paragraph or line break near its end when there is one
+    (Sai 2026-10-01: never leave anything from the input). One piece, exactly the text,
+    when it fits, so a brief of up to `size` characters is asked as before."""
+    text = str(text or "")
+    if len(text) <= size:
+        return [text]
+    size = max(size, 2 * CHUNK_OVERLAP)
+    out, start = [], 0
+    while start < len(text):
+        end = min(start + size, len(text))
+        if end < len(text):
+            cut = max(text.rfind("\n\n", start + size // 2, end), text.rfind("\n", start + size // 2, end))
+            end = cut if cut > start else end
+        out.append(text[start:end])
+        if end >= len(text):
+            break
+        start = max(end - CHUNK_OVERLAP, start + 1)
+    return out
+
+
+def research_parts(lines: list, size: int = RESEARCH_CHARS) -> list:
+    """Whole research fact lines packed in order into parts of at most about `size`
+    characters (a single longer line is its own part). [] when there are none."""
+    parts, cur, n = [], [], 0
+    for ln in (str(x) for x in (lines or [])):
+        if cur and n + len(ln) + 1 > size:
+            parts.append("\n".join(cur))
+            cur, n = [], 0
+        cur.append(ln)
+        n += len(ln) + 1
+    if cur:
+        parts.append("\n".join(cur))
+    return parts
+
+
+def _states(brief_text: str, research: "list | None" = None) -> list:
+    """Every state needed to show jev the whole brief and, when given, every research fact
+    line: each brief piece paired with each research part. A brief of up to STATE_CHARS is
+    one piece with the research beside it (at most STATE_CHARS + RESEARCH_CHARS, the size
+    claims_supported always sent); a longer brief is cut so piece plus research stays within
+    STATE_CHARS. Without research and within STATE_CHARS this is [{"client_brief": brief}],
+    the state every check sent before."""
+    parts = research_parts(research or [])
+    text = str(brief_text or "")
+    widest = max((len(x) for x in parts), default=0)
+    pieces = [text] if len(text) <= STATE_CHARS else brief_chunks(text, max(STATE_CHARS - widest, STATE_CHARS // 2))
+    if not parts:
+        return [{"client_brief": c} for c in pieces]
+    return [{"client_brief": c, "verified_research_facts": r} for c in pieces for r in parts]
+
+
+def _ask_states(states: list, questions: dict, what: str) -> "dict | None":
+    """{name: [answer per state]} for the same questions asked against every state; None
+    when any state cannot be answered (the check then did not run, as before)."""
+    out: dict = {}
+    for st in states:
+        got = _ask(st, questions, what)
+        if got is None:
+            return None
+        for n, a in got.items():
+            out.setdefault(n, []).append(a)
+    return out
+
+
+def _most(answers: "list | None"):
+    """The highest probability among one question's noul answers across states (the fact
+    or figure is found in some piece of the brief), or None."""
+    ps = [a for a in (answers or []) if isinstance(a, (int, float))]
+    return max(ps) if ps else None
+
+
 def has_figure(text: str) -> bool:
     """True when `text` carries a digit or a number word, i.e. something to check."""
     return bool(_NUM_RE.search(str(text or "")))
 
 
-def figures_supported(brief_text: str, items: list) -> "list | None":
+def figures_supported(brief_text: str, items: list, research: "list | None" = None) -> "list | None":
     """p(every figure in the item is in the brief) per item, None for an item with no
-    figure (not asked). None when jev cannot answer."""
-    asked = {f"f{i:03d}": _noul(FIGURE_Q, FIGURE_T, FIGURE_F, item=str(it)[:600])
+    figure (not asked). The whole brief is read (in overlapping pieces when long) and an
+    item takes its best piece. With `research` (the run's verified fact lines) the facts
+    sit in their own slot of every state and the question accepts a figure stated there
+    (2026-10-01: appended after a 228k-character tender they were cut off, and every
+    cited RTB failed). None when jev cannot answer."""
+    q, t, f = ((FIGURE_Q_RESEARCH, FIGURE_T_RESEARCH, FIGURE_F_RESEARCH) if research
+               else (FIGURE_Q, FIGURE_T, FIGURE_F))
+    asked = {f"f{i:03d}": _noul(q, t, f, item=str(it)[:600])
              for i, it in enumerate(items) if has_figure(it)}
     if not asked:
         return [None] * len(items)
-    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "rtb figures")
+    got = _ask_states(_states(brief_text, research), asked, "rtb figures")
     if got is None:
         return None
-    return [got.get(f"f{i:03d}") for i in range(len(items))]
+    return [_most(got.get(f"f{i:03d}")) for i in range(len(items))]
 
 
 CLAIM_Q = "Is CLAIM supported by the client brief in the state?"
@@ -201,15 +297,14 @@ def claims_supported(brief_text: str, claims: list, research: "list | None" = No
                            "criteria": crit} for i, c in enumerate(claims)}
     if not asked:
         return []
-    state = {"client_brief": str(brief_text or "")[:STATE_CHARS]}
-    if research:
-        state["verified_research_facts"] = "\n".join(str(r) for r in research)[:STATE_CHARS // 4]
-    got = _ask(state, asked, "claim grounding")
+    got = _ask_states(_states(brief_text, research), asked, "claim grounding")
     if got is None:
         return None
     out = []
     for i in range(len(claims)):
-        choice, probs = got[f"c{i:03d}"]
+        # across pieces: support anywhere wins, then a contradiction, then not_in_brief
+        rank = {"supported": 0, "supported_by_research": 1, "contradicted": 2}
+        choice, probs = min(got[f"c{i:03d}"], key=lambda a: (rank.get(a[0], 3), -float(a[1].get(a[0], 0.0))))
         out.append((choice, round(float(probs.get(choice, 0.0)), 2)))
     return out
 
@@ -226,10 +321,10 @@ def fact_conflicts(brief_text: str, fact_lines: list) -> "list | None":
              for i, f in enumerate(fact_lines)}
     if not asked:
         return []
-    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "fact conflicts")
+    got = _ask_states(_states(brief_text), asked, "fact conflicts")
     if got is None:
         return None
-    return [got.get(f"k{i:03d}") for i in range(len(fact_lines))]
+    return [_most(got.get(f"k{i:03d}")) for i in range(len(fact_lines))]
 
 
 ANSWERED_Q = "Does the client brief in the state already answer OPEN_QUESTION?"
@@ -244,10 +339,10 @@ def questions_answered(brief_text: str, questions: list) -> "list | None":
              for i, q in enumerate(questions)}
     if not asked:
         return []
-    got = _ask({"client_brief": str(brief_text or "")[:STATE_CHARS]}, asked, "open questions answered")
+    got = _ask_states(_states(brief_text), asked, "open questions answered")
     if got is None:
         return None
-    return [got.get(f"q{i:03d}") for i in range(len(questions))]
+    return [_most(got.get(f"q{i:03d}")) for i in range(len(questions))]
 
 
 def sort_segments(brief_text: str, segments: list, labels: dict, hints: list) -> "list | None":

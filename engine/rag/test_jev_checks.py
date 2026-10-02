@@ -163,3 +163,97 @@ def test_open_questions_answered_asks_one_noul_per_question(jev):
     assert jc.questions_answered(BRIEF, []) == []
     jev(FakeJev(fail=True))
     assert jc.questions_answered(BRIEF, ["x?"]) is None
+
+
+def test_a_long_brief_is_read_whole_in_overlapping_pieces():
+    """2026-10-01 (never leave anything from the input): a brief longer than STATE_CHARS is
+    cut into overlapping pieces that together hold every character; a short one is one
+    piece, exactly the text."""
+    para = "Samaritans answers calls day and night. " * 40 + "\n\n"
+    text = para * 400                                         # ~650k characters
+    pieces = jc.brief_chunks(text)
+    assert len(pieces) > 1 and all(len(p) <= jc.STATE_CHARS for p in pieces)
+    covered, pos = 0, 0
+    for p in pieces:                                          # each piece starts inside the last
+        start = text.index(p, max(0, pos - jc.CHUNK_OVERLAP - 1))
+        assert start <= covered
+        covered, pos = start + len(p), start + len(p)
+    assert covered == len(text)
+    assert jc.brief_chunks(BRIEF) == [BRIEF]
+
+
+def test_a_figure_late_in_a_long_brief_is_found(jev):
+    """The figure sits after STATE_CHARS: one piece holds it, and the item takes that piece's
+    probability (before, jev saw only the first 60,000 characters and failed it)."""
+    long_brief = "Intro paragraph about the tender.\n" * 3000 + "About 350,000 calls are answered a year.\n"
+    f = jev(FakeJev(noul=lambda n, q: 0.0))
+    seen = []
+    def noul(n, q):
+        """Supported only in the state that holds the figure."""
+        return 0.97 if "350,000" in seen[-1] else 0.05
+    f.noul = noul
+    real = f.ask
+    def ask(state, questions, **k):
+        """Records the state before answering."""
+        seen.append(state["client_brief"])
+        return real(state, questions, **k)
+    f.ask = ask
+    assert len(long_brief) > jc.STATE_CHARS
+    assert jc.figures_supported(long_brief, ["350,000 calls a year"]) == [0.97]
+    assert len(f.calls) == len(jc.brief_chunks(long_brief)) > 1
+
+
+def test_research_facts_have_their_own_slot_in_every_state(jev):
+    """With research, every state carries the facts beside a piece of the brief and the
+    question names them; without research the state and the question are as before."""
+    research = ["[F:f-1 v1] brand calls: 350000 count (brand research)"]
+    f = jev(FakeJev(noul=lambda n, q: 0.96))
+    assert jc.figures_supported(BRIEF, ["350,000 calls a year [F:f-1]"], research=research) == [0.96]
+    state, qs = f.calls[0]
+    assert state == {"client_brief": BRIEF, "verified_research_facts": research[0]}
+    assert "verified research facts" in qs["f000"]["instructions"]["question"]
+    f.calls.clear()
+    jc.figures_supported(BRIEF, ["2 million packs"])
+    assert f.calls[0][0] == {"client_brief": BRIEF} and f.calls[0][1]["f000"]["instructions"]["question"] == jc.FIGURE_Q
+
+
+def test_many_research_facts_are_all_shown(jev):
+    """More fact lines than fit in one slot go in further states; none is cut off."""
+    research = [f"[F:f-{i} v1] brand fact {i}: {i} count " + "x" * 400 for i in range(80)]
+    f = jev(FakeJev(noul=lambda n, q: 0.9))
+    jc.figures_supported(BRIEF, ["2 million packs"], research=research)
+    shown = "\n".join(st["verified_research_facts"] for st, _ in f.calls)
+    assert all(r in shown for r in research) and len(f.calls) > 1
+    assert all(len(st["verified_research_facts"]) <= jc.RESEARCH_CHARS for st, _ in f.calls)
+
+
+def test_conflicts_answers_and_claims_take_the_whole_brief(jev):
+    """fact_conflicts and questions_answered take the highest probability over the pieces;
+    claims_supported keeps support found in any piece over not_in_brief elsewhere."""
+    long_brief = "Filler line.\n" * 6000 + "The budget is EUR 140,000.\n"
+    def by_piece(n, q):
+        """High only for the piece that holds the budget."""
+        return 0.95 if "140,000" in f.calls[-1][0]["client_brief"] else 0.05
+    f = jev(FakeJev(noul=by_piece))
+    assert jc.questions_answered(long_brief, ["What is the budget?"]) == [0.95]
+    assert jc.fact_conflicts(long_brief, ["[F:f-1] budget: 90000 EUR"]) == [0.95]
+    f2 = jev(FakeJev(choice=lambda n, q: ("supported", 0.9) if "140,000" in f2.calls[-1][0]["client_brief"]
+                     else ("not_in_brief", 0.97)))
+    assert jc.claims_supported(long_brief, ["The budget is EUR 140,000"]) == [("supported", 0.9)]
+
+
+def test_the_gate_gives_jev_the_brief_and_the_research_apart(monkeypatch):
+    """_judge_and_gate passes the whole brief text and the run's fact lines to the figure
+    check, not the brief with the facts pasted on its end."""
+    import jev_checks
+    seen = {}
+    def fake(text, items, research=None):
+        """Records what the gate sent."""
+        seen.update(text=text, research=research)
+        return [0.97] * len(items)
+    monkeypatch.setattr(jev_checks, "figures_supported", fake)
+    facts = {"f-1": {"id": "f-1", "version": 1, "entity": "brand", "key": "calls", "value": 350000, "unit": "count"}}
+    pb._jev_figure_failures(FIELD["reasons_to_believe"], [{"value": ["350,000 calls [F:f-1]"]}],
+                            BRIEF + "\n[F:f-1 v1] ...", brief_text=BRIEF,
+                            research=[pb._facts_mod.line(f) for f in facts.values()])
+    assert seen["text"] == BRIEF and seen["research"][0].startswith("[F:f-1 v1]")

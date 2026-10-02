@@ -66,11 +66,37 @@ def ref(f: dict) -> str:
     return f"F:{f['id']}" + (f" v{v}" if v not in (None, "") else "")
 
 
+def _short(x: float) -> str:
+    """A number as a writer would type it: '27', '7.3', '85.5' (no trailing zeros)."""
+    return f"{x:.2f}".rstrip("0").rstrip(".")
+
+
+def forms(f: dict) -> list:
+    """The other honest ways to write a fact's figure, so a writer quoting it is not called a misquote:
+    a proportion as a percentage (0.27 -> '27%'), a large amount in millions or billions
+    (85000000 -> '85 million'). The research tool stores shares as 0-1 and money in units, and a
+    planner writes '27%' and 'EUR 85 million'."""
+    v, unit = f.get("value"), str(f.get("unit") or "").lower()
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return []
+    out = []
+    if unit in ("proportion", "share", "ratio") and 0 <= v <= 1:
+        out.append(f"{_short(v * 100)}%")
+    if abs(v) >= 1e9:
+        out.append(f"{_short(v / 1e9)} billion")
+    elif abs(v) >= 1e6:
+        out.append(f"{_short(v / 1e6)} million")
+    return out
+
+
 def line(f: dict) -> str:
     """One fact as the writers see it: '[F:f-123 v2] brand shops: 40 shops (brand research,
-    as of 2026-06; Annual report 2025)'."""
+    as of 2026-06; Annual report 2025)'; a share or a large amount also carries its usual form
+    ('0.27 proportion (27%)'), which the figure checks then accept."""
     what = " ".join(str(x) for x in (f.get("entity"), f.get("key")) if x)
-    value = f"{f['value']}{(' ' + str(f['unit'])) if f.get('unit') else ''}"
+    alt = forms(f)
+    value = (f"{f['value']}{(' ' + str(f['unit'])) if f.get('unit') else ''}"
+             + (f" ({', '.join(alt)})" if alt else ""))
     src = next((s.get("title") or s.get("uri") for s in (f.get("sources") or []) if isinstance(s, dict)), None)
     meta = ", ".join(x for x in (f"{scope(f)} research", f"as of {f['as_of']}" if f.get("as_of") else "") if x)
     return f"[{ref(f)}] {what + ': ' if what else ''}{value} ({meta}{'; ' + str(src) if src else ''})"
@@ -117,7 +143,11 @@ def citation_failures(value, facts: dict, brief_text: str) -> list:
     if not facts:
         return []
     brief_nums = _nums(brief_text)
-    fact_nums = {fid: _nums(f"{f.get('value')} {f.get('unit') or ''}") for fid, f in facts.items()}
+    # a fact's figure in every honest form (forms()) is the fact's; its date also counts, but only for an
+    # item that cites it ("27% (2014) [F:x]"), so a draft saying "in 2026" is never taken for research
+    fact_nums = {fid: _nums(" ".join([str(f.get("value")), str(f.get("unit") or ""), *forms(f)]))
+                 for fid, f in facts.items()}
+    cite_nums = {fid: ns | _nums(str(facts[fid].get("as_of") or "")) for fid, ns in fact_nums.items()}
     out = []
     for key, text in _items(value):
         cited = [fid for fid, _v in CITE.findall(text)]
@@ -128,7 +158,7 @@ def citation_failures(value, facts: dict, brief_text: str) -> list:
                 out.append(f"{FAIL} cites F:{fid}, which was not given{where}")
         for n in sorted(_nums(plain) - brief_nums):
             if cited:
-                if not any(n in fact_nums.get(fid, set()) for fid in cited):
+                if not any(n in cite_nums.get(fid, set()) for fid in cited):
                     out.append(f"{FAIL} {n} is not in the fact it cites ({', '.join('F:' + c for c in cited)}){where}")
             else:
                 src = [fid for fid, ns in fact_nums.items() if n in ns]

@@ -587,18 +587,31 @@ _CLI_DEFAULT_EFFORT = {"claude-opus-5-5": "medium"}
 # to the single-model chain (the whole-pipeline swaps the comparisons use).
 # ---------------------------------------------------------------------------
 HAIKU = "claude-haiku-4-5-20251001"
+# 2026-10-01 (Sai): extraction moved to Opus 5.5 (20% cheaper per token than Opus 4.6, Opus 4.6 kept as
+# its fallback) and every Sonnet 5 route to Sonnet 5.5 (same price, the current Sonnet).
+SONNET = "claude-sonnet-5-5"
 ROUTES = {
-    "extract":         ("claude-opus-4-6", "claude-opus-5-5"),   # capture, golden extraction
+    "extract":         ("claude-opus-5-5", "claude-opus-4-6"),   # capture, golden extraction
     "hero":            ("claude-opus-4-6", "claude-opus-5-5"),   # insight/SMP drafts, refine, other fields
     "grounded_writer": ("claude-opus-5-5", "claude-opus-4-6"),   # RTB, desired response: 0/8 vs 11 invented figures
-    "hero_judge":      ("claude-opus-5-5", "claude-sonnet-5"),   # insight/SMP judges, territory map
-    "judge":           ("claude-sonnet-5", HAIKU),               # every other field's judge
-    "mechanical":      ("claude-sonnet-5", HAIKU),               # scorecard, how-to-win, rerank
-    "synth":           ("claude-sonnet-5", HAIKU),               # loop syntheses (Sai: Sonnet, not Haiku)
+    "hero_judge":      ("claude-opus-5-5", SONNET),              # insight/SMP judges, territory map
+    "judge":           (SONNET, HAIKU),                          # every other field's judge
+    "mechanical":      (SONNET, HAIKU),                          # scorecard, how-to-win, rerank
+    "synth":           (SONNET, HAIKU),                          # loop syntheses (Sai: Sonnet, not Haiku)
 }
 # Effort per job on thinking models (Opus 5.5, Sonnet 5): judges and mechanical calls
 # answer a rule, so they think little. None = the model's own default.
 ROUTE_EFFORT = {"hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
+
+
+def route_effort(route: "str | None") -> "str | None":
+    """The effort a job's calls run at: BRIEF_EFFORT_<JOB> (low | medium | high | xhigh | max) when set,
+    else ROUTE_EFFORT, else None (the model's own default). The override is how an effort change is
+    measured on whole runs before the table changes."""
+    if not route:
+        return None
+    env = os.environ.get(f"BRIEF_EFFORT_{route.upper()}", "").strip().lower()
+    return env if env in ("low", "medium", "high", "xhigh", "max") else ROUTE_EFFORT.get(route)
 GROUNDED_FIELDS = ("reasons_to_believe", "desired_response")
 HERO_FIELDS = ("insight", "smp")
 _EFFORT_TL = threading.local()       # the effort of the call in flight on this thread
@@ -897,7 +910,7 @@ def _json_call(user, system=None, retries=1, model=None, accept=None, max_tokens
             return None
     else:
         chain = _model_chain(model)
-    _EFFORT_TL.effort = ROUTE_EFFORT.get(route) if routed is not None else None
+    _EFFORT_TL.effort = route_effort(route) if routed is not None else None
     try:
         reader = parse or (functools.partial(_loads_lenient, whole=True) if whole else _loads_lenient)
         for provider, m in chain:
