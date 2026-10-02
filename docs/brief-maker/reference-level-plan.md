@@ -75,3 +75,55 @@ Section counts are against the Samaritans reference.
 
 To avoid fitting one reference, build 2-3 more references for test-five briefs (an engine run, then a
 long agentic run, then a planner's merge) and keep one back as a test set.
+
+## Reading big inputs (research 2026-10-02)
+
+How others do it:
+
+- **claude.ai Projects** load files whole until near the limit, then switch to retrieval and see only
+  passages.
+- **Claude's PDF path** sends each page as text plus a page image (about 2.3k tokens a page), so charts
+  and scans are read. Anthropic's own guidance is to put inputs under about 200k tokens whole in the
+  prompt with caching, and above that to use contextual retrieval (chunk context + embeddings + BM25 +
+  rerank).
+- **ChatGPT file search, Perplexity and Copilot** are retrieval-first and read only top passages.
+- **Gemini and NotebookLM** lean on long context.
+
+No product guarantees "nothing unread" through retrieval alone. Only a chunk ledger with full coverage
+does.
+
+Design for the engine (S0/S1 above):
+
+1. **Parse** to text with locators (current readers; Docling/Marker are optional local parsers for
+   tables). Pages that are image-only, low-text or charts are rendered and transcribed by Claude vision
+   (Haiku for plain OCR, Sonnet for charts and tables). Cache by file hash.
+2. **Chunk** on document and section boundaries at about 30-40k chars. Never split a table. Per lot for
+   multi-lot tenders, with a shared preamble cached for 1 h.
+3. **Map:** Sonnet per chunk, in parallel, into a requirement and evidence ledger with locators, and a
+   mark (used / irrelevant / item id) on every paragraph. Unmarked paragraphs are re-queued. Under 100%
+   coverage fails loudly. Check `stop_reason` on every call (no silent truncation, cf. EC-040).
+4. **Reduce:** Opus merges, dedupes and flags conflicts, keeping locators. It sees raw text only for a
+   conflict.
+5. **Later steps** get ledger items plus passages retrieved from a per-brief BM25 + embedding index
+   (engine/rag code), not the whole input. Summaries never replace the ledger.
+
+Estimates, to be checked against `llm_stats`:
+
+| Input | Cost | Time |
+|---|---|---|
+| 4k chars | about $0.10 | under 1 min |
+| 60k chars | about $0.35 | 1-2 min |
+| 228k chars | about $0.90 | 2-3 min (today: $3.4, 6 min) |
+| 1M chars | about $3 | 4-6 min |
+| 5M chars | about $13 | 15-25 min, two-level reduce |
+
+Batch API at -50% for the map step when time allows. Prices are per million tokens:
+
+| Model | Input | Output | Cache read |
+|---|---|---|---|
+| Opus 5.5 | $4 | $20 | $0.20 |
+| Sonnet 5.5 | $2 | $10 | $0.20 |
+| Haiku 4.5 | $1 | $5 | $0.10 |
+
+There is no long-context surcharge on the 4.6+ models, and the new tokenizer produces about 30% more
+tokens.
