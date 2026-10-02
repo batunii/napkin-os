@@ -155,3 +155,16 @@ Measured through the middleware on `integrate/jev-hardening`
 
 The earlier finding that Opus 4.6 writes better hero lines came from the critic. The blind judge,
 which this time compared against an outside writer, disagreed.
+
+## Update 2026-10-02 (later): the coherence check is built and off by default
+
+- **What it does:** `BRIEF_COHERENCE` asks whether problem → insight → proposition → reasons to
+  believe → desired response hold together.
+- **Who judges:** one Sonnet 5.5 call on the judge route. jev is the fallback.
+- **jev vs Claude:** on 88 links from 23 briefs, jev agreed with Claude on 84%, caught 17 of the 30
+  breaks Claude found, and raised 1 false alarm, so Claude leads.
+- **Repair:** one per brief.
+- **Result:** 6 blind head-to-heads against the same engine without it gave 2 wins, 2 ties and 2
+  losses, for +40-100 s per brief. Most breaks are reasons to believe that no given fact can support
+  (evidence gaps). Off by default (Sai). It is kept for the gap-filler and the strategy chain.
+

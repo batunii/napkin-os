@@ -416,3 +416,44 @@ def synthesis_support(sentences: list, sources: dict) -> "list | None":
     if got is None:
         return None
     return [got.get(f"s{i:03d}") for i in range(len(sentences))]
+
+
+# The brief's chain of argument (2026-10-02, Sai: "can we use jev for that final 4 questions"):
+# one yes/no question per link, all four in one request over the chain itself. Keyed by the
+# later field; the earlier field texts go in as instructions named in the question.
+COHERENCE_QUESTIONS = {
+    "insight": ("Does INSIGHT explain why the PROBLEM exists: the human reason behind the BACKGROUND and OBJECTIVES?",
+                "The insight names a truth or tension about people that accounts for the problem the objectives set out to solve.",
+                "The insight is unrelated to the problem, only restates a fact, or explains something other than the problem."),
+    "smp": ("Does PROPOSITION grow out of INSIGHT and answer its tension?",
+            "The proposition is what you would say to someone who holds the insight, and it resolves the insight's tension.",
+            "The proposition ignores the insight, contradicts it, or answers a different problem."),
+    "reasons_to_believe": ("Do REASONS_TO_BELIEVE prove PROPOSITION?",
+                           "Each reason is evidence that the proposition is true.",
+                           "The reasons prove something else (the size of the need, another message) or nothing at all."),
+    "desired_response": ("Is DESIRED_RESPONSE what someone would think, feel and do if PROPOSITION landed, consistent with INSIGHT?",
+                         "The think, feel and do follow from the proposition and fit the insight.",
+                         "The response asks for something the proposition does not lead to, or contradicts the insight."),
+}
+_COHERENCE_NAMES = {"background": "BACKGROUND", "objectives": "OBJECTIVES", "insight": "INSIGHT", "smp": "PROPOSITION",
+                    "reasons_to_believe": "REASONS_TO_BELIEVE", "desired_response": "DESIRED_RESPONSE"}
+
+
+def coherence_links(chain: dict, later_fields: list) -> "dict | None":
+    """p(the link into each later field holds), {field id: p}, for the fields in `later_fields`
+    that have a question. `chain` is {field id: text} for background, objectives, insight, smp,
+    reasons_to_believe and desired_response (missing ones are left out). One request; the
+    chain is the state. None when jev cannot answer (the caller then asks Claude)."""
+    given = {_COHERENCE_NAMES[k]: str(v)[:4000] for k, v in chain.items() if k in _COHERENCE_NAMES and v}
+    asked = {}
+    for fid in later_fields:
+        if fid in COHERENCE_QUESTIONS and fid in chain and chain[fid]:
+            q, t, f = COHERENCE_QUESTIONS[fid]
+            asked[fid] = _noul(q, t, f, **{k: v for k, v in given.items()})
+    if not asked:
+        return {}
+    state = {"brief_chain": "\n".join(f"{k}: {v}" for k, v in given.items())}
+    got = _ask(state, asked, "brief coherence")
+    if got is None:
+        return None
+    return {fid: got.get(fid) for fid in asked}

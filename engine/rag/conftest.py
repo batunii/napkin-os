@@ -20,6 +20,9 @@ def _placeholder_claude_key(monkeypatch):
     # jev checks (ADR 0011) off unless a test turns them on with a fake backend: the real
     # backend would read TYPESAFE_API_KEY from engine/.env and try the network.
     monkeypatch.setenv("BRIEF_JEV_CHECKS", "0")
+    # The coherence pass (one extra judge call after the fields are filled) is off unless a test
+    # turns it on: the call-count and fake-model tests count exact calls.
+    monkeypatch.setenv("BRIEF_COHERENCE", "0")
     import sys as _sys
     jc = _sys.modules.get("jev_checks")
     if jc is not None:
