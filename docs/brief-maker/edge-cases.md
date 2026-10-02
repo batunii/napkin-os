@@ -18,7 +18,11 @@ Started 2026-10-02 on `integrate/jev-hardening`, from code reading (file:line re
 
 - **REQ-01 (Sai, 2026-10-02): every one of the 11 brief fields is filled, on every input.** An empty
   field fails the run. Where the client gave nothing, the field carries a labelled proposal or
-  assumption with its basis and an open question, never an invented client fact.
+  assumption with its basis and an open question, never an invented client fact. Rules (Sai, same day):
+  a field the client never gave is filled as "Proposed (not given by the client): <value>, based on
+  <fact ids / category norms / the brief>. To confirm: <question>"; a field whose drafts all fail a
+  check gets one targeted repair pass, then the best draft ships marked "(Draft - failed check:
+  <which>. To confirm.)".
 - **REQ-02 (Sai, 2026-10-01): nothing from the input is left unread.** See EC-002, EC-030.
 
 ## Found so far
