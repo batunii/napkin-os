@@ -22,7 +22,7 @@ import re
 from html import escape
 from html.parser import HTMLParser
 
-from .figures import NUM, allowed_for
+from .figures import allowed_numbers_for, unsupported_figures
 
 TAGS = {"section", "div", "header", "footer", "article", "aside", "h1", "h2", "h3", "p", "span", "strong", "em",
         "b", "i", "small", "br", "hr", "ol", "ul", "li", "table", "thead", "tbody", "tr", "td", "th", "figure",
@@ -178,16 +178,16 @@ def check(html: str, pins: dict, findings: dict, contests: dict, gaps: dict, nam
                     dropped.append(f"<{k.tag}> “{own[:60]}” carries no evidence: no clan-* element inside it")
                     continue
                 refs = _refs(k)
-                figs = [x for x in NUM.findall(own) if not YEAR.match(x)
-                        and x not in allowed_for(refs, pins, live_findings, names)]
+                figs = [x for x in unsupported_figures(own, allowed_numbers_for(refs, pins, live_findings, names))
+                        if not YEAR.match(x)]
                 if figs:
                     dropped.append(f"<{k.tag}> “{own[:60]}” states {', '.join(sorted(set(figs)))}, which nothing it "
                                    f"references holds")
                     continue
                 counts["blocks"] += 1
             elif k.tag in ("h1", "h2", "h3", "td", "th"):
-                figs = [x for x in NUM.findall(_text(k)) if not YEAR.match(x)
-                        and x not in allowed_for(_refs(k), pins, live_findings, names)]
+                figs = [x for x in unsupported_figures(_text(k), allowed_numbers_for(_refs(k), pins, live_findings, names))
+                        if not YEAR.match(x)]
                 if figs:
                     dropped.append(f"<{k.tag}> states {', '.join(sorted(set(figs)))} outside a field")
                     continue

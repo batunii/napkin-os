@@ -53,3 +53,6 @@ server/var/
 # Real client material: never commit (confidential)
 client_briefs/
 engine/rag/golden/labels/client/
+
+# Research-tool run ledgers and recordings (may hold client material)
+runs/metrics/

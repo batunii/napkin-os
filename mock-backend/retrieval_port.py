@@ -318,7 +318,7 @@ def bad(message: str) -> PeripheralError:
 class Retrieval:
     def __init__(self, cfg: Config, slots: Slots):
         self.cfg, self.slots = cfg, slots
-        self.cache = DiskCache(cfg.data, "retrieval")
+        self.cache = DiskCache(cfg.cache_root, "retrieval")
         self._lock = threading.Lock()
         self.root, self.packs = discover(cfg)
         log(f"retrieval: {len(self.packs)} packs from {self.root} "

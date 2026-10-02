@@ -70,6 +70,8 @@ shared by all families.
   | Model id | Alias |
   |---|---|
   | `claude-opus-5` | `opus` |
+  | `claude-opus-5-5` | `claude-opus-5-5` (full id) |
+  | `claude-sonnet-5-5` | `claude-sonnet-5-5` (full id) |
   | `claude-sonnet-5` | `sonnet` |
   | `claude-haiku-4-5` | `haiku` |
   | `claude-fable-5-1` | `fable` |
@@ -286,7 +288,7 @@ over a transport that calls `app.handle` instead of a socket.
 |---|---|---|
 | `MOCK_BACKEND_HOST` / `MOCK_BACKEND_PORT` | `127.0.0.1` / `8797` | refuses 8080, 8090, 8787, 8788, 8790, 8791, 8792, 8795, 8796 |
 | `MOCK_FAKES` | `model,research,retrieval,layers` | families served |
-| `MOCK_CONCURRENCY` | `4` | Claude subprocesses at once, all families |
+| `MOCK_CONCURRENCY` | `8` | Claude subprocesses at once, all families |
 | `MOCK_QUEUE_TIMEOUT` | the family's timeout | wait for a slot -> 529/503 |
 | `MOCK_TIMEOUT_MODEL` / `_RESEARCH` / `_RETRIEVAL` | `180` / `420` / `180` | seconds -> 504, process group killed |
 | `MOCK_MAX_BODY_BYTES` | `33554432` | -> 413 |
@@ -294,6 +296,8 @@ over a transport that calls `app.handle` instead of a socket.
 | `MOCK_CLAUDE_BIN` | `claude` | the tests point it at `tests/fake_claude.py` |
 | `MOCK_MODEL_ALIASES` | the three NIM ids above | JSON `{"<id>": "<alias>"}` |
 | `MOCK_RESEARCH_MODEL` / `MOCK_RETRIEVAL_MODEL` | `sonnet` / `sonnet` | CLI aliases |
+| `MOCK_RESEARCH_BACKEND` | `claude-code` | `search-jev`: the agent only searches (WebSearch, no WebFetch); code fetches the pages (trafilatura, pypdf) and jev picks the passages (`search_jev.py`; needs `TYPESAFE_API_KEY` and those packages) |
+| `MOCK_JEV_SEARCHES` / `MOCK_JEV_CANDIDATES` / `MOCK_JEV_UNIT_CHARS` | `2` / `12` / `4000` | search-jev: searches per unit, pages read per unit, characters of passages kept per unit |
 | `MOCK_RETRIEVAL_MAX_CHARS` | `150000` | above this, the lexical prefilter |
 | `MOCK_PACKS_DIR` | `engine/packs_dist` | house packs |
 | `BRIEF_CORPUS` | unset | the full corpus; replaces `MOCK_PACKS_DIR` |
@@ -350,7 +354,13 @@ The two SDK checks passed as well: anthropic 1.4.0 and openai 3.19.2.
 ## Divergences from the real services
 
 - **Model:**
-  - `stop_reason` is always `end_turn`, and `max_tokens` is not enforced.
+  - `max_tokens` is checked after the reply, not during it: when the answer
+    turn the CLI reports (hidden thinking included) wrote more than
+    `max_tokens`, the reply is cut to the same share of its text and
+    `stop_reason` is `max_tokens` (`finish_reason` `length` on the OpenAI
+    wire). Usage still reports what the CLI actually wrote. A run with extra
+    dev-only turns (the CLI's broken-JSON retry) is not checked, since its
+    total spans more than one answer. Otherwise `stop_reason` is `end_turn`.
   - There is no prompt caching.
   - Token counts include Claude Code's own framing and structured-output
     tool, so they are not a cost number.

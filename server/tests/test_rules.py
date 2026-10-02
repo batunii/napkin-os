@@ -112,10 +112,64 @@ def test_unsourced_figures_matches_the_report_rule():
     fi = {"fi_A": {"statement": "Up 21% on last year", "status": "proposed"}}
     assert unsourced_figures("34% moderate", ["f_A"], pins, fi) == []
     assert unsourced_figures("0.34 share", ["f_A"], pins, fi) == []
-    assert unsourced_figures("12,500 units", ["f_B"], pins, fi) == ["12,500"]  # the pin says 12500
+    assert unsourced_figures("12,500 units", ["f_B"], pins, fi) == []  # thousands commas: 12,500 is 12500
     assert unsourced_figures("up 21%", ["fi_A"], pins, fi) == []
     assert unsourced_figures("BMW i4 sells", ["f_A"], pins, fi, names=["BMW i4"]) == []
     assert unsourced_figures("42 of them", ["f_A"], pins, fi) == ["42"]
+
+
+def _claim(text, value, unit="count", as_of=None):
+    pin = {"value": value, "unit": unit}
+    if as_of:
+        pin["as_of"] = as_of
+    return unsourced_figures(text, ["f_P"], {"f_P": pin}, {})
+
+
+def test_a_date_written_in_words_matches_the_stored_date():
+    # the real claim the rule dropped: the fact stores 2026-08-02, the sentence says 2 August 2026
+    assert _claim("duties apply from 2 August 2026", "2026-08-02", "date") == []
+    assert _claim("duties apply from 3 August 2026", "2026-08-02", "date") == ["3"]
+
+
+def test_scale_words_and_thousands_commas_match_the_stored_number():
+    for text in ("a budget of €1.5m", "a budget of €1.5 million", "a budget of €1,500,000", "budget €1500000",
+                 "a budget of 1.5mn"):
+        assert _claim(text, 1500000, "eur") == [], text
+    assert _claim("€2bn of spend", 2_000_000_000, "eur") == []
+    assert _claim("300k viewers", 300000) == [] and _claim("3 thousand units", 3000) == []
+
+
+def test_a_rounded_figure_needs_the_stored_number_to_round_to_it():
+    assert _claim("about €1.5m", 1_480_000, "eur") == []        # 1.48m rounds to 1.5m
+    assert _claim("about €1.5m", 1_200_000, "eur") == ["1.5"]   # 1.2m does not
+    assert _claim("€1.48m", 1_500_000, "eur") == ["1.48"]       # more precision than the pin holds
+    assert _claim("roughly 1.5", 1.48) == [] and _claim("roughly 1.6", 1.48) == ["1.6"]
+
+
+def test_a_year_must_come_from_a_cited_fact():
+    assert _claim("5 cases in 2025", 5, as_of="2025-12-31") == []          # the fact's own year
+    assert _claim("5 cases by 2033", 5, as_of="2025-12-31") == ["2033"]    # an invented year is still caught
+    assert _claim("5 cases in 2025", 5) == ["2025"]                        # no as-of date, no year
+
+
+def test_digits_inside_names_are_not_read_as_scale_words():
+    pins = {"f_P": {"value": "a long-term view", "unit": "text"}}
+    assert unsourced_figures("B2B marketing builds brands", ["f_P"], pins, {}, names=["B2B SaaS and cloud"]) == []
+    assert unsourced_figures("B2B marketing builds brands", ["f_P"], pins, {}) == ["2"]   # no name, no pass, as before
+    assert unsourced_figures("3M reported growth", ["f_P"], pins, {}, names=["3M"]) == []
+
+
+def test_a_figure_written_with_a_scale_word_in_a_text_fact_supports_the_same_wording():
+    pins = {"f_P": {"value": "a budget of €1.5m for the launch", "unit": "text"}}
+    assert unsourced_figures("a €1.5m budget", ["f_P"], pins, {}) == []
+    assert unsourced_figures("a 1.5 million budget", ["f_P"], pins, {}) == []
+    assert unsourced_figures("a €2.5m budget", ["f_P"], pins, {}) == ["2.5"]
+
+
+def test_the_figure_check_is_still_strict():
+    assert _claim("42 of them", 3) == ["42"]
+    assert _claim("35% moderate", 0.34, "proportion") == ["35"] and _claim("34% moderate", 0.34, "proportion") == []
+    assert _claim("12,000 units", 12500) == ["12,000"]
 
 
 def test_clean_claim():
@@ -176,6 +230,30 @@ def test_identify_claimed_basis_needs_its_cue_and_the_name():
     assert kind == "subject" and sub["name"] == "A Brand"
 
 
+IBM_ASK = "IBM wants a campaign in Ireland for its enterprise AI software (watsonx)."
+
+
+def test_identify_a_brand_that_wants_something_is_the_client():
+    """'IBM wants a campaign ... (watsonx)': the brand doing the asking is the client; watsonx is named beside it."""
+    kind, sub = identify.decide_subject([b("IBM", quote=IBM_ASK), b("watsonx", quote=IBM_ASK)])
+    assert kind == "subject" and sub["name"] == "IBM"
+    for quote in ("BMW is trying to enter the EV market. Tesla is the rival.", "Harbour Tonic needs a relaunch",
+                  "IBM Ireland is looking for a new campaign"):
+        name = quote.split()[0]
+        assert identify.decide_subject([b(name, quote=quote), b("Rival", quote="Rival sells more")])[0] == "subject", quote
+
+
+def test_identify_still_asks_when_no_brand_or_every_brand_is_the_one_asking():
+    assert identify.decide_subject([b("IBM", quote="IBM and watsonx feature in the brief"),
+                                    b("watsonx", quote="IBM and watsonx feature in the brief")])[0] == "ask"
+    both = "IBM wants a campaign and Oracle wants one too"
+    assert identify.decide_subject([b("IBM", quote=both), b("Oracle", quote=both)])[0] == "ask"
+    # the brand being talked about, not the one asking, is not made the client by someone else's verb
+    kind, sub = identify.decide_subject([b("IBM", quote="Oracle wants to overtake IBM"),
+                                         b("Oracle", quote="Oracle wants to overtake IBM")])
+    assert kind == "subject" and sub["name"] == "Oracle"
+
+
 def test_identify_only_a_comparator_or_nothing_asks():
     assert identify.decide_subject([b("Rival", comparator=True)])[0] == "ask"
     assert identify.decide_subject([]) == ("ask_text", None)
@@ -195,3 +273,65 @@ def test_brand_from_text():
     assert found and opts[0]["value"]["ref"] == "brand/harbour-tonic" and opts[0]["origin"] == "stated"
     opts, _ = identify.brand_options_from_text("Kestrel", [])
     assert opts[0]["value"] == {"ref": "brand/kestrel", "name": "Kestrel"} and opts[-1]["id"] == "none"
+
+
+def _share_pins(value, unit="proportion"):
+    return {"f_1": {"id": "f_1", "value": value, "unit": unit, "as_of": "2025-06-01"}}
+
+
+def test_a_majority_claim_needs_a_cited_share_above_half():
+    ok, why = clean_claim("Display takes the majority of spend.", ["f_1"], _share_pins(0.62), {})
+    assert why is None and ok["cites"] == ["f_1"]
+    bad, why = clean_claim("Display takes the majority of spend.", ["f_1"], _share_pins(0.38), {})
+    assert bad is None and "above half" in why
+
+
+def test_a_minority_or_under_half_claim_needs_a_cited_share_below_half():
+    ok, _ = clean_claim("Fewer than half trust companies.", ["f_1"], _share_pins(0.41), {})
+    assert ok is not None
+    bad, why = clean_claim("Only a minority have adopted AI.", ["f_1"], _share_pins(0.71), {})
+    assert bad is None and "below half" in why
+
+
+def test_a_share_word_with_no_cited_share_is_dropped_but_a_finding_cite_is_not_checked():
+    bad, why = clean_claim("A majority of firms adopted it.", ["f_1"], _share_pins(1200, unit="count"), {})
+    assert bad is None and why
+    findings = {"fi_1": {"id": "fi_1", "statement": "Adoption is widespread.", "status": "active"}}
+    ok, _ = clean_claim("A majority of firms adopted it.", ["fi_1"], {}, findings)
+    assert ok is not None
+
+
+def test_a_most_claim_needs_a_cited_share_above_half():
+    ok, _ = clean_claim("Most Irish adults drink coffee.", ["f_1"], _share_pins(0.76), {})
+    assert ok is not None
+    bad, why = clean_claim("Most people want human oversight.", ["f_1"], _share_pins(0.38), {})
+    assert bad is None and "says most" in why
+    bad, _ = clean_claim("Social takes most of display spend.", ["f_1"], _share_pins(0.3), {})
+    assert bad is None
+
+
+def test_most_as_a_superlative_or_with_no_cited_share_is_not_checked():
+    for text in ("This is the most popular channel.", "Barry's and Lyons are Ireland's two most popular tea brands.",
+                 "Ireland's most popular brand is Barry's.", "Search is most likely to grow.",
+                 "At most a third of firms use it."):
+        ok, _ = clean_claim(text, ["f_1"], _share_pins(0.2), {})
+        assert ok is not None, text
+    # euro amounts are not a share: the words cannot be compared, so the claim stands
+    ok, _ = clean_claim("Adspend grows, and most of it is digital.", ["f_1"], _share_pins(900, unit="EUR"), {})
+    assert ok is not None
+    # a growth rate is a proportion but not a share: it neither backs nor refutes "most"
+    pins = {"f_1": {"id": "f_1", "key": "media.x_total_market_adspend_growth_forecast", "value": 0.073,
+                    "unit": "proportion", "as_of": "2025-06-01"}}
+    ok, _ = clean_claim("Adspend grows 7.3%, and most of it is digital.", ["f_1"], pins, {})
+    assert ok is not None
+
+
+def test_bodies_verified_on_their_own_sites_have_the_tier_their_type_implies():
+    assert tier_for("https://www.fsai.ie/enforcement-and-legislation/x") == "primary"
+    assert tier_for("https://www.gtai.de/en/invest/industries/digital-economy/artificial-intelligence") == "primary"
+    for url in ("https://zaw.de/jahresbilanz-2025-nettozahlen", "https://adassoc.org.uk/our-work/x",
+                "https://www.gwa.de/presse-meldungen/x", "https://bvik.org/blog/x",
+                "https://www.wettbewerbszentrale.de/x", "https://www.bitkom.org/Presse/x"):
+        assert tier_for(url) == "secondary", url
+    # a domain that was not verified stays where it was
+    assert tier_for("https://www.bundesnetzagentur.de/DE/Fachthemen/Digitales/KI/") == "tertiary"

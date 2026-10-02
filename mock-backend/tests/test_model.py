@@ -145,6 +145,29 @@ class AnthropicTranslate(unittest.TestCase):
         self.assertTrue(r["id"].startswith("msg_"))
         self.assertEqual(r["usage"]["cache_read_input_tokens"], 0)
 
+    def test_max_tokens_cuts_the_reply(self):
+        call = build_anthropic(areq(max_tokens=100))
+        ok = {"is_error": False, "subtype": "success", "result": "x" * 400, "num_turns": 1}
+        r = to_anthropic({**ok, "usage": {"output_tokens": 100}}, call)
+        self.assertEqual((r["stop_reason"], len(r["content"][0]["text"])), ("end_turn", 400))
+        r = to_anthropic({**ok, "usage": {"output_tokens": 400}}, call)
+        self.assertEqual((r["stop_reason"], len(r["content"][0]["text"])), ("max_tokens", 100))
+        self.assertEqual(r["usage"]["output_tokens"], 400)   # what the CLI wrote, never trimmed
+        r = to_openai({**ok, "usage": {"output_tokens": 400}}, build_openai(oreq(max_completion_tokens=200)))
+        self.assertEqual((r["choices"][0]["finish_reason"], len(r["choices"][0]["message"]["content"])),
+                         ("length", 200))
+        body = oreq()
+        del body["max_tokens"]
+        r = to_openai({**ok, "usage": {"output_tokens": 400}}, build_openai(body))
+        self.assertEqual(r["choices"][0]["finish_reason"], "stop")   # no cap asked for
+
+    def test_max_tokens_skips_dev_only_turns(self):
+        call = build_anthropic(areq(max_tokens=100))
+        ok = {"is_error": False, "subtype": "success", "result": "x" * 400, "usage": {"output_tokens": 400}}
+        self.assertEqual(to_anthropic({**ok, "num_turns": 2}, call)["stop_reason"], "max_tokens")
+        # A broken-JSON retry wrote the reply twice: the total is not one answer, so it is not compared.
+        self.assertEqual(to_anthropic({**ok, "num_turns": 3}, call)["stop_reason"], "end_turn")
+
     def test_envelope_errors(self):
         e = envelope_error({"is_error": True, "result": "Not logged in · Please run /login"})
         self.assertEqual((e.status, e.type), (401, "authentication_error"))

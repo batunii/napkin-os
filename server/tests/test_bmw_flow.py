@@ -65,3 +65,41 @@ def test_typed_vertical_offers_its_leaves(server):
         return (next(o for o in q["options"] if o.get("value") == ["automotive.hybrid"]), None)
     host, _ = run(server, answer)
     assert host.data["campaign"]["categories"]["value"] == ["automotive.hybrid"]
+
+
+def test_identify_runs_beside_extract(tmp_path):
+    """identify's call reads only the material, so it starts with extract: extract's reply waits (up to 5 s)
+    for identify's call to arrive, which it can only do if the two run at the same time."""
+    import threading
+
+    from conftest import Server
+    from fakes import FakeModel
+
+    arrived, overlapped = threading.Event(), []
+
+    def extract(p):
+        overlapped.append(arrived.wait(5))
+        return FakeModel.r_extract(p)
+
+    def identify(p):
+        arrived.set()
+        return FakeModel.r_identify(p)
+
+    server = Server(tmp_path, model=FakeModel(overrides={"extract": extract, "identify": identify}))
+    try:
+        host, _ = run(server, lambda r, q: (next(o for o in q["options"] if o["id"] == "both"), None))
+    finally:
+        server.stop()
+    assert overlapped == [True]
+    assert [c[0] for c in server.model.calls].count("identify") == 1   # started early, never asked twice
+    assert host.data["campaign"]["brand"]["value"]["name"] == "BMW"
+
+
+def test_identify_is_not_started_when_the_document_already_holds_what_it_reads():
+    from napkin.pipeline.campaign import CampaignJob
+
+    job = object.__new__(CampaignJob)
+    job._identify_raw, job._identify_call = None, None
+    job.W = {"campaign": {"brand": {"value": 1}, "categories": {"value": 1}, "client_org": {"value": 1}}}
+    job.start_identify_call()   # would fail on the missing caps if it tried to start the call
+    assert job._identify_call is None

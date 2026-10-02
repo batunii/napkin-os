@@ -9,6 +9,7 @@ import unittest
 
 from harness import Server
 
+import common
 import research_port as rp
 
 
@@ -17,6 +18,38 @@ def body(mode, **kw):
 
 
 class Units(unittest.TestCase):
+    def test_prompt_variants_change_only_the_page_budget_wording(self):
+        import os
+        req = {"query": "q", "lens": "media_spend", "market": "IE", "max_sources": 6}
+        old = os.environ.pop("MOCK_RESEARCH_PROMPT", None)
+        try:
+            base = rp.build_prompt(req)
+            self.assertIn("Run several WebSearch queries", base)
+            os.environ["MOCK_RESEARCH_PROMPT"] = "capped"
+            capped = rp.build_prompt(req)
+            self.assertIn("at most 2 WebSearch", capped)
+            self.assertIn("at most 3 pages", capped)
+            capped_key = rp.cache_key(req, "sonnet")
+            del os.environ["MOCK_RESEARCH_PROMPT"]
+            self.assertNotEqual(capped_key, rp.cache_key(req, "sonnet"))
+            os.environ["MOCK_RESEARCH_PROMPT"] = "primary"
+            self.assertIn("read 3 good pages", rp.build_prompt(req))
+            os.environ["MOCK_RESEARCH_PROMPT"] = "nonsense"
+            with self.assertRaises(SystemExit):
+                rp.build_prompt(req)
+        finally:
+            os.environ.pop("MOCK_RESEARCH_PROMPT", None)
+            if old is not None:
+                os.environ["MOCK_RESEARCH_PROMPT"] = old
+    def test_ledger_splits_spend_by_model(self):
+        usage = {"claude-sonnet-5-5": {"inputTokens": 4, "outputTokens": 294, "cacheReadInputTokens": 4683,
+                                       "cacheCreationInputTokens": 2774, "costUSD": 0.015},
+                 "claude-haiku-4-5-20251001": {"inputTokens": 11751, "outputTokens": 188, "costUSD": 0.023}}
+        got = common._by_model(usage)
+        self.assertEqual(got["claude-sonnet-5-5"], {"in": 4, "out": 294, "cache_read": 4683, "cache_write": 2774, "cost": 0.015})
+        self.assertEqual(got["claude-haiku-4-5-20251001"]["cost"], 0.023)
+        self.assertIsNone(common._by_model(None))
+
     def test_request_rules(self):
         ok = rp.parse_request(b'{"query": "  a   b ", "lens": "media_spend", "market": "gb"}')
         self.assertEqual(ok, {"query": "a b", "lens": "media_spend", "market": "GB", "max_sources": 8})
@@ -94,6 +127,14 @@ class ResearchServer(unittest.TestCase):
     def test_honest_empty(self):
         st, r = self.post(body("empty"))
         self.assertEqual((st, r["sources"]), (200, []))
+
+    def test_an_empty_answer_is_not_cached(self):
+        """It would repeat on every later run with the same request, so the same request runs again."""
+        b = body("empty", max_sources=3)
+        n0 = self.calls()
+        self.assertEqual(self.post(b)[1]["sources"], [])
+        self.assertEqual(self.post(b)[1]["sources"], [])
+        self.assertEqual(self.calls(), n0 + 2)
 
     def test_failures_are_502_upstream_failed(self):
         for mode in ("exit", "is_error", "garbage", "nostructured"):

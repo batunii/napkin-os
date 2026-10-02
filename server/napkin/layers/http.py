@@ -26,6 +26,9 @@ class LayersError(Exception):
 
 
 RETRY = {429, 502, 503, 504}
+# Seconds waited before the second and before the third attempt at a call that failed to connect or was
+# answered 502/503/504. Writes are safe to repeat: each carries a deterministic Idempotency-Key.
+PAUSES = (1.0, 3.0)
 
 
 def _canon(v) -> str:
@@ -72,23 +75,26 @@ class HttpLayers:
 
     def _req(self, method: str, path: str, *, params=None, body=None, key=None, missing: set | None = None):
         url = self._s.base + path
-        for attempt in (1, 2):
+        for attempt in (1, 2, 3):
             try:
                 r = self._s._client.request(method, url, params=params, json=body, headers=self._headers(key))
             except httpx.TimeoutException as e:
                 if attempt == 1:
-                    continue
+                    continue  # a timeout has already waited its full time: one more try, no pause, never a third
                 raise LayersError(f"layers {method} {path.split('?')[0]} timed out") from e
             except httpx.HTTPError as e:
-                if attempt == 1:
+                if attempt < 3:
+                    self._s._sleep(PAUSES[attempt - 1])
                     continue
                 raise LayersError(f"layers unreachable ({type(e).__name__})") from e
-            if r.status_code in RETRY and attempt == 1:
+            if r.status_code in RETRY and attempt < 3:
                 if r.status_code == 429:
                     try:
                         self._s._sleep(min(30.0, float(r.headers.get("retry-after", "1"))))
                     except ValueError:
                         self._s._sleep(1.0)
+                else:
+                    self._s._sleep(PAUSES[attempt - 1])
                 continue
             break
         etype = ""

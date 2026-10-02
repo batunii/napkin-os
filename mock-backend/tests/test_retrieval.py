@@ -52,6 +52,8 @@ def agency_fixture(root: Path) -> Path:
 
 class Units(unittest.TestCase):
     def test_split_h2_is_the_engines(self):
+        import sys
+        sys.path.insert(0, str(REPO / "engine" / "rag"))  # rag.py imports its sibling chunking.py by name
         spec = importlib.util.spec_from_file_location("engine_rag", REPO / "engine" / "rag" / "rag.py")
         rag = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rag)

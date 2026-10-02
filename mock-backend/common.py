@@ -8,9 +8,11 @@ peripherals store, search, fetch and generate.
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -33,6 +35,32 @@ def env_int(name: str, default: int) -> int:
 def env_float(name: str, default: float) -> float:
     v = os.environ.get(name, "").strip()
     return float(v) if v else default
+
+
+def dotenv_value(name: str) -> str:
+    """One value from engine/.env or the repo-root .env (both git-ignored), read only when the environment does
+    not set it. Only the named key is read and it is never logged."""
+    v = os.environ.get(name, "").strip()
+    if v:
+        return v
+    for path in (REPO / "engine" / ".env", REPO / ".env"):
+        try:
+            for line in path.read_text(encoding="utf-8-sig").splitlines():
+                k, sep, val = line.partition("=")
+                k = k.strip()
+                k = k[7:].strip() if k.startswith("export ") else k
+                if not (sep and k == name):
+                    continue
+                val = val.strip()
+                if val[:1] in ("'", '"') and val.count(val[0]) >= 2:
+                    val = val[1:val.index(val[0], 1)]
+                else:
+                    val = val.split(" #")[0].strip()
+                if val:
+                    return val
+        except OSError:
+            continue
+    return ""
 
 
 def env_flag(name: str) -> bool:
@@ -68,7 +96,7 @@ class Config:
             raise SystemExit(f"MOCK_FAKES: unknown famil{'ies' if len(unknown) > 1 else 'y'} "
                              f"{', '.join(unknown)} (known: {', '.join(FAMILIES)})")
         self.fakes = tuple(f for f in FAMILIES if f in fakes)
-        self.concurrency = max(1, env_int("MOCK_CONCURRENCY", 4))
+        self.concurrency = max(1, env_int("MOCK_CONCURRENCY", 8))
         self.timeout = {
             "model": env_float("MOCK_TIMEOUT_MODEL", 180.0),
             "research": env_float("MOCK_TIMEOUT_RESEARCH", 420.0),
@@ -80,6 +108,11 @@ class Config:
         self.max_turns = env_int("MOCK_MAX_TURNS", 4)
         self.claude_bin = os.environ.get("MOCK_CLAUDE_BIN", "claude")
         self.research_model = os.environ.get("MOCK_RESEARCH_MODEL", "sonnet")
+        # "claude-code" (the default: one claude -p per unit with WebSearch and WebFetch) or "search-jev" (the agent
+        # only searches; code reads the pages and jev picks the passages: search_jev.py)
+        self.research_backend = os.environ.get("MOCK_RESEARCH_BACKEND", "").strip().lower() or "claude-code"
+        if self.research_backend not in ("claude-code", "search-jev"):
+            raise SystemExit(f"MOCK_RESEARCH_BACKEND must be claude-code or search-jev, not {self.research_backend!r}")
         self.retrieval_model = os.environ.get("MOCK_RETRIEVAL_MODEL", "sonnet")
         self.retrieval_max_chars = env_int("MOCK_RETRIEVAL_MAX_CHARS", 150_000)
         self.packs_dir = Path(os.environ.get("MOCK_PACKS_DIR") or REPO / "engine" / "packs_dist")
@@ -88,6 +121,9 @@ class Config:
         self.data = Path(os.environ.get("MOCK_DATA", "").strip() or _default_data())
         self.layers_db = os.environ.get("MOCK_LAYERS_DB", "").strip() or str(self.data / "layers.sqlite")
         self.no_cache = env_flag("MOCK_NO_CACHE")
+        # Where the research and retrieval answers are cached. Default: under MOCK_DATA. Point it at a
+        # run's own directory to record that run's web answers, or at an earlier run's to replay them.
+        self.cache_root = Path(os.environ.get("MOCK_CACHE_ROOT", "").strip() or self.data)
         self.max_budget = os.environ.get("MOCK_MAX_BUDGET_USD", "").strip() or None
         self.token = os.environ.get("MOCK_TOKEN", "").strip() or None
         # Request bodies carry client-confidential material. They are NEVER
@@ -239,6 +275,7 @@ class ClaudeCall:
     tools: list = field(default_factory=list)   # [] = no tools
     max_turns: int | None = None
     permission_mode: str | None = None
+    trace_tools: bool = False                    # stream the CLI's events so tool uses can be counted
 
 
 def child_env() -> dict:
@@ -249,13 +286,21 @@ def child_env() -> dict:
     return env
 
 
+def _streams(call: ClaudeCall) -> bool:
+    """Whether the CLI's events are streamed back: for images, for research (tool counts), and, with
+    MOCK_TRACE_MODEL=1, for any call that carries a schema, so a schema rejection can be recorded."""
+    return bool(call.images) or call.trace_tools or bool(os.environ.get("MOCK_TRACE_MODEL") and call.json_schema is not None)
+
+
 def claude_argv(cfg: Config, call: ClaudeCall, system_fd: int | None) -> list[str]:
-    stream = bool(call.images)
+    stream = _streams(call)
     cmd = [cfg.claude_bin, "-p", "--model", call.alias]
-    if stream:
+    if call.images:
         # Image blocks only travel through stream-json input, which requires
         # stream-json output (verified against Claude Code 2.1.281).
         cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+    elif stream:
+        cmd += ["--output-format", "stream-json", "--verbose"]  # text stdin, event stdout
     else:
         cmd += ["--output-format", "json"]
     cmd += ["--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
@@ -308,13 +353,170 @@ def _envelope_from(out: str, stream: bool):
     return last
 
 
+def record_external(cfg: Config, family: str, req: dict, secs: float, ok: bool, cost_usd: float | None,
+                    searches: int, alias: str, failure: str | None = None, extra: dict | None = None) -> None:
+    """A ledger line for a call that is not a claude subprocess (jev, a search API): the same fields the report
+    reads, so its cost and searches count in the research stage. `extra` adds fields of its own (search-jev's
+    per-unit `reader` counts)."""
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(), "family": family,
+           "purpose": None, "lens": req.get("lens"), "market": req.get("market"), "alias": alias,
+           "secs": round(secs, 2), "ok": ok, "failure": failure, "cost_usd": cost_usd, "turns": None,
+           "in_fresh": None, "cache_write": None, "cache_read": None, "out": None,
+           "web_searches": searches, "web_fetches": 0, "by_model": None, **(extra or {})}
+    try:
+        with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def record_cache_hit(cfg: Config, req: dict) -> None:
+    """A research answer served from the disk cache: no subprocess ran, so no cost."""
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(), "family": "research",
+           "lens": req.get("lens"), "market": req.get("market"), "cached": True, "secs": 0, "cost_usd": 0}
+    try:
+        with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass
+
+
+CALL_CTX: contextvars.ContextVar = contextvars.ContextVar("call_ctx", default={})
+_LEDGER_LOCK = threading.Lock()
+
+
+def _schema_errors(out: str) -> list[str]:
+    """The CLI's structured-output rejections in a stream-json run: the path and rule it names, cut short
+    (the allowed-values list it prints can be long). Each one is a turn the model had to redo."""
+    found = []
+    for line in out.splitlines():
+        if "does not match required schema" not in line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        content = ((ev.get("message") or {}).get("content")) if isinstance(ev, dict) else None
+        for b in content if isinstance(content, list) else []:
+            text = b.get("content") if isinstance(b, dict) else None
+            if isinstance(text, str) and "does not match required schema" in text:
+                found.append(text.replace("Output does not match required schema: ", "")[:160])
+    return found
+
+
+def _turn_trace(out: str) -> list[dict]:
+    """One entry per model message in a stream-json run: what it held (thinking, text, tool_use name), the
+    tokens it wrote and why it stopped, plus the first words of any tool result the CLI sent back. Shows what
+    each extra turn was."""
+    turns, seen = [], {}
+    for line in out.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        msg = ev.get("message") if isinstance(ev, dict) else None
+        if not isinstance(msg, dict):
+            continue
+        if ev.get("type") == "assistant":
+            mid = msg.get("id")
+            if mid not in seen:
+                seen[mid] = {"blocks": [], "out": None, "stop": None}
+                turns.append(seen[mid])
+            t = seen[mid]
+            t["blocks"] += [b.get("name") or b.get("type") for b in msg.get("content") or [] if isinstance(b, dict)]
+            t["out"] = (msg.get("usage") or {}).get("output_tokens", t["out"])
+            t["stop"] = msg.get("stop_reason") or t["stop"]
+        elif ev.get("type") == "user":
+            for b in msg.get("content") or []:
+                if isinstance(b, dict) and b.get("type") == "tool_result":
+                    c = b.get("content")
+                    turns.append({"tool_result": (c if isinstance(c, str) else json.dumps(c))[:120]})
+    return turns
+
+
+def _tool_uses(out: str) -> dict:
+    """{tool name: count} from a stream-json run's assistant events."""
+    counts: dict[str, int] = {}
+    for line in out.splitlines():
+        if '"tool_use"' not in line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        content = ((ev.get("message") or {}).get("content")) if isinstance(ev, dict) else None
+        for b in content if isinstance(content, list) else []:
+            if isinstance(b, dict) and b.get("type") == "tool_use":
+                counts[b.get("name", "?")] = counts.get(b.get("name", "?"), 0) + 1
+    return counts
+
+
+def _by_model(usage) -> dict | None:
+    """{model id: {in, out, cache_read, cache_write, cost}} from the CLI's `modelUsage`. The CLI runs a
+    second, smaller model behind WebSearch and WebFetch; its spend is in `total_cost_usd` but not in the
+    main `usage` block, so only this split shows where a research unit's money went."""
+    if not isinstance(usage, dict):
+        return None
+    return {m: {"in": u.get("inputTokens"), "out": u.get("outputTokens"), "cache_read": u.get("cacheReadInputTokens"),
+                "cache_write": u.get("cacheCreationInputTokens"), "cost": u.get("costUSD")}
+            for m, u in usage.items() if isinstance(u, dict)}
+
+
+def record_call(cfg: Config, call: ClaudeCall, secs: float, envelope: dict | None, ok: bool, tools: dict | None,
+                failure: str | None = None, schema_errors: list | None = None,
+                turn_trace: list | None = None) -> None:
+    """One JSON line per `claude -p` subprocess in <MOCK_DATA>/metrics.jsonl:
+    who asked (handler, job, from the request headers), what for (the model
+    purpose, or the research lens and market, read from the prompt), how long,
+    what the CLI reported it cost, its tokens and the tools it used. Metadata
+    only: never a prompt or a reply."""
+    env = envelope or {}
+    u = env.get("usage") if isinstance(env.get("usage"), dict) else {}
+    m = re.match(r"Task: (\S+)", call.prompt)
+    lens, market = re.search(r"^Lens: (\w+)", call.prompt, re.M), re.search(r"^Market: (\w+)", call.prompt, re.M)
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()), **CALL_CTX.get(),
+           "family": "research" if call.tools else "model", "purpose": m.group(1) if m else None,
+           "lens": lens.group(1) if lens else None, "market": market.group(1) if market else None,
+           "alias": call.alias, "secs": round(secs, 2), "ok": ok, "failure": failure,
+           "cost_usd": env.get("total_cost_usd"), "turns": env.get("num_turns"),
+           "in_fresh": u.get("input_tokens"), "cache_write": u.get("cache_creation_input_tokens"),
+           "cache_read": u.get("cache_read_input_tokens"), "out": u.get("output_tokens"),
+           "prompt_chars": len(call.prompt), "system_chars": len(call.system or ""),
+           "web_searches": (tools or {}).get("WebSearch"), "web_fetches": (tools or {}).get("WebFetch"),
+           "server_tool_use": u.get("server_tool_use"),
+           "by_model": _by_model(env.get("modelUsage")), "schema_rejections": schema_errors or None,
+           "turn_trace": turn_trace if (turn_trace and len(turn_trace) > 2) else None,
+           "tools": tools}
+    try:
+        with _LEDGER_LOCK, open(cfg.data / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | None = None) -> dict:
+    """Runs one call and writes its ledger line (see `record_call`)."""
+    t0 = time.monotonic()
+    try:
+        env = _run_claude(cfg, call, timeout, cwd_root)
+    except ClaudeFailure as f:
+        record_call(cfg, call, time.monotonic() - t0, None, False, None, f.kind)
+        raise
+    ok = not (env.get("_exit") or env.get("is_error"))
+    record_call(cfg, call, time.monotonic() - t0, env, ok, env.pop("_tools", None), schema_errors=env.pop("_schema_errors", None),
+                turn_trace=env.pop("_turn_trace", None))
+    return env
+
+
+def _run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | None = None) -> dict:
     """One fresh `claude -p` in an empty temporary directory; the parsed
     envelope. Raises ClaudeFailure. The caller holds a slot."""
     rfd = wfd = None
     if call.system is not None:
         rfd, wfd = os.pipe()
-    stream = bool(call.images)
+    stream = _streams(call)
     try:
         if cwd_root is not None:
             cwd_root.mkdir(parents=True, exist_ok=True)
@@ -370,6 +572,11 @@ def run_claude(cfg: Config, call: ClaudeCall, timeout: float, cwd_root: Path | N
     if not isinstance(envelope, dict):
         raise ClaudeFailure("no_envelope", "the claude CLI result is not an object")
     envelope.setdefault("_exit", proc.returncode)
+    if call.trace_tools:
+        envelope["_tools"] = _tool_uses(out)
+    if stream:
+        envelope["_schema_errors"] = _schema_errors(out)
+        envelope["_turn_trace"] = _turn_trace(out)
     return envelope
 
 

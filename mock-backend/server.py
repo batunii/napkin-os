@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import CLAUDE_FAMILIES, Config, PeripheralError, Request, Response, Slots, dump, log  # noqa: E402
+from common import CALL_CTX, CLAUDE_FAMILIES, Config, PeripheralError, Request, Response, Slots, dump, log  # noqa: E402
 
 SERVICE = "napkin-mock-backend"
 FORBIDDEN_PORTS = {8080, 8090, 8787, 8788, 8790, 8791, 8792, 8795, 8796}
@@ -185,6 +185,8 @@ def make_handler(backend: Backend):
                     if body:
                         dump(cfg, req_id, "request.body", body)
                     req = Request.build(self.command, self.path, dict(self.headers.items()), body, req_id)
+                    CALL_CTX.set({"req": req_id, "handler": self.headers.get("X-Napkin-Handler", "-"),
+                                  "job": self.headers.get("X-Napkin-Job", "-")})
                     resp = backend.handle(req)
                 status, note = resp.status, resp.note
                 self._send(resp, req_id)

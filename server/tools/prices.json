@@ -1,0 +1,14 @@
+{
+ "_doc": "List prices in USD per million tokens. Source: platform.claude.com/docs/en/about-claude/pricing, read 2026-09-30. First-party Anthropic API rates; Amazon Bedrock rates are NOT verified (Bedrock adds a 10% premium for geo/regional endpoints). Update this file, never the code, when prices change.",
+ "verified_on": "2026-09-30",
+ "models": {
+  "claude-fable-5-1":  {"in": 10, "out": 50, "cache_write_5m": 12.5, "cache_write_1h": 20, "cache_read": 0.25},
+  "claude-fable-5":    {"in": 10, "out": 50, "cache_write_5m": 12.5, "cache_write_1h": 20, "cache_read": 1.0},
+  "claude-opus-5-5":   {"in": 4,  "out": 20, "cache_write_5m": 5,    "cache_write_1h": 8,  "cache_read": 0.20},
+  "claude-opus-5":     {"in": 5,  "out": 25, "cache_write_5m": 6.25, "cache_write_1h": 10, "cache_read": 0.50},
+  "claude-sonnet-5-5": {"in": 2,  "out": 10, "cache_write_5m": 2.5,  "cache_write_1h": 4,  "cache_read": 0.20},
+  "claude-sonnet-5":   {"in": 2,  "out": 10, "cache_write_5m": 2.5,  "cache_write_1h": 4,  "cache_read": 0.20},
+  "claude-haiku-4-5":  {"in": 1,  "out": 5,  "cache_write_5m": 1.25, "cache_write_1h": 2,  "cache_read": 0.10}
+ },
+ "web_search_per_1000": 10
+}

@@ -18,13 +18,14 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import os
 import re
 import time
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
 from common import (ClaudeCall, ClaudeFailure, Config, DiskCache, PeripheralError, Request, Response, Slots,
-                    canon, log, parse_json_object, run_claude, sha256_hex)
+                    canon, log, parse_json_object, record_cache_hit, run_claude, sha256_hex)
 
 API = "napkin.research/1"
 BACKEND = "claude-code-websearch"
@@ -139,13 +140,42 @@ def parse_request(raw: bytes) -> dict:
 
 
 def cache_key(req: dict, model: str) -> str:
-    return sha256_hex(canon({**req, "query": req["query"].lower(), "_model": model, "_v": PROMPT_VERSION}))
+    if model == "search-jev":  # searched by the agent, read by code, picked by jev
+        import search_jev
+        return sha256_hex(canon({**req, "query": req["query"].lower(), "_backend": "search-jev", "_sj": search_jev.VERSION,
+                                  "_n": search_jev.MAX_CANDIDATES, "_u": search_jev.UNIT_CHARS,
+                                  "_s": search_jev.MAX_SEARCHES}))
+    return sha256_hex(canon({**req, "query": req["query"].lower(), "_model": model, "_v": PROMPT_VERSION,
+                              **({"_p": prompt_variant()} if prompt_variant() else {})}))
 
 
 # ------------------------------------------------------------------ prompt
 
 
+# MOCK_RESEARCH_PROMPT picks an experimental wording for the "how to work" steps, to measure how much of a
+# unit's cost follows the pages read. Empty (the default) is the wording the service has always used.
+VARIANTS = {
+    "capped": {"search": "1. Run at most 2 WebSearch queries aimed at this lens in this market. Prefer, in order:",
+               "fetch": "2. WebFetch at most 3 pages in total, and WebFetch every page before you cite it. Cite only pages you actually fetched and"},
+    "primary": {"search": "1. Run WebSearch queries aimed at this lens in this market, starting with primary sources. Stop searching and\n"
+                          "   fetching as soon as you have read 3 good pages from primary or industry bodies. Prefer, in order:",
+                "fetch": "2. WebFetch every page before you cite it. Cite only pages you actually fetched and"},
+}
+
+
+def prompt_variant() -> str:
+    v = os.environ.get("MOCK_RESEARCH_PROMPT", "").strip().lower()
+    if v and v not in VARIANTS:
+        raise SystemExit(f"MOCK_RESEARCH_PROMPT must be one of {sorted(VARIANTS)} or empty, not {v!r}")
+    return v
+
+
 def build_prompt(req: dict) -> str:
+    v = prompt_variant()
+
+    def _V(part: str, default: str) -> str:
+        return VARIANTS[v][part] if v else default
+
     lines = [
         "You are the source-discovery step of a research pipeline. Find current, citable",
         "web sources for ONE research lens in ONE market and return verbatim quotes from them.",
@@ -164,12 +194,12 @@ def build_prompt(req: dict) -> str:
         f"Return at most {req['max_sources']} sources.",
         "",
         "How to work:",
-        "1. Run several WebSearch queries aimed at this lens in this market. Prefer, in order:",
+        _V("search", "1. Run several WebSearch queries aimed at this lens in this market. Prefer, in order:"),
         "   primary sources (regulators, official statistics offices, government bodies,",
         "   company filings, annual reports and official press releases), then industry",
         "   bodies and trade press, then reputable news. Avoid forums, SEO content farms,",
         "   aggregators that only restate others, and pages behind a paywall you cannot read.",
-        "2. WebFetch every page before you cite it. Cite only pages you actually fetched and",
+        _V("fetch", "2. WebFetch every page before you cite it. Cite only pages you actually fetched and"),
         "   read; never cite a URL from search results alone, and never invent a URL.",
         "3. From each fetched page, copy 1 to 3 short passages (a sentence or a short paragraph,",
         "   under 400 characters each) that bear directly on the question: figures, dates,",
@@ -281,15 +311,22 @@ def validate_sources(raw, max_sources: int, retrieved_at: str) -> tuple[list, di
 class Research:
     def __init__(self, cfg: Config, slots: Slots):
         self.cfg, self.slots = cfg, slots
-        self.cache = DiskCache(cfg.data, "research")
+        self.cache = DiskCache(cfg.cache_root, "research")
 
     def health(self) -> dict:
         return {"api": API, "backend": BACKEND, "model": self.cfg.research_model}
 
     def _run(self, req: dict) -> dict:
+        if self.cfg.research_backend == "search-jev":
+            import search_jev
+            return search_jev.run(self, req, LENSES[req["lens"]], today())
+        return self._run_agent(req)
+
+    def _run_agent(self, req: dict) -> dict:
+        """The default: one claude -p agent that searches, reads and quotes."""
         cfg = self.cfg
         call = ClaudeCall(alias=cfg.research_model, prompt=build_prompt(req), json_schema=SOURCES_SCHEMA,
-                          tools=["WebSearch", "WebFetch"], permission_mode="dontAsk")
+                          tools=["WebSearch", "WebFetch"], permission_mode="dontAsk", trace_tools=True)
         if not self.slots.acquire(cfg.queue_timeout_for("research")):
             raise PeripheralError(503, "overloaded", f"all {self.slots.n} claude slots busy (MOCK_CONCURRENCY)")
         try:
@@ -310,12 +347,14 @@ class Research:
         return {"output": out, "cost_usd": env.get("total_cost_usd")}
 
     def research(self, req: dict, fresh: bool) -> dict:
-        key = cache_key(req, self.cfg.research_model)
+        b = self.cfg.research_backend
+        key = cache_key(req, b if b == "search-jev" else self.cfg.research_model)
         with self.cache.lock(key):  # one run per key; a concurrent duplicate reads the cache
             if not fresh and not self.cfg.no_cache:
                 hit = self.cache.get(key)
                 if hit and isinstance(hit.get("response"), dict):
                     log(f"research cache hit {key[:12]} {req['lens']}/{req['market']}")
+                    record_cache_hit(self.cfg, req)
                     return hit["response"]
             t0 = time.monotonic()
             result = self._run(req)
@@ -323,11 +362,14 @@ class Research:
             sources, drops = validate_sources(out.get("sources"), req["max_sources"], today())
             queries = [_clean(q) for q in out.get("queries") or [] if isinstance(q, str) and _clean(q)]
             response = {"sources": sources,
-                        "trace": {"backend": BACKEND, "queries": queries, "model": self.cfg.research_model}}
+                        "trace": {"backend": "search-jev" if b == "search-jev" else BACKEND, "queries": queries,
+                                  "model": self.cfg.research_model}}
             log(f"research {req['lens']}/{req['market']}: {len(sources)} sources in "
                 f"{time.monotonic() - t0:.1f}s, dropped {drops}, cost {result['cost_usd']}")
-            # The query parameters (a public-web question) and public excerpts only.
-            self.cache.put(key, {"request": req, "created": _dt.datetime.now(_dt.timezone.utc)
+            # The query parameters (a public-web question) and public excerpts only. An empty answer is
+            # never cached: it would repeat on every later run with the same request.
+            if sources:
+                self.cache.put(key, {"request": req, "created": _dt.datetime.now(_dt.timezone.utc)
                                  .isoformat(timespec="seconds"), "dropped": drops, "response": response})
             return response
 

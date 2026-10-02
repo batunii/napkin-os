@@ -20,6 +20,7 @@ from ..rules.confidence import finding_confidence
 from ..rules.figures import NUM
 from ..util import bad, iso, lid, uid
 from .. import reasoning as rsn
+from ..aliases import Aliases
 
 log = logging.getLogger("napkin.synthesise")
 
@@ -96,7 +97,9 @@ def run_synthesis(doc, base, clan, inp, handler, caps, seed=None, with_audience=
                          "as_of": f.get("as_of")} for f in facts]}
     if rejected:
         payload["rejected"] = rejected
-    raw = caps.model.structured("synthesise", SYSTEM, payload, schema(sorted(by_id)), max_tokens=6000)
+    al = Aliases(sorted(by_id))
+    raw = al.decode(caps.model.structured("synthesise", SYSTEM, al.encode(payload), schema(al.short(sorted(by_id))),
+                                          max_tokens=16000))
     findings, decs, dropped, reason_notes = [], [], [], []
     t = iso()
     seen = set()
