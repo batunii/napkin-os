@@ -2603,6 +2603,59 @@ EVAL_CRITERIA_QUESTION = (
     "than reduce its impact, and (3) indicate whether the work builds mental "
     "availability or fame?")
 
+# The question asked for a core field the client never gave, in words a client would read
+# ("What is the mandatories?" was the old f-string). evaluation_criteria uses the question above.
+CORE_QUESTIONS = {
+    "business_problem": "What business problem must this work solve?",
+    "objective": "What must the work achieve, and how will we know it has?",
+    "target_audience": "Who exactly is the work for?",
+    "key_message": "Is there one message the client needs the work to land?",
+    "budget": "What is the budget, and does it cover media as well as production?",
+    "timeline": "When does the work need to launch, and what are the key dates?",
+    "success_metrics": "Which measures (KPIs), baselines and targets will judge success?",
+    "mandatories": "Are there brand, legal or product mandatories the work must include or avoid?",
+    "decision_makers": "Who signs off the work, and who else has a say?",
+}
+
+# What an open question is about, by its words: a generic question is not asked when the capture's
+# own question already covers the topic, and a "To confirm" question from a proposal is not listed
+# when earlier questions already ask everything it asks (the field still shows it). Barry's Tea,
+# 2026-10-03: "What is the budget?" sat next to "What is the campaign budget, and does it cover media…".
+QUESTION_TOPICS = {
+    "business_problem": r"\bproblem|\bchallenge|why is .* not\b",
+    "objective": r"\bobjective|\bachieve|\bgoal",
+    "target_audience": r"\baudience|\btarget(s|ed)?\b(?! figure)|who exactly",
+    "key_message": r"\bmessage|\bproposition",
+    "evaluation_criteria": r"\bevaluat|\bjudged|\bcriteria",
+    "budget": r"\bbudget|\bspend\b|\bcost",
+    "timeline": r"\btimeline|\blaunch date|\bdeadline|\bwhen (does|will|is)|\btiming|\bflight\b|\bduration|\blive date",
+    "success_metrics": r"\bkpi|\bmeasur|\bbaseline|\bsuccess",
+    "mandatories": r"\bmandator|\blegal\b|\bguideline|\brestriction|\bregulat",
+    "decision_makers": r"\bsigns? off|\bsign-off|\bapprov|\bdecision.?maker|\bwho decides",
+    "channels": r"\bchannel|\bdeliverable|\bformat",
+}
+
+
+def _topics(question) -> set:
+    """The QUESTION_TOPICS a question's text matches."""
+    text = str((question.get("question") if isinstance(question, dict) else question) or "").lower()
+    return {t for t, pat in QUESTION_TOPICS.items() if re.search(pat, text)}
+
+
+def tidy_open_questions(qs: list) -> list:
+    """Drop a proposal's "To confirm (...)" question when the questions before it already ask about
+    every topic it asks about; the proposal's field still shows its own question. Other questions are
+    kept as they are, in order."""
+    out, covered = [], set()
+    for q in qs or []:
+        text = q.get("question") if isinstance(q, dict) else q
+        topics = _topics(q)
+        if str(text or "").startswith("To confirm (") and topics and topics <= covered:
+            continue
+        covered |= topics
+        out.append(q)
+    return out
+
 
 def review_loop1(ledger, fields):
     """Loop 1 self-review: flag ledger coverage below 85% and any captured values whose
@@ -2827,11 +2880,14 @@ def shape_loop2(fields, llm_open_qs):
     # capture's internal sentence references scrubbed out (audit H11).
     open_qs = [({**q, "question": _scrub_markers(q.get("question"))} if isinstance(q, dict)
                 else _scrub_markers(q)) for q in (llm_open_qs or [])]
+    asked = set().union(*(_topics(q) for q in open_qs)) if open_qs else set()
     for key, (fallbacks, why, priority) in CORE_FIELDS.items():
         if _val(fields, key) or any(_val(fields, fb) for fb in fallbacks):
             continue
+        if key in asked:                     # the capture already asks it, in the brief's own terms
+            continue
         question = (EVAL_CRITERIA_QUESTION if key == "evaluation_criteria"
-                    else f"What is the {key.replace('_', ' ')}?")
+                    else CORE_QUESTIONS.get(key) or f"What is the {key.replace('_', ' ')}?")
         open_qs.append({
             "question": question, "why_it_matters": why, "priority": priority,
         })
@@ -4018,6 +4074,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs
                 out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)
+                out["loop2_brief"]["open_questions"] = tidy_open_questions(out["loop2_brief"]["open_questions"])
         if out.get("loop2_golden"):
             _mark_provenance(out)
         if f_synth:
@@ -4121,13 +4178,17 @@ def main():
     ap.add_argument("--model", help="override model id (e.g. nvidia/llama-3.1-nemotron-70b-instruct)")
     ap.add_argument("--check", action="store_true",
                     help="connectivity check: list available models (esp. Nemotron) and exit")
+    ap.add_argument("--quick", action="store_true",
+                    help="the light brief only: capture and Loop 2, no strategy, golden fill or evidence. "
+                         "Without it (or BRIEF_LOOPS37=0) a run makes the full brief.")
     ap.add_argument("--loops37", action="store_true",
-                    help="also run Loops 3–7 (RAG-grounded strategy from rag/index). "
-                         "Off by default; needs a built index (cd rag && ./build_rag.sh).")
+                    help="kept for old scripts: the full brief is the default now.")
     ap.add_argument("--golden", action="store_true",
                     help="run schema-grounded Golden Brief extraction pass (loop2_golden).")
     args = ap.parse_args()
-    loops37 = args.loops37 or os.environ.get("BRIEF_LOOPS37", "").lower() in ("1", "true", "yes")
+    # Sai, 2026-10-03: "all the user has to do is upload the handoff document. keep it that simple."
+    # One file in, the full brief out; the light run is the exception you ask for.
+    loops37 = args.loops37 or not (args.quick or os.environ.get("BRIEF_LOOPS37", "1").lower() in ("0", "false", "no"))
     # golden always runs when loops37 is on — insight fill (Loop 4) depends on it
     golden = args.golden or loops37 or os.environ.get("BRIEF_GOLDEN", "").lower() in ("1", "true", "yes")
 

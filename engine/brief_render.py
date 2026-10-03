@@ -24,6 +24,7 @@ from pathlib import Path
 # A parenthesised aside about a sentence number goes whole; a bare 'sentence 12' or
 # 'sentences 2-3' loses only the reference itself; '[5]' goes.
 _MARKER_RE = re.compile(r"\(\s*sentences?\s+\d+[^)\n]{0,80}\)|\bsentences?\s+\d+(?:\s*[-–,]\s*\d+)*|\[\d+\]", re.I)
+_CITE_RE = re.compile(r"\[(?:F|D):[^\]\s]+(?:\s+v\d+)?\]")
 
 
 def _scrub_markers(text):
@@ -32,7 +33,11 @@ def _scrub_markers(text):
     scrubbed per item; other values pass through unchanged."""
     if isinstance(text, str):
         out = _MARKER_RE.sub("", text)
-        out = re.sub(r"\s+([?.,;:!])", r"\1", out)     # 'impact ?' -> 'impact?'
+        out = _CITE_RE.sub("", out)                     # a fact or decision id left in (a proposal's basis)
+        out = re.sub(r"[\s;,]*[;,](?=\s*\))", "", out)  # 'finding;,)' -> 'finding)' once the ids are gone
+        out = re.sub(r"\(\s*\)", "", out)
+        out = re.sub(r"\s*[;,](?=\s*[.;,!?]|\s*$)", "", out)  # 'claim [F:a], [F:b].' -> 'claim.'
+        out = re.sub(r"\s+([?.,;:!)])", r"\1", out)    # 'impact ?' -> 'impact?'
         return re.sub(r"\s{2,}", " ", out).strip()
     if isinstance(text, list):
         return [_scrub_markers(x) for x in text]
@@ -194,7 +199,11 @@ def render_client_brief(brief) -> str:
         scrubbed) with its evidence marks, or the to-be-agreed placeholder when it is empty,
         then a blank line."""
         L.append(f"## {heading}")
-        L.append(_scrub_markers(str(value)) + tag(fid) if value else TBD)
+        if isinstance(value, list) and value:         # a list field (mandatories...) reads as a list, not ['a', 'b']
+            L.extend(f"- {_scrub_markers(str(v.get('value') if isinstance(v, dict) else v))}{tag(fid, i)}"
+                     for i, v in enumerate(value))
+        else:
+            L.append(_scrub_markers(str(value)) + tag(fid) if value else TBD)
         L.append("")
 
     text_section("Background", gv("background"), "background")
