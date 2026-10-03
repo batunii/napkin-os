@@ -140,3 +140,24 @@ When a field is empty or thin after drafting, a gap-filler looks for the materia
 
 The field is then written as a labelled proposal: "Proposed (not given by the client): ... based on
 [F:id] ... To confirm: ...". It is never presented as the client's words.
+
+## P1 step A result (2026-10-03): read whole while it fits
+
+Measured on the 228k-character tender, with the same code twice:
+
+| | One read | Six chunks |
+|---|---|---|
+| Time | 169 s | 185 s |
+| Cost | $2.25 | $2.82 |
+| Sentences accounted for | 100% | 99.1% |
+| Capture items | 71 | 262, many repeats |
+| Blind head-to-head (both orders) | won | lost: "duplicated contract noise and dozens of false 'which holds?' conflicts" |
+
+- **The long-input problem at this size was already solved by today's reader fixes.** The Word reader
+  no longer repeats merged cells (54k fewer characters), and extraction runs on Opus 5.5. The old
+  334 s and 20-34% coverage (EC-045) came from the clipped, duplicated input and the fallback model.
+- **Chunking stays as a safety valve above 600k characters** (`BRIEF_CHUNK_ABOVE`). Its merge asks
+  "which holds?" only for short factual values that differ, at most 5 times.
+- **Step B is parked** until an input needs it: the other steps reading the capture instead of the
+  whole input.
+- **The same run scored 13.5 of 27 reference sections**, up from 8-10 that morning.

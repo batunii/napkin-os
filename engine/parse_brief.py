@@ -2175,6 +2175,55 @@ Several sentence numbers go in ONE src cell separated by spaces (3 9), never as 
 cells. An empty table is its header line with no rows below it, as unstated_needs above."""
 
 
+# Long inputs are captured in chunks, in parallel (P1 step A, 2026-10-03, docs/brief-maker/
+# reference-level-plan.md): one capture call over a 228k-character tender had 8,000 output tokens for
+# everything, took 334 s and accounted for 20-34% of the sentences. Above CHUNK_ABOVE characters the
+# numbered sentences are cut into chunks of up to CHUNK_CHARS (at a document or section boundary where one
+# is near), each captured on its own with the GLOBAL sentence numbers, and the captures merged; below it
+# nothing changes. Every sentence is in exactly one chunk, so nothing is unread whatever CLIP_EXTRACT is.
+# Measured 2026-10-03 on the 228k-character tender, same code: one read took 169 s, $2.25 and accounted for
+# 100% of the sentences; six chunks took 185 s and $2.82, gave 262 capture items (many repeats) and lost the
+# blind head-to-head. One good read is better while the input fits it, so chunking is a safety valve for
+# inputs past ~600k characters only (about 150k tokens).
+CHUNK_ABOVE = int(os.environ.get("BRIEF_CHUNK_ABOVE", "600000"))
+CONFLICT_QUESTIONS = 5     # at most this many "which holds?" questions from merging chunks
+CHUNK_CHARS = int(os.environ.get("BRIEF_CHUNK_CHARS", "35000"))
+CHUNK_WORKERS = 4
+_BOUNDARY = re.compile(r"^(=====|#{1,4}\s|\d+(\.\d+)*\s+[A-Z]|[A-Z][A-Z \-&,]{6,}$)")
+
+
+def _chunks(segs: list[str], size: int = None) -> list:
+    """[(lo, hi)] ranges over `segs` (hi exclusive) of at most `size` characters of numbered lines each,
+    every sentence in exactly one range. A range ends at the last document or section boundary in its final
+    40% when there is one, else where the size runs out; a single sentence longer than `size` is its own range."""
+    size = size or CHUNK_CHARS
+    out, lo, n, last_b = [], 0, 0, None
+    for i, sg in enumerate(segs):
+        ln = len(f"[{i + 1}] {sg}") + 1
+        if n + ln > size and i > lo:
+            cut = last_b if last_b is not None and last_b > lo and (sum(len(x) for x in segs[lo:last_b]) >= 0.6 * size) else i
+            out.append((lo, cut))
+            lo = cut
+            n = sum(len(f"[{j + 1}] {segs[j]}") + 1 for j in range(lo, i))
+            last_b = None
+        if _BOUNDARY.match(sg.strip()) and i > lo:
+            last_b = i
+        n += ln
+    if lo < len(segs):
+        out.append((lo, len(segs)))
+    return out
+
+
+def _numbered_range(segs: list[str], lo: int, hi: int) -> str:
+    """segs[lo:hi] as `[i] sentence` lines with their GLOBAL numbers (what `src` cites)."""
+    return "\n".join(f"[{i + 1}] {segs[i]}" for i in range(lo, hi))
+
+
+def _long(segs: list[str]) -> bool:
+    """Is the input long enough to be read in chunks (CHUNK_ABOVE)?"""
+    return sum(len(x) + 1 for x in segs) > CHUNK_ABOVE
+
+
 def _numbered(segs: list[str], limit: int) -> str:
     """The brief as `[i] sentence` lines — the numbering `src` cites — clipped at `limit` chars."""
     out, n = [], 0
@@ -2243,13 +2292,25 @@ def capture_toon(segs: list[str]) -> "dict | None":
     (run() then falls back to extract_llm's JSON capture)."""
     if not segs:
         return None
+    if _long(segs):
+        return _capture_chunked(segs)
     obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
                      system=CAPTURE_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon, route="extract",
                      accept=lambda o: isinstance(o.get("fields"), dict) and bool(o["fields"]))
     if not obj:
         return None
+    fields = _capture_fields(obj, segs)
+    if not fields:
+        return None                                  # nothing usable: run() falls back to JSON
+    qs = obj.get("open_questions") or []
+    return _normalize_llm({"fields": fields, "how_to_win": {},
+                           "open_questions": [q for q in qs if isinstance(q, (str, dict))]})
+
+
+def _capture_fields(obj: dict, segs: list[str]) -> dict:
+    """A TOON capture reply's fields in the pipeline's shape (lists of items, or one item)."""
     fields = {}
-    for k, v in obj["fields"].items():
+    for k, v in (obj.get("fields") or {}).items():
         if isinstance(v, list):
             fields[k] = [_capture_item(it if isinstance(it, dict) else {"value": it}, segs)
                          for it in v if it is not None]
@@ -2257,11 +2318,72 @@ def capture_toon(segs: list[str]) -> "dict | None":
             fields[k] = _capture_item(v, segs)
         elif v is not None:                          # inline `key: text`
             fields[k] = _capture_item({"value": v}, segs)
-    if not fields:
-        return None                                  # nothing usable: run() falls back to JSON
-    qs = obj.get("open_questions") or []
-    return _normalize_llm({"fields": fields, "how_to_win": {},
-                           "open_questions": [q for q in qs if isinstance(q, (str, dict))]})
+    return fields
+
+
+def _norm_value(v) -> str:
+    return re.sub(r"[^a-z0-9%€$£]+", " ", str(v or "").lower()).strip()
+
+
+def _real_conflict(a, b) -> bool:
+    """Two values worth a "which holds?" question: short factual values (at most 160 characters each) whose
+    figures differ, or that share under a third of their words. Prose worded differently by two chunks is not
+    a conflict (the blind judge read dozens of such questions as noise, 2026-10-03)."""
+    a, b = str(a or ""), str(b or "")
+    if len(a) > 160 or len(b) > 160:
+        return False
+    na, nb = set(re.findall(r"\d[\d.,]*", a)), set(re.findall(r"\d[\d.,]*", b))
+    if na and nb and na != nb:
+        return True
+    wa, wb = set(_norm_value(a).split()), set(_norm_value(b).split())
+    return bool(wa and wb) and len(wa & wb) / max(1, min(len(wa), len(wb))) < 0.33
+
+
+def _capture_chunked(segs: list[str]) -> "dict | None":
+    """capture_toon for a long input: every chunk (_chunks) captured in parallel with its global sentence
+    numbers, then merged. A list field joins every chunk's items, a repeat (same words) once. A one-item
+    field keeps the first chunk's value that is not a gap; a different value from another chunk is kept
+    in `alternatives` and raises an open question. Chunks that fail are named in `chunk_failures` (their
+    sentences then show as unused in the no-loss ledger); None when every chunk failed."""
+    ranges = _chunks(segs)
+
+    def one(r):
+        lo, hi = r
+        return r, _json_call(f"CLIENT BRIEF (numbered sentences {lo + 1}-{hi} of {len(segs)}; one part of a longer "
+                             f"input):\n{_numbered_range(segs, lo, hi)}",
+                             system=CAPTURE_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon, route="extract",
+                             accept=lambda o: isinstance(o.get("fields"), dict) and bool(o["fields"]))
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=CHUNK_WORKERS) as ex:
+        got = list(ex.map(_scoped(one), ranges))
+    merged, qs, failed, conflicts = {}, [], [], 0
+    for (lo, hi), obj in got:
+        if not obj:
+            failed.append(f"sentences {lo + 1}-{hi}")
+            continue
+        for k, v in _capture_fields(obj, segs).items():
+            if isinstance(v, list):
+                have = merged.setdefault(k, [])
+                if not isinstance(have, list):
+                    have = merged[k] = [have]
+                seen = {_norm_value(x.get("value")) for x in have}
+                have += [x for x in v if _norm_value(x.get("value")) not in seen and not seen.add(_norm_value(x.get("value")))]
+            elif k not in merged or (isinstance(merged[k], dict) and merged[k].get("status") == "gap"):
+                merged[k] = v
+            elif isinstance(merged[k], dict) and v.get("status") != "gap" and v.get("value") \
+                    and _norm_value(v["value"]) != _norm_value(merged[k].get("value")):
+                merged[k].setdefault("alternatives", []).append(v)
+                if _real_conflict(merged[k].get("value"), v["value"]) and conflicts < CONFLICT_QUESTIONS:
+                    conflicts += 1
+                    qs.append({"question": f"The documents give more than one {k.replace('_', ' ')}: "
+                                           f"\u201c{str(merged[k].get('value'))[:120]}\u201d and \u201c{str(v['value'])[:120]}\u201d. Which holds?",
+                               "priority": "high", "blocks_field": ""})
+        qs += [q for q in (obj.get("open_questions") or []) if isinstance(q, (str, dict))]
+    if not merged:
+        return None
+    out = _normalize_llm({"fields": merged, "how_to_win": {}, "open_questions": qs})
+    out["chunks"] = {"count": len(ranges), "ranges": [[lo + 1, hi] for lo, hi in ranges], "failed": failed}
+    return out
 
 
 def how_to_win_toon(segs: list[str]) -> dict:
@@ -2270,9 +2392,21 @@ def how_to_win_toon(segs: list[str]) -> dict:
     Returns {} on failure — how_to_win is advisory, never a reason to fail the run."""
     if not segs:
         return {}
-    obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
-                     system=HOW_TO_WIN_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon, route="mechanical",
-                     accept=lambda o: any(k in o for k in HOW_TO_WIN_KEYS))
+    if _long(segs):                                  # P1 step A: every chunk, merged
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(r):
+            return _json_call(f"CLIENT BRIEF (numbered sentences {r[0] + 1}-{r[1]} of {len(segs)}; one part of a longer "
+                              f"input):\n{_numbered_range(segs, *r)}",
+                              system=HOW_TO_WIN_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon,
+                              route="mechanical", accept=lambda o: any(k in o for k in HOW_TO_WIN_KEYS))
+        with ThreadPoolExecutor(max_workers=CHUNK_WORKERS) as ex:
+            objs = [o for o in ex.map(_scoped(one), _chunks(segs)) if o]
+        obj = {k: [r for o in objs for r in (o.get(k) or [])] for k in HOW_TO_WIN_KEYS}
+    else:
+        obj = _json_call(f"CLIENT BRIEF (numbered sentences):\n{_numbered(segs, CLIP_EXTRACT)}",
+                         system=HOW_TO_WIN_TOON_SYSTEM, max_tokens=MAXTOK_EXTRACT, parse=_loads_toon, route="mechanical",
+                         accept=lambda o: any(k in o for k in HOW_TO_WIN_KEYS))
     out = {}
     for k in HOW_TO_WIN_KEYS:
         rows = [_unglue(r.get("point"), r.get("src")) for r in ((obj or {}).get(k) or [])
@@ -3749,6 +3883,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
 
         llm = f_cap.result() if f_cap else None
         capture_format = "toon" if llm else "json"
+        capture_chunks = (llm or {}).get("chunks") if isinstance(llm, dict) else None
         cap_fallback = None
         if llm:
             how_to_win = f_htw.result()
@@ -3789,7 +3924,7 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             "meta": {"client": client, "project": project, "source_files": [src_name],
                      "parsed_at": dt.datetime.now().isoformat(timespec="seconds"),
                      "parser_version": PARSER_VERSION, "extraction_mode": mode,
-                     "capture_format": capture_format, "prompt_version": PROMPT_VERSION,
+                     "capture_format": capture_format, "capture_chunks": capture_chunks, "prompt_version": PROMPT_VERSION,
                      **({"capture_fallback": cap_fallback} if cap_fallback else {}),
                      **({"research_facts": {**research_facts.record(rf_usable, rf_skipped),
                                             "conflicts": rf_contested}} if rf_given else {}),
