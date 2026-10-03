@@ -287,3 +287,25 @@ def test_a_share_or_a_large_amount_may_be_written_the_way_a_planner_writes_it():
     assert rf.citation_failures(["About 27% of drinkers"], facts, "x") == [
         "fact citation: 27 comes from the research (F:f-s) but is not cited (item 0)"]  # uncited research still fails
     assert rf.citation_failures(["Launch in 2014"], facts, "x") == []                  # a date alone is not research
+
+
+def test_an_identifier_written_in_full_is_not_an_uncited_figure_and_is_attached():
+    """EC-044: 'Save 116 123 in your phone' emptied the Samaritans desired response."""
+    import research_facts as rf
+    facts = {"f_tel": {"id": "f_tel", "version": 1, "entity": "brand/x", "key": "positioning.freephone_number",
+                       "value": "116 123", "unit": "code"},
+             "f_syn": {"id": "f_syn", "version": 1, "entity": "brand/x", "key": "synthesis.a",
+                       "value": "A free number (116 123) answered day or night.", "unit": "text"}}
+    draft = {"do": "Save 116 123 in their phone now, and ring it on a bad night."}
+    assert rf.citation_failures(draft, facts, "the brief says nothing about the number") == []
+    assert rf.citation_failures({"do": "Ring 116-123"}, facts, "") == []
+    clean, refs = rf.strip(draft, facts)
+    assert clean == draft and [(r["item"], r["id"], r["auto"]) for r in refs] == [("do", "f_tel", "identifier")]
+
+
+def test_digits_that_are_also_a_statistic_still_need_their_citation():
+    import research_facts as rf
+    facts = {"f_tel": {"id": "f_tel", "value": "116 123", "unit": "code"},
+             "f_calls": {"id": "f_calls", "value": 123, "unit": "count"}}
+    assert rf.citation_failures("We took 123 calls.", facts, "") != []          # a count, not the number
+    assert rf.citation_failures("Call 116 123.", facts, "") == []

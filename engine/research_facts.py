@@ -135,6 +135,37 @@ def _items(value) -> list:
     return [(None, str(value or ""))]
 
 
+# Identifiers are not statistics (2026-10-02, Sai; EC-044): a research fact whose unit is a code (a phone
+# number, a registration or reference number) is a name for something. A draft that writes it in full uses
+# the identifier, not a figure: its digits are not checked as uncited research figures, and the fact is
+# attached to the field's fact_refs automatically. Seen on Samaritans: "Save 116 123 in your phone" emptied
+# the desired response.
+IDENTIFIER_UNITS = {"code"}
+
+
+def _identifier_patterns(facts: dict) -> dict:
+    """{fact id: compiled pattern} for identifier facts with digits; the pattern accepts the value with its
+    digit groups joined by a space, a hyphen or nothing ('116 123', '116-123', '116123')."""
+    out = {}
+    for fid, f in facts.items():
+        v = str(f.get("value") or "")
+        if str(f.get("unit") or "").lower() in IDENTIFIER_UNITS and re.search(r"\d", v):
+            groups = re.findall(r"[A-Za-z0-9]+", v)
+            if groups:
+                out[fid] = re.compile(r"(?<![\w])" + r"[\s-]?".join(re.escape(g) for g in groups) + r"(?![\w])", re.I)
+    return out
+
+
+def _without_identifiers(text: str, ids: dict) -> tuple:
+    """(text with every identifier written in full blanked out, the identifier fact ids it used)."""
+    used = []
+    for fid, pat in ids.items():
+        if pat.search(text):
+            used.append(fid)
+            text = pat.sub(" ", text)
+    return text, used
+
+
 def citation_failures(value, facts: dict, brief_text: str) -> list:
     """Hard failures for a draft's [F:id] citations, given the run's current facts by id:
     a cited id that was not given; a figure in a citing item that is neither in the brief nor
@@ -148,10 +179,11 @@ def citation_failures(value, facts: dict, brief_text: str) -> list:
     fact_nums = {fid: _nums(" ".join([str(f.get("value")), str(f.get("unit") or ""), *forms(f)]))
                  for fid, f in facts.items()}
     cite_nums = {fid: ns | _nums(str(facts[fid].get("as_of") or "")) for fid, ns in fact_nums.items()}
+    ids = _identifier_patterns(facts)
     out = []
     for key, text in _items(value):
         cited = [fid for fid, _v in CITE.findall(text)]
-        plain = CITE.sub("", text)
+        plain, _used = _without_identifiers(CITE.sub("", text), ids)
         where = f" (item {key})" if key is not None else ""
         for fid in cited:
             if fid not in facts:
@@ -174,8 +206,16 @@ def strip(value, facts: dict) -> tuple:
     think/feel/do key (None for a one-line field). The campaign CLAN shows the sources from
     fact_refs, not from the prose."""
     refs = []
+    ids = _identifier_patterns(facts or {})
 
     def one(key, text):
+        cited = {fid for fid, _v in CITE.findall(text)}
+        for fid in _without_identifiers(CITE.sub("", text), ids)[1]:
+            if fid not in cited:                       # an identifier written in full: its fact, attached
+                f = facts.get(fid) or {}
+                refs.append({"item": key, "id": fid, "version": f.get("version"), "scope": scope(f) if f else None,
+                             "source_ids": [x.get("id") for x in (f.get("sources") or []) if isinstance(x, dict) and x.get("id")],
+                             "auto": "identifier"})
         for fid, v in CITE.findall(text):
             f = facts.get(fid) or {}
             refs.append({"item": key, "id": fid,
