@@ -296,3 +296,24 @@ def rivals(upstream: "dict | None", facts: list) -> list:
             if name and name not in out:
                 out.append(name)
     return out
+
+
+# ---- one research CLAN as run()'s upstream (ADR 0017, Sai 2026-10-03) ------------------------
+
+def load_clan(path) -> dict:
+    """The research CLAN at `path` (.clan zip, unzipped folder or a dev run's clan.json) as
+    run(upstream=...) takes it: {"facts": [...], "decisions": [...], "brand": name} with whatever the CLAN
+    holds. The facts file's `facts:` wrapper is unwrapped (RUNBOOK trap: unwrapped wrongly it gave 1
+    skipped, 0 used); dates are turned to strings. The CLAN's category is a research-taxonomy code, not
+    the engine's category list, so it is not passed (jev picks the category from the brief, EC-013)."""
+    import json as _json
+    import research_decisions
+    parts = research_decisions.clan_parts(path)
+    up = {"facts": _json.loads(_json.dumps(parts["facts"], default=str)),
+          "decisions": research_decisions.from_clan(path)}
+    brand = (parts["data"].get("campaign") or {}).get("brand") if isinstance(parts["data"], dict) else None
+    brand = brand.get("value") if isinstance(brand, dict) else brand
+    brand = brand.get("name") if isinstance(brand, dict) else brand
+    if isinstance(brand, str) and brand.strip():
+        up["brand"] = brand.strip()
+    return up

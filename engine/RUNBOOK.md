@@ -85,10 +85,22 @@ What happened when this was clipped: the Samaritans tender (227,000 characters) 
 39,000 characters scored health about 40, against 62-74 when read whole. Splitting and merging
 instead of a raised limit is planned (see `project_plan.clan`, `brief_maker_2026_10_01`).
 
-### With research facts from upstream (Python only)
+### With research from upstream
 
-Verified facts from the brand and category research reach the writers only through
-`run(upstream=…)`; the CLI has no flag for them. Facts are rows of the shape
+From the CLI (since 2026-10-03, ADR 0017), give the research CLAN itself:
+
+```bash
+napkin-brief brief.docx --attach rft.docx --research Brand.clan --loops37 --golden
+```
+
+- `--research` takes a `.clan` zip, an unzipped CLAN folder, or a research dev run's `clan.json`.
+- The engine reads the facts, the decisions people made on the findings, and the brand, then prints
+  what it loaded, e.g. `research: 94 facts, 5 decisions, brand Samaritans`. A wrong file shows at once.
+- Only verified and rejected findings become decisions; proposed ones give none.
+- The CLAN's category is not passed (it is a taxonomy code). jev picks the category from the brief.
+
+From Python, `research_facts.load_clan(path)` returns the same upstream dict. The manual way below
+still works. Facts are rows of the shape
 `{id, version, status, entity, key, value, unit, as_of, sources}`. A research CLAN keeps them in
 `shared/facts.yaml`, **wrapped in a top-level `facts:` key**: unwrap it, or only one item arrives
 and the research is silently unused.

@@ -173,3 +173,55 @@ def test_the_server_passes_upstream_through(monkeypatch):
     assert "upstream" not in calls[-1]                                          # nothing usable: as before
     server.do_draft({"input": "A brief."}, {"data": {}})
     assert "upstream" not in calls[-1]
+
+
+# ---- from_clan / load_clan (ADR 0017) ---------------------------------------------------------
+
+def _clan_dir(tmp_path):
+    """An unzipped research CLAN: two decided findings, one proposed, the chain and the wrapped facts."""
+    import yaml
+    (tmp_path / "shared").mkdir(); (tmp_path / "agent").mkdir()
+    (tmp_path / "shared" / "findings.yaml").write_text(yaml.safe_dump({"findings": [
+        {"id": "fi_A", "lens": "market_structure", "status": "rejected", "statement": "Income fell for a third year.",
+         "rejection": {"at": "2026-10-01T16:31:02+00:00", "by": "human:u1", "decision": "d_REJ", "reason": "Irrelevant."}},
+        {"id": "fi_B", "lens": "positioning", "status": "verified", "statement": "The free number is the asset.",
+         "verification": {"at": "2026-10-01T16:30:09+00:00", "by": "human:u1", "decision": "d_VER"}},
+        {"id": "fi_C", "status": "proposed", "statement": "Three peaks a year."}]}))
+    (tmp_path / "agent" / "decision-chain.yaml").write_text(yaml.safe_dump({"decisions": [
+        {"id": "d_VER", "action": "verify_finding", "rationale": "Matches the tracker."}]}))
+    (tmp_path / "shared" / "facts.yaml").write_text(yaml.safe_dump({"facts": [
+        {"id": "f_1", "value": "116 123", "unit": "code", "as_of": __import__("datetime").date(2026, 10, 1)}]}))
+    (tmp_path / "shared" / "data.yaml").write_text(yaml.safe_dump({"campaign": {"brand": {"value": {"name": "Samaritans"}}}}))
+    return tmp_path
+
+
+def test_a_research_clans_verified_and_rejected_findings_become_decision_rows(tmp_path):
+    import research_decisions as rd
+    rows = rd.from_clan(_clan_dir(tmp_path))
+    assert [(r["id"], r["kind"]) for r in rows] == [("d_REJ", "rejected_finding"), ("d_VER", "verified_finding")]
+    rej, ver = rows
+    assert rej["reason"] == "Irrelevant." and ver["reason"] == "Matches the tracker."   # chain rationale fills a gap
+    assert rej["as_of"] == "2026-10-01" and rej["who"] == "a reviewer" and rej["role"] == "person"
+    assert rej["statement"].startswith("rejected this finding: Income fell")
+    usable, skipped = rd.current(rows)
+    assert len(usable) == 2 and skipped == []                                          # proposed fi_C gives no row
+
+
+def test_load_clan_gives_runs_upstream_with_unwrapped_facts_decisions_and_brand(tmp_path):
+    import research_facts as rf
+    up = rf.load_clan(_clan_dir(tmp_path))
+    assert up["brand"] == "Samaritans" and [f["id"] for f in up["facts"]] == ["f_1"]
+    assert up["facts"][0]["as_of"] == "2026-10-01" and len(up["decisions"]) == 2
+    assert "category" not in up                                                        # a taxonomy code, not the enum
+
+
+def test_a_dev_runs_clan_json_reads_the_same_way(tmp_path):
+    """The research tool's dev runs write one clan.json; unreviewed research gives facts and brand, no decisions."""
+    import json
+    import research_facts as rf
+    p = tmp_path / "clan.json"
+    p.write_text(json.dumps({"facts": [{"id": "f_1", "value": 37}], "decision_chain": {"decisions": []},
+                             "findings": [{"id": "fi_X", "status": "proposed", "statement": "S"}],
+                             "data": {"campaign": {"brand": {"value": {"ref": "brand/x", "name": "Oatly"}}}}}))
+    up = rf.load_clan(p)
+    assert up == {"facts": [{"id": "f_1", "value": 37}], "decisions": [], "brand": "Oatly"}

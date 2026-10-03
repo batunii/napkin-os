@@ -172,3 +172,81 @@ def strip(value) -> tuple:
     else:
         clean = value
     return clean, refs
+
+
+# ---- reading the decisions out of a research CLAN (ADR 0017, Sai 2026-10-03) -----------------
+# A research CLAN records each person's verdict on a finding on the finding itself
+# (shared/findings.yaml: status verified | rejected, with a verification or rejection block) and in
+# agent/decision-chain.yaml (verify_finding / reject_finding, with the reviewer's rationale). Nothing
+# turned these into the rows above, so no decision ever reached the writers.
+
+def _clan_file(path, name: str):
+    """The text of `name` inside a research CLAN given as a .clan zip or an unzipped folder; None if absent."""
+    import zipfile
+    from pathlib import Path
+    p = Path(path)
+    if p.is_dir():
+        f = p / name
+        return f.read_text(encoding="utf-8") if f.is_file() else None
+    with zipfile.ZipFile(p) as z:
+        return z.read(name).decode("utf-8") if name in z.namelist() else None
+
+
+def clan_parts(path) -> dict:
+    """{facts, findings, chain, data} of a research CLAN in any of the forms the research tool writes: a
+    .clan zip, an unzipped folder (shared/facts.yaml with its `facts:` wrapper, shared/findings.yaml,
+    agent/decision-chain.yaml, shared/data.yaml) or the dev runs' single clan.json (keys facts, findings,
+    decision_chain, data). Missing parts are empty."""
+    import json
+    from pathlib import Path
+    import yaml
+    p = Path(path)
+    if p.suffix.lower() == ".json":
+        c = json.loads(p.read_text(encoding="utf-8"))
+        chain = c.get("decision_chain") or []
+        return {"facts": c.get("facts") or [], "findings": c.get("findings") or [],
+                "chain": chain.get("decisions", []) if isinstance(chain, dict) else chain, "data": c.get("data") or {}}
+
+    def part(name, key):
+        raw = _clan_file(p, name)
+        v = yaml.safe_load(raw) if raw else None
+        return (v.get(key, []) if isinstance(v, dict) and key else v) or ([] if key else {})
+    return {"facts": part("shared/facts.yaml", "facts"), "findings": part("shared/findings.yaml", "findings"),
+            "chain": part("agent/decision-chain.yaml", "decisions"), "data": part("shared/data.yaml", None)}
+
+
+def _date(v) -> "str | None":
+    """YYYY-MM-DD from a date, datetime or ISO string; None when there is none."""
+    if v is None:
+        return None
+    s = v.isoformat() if hasattr(v, "isoformat") else str(v)
+    return s[:10] if _DATE.match(s[:10]) else None
+
+
+def from_clan(path) -> list:
+    """The decision rows (the shape current() reads) for every finding a person verified or rejected in
+    the research CLAN at `path` (any form clan_parts reads). A proposed finding has no decision and gives no row. The reviewer is a
+    user id in the CLAN, so `who` is 'a reviewer'; the reason is the rejection's own reason, else the
+    rationale the decision chain recorded for that decision. The row id is the decision's id, so a
+    writer's [D:id] points at the record in the CLAN."""
+    parts = clan_parts(path)
+    findings, chain = parts["findings"], parts["chain"]
+    why = {d.get("id"): d.get("rationale") for d in chain if isinstance(d, dict) and d.get("id")}
+    rows = []
+    for f in findings:
+        if not isinstance(f, dict) or not f.get("statement"):
+            continue
+        status = f.get("status")
+        block = f.get("rejection") if status == "rejected" else f.get("verification") if status == "verified" else None
+        if not isinstance(block, dict):
+            continue
+        did = str(block.get("decision") or f"d_{f.get('id')}")
+        reason = block.get("reason") or why.get(block.get("decision"))
+        lens = str(f.get("lens") or "research").replace("_", " ")
+        rows.append({"id": did, "kind": "rejected_finding" if status == "rejected" else "verified_finding",
+                     "who": "a reviewer", "role": "person", "about": f"the {lens} finding {f.get('id')}",
+                     "statement": ("rejected this finding: " if status == "rejected" else "verified this finding: ")
+                                  + str(f["statement"]),
+                     "reason": str(reason) if reason else None, "as_of": _date(block.get("at")), "status": "current"})
+    return rows
+

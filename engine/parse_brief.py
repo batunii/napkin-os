@@ -3728,6 +3728,9 @@ def main():
     ap.add_argument("--attach", action="append", default=[], metavar="FILE",
                     help="supplementary file(s) folded in as context (e.g. brand guidelines); "
                          "any supported type incl. images/PDF. Repeatable.")
+    ap.add_argument("--research", default=None, metavar="CLAN",
+                    help="a research CLAN (.clan or unzipped folder): its facts, the decisions people made on "
+                         "its findings and its brand reach the writers (ADR 0014, 0015, 0017). Optional.")
     ap.add_argument("--format", default="md",
                     help="output formats, comma-separated: md,docx,pdf (default: md). "
                          "JSON is always written.")
@@ -3799,8 +3802,13 @@ def main():
                          f"(supporting context — e.g. brand guidelines) =====\n{atext}")
 
     try:
+        upstream = None
+        if args.research:
+            upstream = _facts_mod.load_clan(Path(args.research))
+            print(f"[i] research: {len(upstream['facts'])} facts, {len(upstream['decisions'])} decisions"
+                  + (f", brand {upstream['brand']}" if upstream.get("brand") else ""), file=sys.stderr)
         brief = run(path, args.client, args.project, loops37=loops37, golden=golden,
-                    raw_text=raw_text, source_name=source_name)
+                    raw_text=raw_text, source_name=source_name, upstream=upstream)
     except NoClaudeAvailable as e:
         sys.exit(f"[!] {e}")
 

@@ -38,6 +38,7 @@ cp .env.example .env        # then add your keys (see table below)
 ```bash
 napkin-brief samples/messy_brief_sample.txt                  # Loops 1–2 (works with zero keys)
 BRIEF_LOOPS37=1 napkin-brief <brief.pdf> --out outputs/x     # + RAG strategy (local index)
+BRIEF_LOOPS37=1 napkin-brief <brief.docx> --research Brand.clan  # + the research CLAN's facts, decisions on its findings, brand (ADR 0017)
 RAG_STORE=qdrant BRIEF_LOOPS37=1 napkin-brief <brief.docx>   # + remote Qdrant RAG (shared DB)
 BRIEF_CLAUDE_TRANSPORT=cli napkin-brief <brief.docx>         # Claude calls on your Claude Code login, not the API key
 ```
