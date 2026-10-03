@@ -26,6 +26,9 @@ def _placeholder_claude_key(monkeypatch):
     # REQ-01's fill step (repair then flag; labelled proposals) runs after the first-pass gates and adds
     # calls; the gate tests check the first pass, so it is off unless a test turns it on (test_fill_all.py).
     monkeypatch.setenv("BRIEF_FILL_ALL", "0")
+    # The gap-filler (ADR 0019) never searches or writes the real fact store in tests.
+    monkeypatch.setenv("BRIEF_GAP_FILL", "0")
+    monkeypatch.delenv("BRIEF_RESEARCH_URL", raising=False)
     import sys as _sys
     jc = _sys.modules.get("jev_checks")
     if jc is not None:

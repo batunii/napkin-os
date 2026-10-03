@@ -202,7 +202,7 @@ def test_a_research_clans_verified_and_rejected_findings_become_decision_rows(tm
     rej, ver = rows
     assert rej["reason"] == "Irrelevant." and ver["reason"] == "Matches the tracker."   # chain rationale fills a gap
     assert rej["as_of"] == "2026-10-01" and rej["who"] == "a reviewer" and rej["role"] == "person"
-    assert rej["statement"].startswith("rejected this finding: Income fell")
+    assert rej["statement"].startswith("rejected this finding: Income fell") and rej["finding"] == "fi_A" and "fi_A" not in rej["about"]
     usable, skipped = rd.current(rows)
     assert len(usable) == 2 and skipped == []                                          # proposed fi_C gives no row
 
@@ -225,3 +225,15 @@ def test_a_dev_runs_clan_json_reads_the_same_way(tmp_path):
                              "data": {"campaign": {"brand": {"value": {"ref": "brand/x", "name": "Oatly"}}}}}))
     up = rf.load_clan(p)
     assert up == {"facts": [{"id": "f_1", "value": 37}], "decisions": [], "brand": "Oatly"}
+
+
+def test_identifier_digits_in_a_decision_never_count_as_figures():
+    """2026-10-03: 'fi_43HX2GVBYFRI' in a decision's about failed a draft saying '2 in 3' (from_clan put the
+    finding id there; any id-like token is now ignored by the figure check)."""
+    import research_decisions as rd
+    decs = {"d_01M3W4W60K": {"id": "d_01M3W4W60K", "kind": "verified_finding", "who": "a reviewer", "role": "person",
+                             "about": "the positioning finding fi_43HX2GVBYFRI", "statement": "verified this finding: x"}}
+    assert rd.citation_failures(["2 in 3 drinkers prefer it"], decs, "") == []
+    decs["d_X"] = {"id": "d_X", "kind": "verified_finding", "who": "a reviewer", "role": "person",
+                   "about": "the market finding", "statement": "verified: 2 in 3 drinkers prefer it"}
+    assert rd.citation_failures(["2 in 3 drinkers prefer it"], decs, "") != []       # a real figure still fails

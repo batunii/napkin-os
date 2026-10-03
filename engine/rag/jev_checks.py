@@ -457,3 +457,21 @@ def coherence_links(chain: dict, later_fields: list) -> "dict | None":
     if got is None:
         return None
     return {fid: got.get(fid) for fid in asked}
+
+
+# The gap-filler's store check (ADR 0019): which held facts help with a gap.
+RELEVANT_Q = "Does FACT help answer NEED for this brand's brief?"
+RELEVANT_T = "The fact gives evidence or information that directly addresses the need."
+RELEVANT_F = "The fact is about something else, or too general to help with the need."
+
+
+def facts_relevant(need: str, fact_lines: list) -> "list | None":
+    """p(the fact helps with the need) per fact line, in order; None when jev cannot answer."""
+    asked = {f"r{i:03d}": _noul(RELEVANT_Q, RELEVANT_T, RELEVANT_F, need=str(need)[:500], fact=str(f)[:600])
+             for i, f in enumerate(fact_lines)}
+    if not asked:
+        return []
+    got = _ask({"need": str(need)[:500]}, asked, "gap facts")
+    if got is None:
+        return None
+    return [got.get(f"r{i:03d}") for i in range(len(fact_lines))]

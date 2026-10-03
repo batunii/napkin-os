@@ -160,6 +160,7 @@ HERE = Path(__file__).resolve().parent
 
 import capture_fallback  # noqa: E402  (the fallback readers: jev, then deterministic rules)
 import research_facts  # noqa: E402  (verified facts from the knowledge layer, C1a)
+import gap_filler  # noqa: E402  (facts for the brief's gaps: stored first, then the web; ADR 0019)
 _facts_mod = research_facts   # the module, where a parameter of the same name shadows it
 import research_decisions  # noqa: E402  (what people decided on the research, ADR 0015)
 _decisions_mod = research_decisions
@@ -1190,6 +1191,51 @@ FILL_REPAIR_NOTE = ("The last drafts were rejected: {why}. Write one that clears
                     "field's limits.")
 
 
+# The gap-filler for the proof (ADR 0019): reasons to believe that no given fact could prove (flagged or empty)
+# get facts found for the proposition, the store first and then the web, and their writer runs once more with
+# them. The new draft is kept only if it passes its checks; otherwise the flagged draft stays.
+GAP_PROOF_NOTE = ("New facts that may prove the proposition were found (keys gap.reasons_to_believe, in the "
+                  "research list): build the reasons to believe on them where they really prove it, and cite each "
+                  "as [F:id] in the same item.")
+
+
+def _gap_fill_proof(fills, open_qs, golden_fields, gap_context, rows, facts_by_id, research, one) -> list:
+    """See GAP_PROOF_NOTE. `gap_context()` gives {brand, category, market, report}; the report gets this
+    field's {stored, web, why?, outcome}. `rows`, `facts_by_id` and `research` are the writers' own fact
+    lists, extended in place so the rewrite and its citation checks see the new facts."""
+    rtb = golden_fields.get("reasons_to_believe") or {}
+    weak = (rtb.get("review") or {}).get("status") == "failed_checks" or rtb.get("value") in (None, "", [], {})
+    if not weak or rtb.get("source") == "client_stated":
+        return open_qs
+    ctx = gap_context()
+    wanted = [n for n in gap_filler.needs({"smp": golden_fields.get("smp"), "reasons_to_believe": rtb},
+                                          ctx.get("brand"), ctx.get("category")) if n["field"] == "reasons_to_believe"]
+    if not wanted:
+        return open_qs
+    got = gap_filler.fill(wanted, ctx.get("brand"), ctx.get("market"), rows)
+    rep = got["by_field"].get("reasons_to_believe", {})
+    ctx.setdefault("report", {})["reasons_to_believe"] = rep
+    new = [f for f in got["facts"] if f.get("id") not in facts_by_id]
+    if not new:
+        rep["outcome"] = "no_facts"
+        return open_qs
+    rows += new
+    facts_by_id.update({f["id"]: f for f in new})
+    research.extend(_facts_mod.line(f) for f in new)
+    entry, qs = one("reasons_to_believe", GAP_PROOF_NOTE)
+    if entry and (entry.get("review") or {}).get("status") != "failed_checks":
+        entry["gap_fill"] = {"facts": [f["id"] for f in new], "outcome": "proved"}
+        rep["outcome"] = "proved"
+        fills["reasons_to_believe"] = entry
+        open_qs = [q for q in open_qs if not (isinstance(q, dict) and q.get("blocks_field") == "reasons_to_believe")] + qs
+    else:
+        rep["outcome"] = "not_proved"
+        golden_fields["reasons_to_believe"] = rtb          # the flagged draft stays
+        if "reasons_to_believe" in fills:
+            fills["reasons_to_believe"] = rtb
+    return open_qs
+
+
 def _fill_empty_generated(fills: dict, open_qs: list, golden_fields: dict, schema: dict, one, with_refs) -> list:
     """Repair, then flag, every generated field left empty (see FILL_REPAIR_NOTE). A client's own line is
     never touched. The 'agree the field' question the first pass raised is replaced by the outcome's own.
@@ -1473,7 +1519,7 @@ def propose_missing(golden_fields: dict, schema: dict, brief_text: str, research
 
 def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict, brief_text: str = "",
                           allowed_facts=None, research_facts=None, contested=None, rivals=None,
-                          research_decisions=None):
+                          research_decisions=None, gap_context=None):
     """Guided-generative fill of the zone-3 strategy fields (insight → smp →
     reasons_to_believe → desired_response), schema-driven via each field's
     depends_on and rubric. A field is generated ONLY if its extracted source is
@@ -1929,6 +1975,8 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         open_qs += qs
     if os.environ.get("BRIEF_FILL_ALL", "1").lower() in ("1", "true", "yes"):
         open_qs = _fill_empty_generated(fills, open_qs, golden_fields, schema, _one_safe, _with_refs)
+    if gap_context is not None and os.environ.get("BRIEF_GAP_FILL", "1").lower() in ("1", "true", "yes"):
+        open_qs = _gap_fill_proof(fills, open_qs, golden_fields, gap_context, rows, facts_by_id, research, _one_safe)
     # Off by default (Sai, 2026-10-02): over 6 blind head-to-heads it won 2, tied 2 and lost 2 for +40-100 s a
     # brief; the breaks it finds are mostly missing proof (the gap-filler's job) or insight-to-SMP reasoning (the
     # planned strategy chain). BRIEF_COHERENCE=1 turns it on.
@@ -3617,6 +3665,18 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         # What people decided on the research (ADR 0015): for the writers only.
         rd_given = (upstream or {}).get("decisions")
         rd_usable, rd_skipped = research_decisions.current(rd_given)
+        _gap_ctx = {}
+
+        def gap_context():
+            """Brand, category and market for the gap-filler, worked out once (ADR 0019); its report goes in
+            meta.gap_fill."""
+            if not _gap_ctx:
+                fc = _facets() or {}
+                _gap_ctx.update(brand=fc.get("brand") or (upstream or {}).get("brand") or client or project
+                                or source_name or "",
+                                category=fc.get("category") or "", market=gap_filler.infer_market(text, rf_usable),
+                                report={})
+            return _gap_ctx
 
         def _facets():
             """The facets once ready (waits at most 20 s); None if they failed."""
@@ -3650,7 +3710,8 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                     return None
                 return fill_derivable_fields(gb0.setdefault("fields", {}), l37_0, golden_schema,
                                              brief_text=text, allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_usable,
-                                             contested=rf_contested, rivals=rivals, research_decisions=rd_usable)
+                                             contested=rf_contested, rivals=rivals, research_decisions=rd_usable,
+                                             gap_context=gap_context)
             f_fill = ex.submit(_scoped(_fill_early))
 
         llm = f_cap.result() if f_cap else None
@@ -3742,11 +3803,24 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 # overwrites a client_stated field. Failures become open questions.
                 filled = fill_derivable_fields(gf, l37, golden_schema, brief_text=text,
                                                allowed_facts=lambda: _allowed_facts(segs, f_cap), research_facts=rf_usable,
-                                             contested=rf_contested, rivals=rivals, research_decisions=rd_usable)
+                                             contested=rf_contested, rivals=rivals, research_decisions=rd_usable,
+                                             gap_context=gap_context)
             _fills, gen_open_qs = filled
             if os.environ.get("BRIEF_FILL_ALL", "1").lower() in ("1", "true", "yes"):
+                gf_all = out["loop2_golden"].setdefault("fields", {})
+                gap_facts = []
+                if os.environ.get("BRIEF_GAP_FILL", "1").lower() in ("1", "true", "yes"):
+                    ctx = gap_context()
+                    wanted = [n for n in gap_filler.needs({f: gf_all.get(f) for f in PROPOSABLE}, ctx["brand"],
+                                                          ctx["category"]) if n["field"] in PROPOSABLE]
+                    if wanted:
+                        got = gap_filler.fill(wanted, ctx["brand"], ctx["market"], rf_usable)
+                        ctx["report"].update(got["by_field"])
+                        gap_facts = got["facts"]
                 gen_open_qs = list(gen_open_qs or []) + propose_missing(
-                    out["loop2_golden"].setdefault("fields", {}), golden_schema, text, research=rf_usable)
+                    gf_all, golden_schema, text, research=list(rf_usable) + gap_facts)
+                if _gap_ctx:
+                    out["meta"]["gap_fill"] = {k: v for k, v in _gap_ctx.items()}
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs
                 out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)

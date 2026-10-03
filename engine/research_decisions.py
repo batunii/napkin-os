@@ -128,6 +128,17 @@ def _items(value) -> list:
     return [(None, str(value or ""))]
 
 
+# An identifier (a CLAN id like fi_43HX2GVBYFRI or d_01M3W4..., or any token mixing letters and digits) is
+# not a figure: its digits were read as numbers "from what people decided" and failed honest drafts that
+# said "2 in 3" (2026-10-03, ADR 0017 fix).
+_ID_TOKEN = re.compile(r"\b(?:[A-Za-z]+_[A-Za-z0-9_]+|(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,})\b")
+
+
+def _figure_text(s: str) -> str:
+    """`s` with identifier tokens removed, so only real figures are left for _nums."""
+    return _ID_TOKEN.sub(" ", str(s or ""))
+
+
 def citation_failures(value, decisions: dict, brief_text: str, facts: "dict | None" = None) -> list:
     """Hard failures for a draft, given the run's current decisions by id: a cited [D:id] the
     run was not given; a figure that is in no fact and not in the brief but is in a decision
@@ -138,7 +149,7 @@ def citation_failures(value, decisions: dict, brief_text: str, facts: "dict | No
     known = _nums(brief_text)
     for f in (facts or {}).values():
         known |= _nums(f"{f.get('value')} {f.get('unit') or ''}")
-    dec_nums = {did: _nums(" ".join(str(d.get(k) or "") for k in ("about", "statement", "reason")))
+    dec_nums = {did: _nums(_figure_text(" ".join(str(d.get(k) or "") for k in ("about", "statement", "reason"))))
                 for did, d in decisions.items()}
     out = []
     for key, text in _items(value):
@@ -244,7 +255,7 @@ def from_clan(path) -> list:
         reason = block.get("reason") or why.get(block.get("decision"))
         lens = str(f.get("lens") or "research").replace("_", " ")
         rows.append({"id": did, "kind": "rejected_finding" if status == "rejected" else "verified_finding",
-                     "who": "a reviewer", "role": "person", "about": f"the {lens} finding {f.get('id')}",
+                     "who": "a reviewer", "role": "person", "about": f"the {lens} finding", "finding": f.get("id"),
                      "statement": ("rejected this finding: " if status == "rejected" else "verified this finding: ")
                                   + str(f["statement"]),
                      "reason": str(reason) if reason else None, "as_of": _date(block.get("at")), "status": "current"})
