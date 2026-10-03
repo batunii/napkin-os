@@ -34,6 +34,7 @@ made in the app is as good as one made from the CLI. Every item names its row in
 | W6 | Check that the decision rows `clan-sdk extract::upstream` sends match `research_decisions.from_clan` (ADR 0017): the reviewer as `who`, no ids inside `about`/`statement` | Ids with digits inside decision text failed honest drafts as "figures from a decision"; fixed in the engine for both paths, but the shapes should agree | ADR 0017 |
 | W7 | Make the fallback to BriefJob loud, or remove it; `regenerate_field` still uses BriefJob's drafters in engine mode | A silent switch gives a different-quality brief | EC-022, EC-023 |
 | W8 | Default the `middleware` proxy; the engine takes one draft at a time with a 900 s wait | Wrong service without a proxy; concurrent drafts queue into the fallback | EC-024, EC-025 |
+| W9 | The user's only step is uploading the client's document. The agent-server now makes the full brief by default (`BRIEF_LOOPS37=0` for the light one), so the app should not ask for settings, flags or a research file; research arrives on its own when the research tool has run | Sai, 2026-10-03: "all the user has to do is upload the handoff document. keep it that simple" | - |
 
 ## 3. Research tool
 
@@ -56,11 +57,11 @@ made in the app is as good as one made from the CLI. Every item names its row in
 
 - **CLI with research:**
   ```
-  napkin-brief brief.docx --attach x.pdf --research Brand.clan --loops37 --golden
+  napkin-brief brief.docx --attach x.pdf --research Brand.clan
   ```
-  Run it from `engine/`, with `RAG_STORE=local RAG_INDEX=_index_v4`. Note `_index_v4`, not
-  `rag/_index_v4`: EC-048, now flagged as a degraded brief.
+  Run it from `engine/`, with `RAG_STORE=local` for the local index. One file in gives the full
+  brief: `--loops37 --golden` and `RAG_INDEX` are no longer needed (`--quick` gives the light one).
 - **Tests:** add `BRIEF_REQUIRE_STORE=1` so a missing store stops the run.
-- **Suites on 2026-10-03:** engine 1,093, agent-server 34, server 239 (+1 xfail), mock-backend 88.
+- **Suites on 2026-10-03:** engine 1,097, agent-server 34, server 239 (+1 xfail), mock-backend 88.
 - **Plan to reach a senior agency's brief:** `docs/brief-maker/reference-level-plan.md` (phases P0-P5).
   P0 and the gap-filler are done.

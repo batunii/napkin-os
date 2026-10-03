@@ -28,13 +28,17 @@ except ImportError:        # pragma: no cover
 HERE = Path(__file__).resolve().parent
 
 
+CURRENT_INDEX = "_index_v4"
+
+
 def default_index_dir() -> Path:
     """Where the local index lives when no index_dir is given: $RAG_INDEX (absolute, or
-    relative to the rag/ directory), else rag/index."""
+    relative to the rag/ directory), else rag/index, else rag/_index_v4, the current index
+    (EC-048: rag/index was never built, so a run without RAG_INDEX had no evidence)."""
     env = os.environ.get("RAG_INDEX")
     if env:
         return Path(env) if os.path.isabs(env) else HERE / env
-    return HERE / "index"
+    return HERE / "index" if (HERE / "index").exists() else HERE / CURRENT_INDEX
 
 
 class LocalStore(VectorStore):

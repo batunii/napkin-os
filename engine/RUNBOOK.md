@@ -39,8 +39,8 @@ Keys that matter for a full run:
   network.
 - The shared store is moving to AWS, which Shrey owns; ask him before changing store code or
   settings.
-- For local work, use the local index: `RAG_STORE=local RAG_INDEX=_index_v4`, run from
-  `engine/rag`. The index (`engine/rag/_index_v4/`, about 340 MB) is git-ignored, so copy it
+- For local work, use the local index: `RAG_STORE=local`. `RAG_INDEX` is no longer needed:
+  without it the engine uses `rag/_index_v4`. The index (`engine/rag/_index_v4/`, about 340 MB) is git-ignored, so copy it
   from a teammate.
 
 ## 2. Check it works (no model cost)
@@ -58,9 +58,12 @@ python3 -m pytest -q agent-server                         # the app backend's te
 
 ```bash
 cd engine
-BRIEF_CLAUDE_TRANSPORT=cli RAG_STORE=local RAG_INDEX=_index_v4 \
-  napkin-brief path/to/brief.docx --loops37 --golden --format md,pdf --out outputs/my_run
+BRIEF_CLAUDE_TRANSPORT=cli RAG_STORE=local napkin-brief path/to/brief.docx --format md,pdf
 ```
+
+One file in gives the full brief (since 2026-10-03, Sai: "all the user has to do is upload the
+handoff document. keep it that simple"). `--loops37 --golden` are no longer needed; `--quick`
+gives the light brief (capture and Loop 2 only).
 
 - Add `--attach FILE` (repeatable) for supporting documents such as brand guidelines, tender
   annexes or Q&A. Each is folded into the input under an `===== ATTACHMENT: … =====` header.
@@ -78,7 +81,7 @@ The golden extraction reads only the first 40,000 characters by default
 built from the first pages only:
 
 ```bash
-BRIEF_CLIP_EXTRACT_CHARS=300000 napkin-brief rft.docx --attach trd.docx --attach qa.pdf --loops37 --golden
+BRIEF_CLIP_EXTRACT_CHARS=300000 napkin-brief rft.docx --attach trd.docx --attach qa.pdf
 ```
 
 What happened when this was clipped: the Samaritans tender (227,000 characters) read only to
@@ -90,7 +93,7 @@ instead of a raised limit is planned (see `project_plan.clan`, `brief_maker_2026
 From the CLI (since 2026-10-03, ADR 0017), give the research CLAN itself:
 
 ```bash
-napkin-brief brief.docx --attach rft.docx --research Brand.clan --loops37 --golden
+napkin-brief brief.docx --attach rft.docx --research Brand.clan
 ```
 
 - `--research` takes a `.clan` zip, an unzipped CLAN folder, or a research dev run's `clan.json`.

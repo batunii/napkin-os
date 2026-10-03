@@ -33,11 +33,10 @@ if str(HERE) not in sys.path:                    # let `import rag` resolve next
 
 import rag                                        # noqa: E402  (after sys.path tweak)
 
-# Default index is rag/index; override with RAG_INDEX (absolute or relative-to-rag/)
-# so the pipeline can be pointed at a test corpus without touching production.
-_ENV_INDEX = os.environ.get("RAG_INDEX")
-DEFAULT_INDEX = (Path(_ENV_INDEX) if os.path.isabs(_ENV_INDEX or "")
-                 else HERE / _ENV_INDEX) if _ENV_INDEX else HERE / "index"
+# Default index: RAG_INDEX (absolute or relative-to-rag/) so the pipeline can be pointed at a
+# test corpus without touching production, else rag/index, else the current rag/_index_v4.
+from store_local import default_index_dir  # noqa: E402
+DEFAULT_INDEX = default_index_dir()
 
 
 def index_available(index_dir: Path | str | None = None) -> bool:

@@ -14,7 +14,8 @@ Tasks:
 
 Config (env; engine/.env is auto-loaded by parse_brief on import):
   NAPKIN_AGENT_PORT   listen port (default 8787 — same slot as mock-agent; run one)
-  BRIEF_LOOPS37=1     enable RAG-grounded Loops 3–7 (golden fill forced on with it)
+  BRIEF_LOOPS37=0     the light brief only (default on: an upload gets the full brief,
+                      RAG-grounded Loops 3–7 with the golden fill; Sai, 2026-10-03)
   BRIEF_GOLDEN=1      golden-brief fill without loops37
   BRIEF_RESEARCH=0    disable the research dossier (default: on when keys exist)
   RAG_STORE=qdrant    remote vector store; NVIDIA_API_KEY is required for query
@@ -221,7 +222,7 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
         print("[!] draft_brief with no input text", file=sys.stderr)
         return 400, {"error": "no brief text: payload.input / clan.data.brief_input empty"}
 
-    loops37 = bool(payload.get("loops37", _env_flag("BRIEF_LOOPS37")))
+    loops37 = bool(payload.get("loops37", _env_flag("BRIEF_LOOPS37", "1")))
     golden = bool(payload.get("golden", _env_flag("BRIEF_GOLDEN"))) or loops37
 
     # Research NEVER enters the engine input: Loop-1 capture must stay a
