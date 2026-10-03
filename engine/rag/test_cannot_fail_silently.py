@@ -952,3 +952,26 @@ def test_the_sharpen_pass_is_on_by_default(monkeypatch):
     monkeypatch.setenv("BRIEF_SHARPEN", "0")
     _fill(monkeypatch)
     assert not any(k == "refine" for k, _u, _s in calls2)
+
+
+def test_proof_requests_are_taken_out_before_the_judge_sees_the_reasons_to_believe(monkeypatch):
+    """ADR 0020 (2026-10-03): a 'TO CONFIRM' item failed the judge's supports_smp on 6 of 7 briefs; it is
+    now moved to proof_needed before judging and asked as a question."""
+    calls = _fake_models(monkeypatch)
+    real_fake = pb._json_call
+    seen = []
+
+    def spy(user, system=None, **kw):
+        if "judging candidate" in (system or ""):
+            seen.append(user)
+        out = real_fake(user, system=system, **kw)
+        if isinstance(out, dict) and out.get("value") == ["2 million weekly users", "Free for under-30s"]:
+            out = {**out, "value": ["2 million weekly users", "TO CONFIRM: proof it tastes real"]}
+        return out
+    monkeypatch.setattr(pb, "_json_call", spy)
+    gf, fills, qs = _fill(monkeypatch)
+    rtb = gf["reasons_to_believe"]
+    assert rtb["value"] == ["2 million weekly users"] and rtb["proof_needed"] == ["TO CONFIRM: proof it tastes real"]
+    assert any(q["question"] == "Proof needed: proof it tastes real" for q in qs)
+    assert seen and any("2 million weekly users" in u for u in seen)       # the judge ran on the proof
+    assert not any("TO CONFIRM: proof it tastes real" in u for u in seen)   # and never saw the request

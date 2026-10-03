@@ -85,3 +85,13 @@ def test_the_fill_step_runs_in_a_real_fill_when_switched_on(monkeypatch):
     monkeypatch.setattr(pb, "_fill_empty_generated", lambda fills, qs, *a: seen.append(sorted(fills)) or qs)
     pb.fill_derivable_fields({}, {}, {"fields": []}, brief_text="x")
     assert seen == [[]]
+
+
+def test_proof_requests_leave_the_reasons_to_believe_and_show_as_proof_still_needed():
+    """ADR 0020: 'TO CONFIRM' items are requests, not proof; they are shown apart and asked as questions."""
+    golden = {"reasons_to_believe": {"value": ["No boiling: 0 minutes vs 10-20"], "source": "inferred",
+                                     "proof_needed": ["TO CONFIRM: a blind taste test against boiled polenta"]}}
+    md = br.render_client_brief({"meta": {"project": "P"}, "loop2_brief": {}, "loop2_golden": {"fields": golden}})
+    rtb = md.split("## Reasons to believe")[1].split("##")[0]
+    assert "- No boiling: 0 minutes vs 10-20" in rtb and "_Proof still needed:_" in rtb
+    assert "- a blind taste test against boiled polenta" in rtb and "TO CONFIRM" not in rtb.split("_Proof still needed:_")[1]

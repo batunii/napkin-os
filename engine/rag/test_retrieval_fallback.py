@@ -42,3 +42,16 @@ def test_no_digests_either_is_a_disabled_stub(monkeypatch, capsys):
     out = pb.loops_3_7({}, {}, synthesize=False)
     assert out["enabled"] is False
     assert "RAG store unavailable" in capsys.readouterr().err
+
+
+def test_a_brief_without_precedent_retrieval_says_so_or_stops(monkeypatch, tmp_path):
+    """EC-048: a missing store is recorded in meta.degraded; BRIEF_REQUIRE_STORE=1 stops the run."""
+    import parse_brief as pb
+    import pytest
+    src = (pb.HERE / "parse_brief.py").read_text()
+    assert 'out["meta"]["degraded"]' in src and "BRIEF_REQUIRE_STORE" in src
+    monkeypatch.setenv("BRIEF_REQUIRE_STORE", "1")
+    monkeypatch.setattr(pb, "loops_3_7", lambda *a, **k: {"enabled": True, "fallback": {"to": "digests", "reason": "RAG store unavailable: x"}})
+    monkeypatch.setattr(pb, "_json_call", lambda *a, **k: {})
+    with pytest.raises(RuntimeError, match="BRIEF_REQUIRE_STORE=1 and RAG store unavailable"):
+        pb.run(None, loops37=True, golden=False, raw_text="A brand wants a campaign in Ireland.", source_name="t")

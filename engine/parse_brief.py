@@ -1266,6 +1266,8 @@ def _fill_empty_generated(fills: dict, open_qs: list, golden_fields: dict, schem
         entry = {"value": best, "source": "inferred", "method": f"gen:{fid}",
                  "review": {"status": "failed_checks", "failed": failed, "why": why_after},
                  "fill_repair": {"outcome": "shipped_flagged", "why_before": why}}
+        if after.get("proof_needed") or cur.get("proof_needed"):
+            entry["proof_needed"] = after.get("proof_needed") or cur.get("proof_needed")
         golden_fields[fid] = with_refs(entry)
         fills[fid] = entry
         open_qs.append({"question": f"Review the {field['label'].lower()}: the draft is kept but failed "
@@ -1798,6 +1800,18 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
         # One call ranks every draft and runs every test on it. The best-ranked draft that
         # passes wins; if none passes, the best-ranked one carries its failures.
         chosen, chosen_fail, chosen_notes = None, None, []
+        # Proof only (2026-10-03, Sai, ADR 0020): a 'TO CONFIRM: ...' item is a request for proof, not a
+        # reason to believe, and the judge failed every draft that held one ("placeholders are not proof").
+        # The requests move out of the value to `_proof_needed` before judging; a draft with no real item
+        # left keeps them, so the field is never blank (REQ-01).
+        if field.get("type") == "list":
+            for c in candidates:
+                v = c.get("value")
+                if isinstance(v, list):
+                    real = [it for it in v if not _is_request(it)]
+                    if real and len(real) < len(v):
+                        c["_proof_needed"] = [str(it) for it in v if _is_request(it)]
+                        c["value"] = real
         judged = _judge_and_gate(field, candidates, brand_blob, ctx, territory, allowed_text=_allowed_for(field),
                                  facts=facts_by_id, brief_text=brief_text, decisions=decisions_by_id)
         candidates = [c for c, _ok, _f in judged]
@@ -1851,6 +1865,8 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                          "confidence": round(conf, 2) if conf is not None else None,
                          "review": {"status": "failed_checks", "failed": _check_ids(fails),
                                     "why": "; ".join(fails)}}
+                if kept.get("_proof_needed"):              # ADR 0020: the requests stay with the draft
+                    entry["proof_needed"] = kept["_proof_needed"]
                 if kept.get("_judge_why"):
                     entry["judge_note"] = kept["_judge_why"]
                 golden_fields[fid] = _with_refs(entry)
@@ -1868,6 +1884,8 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                 "value": None, "source": "missing", "reason": why,
                 "rejected_attempt": chosen.get("value"),
             }
+            if chosen.get("_proof_needed"):
+                golden_fields[fid]["proof_needed"] = chosen["_proof_needed"]
             if unjudged:
                 golden_fields[fid]["unjudged"] = True
             qs.append({"question": f"Agree the {field['label'].lower()}"
@@ -1894,10 +1912,16 @@ def fill_derivable_fields(golden_fields: dict, loop37_result: dict, schema: dict
                     refined["_judge_why"] = chosen.get("_judge_why", "")
                     chosen, conf = refined, rconf
 
+        if chosen.get("_proof_needed"):
+            qs += [{"question": "Proof needed: " + re.sub(r"^\s*TO CONFIRM:?\s*", "", p, flags=re.I),
+                    "why_it_matters": "a reason to believe the brief could not prove from the facts given",
+                    "priority": "medium", "blocks_field": fid} for p in chosen["_proof_needed"]]
         entry = {"value": chosen["value"], "source": "inferred",
                  "method": f"gen:{fid}", "confidence": round(conf, 2)}
         if fid == "smp" and territory:      # which rival the line was tested against, and from where (C2)
             entry["territory"] = {"rival": territory["rival"], "rival_source": territory.get("rival_source", "brief")}
+        if chosen.get("_proof_needed"):
+            entry["proof_needed"] = chosen["_proof_needed"]
         if chosen.get("rationale"):
             # A precedent, brand or campaign named in the rationale must be in what was sent.
             rationale, removed = _strip_unsupplied_names(
@@ -3795,6 +3819,14 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
                 out["loops3_7"] = l37_early
             out["loops3_7"]["retrieved_from"] = "golden" if l37_early else "capture"
         l37 = out.get("loops3_7") or {}
+        # No precedent retrieval is a degraded brief, said where the app and a reader see it (2026-10-03,
+        # EC-048: a wrong RAG_INDEX ran a whole day of tests on pack digests with one stderr line).
+        # BRIEF_REQUIRE_STORE=1 stops the run instead, for tests and checkpoints.
+        lost = (l37.get("fallback") or {}).get("reason") or (l37.get("reason") if loops37 and not l37.get("enabled", True) else None)
+        if lost:
+            out["meta"]["degraded"] = "; ".join(x for x in (out["meta"].get("degraded"), f"no precedent retrieval: {lost}") if x)
+            if os.environ.get("BRIEF_REQUIRE_STORE", "0").lower() in ("1", "true", "yes"):
+                raise RuntimeError(f"BRIEF_REQUIRE_STORE=1 and {lost}")
         f_synth = (ex.submit(_scoped(_synthesize_loops37), l37["gist"], l37["intent"], l37["loops"])
                    if l37.get("synthesis_mode") == "deferred" else None)
         gb = f_gold.result() if f_gold else None
@@ -4006,6 +4038,8 @@ def main():
                     raw_text=raw_text, source_name=source_name, upstream=upstream)
     except (NoClaudeAvailable, EmptyInput) as e:
         sys.exit(f"[!] {e}")
+    if (brief.get("meta") or {}).get("degraded"):
+        print(f"[!] DEGRADED BRIEF: {brief['meta']['degraded']}", file=sys.stderr)
 
     stem = source_name or (path.stem if path else "brief")
     name = re.sub(r"[^a-z0-9]+", "-", (args.project or stem).lower()).strip("-")

@@ -217,6 +217,11 @@ def render_client_brief(brief) -> str:
         L.append(str(rtb))
     else:
         L.append(TBD)
+    needed = (gf.get("reasons_to_believe") or {}).get("proof_needed") if isinstance(gf.get("reasons_to_believe"), dict) else None
+    if needed:                       # ADR 0020: what the brief could not prove, shown apart from the proof
+        L.append("")
+        L.append("_Proof still needed:_")
+        L += [f"- {_scrub_markers(re.sub(r'^\s*TO CONFIRM:?\s*', '', str(p), flags=re.I))}" for p in needed]
     L.append("")
 
     dr = gv("desired_response")
