@@ -187,6 +187,38 @@ def map_brief(brief: dict, clan_data: dict | None = None) -> dict:
     return out
 
 
+# The golden field ids under the Brief Maker's field names (the put() calls above).
+APP_FIELD = {"background": "background", "objectives": "objectives", "audience": "audience",
+             "competitor_context": "competitor_context", "insight": "insight", "smp": "single_minded_proposition",
+             "reasons_to_believe": "reasons_to_believe", "desired_response": "desired_response",
+             "tone_world_assets": "tone_and_world", "budget_scope": "budget_and_scope", "mandatories": "mandatories"}
+# Per-field markers the app needs to show a field honestly (ADR 0017-0019): a proposal (the client never
+# gave it), a draft kept with failed checks, how a repair or the gap-filler ended, and the human decisions
+# a writer cited.
+FIELD_MARKERS = ("proposed", "basis", "confirm", "review", "fill_repair", "gap_fill", "decision_refs")
+ENGINE_META = ("research_facts", "research_decisions", "gap_fill", "clipped", "transcribed", "degraded")
+
+
+def engine_meta(brief: dict) -> dict:
+    """The engine's own record of a draft, for the middleware's reply `meta` (EC-020, 2026-10-03): which
+    research facts and decisions were given, used and skipped, the gap-filler's report, any clip or
+    transcription note, and `field_flags` {app field: markers}. Before, map_brief returned fields only, so
+    the middleware never saw any of it and a test stub hid that. Empty parts are left out."""
+    meta = brief.get("meta") or {}
+    gf = (brief.get("loop2_golden") or {}).get("fields") or {}
+    out = {k: meta[k] for k in ENGINE_META if meta.get(k)}
+    flags = {}
+    for gid, app in APP_FIELD.items():
+        e = gf.get(gid)
+        if isinstance(e, dict):
+            f = {k: e[k] for k in FIELD_MARKERS if e.get(k) not in (None, "", [], {}, False)}
+            if f:
+                flags[app] = f
+    if flags:
+        out["field_flags"] = flags
+    return out
+
+
 def build_rationale(brief: dict) -> str:
     """One- to two-sentence patch rationale; must state heuristic mode plainly."""
     meta = brief.get("meta") or {}

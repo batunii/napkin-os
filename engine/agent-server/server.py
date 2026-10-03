@@ -43,7 +43,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ENGINE_ROOT))
 
 import parse_brief  # noqa: E402  (auto-loads engine/.env on import)
-from mapping import FIELD_TYPES, build_context, map_brief  # noqa: E402
+from mapping import FIELD_TYPES, build_context, engine_meta, map_brief  # noqa: E402
 
 try:
     import research  # noqa: E402
@@ -278,6 +278,9 @@ def do_draft(payload: dict, clan: dict) -> tuple[int, dict]:
     wall = time.time() - t0
 
     fields = map_brief(brief, clan_data)
+    em = engine_meta(brief)
+    if em:
+        fields["meta"] = em            # what the middleware reads as reply.meta (EC-020)
     ctx = build_context(brief, research_summary=research_summary)
     if ctx:
         fields["context"] = ctx

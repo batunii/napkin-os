@@ -20,32 +20,62 @@ prose, so a line carries the fact's id and version for the writers to cite.
 from __future__ import annotations
 
 import re
+import sys
 
 # A fact in one of these states is no longer the current truth.
 NOT_CURRENT = {"superseded", "retired", "withdrawn", "rejected", "deprecated"}
 
 
+def _version(f: dict) -> int:
+    """A fact's version as a number (absent or unreadable: 0)."""
+    try:
+        return int(f.get("version") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def current(facts) -> tuple:
     """(usable, skipped): the current, well-formed facts in the order given, and one
-    {"id", "why"} per fact left out. A fact needs an id and a value; `status` absent is
-    taken as current."""
-    usable, skipped, seen = [], [], set()
+    {"id", "why"} per fact left out. A fact needs an id (text or a number) and a value;
+    `status` absent is taken as current.
+
+    2026-10-03 (EC-005, EC-071, EC-072): a research CLAN's `{"facts": [...]}` wrapper is
+    unwrapped (it used to give 1 skipped, 0 used, silently); a row with a list or dict for
+    its id is skipped with that reason instead of crashing the brief; of two rows with the
+    same id, the higher version is used wherever it sits, and the other is skipped as an
+    older version."""
+    if isinstance(facts, dict):
+        if isinstance(facts.get("facts"), list):
+            print("[i] research facts came wrapped in {'facts': [...]}; unwrapped", file=sys.stderr)
+            facts = facts["facts"]
+        else:
+            return [], [{"id": None, "why": "facts is a mapping, not a list of fact records"}]
+    usable, skipped, at = [], [], {}
     for f in facts or []:
         if not isinstance(f, dict):
             skipped.append({"id": None, "why": "not a fact record"})
             continue
         fid = f.get("id")
-        if not fid or f.get("value") in (None, ""):
+        if isinstance(fid, (list, dict, set, tuple)) or isinstance(fid, bool):
+            skipped.append({"id": None, "why": f"id is a {type(fid).__name__}, not text"})
+            continue
+        if fid in (None, "") or f.get("value") in (None, ""):
             skipped.append({"id": fid, "why": "missing id or value"})
             continue
         status = str(f.get("status") or "current").lower()
         if status in NOT_CURRENT or f.get("superseded_by"):
             skipped.append({"id": fid, "why": f"not current ({status if status in NOT_CURRENT else 'superseded'})"})
             continue
-        if fid in seen:
-            skipped.append({"id": fid, "why": "duplicate id"})
+        if fid in at:
+            kept = usable[at[fid]]
+            if _version(f) > _version(kept):
+                usable[at[fid]] = f
+                skipped.append({"id": fid, "why": f"older version ({_version(kept)}) of a newer one"})
+            else:
+                skipped.append({"id": fid, "why": "duplicate id" if _version(f) == _version(kept)
+                                else f"older version ({_version(f)}) of a newer one"})
             continue
-        seen.add(fid)
+        at[fid] = len(usable)
         usable.append(f)
     return usable, skipped
 

@@ -58,7 +58,7 @@ python3 -m pytest -q agent-server                         # the app backend's te
 
 ```bash
 cd engine
-BRIEF_CLAUDE_TRANSPORT=cli RAG_STORE=local RAG_INDEX=rag/_index_v4 \
+BRIEF_CLAUDE_TRANSPORT=cli RAG_STORE=local RAG_INDEX=_index_v4 \
   napkin-brief path/to/brief.docx --loops37 --golden --format md,pdf --out outputs/my_run
 ```
 

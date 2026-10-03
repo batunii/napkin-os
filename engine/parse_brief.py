@@ -3551,6 +3551,10 @@ class _Inline:
         return f
 
 
+class EmptyInput(ValueError):
+    """run() was given an input with no readable text (EC-066)."""
+
+
 def run(path: Path | None, client=None, project=None, loops37=False, golden=False,
         raw_text: str | None = None, source_name: str | None = None,
         upstream: dict | None = None) -> dict:
@@ -3626,6 +3630,11 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
         text, _mime = ingest(path)
         src_name = path.name
         transcribed = _INGEST_NOTES.get("transcribed")
+    # An input with no words (an empty file, a scan nobody could read, a blank paste) stops here, before
+    # any model call (2026-10-03, EC-066): it used to run the whole pipeline on nothing.
+    if not re.search(r"\w", text or ""):
+        raise EmptyInput(f"{src_name}: the input has no readable text"
+                         + (f" ({transcribed})" if transcribed else "") + "; nothing to write a brief from.")
     segs = segment(text)
 
     provider = resolve_provider()
@@ -3995,7 +4004,7 @@ def main():
                   + (f", brand {upstream['brand']}" if upstream.get("brand") else ""), file=sys.stderr)
         brief = run(path, args.client, args.project, loops37=loops37, golden=golden,
                     raw_text=raw_text, source_name=source_name, upstream=upstream)
-    except NoClaudeAvailable as e:
+    except (NoClaudeAvailable, EmptyInput) as e:
         sys.exit(f"[!] {e}")
 
     stem = source_name or (path.stem if path else "brief")

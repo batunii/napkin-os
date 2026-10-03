@@ -122,6 +122,90 @@ def _strip_html(html: str) -> str:
     return _h.unescape(text)
 
 
+def decode_text(data: bytes, label: str = "text") -> str:
+    """Bytes of a text file as text, characters kept (2026-10-03, EC-063): a UTF-8 or UTF-16 byte-order
+    mark decides; else strict UTF-8; else UTF-16 when every other byte is zero; else Windows-1252 (the
+    usual Office export, where "€" is 0x80), noted in _INGEST_NOTES['encoding']. Before, everything was
+    read as UTF-8 with replacement, so a UTF-16 file came out as garbage and "€5m" as "\ufffd5m"."""
+    import codecs
+    for bom, enc in ((codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16")):
+        if data.startswith(bom):
+            return data.decode(enc)
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    if len(data) >= 4 and data[1::2].count(0) > len(data) // 4:
+        try:
+            return data.decode("utf-16-le")
+        except UnicodeDecodeError:
+            pass
+    _INGEST_NOTES["encoding"] = f"{label}: not UTF-8; read as Windows-1252"
+    return data.decode("cp1252", errors="replace")
+
+
+def email_text(raw: bytes) -> str:
+    """Every readable part of an email, in order (2026-10-03, EC-060-062): the headers, each text part
+    (HTML stripped), a forwarded message (message/rfc822) read the same way under its own label, and each
+    attached document read by ingest() under an ATTACHMENT header. Before, only the first body part was
+    read: a forwarded original and every attachment were dropped, and an unknown charset or an
+    attachment-only email crashed."""
+    import email
+    import tempfile
+    from email import policy
+    msg = email.message_from_bytes(raw, policy=policy.default)
+
+    def part_text(p) -> str:
+        try:
+            content = p.get_content()
+        except (LookupError, KeyError, ValueError):     # unknown charset: decode the bytes ourselves
+            content = decode_text(p.get_payload(decode=True) or b"", "email part")
+        if isinstance(content, bytes):
+            content = decode_text(content, "email part")
+        return _strip_html(content) if p.get_content_type() == "text/html" else str(content)
+
+    def body_parts(m) -> list:
+        """The message's own text parts, in order, not descending into attachments or forwarded messages;
+        of a plain/HTML alternative, the plain one."""
+        if not m.is_multipart():
+            return [m] if m.get_content_maintype() == "text" and not m.is_attachment() else []
+        if m.get_content_subtype() == "alternative":
+            kids = [k for k in m.get_payload() if k.get_content_maintype() == "text"]
+            plain = [k for k in kids if k.get_content_type() == "text/plain"]
+            return (plain or kids)[:1]
+        out = []
+        for k in m.get_payload():
+            if k.get_content_type() != "message/rfc822" and not k.is_attachment():
+                out += body_parts(k)
+        return out
+
+    def walk(m) -> list:
+        out = [f"{k}: {m[k]}" for k in ("Subject", "From", "Date") if m[k]]
+        out += [t for t in (part_text(p).strip() for p in body_parts(m)) if t]
+        for p in m.iter_attachments() if m.is_multipart() else []:
+            name = p.get_filename() or ""
+            if p.get_content_type() == "message/rfc822":
+                out.append("===== FORWARDED MESSAGE =====\n" + "\n\n".join(walk(p.get_content())))
+                continue
+            suffix = Path(name).suffix.lower()
+            data = p.get_payload(decode=True) or b""
+            if p.get_content_maintype() == "text" and not suffix:
+                suffix = ".txt"
+            if not data or suffix not in {".txt", ".md", ".docx", ".pdf", ".eml", *_IMAGE_MIME}:
+                out.append(f"[attachment not read: {name or p.get_content_type()}]")
+                continue
+            with tempfile.TemporaryDirectory() as td:
+                f = Path(td) / (Path(name).name or f"attachment{suffix}")
+                f.write_bytes(data)
+                try:
+                    text = email_text(data) if f.suffix.lower() == ".eml" else ingest(f)[0]
+                except SystemExit as e:                  # a document the readers cannot open: say so
+                    text = f"[attachment could not be read: {e}]"
+            out.append(f"===== ATTACHMENT (in the email): {name} =====\n{text}")
+        return out
+    return "\n\n".join(walk(msg))
+
+
 def ingest_email_text(raw: str) -> str:
     """A copy-pasted email is just text. Keep it verbatim — Loop 1 is no-loss —
     but normalise CRLF so the segmenter sees clean lines."""
@@ -134,23 +218,134 @@ def docx_text(path: Path) -> str:
     `tables` put every table at the end, which moved the employer brief's budget sentence
     from char 483 to char 6,137, one past the judge clip, and renumbered every cited
     sentence (audit critic-G1). Shared with rag/labelset._doc_text so the label set and the
-    pipeline read the same text."""
+    pipeline read the same text.
+
+    Nothing is dropped (2026-10-03, EC-064/065): the body is walked as XML, so tracked
+    insertions, content controls (w:sdt), smart tags, text boxes and nested tables are read
+    where they sit; deleted text (w:del) stays out; a field-code hyperlink keeps its address
+    like a native one. Footnotes, endnotes, comments, headers and footers follow once each,
+    under a bracketed label."""
     try:
         import docx
-        from docx.table import Table
-        from docx.text.paragraph import Paragraph
     except ImportError:
         sys.exit("Need python-docx for .docx:  pip install python-docx")
     d = docx.Document(str(path))
-    parts = []
-    for child in d.element.body.iterchildren():
-        tag = child.tag.rsplit("}", 1)[-1]
-        if tag == "p":
-            parts.append(_para_text(Paragraph(child, d)))
-        elif tag == "tbl":
-            for row in Table(child, d).rows:
-                parts.append(" | ".join("\n".join(_para_text(p) for p in c.paragraphs) for c in row.cells))
-    return "\n".join(parts)
+    rels = {rid: rel.target_ref for rid, rel in d.part.rels.items() if getattr(rel, "is_external", False)}
+    parts = [x for x in (_docx_block(child, rels) for child in d.element.body.iterchildren()) if x]
+    extra = _docx_side_parts(d, path)
+    return "\n".join(parts + extra)
+
+
+_R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+
+
+def _docx_tag(el) -> str:
+    return el.tag.rsplit("}", 1)[-1] if isinstance(el.tag, str) else ""
+
+
+def _docx_block(el, rels) -> str:
+    """One body-level element as text: a paragraph, a table (rows as ' | '-joined cells, nested
+    tables inside their cell), or a content control / custom XML wrapper (its blocks in order)."""
+    tag = _docx_tag(el)
+    if tag == "p":
+        return _docx_para(el, rels)
+    if tag == "tbl":
+        rows = []
+        for tr in (c for c in el if _docx_tag(c) == "tr"):
+            cells = []
+            for tc in (c for c in tr if _docx_tag(c) == "tc"):
+                cells.append("\n".join(x for x in (_docx_block(c, rels) for c in tc) if x))
+            rows.append(" | ".join(cells))
+        return "\n".join(rows)
+    if tag in ("sdt", "sdtContent", "customXml", "ins", "smartTag"):
+        return "\n".join(x for x in (_docx_block(c, rels) for c in el) if x)
+    return ""
+
+
+def _docx_para(p, rels) -> str:
+    """A paragraph's text in order: runs, tracked insertions, smart tags, content controls and text
+    boxes read; deletions skipped; a hyperlink (native or field code) as 'text <url>' unless its text
+    is already the address."""
+    out = []
+    field_url = []                          # the HYPERLINK address of the field being read, if any
+
+    def walk(el):
+        tag = _docx_tag(el)
+        if tag in ("del", "delText", "moveFrom"):
+            return
+        if tag == "t":
+            out.append(el.text or "")
+        elif tag == "tab":
+            out.append("\t")
+        elif tag in ("br", "cr"):
+            out.append("\n")
+        elif tag == "instrText":
+            m = re.search(r'HYPERLINK\s+"([^"]+)"', el.text or "")
+            if m:
+                field_url.append([m.group(1), len(out)])
+        elif tag == "fldChar":
+            kind = el.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType")
+            if kind == "end" and field_url:
+                url, start = field_url.pop()
+                shown = "".join(out[start:])
+                if not _same_address(shown, url):
+                    out.append(f" <{url}>")
+        elif tag == "hyperlink":
+            start = len(out)
+            for c in el:
+                walk(c)
+            url = rels.get(el.get(_R_NS + "id"))
+            if url and not _same_address("".join(out[start:]), url):
+                out.append(f" <{url}>")
+        elif tag == "txbxContent":
+            box = [x for x in (_docx_block(c, rels) for c in el) if x]
+            if box:
+                out.append(" [text box: " + " / ".join(box) + "] ")
+        else:
+            for c in el:
+                walk(c)
+    for child in p:
+        walk(child)
+    return "".join(out)
+
+
+def _docx_side_parts(d, path) -> list:
+    """Footnotes, endnotes, comments, then headers and footers, once each, each under a label; a
+    footnote separator and an empty part are left out. The notes and comments are read straight from
+    the file, so a part the package does not register is still read."""
+    import zipfile
+    from lxml import etree
+    out = []
+    with zipfile.ZipFile(str(path)) as z:
+        names = set(z.namelist())
+        blobs = {n: z.read(n) for n in ("word/footnotes.xml", "word/endnotes.xml", "word/comments.xml") if n in names}
+    for name, label, item in (("word/footnotes.xml", "Footnotes", "footnote"), ("word/endnotes.xml", "Endnotes", "endnote"),
+                              ("word/comments.xml", "Comments", "comment")):
+        if name not in blobs:
+            continue
+        root = etree.fromstring(blobs[name])
+        texts = []
+        for note in (c for c in root if _docx_tag(c) == item):
+            if note.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type") in ("separator", "continuationSeparator"):
+                continue
+            t = "\n".join(x for x in (_docx_block(c, {}) for c in note) if x).strip()
+            if t:
+                texts.append(t)
+        if texts:
+            out.append(f"[{label}]\n" + "\n".join(texts))
+    seen, hf = set(), []
+    for section in d.sections:
+        for part in (section.header, section.footer):
+            try:
+                t = "\n".join(x for x in (_docx_block(c, {}) for c in part._element) if x).strip()
+            except Exception:  # noqa: BLE001 - a header that cannot be read is skipped, not fatal
+                t = ""
+            if t and t not in seen:
+                seen.add(t)
+                hf.append(t)
+    if hf:
+        out.append("[Headers and footers]\n" + "\n".join(hf))
+    return out
 
 
 def _same_address(text: str, url: str) -> bool:
@@ -188,18 +383,9 @@ def ingest(path: Path) -> tuple[str, str]:
     _INGEST_NOTES.clear()
     suffix = path.suffix.lower()
     if suffix in {".txt", ".md", ".text"}:
-        return path.read_text(encoding="utf-8", errors="replace"), "text/plain"
+        return decode_text(path.read_bytes(), path.name), "text/plain"
     if suffix == ".eml":
-        import email
-        from email import policy
-        msg = email.message_from_bytes(path.read_bytes(), policy=policy.default)
-        body = msg.get_body(preferencelist=("plain", "html"))
-        content = body.get_content() if body else (msg.get_content() or "")
-        if body is not None and body.get_content_type() == "text/html":
-            content = _strip_html(content)
-        hdr = [f"{k}: {msg[k]}" for k in ("Subject", "From", "Date") if msg[k]]
-        text = ("\n".join(hdr) + "\n\n" + content) if hdr else content
-        return ingest_email_text(text), "message/rfc822"
+        return ingest_email_text(email_text(path.read_bytes())), "message/rfc822"
     if suffix == ".docx":
         return docx_text(path), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     if suffix == ".pdf":
