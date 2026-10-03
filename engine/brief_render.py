@@ -101,6 +101,56 @@ def render_loops37(L, brief):
         L.append(f"_Sources cited: {len(s['sources_used'])} playbook sections._\n")
 
 
+# What the Loop-1 capture reads from the client's documents that no golden field carries (2026-10-02,
+# Sai; EC-043): measured on the Samaritans tender, the success measures with their 5% baseline, the
+# tender's scoring, the timings, the deliverables and the constraints were captured and then never shown.
+# Order is the order a planner reads them in. These move into their own sections when the schema grows.
+CAPTURE_EXTRAS = (
+    ("success_metrics", "Success measures"),
+    ("evaluation_criteria", "How the work will be judged"),
+    ("timeline", "Timings"),
+    ("deliverables", "Deliverables"),
+    ("constraints", "Constraints"),
+    ("decision_makers", "Decision makers"),
+    ("key_message", "The client's key message"),
+    ("proof_points", "The client's proof points"),
+    ("strategic_angle", "The client's suggested direction"),
+)
+
+
+def _norm_words(text: str) -> list:
+    """Lower-case words of `text`, for the 'already said in the brief' test."""
+    return re.findall(r"[a-z0-9€%]+", str(text).lower())
+
+
+def captured_extras(brief) -> list:
+    """[(heading, [line, ...])] for the CAPTURE_EXTRAS fields that have content, leaving out any item a
+    golden field already says (80% of its words are in the golden fields' text). An item with no source
+    quote and an inferred or assumed status is tagged as inferred; the rest are the documents' own."""
+    cap = ((brief.get("loop1_capture") or {}).get("fields") or {})
+    gf = (brief.get("loop2_golden") or {}).get("fields", {}) or {}
+    said = set(_norm_words(" ".join(str((f.get("value") if isinstance(f, dict) else f) or "") for f in gf.values())))
+    out = []
+    for key, heading in CAPTURE_EXTRAS:
+        items = cap.get(key)
+        items = items if isinstance(items, list) else [items]
+        lines = []
+        for it in items:
+            v = it.get("value") if isinstance(it, dict) else it
+            if v in (None, "", [], {}) or (isinstance(it, dict) and it.get("status") == "gap"):
+                continue
+            text = _scrub_markers(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
+            words = _norm_words(text)
+            if words and sum(w in said for w in words) / len(words) >= 0.8:
+                continue
+            inferred = (isinstance(it, dict) and not it.get("source_quote")
+                        and it.get("status") in ("assumption", "inferred"))
+            lines.append(text + (" _(inferred)_" if inferred else ""))
+        if lines:
+            out.append((heading, lines))
+    return out
+
+
 def render_client_brief(brief) -> str:
     """The DELIVERABLE — only the final brief. Assembles the Golden Brief (facts +
     generated strategy) into a clean one-pager: no loop labels, no provenance tags,
@@ -198,6 +248,14 @@ def render_client_brief(brief) -> str:
         if isinstance(rv, dict):
             L.insert(i + 1, f"_Draft — to review: it failed {', '.join(rv.get('failed') or ['its checks'])}. "
                             "See open questions._")
+
+    extras = captured_extras(brief)
+    if extras:
+        L.append("## Also in the client's documents")
+        for heading, lines in extras:
+            L.append(f"**{heading}**")
+            L += [f"- {line}" for line in lines]
+            L.append("")
 
     oqs = l2.get("open_questions") or []
     if oqs:
