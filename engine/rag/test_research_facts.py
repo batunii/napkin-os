@@ -27,7 +27,7 @@ def test_only_current_well_formed_facts_are_used():
 
 
 def test_a_fact_line_carries_id_version_scope_and_source():
-    assert rf.line(FIXTURE_FACTS[0]) == "[F:f-1 v2] brand shops: 40 shops (brand research, as of 2026-06; Fixture annual report)"
+    assert rf.line(FIXTURE_FACTS[0]) == "[F:f-1 v2] brand shops: 40 shops (brand research, unverified, as of 2026-06; Fixture annual report)"
     assert rf.line(FIXTURE_FACTS[1]).startswith("[F:f-2 v1] category loaves bought weekly per household: 3.1 (category research")
     rec = rf.record(*rf.current(FIXTURE_FACTS))
     assert rec["given"] == 4 and [u["id"] for u in rec["used"]] == ["f-1", "f-2"] and len(rec["skipped"]) == 2
@@ -45,7 +45,7 @@ def test_every_hero_writer_gets_the_facts_and_the_figure_check_allows_them(monke
     pb.fill_derivable_fields(gf, {"loops": {}}, pb.json.loads((HERE.parent / "golden-brief" / "golden_brief.schema.json").read_text()),
                              brief_text="A bakery. Under-30s buy supermarket bread.", research_facts=lines)
     gen_prompts = [u for k, u, s in calls if k in ("gen", "gen_batch")]
-    assert gen_prompts and all("[F:f-1 v2]" in u and "VERIFIED RESEARCH FACTS" in u for u in gen_prompts)
+    assert gen_prompts and all("[F:f-1 v2]" in u and "RESEARCH FACTS, each marked verified or unverified" in u for u in gen_prompts)
     assert "35" not in " ".join(gen_prompts)                                  # the superseded fact never appears
     assert seen and all("[F:f-1 v2]" in a for a in seen)                     # figures may come from the facts
     assert pb._numbers_not_in(["We have 40 shops"], seen[0]) == []
@@ -62,7 +62,7 @@ def test_without_facts_the_prompts_are_unchanged(monkeypatch):
     from test_cannot_fail_silently import GOLDEN_SCHEMA, BRIEF
     pb.fill_derivable_fields(gf, {"loops": {}}, GOLDEN_SCHEMA, brief_text=BRIEF, research_facts=[])
     b = [u for k, u, s in calls_b if k in ("gen", "gen_batch")]
-    assert a == b and not any("VERIFIED RESEARCH FACTS" in u for u in a)
+    assert a == b and not any("RESEARCH FACTS, each marked verified or unverified" in u for u in a)
 
 
 def test_run_records_the_facts_and_keeps_them_out_of_the_capture(monkeypatch):
@@ -189,7 +189,7 @@ def test_contested_facts_reach_the_writers_only_as_to_confirm(monkeypatch):
                              research_facts=[usable[1]], contested=contested)
     prompts = [u for k, u, s in calls if k in ("gen", "gen_batch")]
     assert all("CONTESTED" in u and "do NOT state either value as fact" in u for u in prompts)
-    assert all("VERIFIED RESEARCH FACTS" in u and "[F:f-2 v1]" in u.split("CONTESTED")[0] for u in prompts)
+    assert all("RESEARCH FACTS, each marked verified or unverified" in u and "[F:f-2 v1]" in u.split("CONTESTED")[0] for u in prompts)
     assert not any("[F:f-1 v2]" in u.split("CONTESTED")[0] for u in prompts)   # usable list excludes it
 
 
@@ -261,7 +261,7 @@ def test_with_no_research_at_all_everything_runs_as_before(monkeypatch):
           "competitor_context": {"value": "supermarkets", "source": "client_stated"}}
     fills, qs = pb.fill_derivable_fields(gf, {"loops": {}}, GOLDEN_SCHEMA, brief_text="A bakery.")
     prompts = [u for k, u, s in calls if k in ("gen", "gen_batch", "territory")]
-    assert not any("VERIFIED RESEARCH FACTS" in u or "CONTESTED" in u or "RIVAL (from" in u for u in prompts)
+    assert not any("RESEARCH FACTS, each marked verified or unverified" in u or "CONTESTED" in u or "RIVAL (from" in u for u in prompts)
     assert gf["smp"]["territory"]["rival_source"] == "brief" and not any("fact_refs" in (v or {}) for v in gf.values() if isinstance(v, dict))
     monkeypatch.setattr(pb, "capture_toon", lambda segs: {"fields": {"business_problem": {"value": "p", "status": "fact"}},
                                                           "how_to_win": {}, "open_questions": []})

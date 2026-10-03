@@ -119,6 +119,22 @@ def forms(f: dict) -> list:
     return out
 
 
+# What a fact's evidence is worth (P2, 2026-10-03, EC-012): every research fact used to reach the writers
+# as "VERIFIED", although 88 of 94 in one research CLAN were low confidence and single-source. A fact is
+# verified when its confidence is high or a person verified it (a finding's synthesis row, or status
+# verified); anything else is unverified: usable, but never stated as settled.
+VERIFIED_CONFIDENCE = {"high", "verified"}
+
+
+def status_of(f: dict) -> str:
+    """'verified' or 'unverified' (see VERIFIED_CONFIDENCE)."""
+    if str(f.get("confidence") or "").lower() in VERIFIED_CONFIDENCE or str(f.get("status") or "").lower() == "verified":
+        return "verified"
+    if str(f.get("method") or "").lower() == "synthesis":      # a finding a person verified (ADR 0017)
+        return "verified"
+    return "unverified"
+
+
 def line(f: dict) -> str:
     """One fact as the writers see it: '[F:f-123 v2] brand shops: 40 shops (brand research,
     as of 2026-06; Annual report 2025)'; a share or a large amount also carries its usual form
@@ -128,7 +144,8 @@ def line(f: dict) -> str:
     value = (f"{f['value']}{(' ' + str(f['unit'])) if f.get('unit') else ''}"
              + (f" ({', '.join(alt)})" if alt else ""))
     src = next((s.get("title") or s.get("uri") for s in (f.get("sources") or []) if isinstance(s, dict)), None)
-    meta = ", ".join(x for x in (f"{scope(f)} research", f"as of {f['as_of']}" if f.get("as_of") else "") if x)
+    meta = ", ".join(x for x in (f"{scope(f)} research", status_of(f),
+                                 f"as of {f['as_of']}" if f.get("as_of") else "") if x)
     return f"[{ref(f)}] {what + ': ' if what else ''}{value} ({meta}{'; ' + str(src) if src else ''})"
 
 
@@ -137,8 +154,8 @@ def record(usable: list, skipped: list) -> dict:
     and every skipped one with the reason."""
     return {"given": len(usable) + len(skipped),
             # the line too, so later checks (the grounding count) see what the writers saw
-            "used": [{"id": f["id"], "version": f.get("version"), "scope": scope(f), "line": line(f)}
-                     for f in usable],
+            "used": [{"id": f["id"], "version": f.get("version"), "scope": scope(f), "line": line(f),
+                      "status": status_of(f)} for f in usable],
             "skipped": skipped}
 
 
@@ -339,8 +356,13 @@ def load_clan(path) -> dict:
     import json as _json
     import research_decisions
     parts = research_decisions.clan_parts(path)
-    up = {"facts": _json.loads(_json.dumps(parts["facts"], default=str)),
-          "decisions": research_decisions.from_clan(path)}
+    srcs = {s.get("id"): s for s in parts.get("sources") or [] if isinstance(s, dict) and s.get("id")}
+    facts = _json.loads(_json.dumps(parts["facts"], default=str))
+    for f in facts:                     # source ids -> {title, uri, publisher, published_at, tier} (EC-012)
+        if isinstance(f, dict) and isinstance(f.get("sources"), list):
+            f["sources"] = [({k: str(srcs[x][k]) for k in ("id", "title", "uri", "publisher", "published_at", "tier")
+                              if srcs[x].get(k)} if isinstance(x, str) and x in srcs else x) for x in f["sources"]]
+    up = {"facts": facts, "decisions": research_decisions.from_clan(path)}
     brand = (parts["data"].get("campaign") or {}).get("brand") if isinstance(parts["data"], dict) else None
     brand = brand.get("value") if isinstance(brand, dict) else brand
     brand = brand.get("name") if isinstance(brand, dict) else brand

@@ -180,15 +180,24 @@ def render_client_brief(brief) -> str:
 
     L = [f"# {title} — Brief", ""]
     TBD = "_To be agreed — see open questions._"
+    # Evidence marks (ADR 0021): [A1] after a field or item that cites appendix fact A1.
+    import evidence as _ev
+    numbered = (brief.get("evidence") or {}).get("appendix") or []
+    mk = _ev.marks(gf, numbered) if numbered else {}
 
-    def text_section(heading, value):
+    def tag(fid, item=None):
+        ns = mk.get((fid, item)) or []
+        return (" [" + ", ".join(f"A{n}" for n in ns) + "]") if ns else ""
+
+    def text_section(heading, value, fid=None):
         """Append a '## heading' section: the value as text (internal sentence markers
-        scrubbed), or the to-be-agreed placeholder when it is empty, then a blank line."""
+        scrubbed) with its evidence marks, or the to-be-agreed placeholder when it is empty,
+        then a blank line."""
         L.append(f"## {heading}")
-        L.append(_scrub_markers(str(value)) if value else TBD)
+        L.append(_scrub_markers(str(value)) + tag(fid) if value else TBD)
         L.append("")
 
-    text_section("Background", gv("background"))
+    text_section("Background", gv("background"), "background")
 
     obj = gv("objectives")
     L.append("## Objectives")
@@ -203,16 +212,16 @@ def render_client_brief(brief) -> str:
         L.append(TBD)
     L.append("")
 
-    text_section("Audience", gv("audience"))
-    text_section("Competitor context", gv("competitor_context"))
-    text_section("The insight", gv("insight"))
-    text_section("Single-minded proposition", gv("smp"))
+    text_section("Audience", gv("audience"), "audience")
+    text_section("Competitor context", gv("competitor_context"), "competitor_context")
+    text_section("The insight", gv("insight"), "insight")
+    text_section("Single-minded proposition", gv("smp"), "smp")
 
     rtb = gv("reasons_to_believe")
     L.append("## Reasons to believe")
     if isinstance(rtb, list) and rtb:
         L += [f"- {_scrub_markers(r if isinstance(r, str) else (r.get('value') if isinstance(r, dict) else r))}"
-              for r in rtb]
+              + tag("reasons_to_believe", i) for i, r in enumerate(rtb)]
     elif rtb:
         L.append(str(rtb))
     else:
@@ -229,16 +238,16 @@ def render_client_brief(brief) -> str:
     if isinstance(dr, dict):
         for k, lab in (("think", "Think"), ("feel", "Feel"), ("do", "Do")):
             if dr.get(k):
-                L.append(f"- **{lab}:** {dr[k]}")
+                L.append(f"- **{lab}:** {dr[k]}{tag('desired_response', k)}")
     elif dr:
         L.append(str(dr))
     else:
         L.append(TBD)
     L.append("")
 
-    text_section("Tone & world", gv("tone_world_assets"))
-    text_section("Budget & scope", gv("budget_scope"))
-    text_section("Mandatories", gv("mandatories"))
+    text_section("Tone & world", gv("tone_world_assets"), "tone_world_assets")
+    text_section("Budget & scope", gv("budget_scope"), "budget_scope")
+    text_section("Mandatories", gv("mandatories"), "mandatories")
 
     # A field kept as a draft because every draft failed its checks (Sai, 2026-09-28) gets
     # a visible tag under its heading, so a reader never takes it as final.
@@ -260,6 +269,26 @@ def render_client_brief(brief) -> str:
             basis = f", based on {fe['basis'].rstrip('.')}" if fe.get("basis") else ""
             confirm = f" To confirm: {fe['confirm']}" if fe.get("confirm") else ""
             L.insert(i + 1, f"_Proposed (not given by the client){basis}.{confirm}_")
+
+    fc = brief.get("fact_check") or {}
+    if fc.get("unverified"):
+        L.append("## Still to verify")
+        L.append("_Claims that rest on a single, unchecked research source._")
+        L += [f"- {c['claim']} ({c['field'].replace('_', ' ')})" for c in fc["unverified"]]
+        L.append("")
+    if fc.get("unsupported"):
+        L.append("## What we will not claim")
+        L.append("_No source in the client's documents or the research supports these; they stay out of the work "
+                 "until confirmed._")
+        L += [f"- {c['claim']} ({c['field'].replace('_', ' ')})" for c in fc["unsupported"]]
+        L.append("")
+    if numbered:
+        L.append("## Evidence and sources")
+        for a in numbered:
+            src = "; ".join(x for x in (a.get("source"), str(a["as_of"]) if a.get("as_of") else None, a.get("status"),
+                                        f"<{a['uri']}>" if a.get("uri") else None) if x)
+            L.append(f"- **A{a['n']}** {a['text']}" + (f" ({src})" if src else ""))
+        L.append("")
 
     extras = captured_extras(brief)
     if extras:

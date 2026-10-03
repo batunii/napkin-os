@@ -216,6 +216,9 @@ def engine_meta(brief: dict) -> dict:
                 flags[app] = f
     if flags:
         out["field_flags"] = flags
+    for k in ("evidence", "fact_check"):      # the appendix and the claim check (ADR 0021)
+        if brief.get(k):
+            out[k] = brief[k]
     return out
 
 

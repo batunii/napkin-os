@@ -215,7 +215,7 @@ def clan_parts(path) -> dict:
     if p.suffix.lower() == ".json":
         c = json.loads(p.read_text(encoding="utf-8"))
         chain = c.get("decision_chain") or []
-        return {"facts": c.get("facts") or [], "findings": c.get("findings") or [],
+        return {"facts": c.get("facts") or [], "findings": c.get("findings") or [], "sources": c.get("sources") or [],
                 "chain": chain.get("decisions", []) if isinstance(chain, dict) else chain, "data": c.get("data") or {}}
 
     def part(name, key):
@@ -223,6 +223,7 @@ def clan_parts(path) -> dict:
         v = yaml.safe_load(raw) if raw else None
         return (v.get(key, []) if isinstance(v, dict) and key else v) or ([] if key else {})
     return {"facts": part("shared/facts.yaml", "facts"), "findings": part("shared/findings.yaml", "findings"),
+            "sources": part("shared/sources.yaml", "sources"),
             "chain": part("agent/decision-chain.yaml", "decisions"), "data": part("shared/data.yaml", None)}
 
 
