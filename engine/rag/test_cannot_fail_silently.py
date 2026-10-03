@@ -929,7 +929,7 @@ def test_client_page_tags_a_kept_draft():
                          "review": {"status": "failed_checks", "failed": ["derives_from"], "why": "derives_from: no"}},
                  "insight": {"value": "Fine", "source": "inferred", "method": "gen:insight"}}}}
     md = brief_render.render_client_brief(brief)
-    assert "## Single-minded proposition\n_Draft — to review: it failed derives_from. See open questions._\nKeep me" in md
+    assert "## Single-minded proposition\n_Draft — to review: it failed derives_from. See open questions._\n\nKeep me" in md
     assert "## The insight\nFine" in md                                # an ordinary field gets no tag
 
 

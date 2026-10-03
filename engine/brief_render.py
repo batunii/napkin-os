@@ -159,7 +159,7 @@ def render_client_brief(brief) -> str:
     m = brief["meta"]
     gf = (brief.get("loop2_golden") or {}).get("fields", {}) or {}
     l2 = brief.get("loop2_brief", {}) or {}
-    title = m.get("project") or m.get("client") or "Client brief"
+    title = m.get("project") or m.get("client") or (m.get("gap_fill") or {}).get("brand") or "Client brief"
 
     def gv(fid):                      # golden value, else loop-2 fallback for the FACTS only
         """Return golden field `fid`'s value. When it is empty, only background,
@@ -229,7 +229,7 @@ def render_client_brief(brief) -> str:
     needed = (gf.get("reasons_to_believe") or {}).get("proof_needed") if isinstance(gf.get("reasons_to_believe"), dict) else None
     if needed:                       # ADR 0020: what the brief could not prove, shown apart from the proof
         L.append("")
-        L.append("_Proof still needed:_")
+        L += ["_Proof still needed:_", ""]
         L += [f"- {_scrub_markers(re.sub(r'^\s*TO CONFIRM:?\s*', '', str(p), flags=re.I))}" for p in needed]
     L.append("")
 
@@ -260,26 +260,26 @@ def render_client_brief(brief) -> str:
         fid = heads.get(L[i][3:]) if L[i].startswith("## ") else None
         rv = (gf.get(fid) or {}).get("review") if fid and isinstance(gf.get(fid), dict) else None
         if isinstance(rv, dict):
-            L.insert(i + 1, f"_Draft — to review: it failed {', '.join(rv.get('failed') or ['its checks'])}. "
-                            "See open questions._")
+            L[i + 1:i + 1] = [f"_Draft — to review: it failed {', '.join(rv.get('failed') or ['its checks'])}. "
+                              "See open questions._", ""]
         # A field the client never gave, filled as the agency's proposal (REQ-01, Sai 2026-10-02): the
         # reader must never take it for the client's words.
         fe = gf.get(fid) if fid and isinstance(gf.get(fid), dict) else None
         if fe and fe.get("proposed"):
             basis = f", based on {fe['basis'].rstrip('.')}" if fe.get("basis") else ""
             confirm = f" To confirm: {fe['confirm']}" if fe.get("confirm") else ""
-            L.insert(i + 1, f"_Proposed (not given by the client){basis}.{confirm}_")
+            L[i + 1:i + 1] = [f"_Proposed (not given by the client){basis}.{confirm}_", ""]
 
     fc = brief.get("fact_check") or {}
     if fc.get("unverified"):
         L.append("## Still to verify")
-        L.append("_Claims that rest on a single, unchecked research source._")
+        L += ["_Claims that rest on a single, unchecked research source._", ""]
         L += [f"- {c['claim']} ({c['field'].replace('_', ' ')})" for c in fc["unverified"]]
         L.append("")
     if fc.get("unsupported"):
         L.append("## What we will not claim")
-        L.append("_No source in the client's documents or the research supports these; they stay out of the work "
-                 "until confirmed._")
+        L += ["_No source in the client's documents or the research supports these; they stay out of the work "
+              "until confirmed._", ""]
         L += [f"- {c['claim']} ({c['field'].replace('_', ' ')})" for c in fc["unsupported"]]
         L.append("")
     if numbered:

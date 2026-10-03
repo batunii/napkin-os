@@ -14,7 +14,7 @@ FIELDS = {"reasons_to_believe": {"value": ["27% share", "Free line"], "fact_refs
 def test_the_appendix_numbers_cited_facts_once_with_source_and_status():
     a = ev.appendix(FIELDS, FACTS)
     assert [(x["n"], x["id"], x["status"]) for x in a] == [(1, "f_1", "unverified"), (2, "f_2", "verified")]
-    assert a[0]["source"] == "Kantar share, Kantar" and a[0]["text"] == "0.27 proportion" and a[1]["text"] == "116 123"
+    assert a[0]["source"] == "Kantar share, Kantar" and a[0]["text"] == "27%" and a[1]["text"] == "116 123"
     assert ev.marks(FIELDS, a) == {("reasons_to_believe", 0): [1], ("reasons_to_believe", 1): [2], ("desired_response", "do"): [2]}
 
 
@@ -49,4 +49,4 @@ def test_the_client_brief_shows_marks_appendix_and_what_is_not_claimed():
     md = br.render_client_brief(brief)
     assert "- 27% share [A1]" in md and "- Free line [A2]" in md and "**Do:** Ring 116 123 [A2]" in md
     assert "## Still to verify" in md and "## What we will not claim" in md and "- nobody calls (insight)" in md
-    assert "- **A1** 0.27 proportion (Kantar share, Kantar; 2014-10-06; unverified; <https://x/k>)" in md
+    assert "- **A1** 27% (Kantar share, Kantar; 2014-10-06; unverified; <https://x/k>)" in md

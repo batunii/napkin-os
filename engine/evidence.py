@@ -43,6 +43,24 @@ def _value(e):
     return e.get("value") if isinstance(e, dict) else e
 
 
+def _fact_text(f: dict) -> str:
+    """A fact a reader can understand: its key in words, then its value in its usual form (0.27 -> 27%;
+    a yes/no fact is just its key): 'market share: 27%', 'positioning freephone number: 116 123'. A fact
+    the gap-filler found (key gap.<field>) is its quote."""
+    import research_facts
+    raw_key = str(f.get("key") or "")
+    key = raw_key.replace(".", " ").replace("_", " ").strip()
+    v = f.get("value")
+    if raw_key.startswith("gap."):
+        return str(v)[:300]
+    if isinstance(v, bool) or str(v).lower() in ("true", "false"):
+        return (key or "fact") + ("" if str(v).lower() == "true" else ": no")
+    forms = research_facts.forms(f)
+    unit = f.get("unit")
+    shown = forms[0] if forms else f"{v}{' ' + str(unit) if unit and unit not in ('text', 'code', 'proportion', 'count') else ''}"
+    return f"{key}: {shown}" if key else str(shown)
+
+
 def appendix(fields: dict, facts: dict) -> list:
     """The cited facts, numbered in the order the fields cite them (FIELD_ORDER, then item order):
     [{n, id, text, source, uri, as_of, status}]. A cited id with no fact row is listed with what is known."""
@@ -55,12 +73,10 @@ def appendix(fields: dict, facts: dict) -> list:
                 continue
             f = facts.get(rid) or {}
             src = next((s for s in (f.get("sources") or []) if isinstance(s, dict)), {})
-            unit = f.get("unit")
-            value = f.get("value")
-            text = f"{value}{' ' + str(unit) if unit and unit not in ('text', 'code') else ''}" if value is not None else rid
+            text = _fact_text(f) if f else rid
             seen[rid] = len(out) + 1
             out.append({"n": len(out) + 1, "id": rid, "text": str(text)[:300],
-                        "source": ", ".join(x for x in (src.get("title"), src.get("publisher")) if x) or None,
+                        "source": ", ".join(x for x in (src.get("title"), src.get("publisher")) if x) or "source not recorded",
                         "uri": src.get("uri"), "as_of": f.get("as_of") or src.get("published_at"),
                         "status": research_facts.status_of(f) if f else "unverified"})
     return out
