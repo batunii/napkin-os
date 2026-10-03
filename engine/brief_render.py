@@ -248,6 +248,13 @@ def render_client_brief(brief) -> str:
         if isinstance(rv, dict):
             L.insert(i + 1, f"_Draft — to review: it failed {', '.join(rv.get('failed') or ['its checks'])}. "
                             "See open questions._")
+        # A field the client never gave, filled as the agency's proposal (REQ-01, Sai 2026-10-02): the
+        # reader must never take it for the client's words.
+        fe = gf.get(fid) if fid and isinstance(gf.get(fid), dict) else None
+        if fe and fe.get("proposed"):
+            basis = f", based on {fe['basis'].rstrip('.')}" if fe.get("basis") else ""
+            confirm = f" To confirm: {fe['confirm']}" if fe.get("confirm") else ""
+            L.insert(i + 1, f"_Proposed (not given by the client){basis}.{confirm}_")
 
     extras = captured_extras(brief)
     if extras:

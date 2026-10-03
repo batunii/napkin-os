@@ -23,6 +23,9 @@ def _placeholder_claude_key(monkeypatch):
     # The coherence pass (one extra judge call after the fields are filled) is off unless a test
     # turns it on: the call-count and fake-model tests count exact calls.
     monkeypatch.setenv("BRIEF_COHERENCE", "0")
+    # REQ-01's fill step (repair then flag; labelled proposals) runs after the first-pass gates and adds
+    # calls; the gate tests check the first pass, so it is off unless a test turns it on (test_fill_all.py).
+    monkeypatch.setenv("BRIEF_FILL_ALL", "0")
     import sys as _sys
     jc = _sys.modules.get("jev_checks")
     if jc is not None:
