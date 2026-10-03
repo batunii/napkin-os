@@ -36,4 +36,22 @@ a request is not proof.
 
 ## Measured
 
-Results are recorded below, from the live check before the commit.
+2026-10-03, on mamaliga, Barry's Tea and Oatly (with research), with precedent retrieval on,
+`BRIEF_REQUIRE_STORE=1` and the gap-filler's web tier on. Cost $1.64 for the three.
+
+| Brief | Fields | Proof items | Proof still needed | Proof judged | Time |
+|---|---|---|---|---|---|
+| mamaliga | 11/11 | 3 | 1 | flagged: nothing proves the "tastes like Bunica's" half | 164 s |
+| Barry's Tea | 11/11 | 4 | 1 | flagged: one item supports "habit", not the proposition | 212 s |
+| Oatly | 11/11 | 1 | 2 | flagged: writer confidence 0.40 < 0.6 | 176 s |
+
+- **The contradiction is gone.** No draft failed for holding a request, and every request shows under
+  "Proof still needed" with an open question.
+- **The proof is still flagged on all three, now for what the proof says.** Either an item proves
+  part of the proposition, or the writer was unsure. That is the honest verdict, and it is the
+  evidence-ledger (P2) and strategy-chain (P4) work in `docs/brief-maker/reference-level-plan.md`.
+- **The gap-filler found no usable proof this time:**
+  - mamaliga's search returned no sources;
+  - Barry's Tea found 4 facts but the rewrite did not pass;
+  - for Oatly, the development research port stopped mid-run ("connection refused" on one search),
+    which the report recorded.
