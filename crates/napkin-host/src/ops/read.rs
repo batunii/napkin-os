@@ -104,11 +104,8 @@ pub fn human_html(doc: &Document) -> HostResult<String> {
         .and_then(|v| v.source.as_deref())
         == Some("app");
 
-    let data_value: serde_yaml::Value = clan
-        .read_entry("shared/data.yaml")
-        .ok()
-        .and_then(|b| serde_yaml::from_slice(&b).ok())
-        .unwrap_or(serde_yaml::Value::Null);
+    let data_value: serde_yaml::Value =
+        serde_yaml::to_value(view_data(clan)).unwrap_or(serde_yaml::Value::Null);
 
     let body = if authored {
         // Don't munge the authored markup — the app owns its rendering.
@@ -139,12 +136,47 @@ pub fn human_html(doc: &Document) -> HostResult<String> {
 /// `shared/data.yaml` as JSON — what a view holds as `window.__CLAN__.data`.
 /// `null` when the document has none or it does not parse.
 pub fn data_json(doc: &Document) -> Value {
-    doc.clan()
+    view_data(doc.clan())
+}
+
+/// The document's data as a view is given it. A projection built before its
+/// schema's room for sources was seen (2026-10-03: Brief Maker's `$ref` was
+/// not followed, so every brief was projected without its sources and
+/// quotes) is rebuilt from the members as it is read, with its build time
+/// kept; nothing is written. Every other document is served as it is stored.
+fn view_data(clan: &ClanFile) -> Value {
+    let mut data = clan
         .read_entry("shared/data.yaml")
         .ok()
         .and_then(|b| serde_yaml::from_slice::<serde_yaml::Value>(&b).ok())
         .and_then(|y| serde_json::to_value(y).ok())
-        .unwrap_or(Value::Null)
+        .unwrap_or(Value::Null);
+    let stale = data
+        .get(members::PROJECTION_KEY)
+        .is_some_and(|p| p.get("sources").is_none());
+    if stale && clan.has_entry(SOURCES.path) && members::projects_sources(clan) {
+        if let Some(p) = reprojected(clan, &data) {
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert(members::PROJECTION_KEY.into(), p);
+            }
+        }
+    }
+    data
+}
+
+fn reprojected(clan: &ClanFile, data: &Value) -> Option<Value> {
+    let raw = |path: &str| clan.read_entry(path).unwrap_or_default();
+    let facts = members::read_list(clan, FACTS).ok()?;
+    let findings = members::read_list(clan, FINDINGS).ok()?;
+    let sources = members::read_list(clan, SOURCES).ok()?;
+    let (fb, gb, sb) = (raw(FACTS.path), raw(FINDINGS.path), raw(SOURCES.path));
+    let built_at = data
+        .pointer("/projection/built_from/built_at")
+        .or_else(|| data.pointer("/projection/built_at"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    Some(members::projection(&facts, &fb, &findings, &gb, Some((&sources, &sb)), &built_at))
 }
 
 /// `GET /assets/<rel>` — a binary asset from inside the archive.
@@ -436,6 +468,9 @@ pub fn clan_context_for_agent(doc: &Document) -> Value {
         "version": doc.version().as_str(),
         "facts": members::list_for_agent(clan, members::FACTS),
         "findings": members::list_for_agent(clan, members::FINDINGS),
+        // What each fact was read from (publisher, title, link): an agent that
+        // writes from the facts names where they came from.
+        "sources": members::list_for_agent(clan, members::SOURCES),
         "edits": members::edits_map(clan),
         "pipeline": pipeline,
     });

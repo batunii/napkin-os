@@ -1093,3 +1093,92 @@ unresolved: 2
     let b = own.attention.iter().find(|a| a.code == "unmerged_branch").unwrap();
     assert!(!b.can_set_aside && b.address.is_none());
 }
+
+#[test]
+fn a_verified_finding_on_a_fact_marked_wrong_blocks_until_a_person_settles_it() {
+    let read = |p: &str| std::fs::read_to_string(format!("{EXAMPLE}/{p}")).unwrap();
+    let mut data: serde_yaml::Value = serde_yaml::from_str(&read("shared/data.yaml")).unwrap();
+    let excluded: serde_yaml::Value = serde_yaml::from_str(
+        "[{fact_id: f_01JA0B6D6G, reason: the source is a press release, decision: d_01JRECONSID}]",
+    )
+    .unwrap();
+    data["selection"]["excluded"] = excluded;
+    let (chain, facts, findings) = (
+        read("agent/decision-chain.yaml"),
+        read("shared/facts.yaml"),
+        read("shared/findings.yaml"),
+    );
+    let data = serde_yaml::to_string(&data).unwrap();
+    let doc = doc_with(&[
+        (CHAIN_PATH, &chain),
+        ("shared/data.yaml", &data),
+        (members::FACTS_PATH, &facts),
+        (members::FINDINGS_PATH, &findings),
+    ]);
+    let v = decisions(&doc).unwrap();
+    let on: Vec<_> = v.attention.iter().filter(|a| a.code == "finding_on_excluded_fact").collect();
+    assert_eq!(on.len(), 1, "{:?}", codes(&v));
+    assert!(on[0].blocks_lock && on[0].text.contains("f_01JA0B6D6G"));
+    assert!(on[0].address.as_deref().unwrap().contains("#findings["));
+    // The example with nothing excluded has none.
+    assert!(!codes(&decisions(&example()).unwrap()).iter().any(|c| c.0 == "finding_on_excluded_fact"));
+}
+
+#[test]
+fn a_chat_message_or_a_fact_taken_out_is_never_flagged_for_citing_a_rejected_finding() {
+    let read = |p: &str| std::fs::read_to_string(format!("{EXAMPLE}/{p}")).unwrap();
+    // The newest decision posts a chat message, takes a fact out and names the
+    // fact, citing the rejected fi_01JA0F5E (what it checked).
+    let extra = format!(
+        "decisions:\n  - id: d_01JRECONS01\n    kind: edit\n    agent: reconsider_fact@1.0\n    action: reconsider_fact\n    actor: process:middleware\n    rationale: took a fact out\n    timestamp: 2026-10-02T19:00:00Z\n    targets: [\"{DOC}#selection.excluded[f_01JA0B6D6G]\", \"{DOC}#facts[f_01JA0B6D6G]\", \"{DOC}#intake.messages[msg_01TEST]\"]\n    cites: [fi_01JA0F5E, f_01JA0B6D6G]\n"
+    );
+    let chain = read("agent/decision-chain.yaml").replacen("decisions:\n", &extra, 1);
+    let doc = doc_with(&[
+        (CHAIN_PATH, &chain),
+        ("shared/data.yaml", &read("shared/data.yaml")),
+        (members::FACTS_PATH, &read("shared/facts.yaml")),
+        (members::FINDINGS_PATH, &read("shared/findings.yaml")),
+    ]);
+    let v = decisions(&doc).unwrap();
+    let flagged: Vec<_> = v
+        .attention
+        .iter()
+        .filter(|a| a.code == "flagged_field")
+        .filter_map(|a| a.address.clone())
+        .collect();
+    assert!(flagged.iter().all(|a| !a.contains("intake.messages") && !a.contains("selection.excluded") && !a.contains("#facts[")), "{flagged:?}");
+    // The real part that cites it is still flagged.
+    assert!(flagged.iter().any(|a| a.ends_with("#campaign.in_market")), "{flagged:?}");
+}
+
+#[test]
+fn a_projection_built_without_its_sources_is_served_with_them() {
+    let read = |p: &str| std::fs::read_to_string(format!("{EXAMPLE}/{p}")).unwrap();
+    let schema = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../app/templates/brief-maker/schema.json"
+    ))
+    .unwrap();
+    let facts = read("shared/facts.yaml");
+    let first_src = facts
+        .lines()
+        .find_map(|l| l.split("src_").nth(1).map(|r| format!("src_{}", r.split(|c: char| !c.is_ascii_alphanumeric() && c != '_').next().unwrap())))
+        .unwrap();
+    let sources = format!(
+        "sources:\n  - {{id: {first_src}, uri: 'https://www.cso.ie/x', publisher: CSO, title: A table, tier: primary, domain: cso.ie, licence: open}}\n"
+    );
+    // A brief's stored projection, built before its schema's `$ref` was followed: no sources.
+    let data = "projection:\n  pins: {}\n  findings: {}\n";
+    let doc = doc_with(&[
+        ("agent/output-schema.json", &schema),
+        ("shared/data.yaml", data),
+        (members::FACTS_PATH, &facts),
+        (members::SOURCES_PATH, &sources),
+    ]);
+    let served = crate::ops::read::data_json(&doc);
+    let p = &served["projection"];
+    assert!(p["sources"].get(&first_src).is_some(), "{p}");
+    assert!(p["pins"].as_object().map_or(0, |o| o.len()) > 0);
+    // nothing is written: the stored data is as it was
+    assert_eq!(doc.clan().read_entry_string("shared/data.yaml").unwrap(), data);
+}

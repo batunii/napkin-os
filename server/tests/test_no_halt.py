@@ -316,10 +316,10 @@ def _after_the_left_thread_dies(module, monkeypatch):
     dead one's ident, the case a mark by ident got wrong."""
     real, left_behind, idents = module.bounded, [], []
 
-    def wrapped(fn, seconds, name):
+    def wrapped(fn, seconds, name, stop=None):
         for t in left_behind:
             t.join(5)
-        value, err, left = real(fn, seconds, name)
+        value, err, left = real(fn, seconds, name, stop=stop)
         if left is not None:
             left_behind.append(left)
             idents.append(left.ident)

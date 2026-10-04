@@ -99,7 +99,7 @@ class Middleware:
         """Brief Maker's replies (§10.6): the job's own task and handler, the
         stage, every field's state and worker, the proposals so far."""
         return self.envelope(job.task, job.handler, job.view(), job.result(), change, job.caps,
-                             job.hits if job.state in ("done", "failed") else [])
+                             job.hits if job.state in ("done", "failed", "cancelled") else [])
 
     def brief_conflict(self, task, inp, scope, doc):
         """§10.11: one draft_brief at a time per document; a regenerate_field
@@ -138,8 +138,14 @@ class Middleware:
             raise bad("clan.id is required: a change is computed for one document")
         doc = clan["id"]
         scope = self.settings.scope
-        if task == "job_status":
+        if task in ("job_status", "cancel_job"):
             job = self.jobs.get(inp.get("job_id"), scope, doc)
+            if task == "cancel_job":
+                # A person stops the job; one already finished is left as it is.
+                # The reply is the job's, as a poll's: what it sent before it
+                # stopped, and the cancel, land with it.
+                if job.cancel():
+                    log.info("%s %s cancelled", job.task, job.id)
             if job.task == "start_campaign":
                 return self.campaign_envelope(job, job.reply_change(clan))
             if getattr(job, "kind", None) == "brief":
@@ -217,6 +223,8 @@ def _long_summary(job) -> str:
     v = job.view()
     if job.state == "failed":
         return f"failed: {job.error['message']}"
+    if job.state == "cancelled":
+        return "cancelled: nothing it was doing was saved"
     return f"{v['progress']['done']} of {v['progress']['total']} run(s) done"
 
 

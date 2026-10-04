@@ -28,6 +28,7 @@ import threading
 import time
 
 from . import runlog
+from .jobs import Cancelled
 from .model import ModelError, ModelPort, Usage
 from .research import ResearchError, ResearchPort
 from .retrieval import RetrievalError, RetrievalPort
@@ -36,11 +37,17 @@ CAPABILITY_VERSION = 1
 log = logging.getLogger("napkin.caps")
 
 
+def _not_cancelled(stopped):
+    if stopped is not None and stopped.is_set():
+        raise Cancelled()
+
+
 class ModelCap:
     def __init__(self, port: ModelPort | None, usage: Usage, attribution: dict, semaphore: threading.Semaphore | None,
-                 runlog_of=lambda: runlog.NULL):
+                 runlog_of=lambda: runlog.NULL, stopped: threading.Event | None = None):
         self._port, self._usage, self._attr, self._sem = port, usage, attribution, semaphore
         self._log = runlog_of
+        self._stopped = stopped
 
     @property
     def model_id(self) -> str | None:
@@ -65,12 +72,14 @@ class ModelCap:
                   model=model,
                   headers={"X-Napkin-Handler": str(self._attr.get("handler") or "-"),
                            "X-Napkin-Job": str(self._attr.get("job") or "-")})
+        _not_cancelled(self._stopped)
         t0, out, err = time.monotonic(), None, None
         try:
             if self._sem is None:
                 out = self._port.call(purpose, system, payload, schema, **kw)
             else:
                 with self._sem:
+                    _not_cancelled(self._stopped)  # it may have waited for a slot
                     out = self._port.call(purpose, system, payload, schema, **kw)
             return out
         except Exception as e:
@@ -94,15 +103,18 @@ class ModelCap:
 
 class ResearchCap:
     def __init__(self, port: ResearchPort | None, attribution: dict, semaphore: threading.Semaphore,
-                 runlog_of=lambda: runlog.NULL):
+                 runlog_of=lambda: runlog.NULL, stopped: threading.Event | None = None):
         self._port, self._attr, self._sem = port, attribution, semaphore
         self._log = runlog_of
+        self._stopped = stopped
 
     def search(self, query: str, lens: str, market: str, entity: str | None = None, category: str | None = None,
                max_sources: int = 6) -> dict:
         if self._port is None:
             raise ResearchError("no research service is configured")
+        _not_cancelled(self._stopped)
         with self._sem:
+            _not_cancelled(self._stopped)  # it may have waited for a slot
             t0, out, err = time.monotonic(), None, None
             try:
                 out = self._port.search(query, lens, market, entity=entity, category=category,
@@ -125,8 +137,8 @@ class JevCap:
     """jev's yes/no and choice answers about one text (napkin.jev). `configured` False when no
     key is set: a caller then goes on unchecked."""
 
-    def __init__(self, port, runlog_of=lambda: runlog.NULL):
-        self._port, self._log = port, runlog_of
+    def __init__(self, port, runlog_of=lambda: runlog.NULL, stopped: threading.Event | None = None):
+        self._port, self._log, self._stopped = port, runlog_of, stopped
 
     @property
     def configured(self) -> bool:
@@ -136,6 +148,7 @@ class JevCap:
         from .jev import JevError
         if self._port is None:
             raise JevError("no jev key is configured")
+        _not_cancelled(self._stopped)
         t0, out, err = time.monotonic(), None, None
         chars = len(json.dumps(state, ensure_ascii=False, default=str)) + len(json.dumps(questions))
         try:
@@ -154,9 +167,11 @@ class RetrievalCap:
     """Passages from the knowledge packs, under the bound scope. The packs list
     is read once per job."""
 
-    def __init__(self, port: RetrievalPort | None, scope: dict, attribution: dict, runlog_of=lambda: runlog.NULL):
+    def __init__(self, port: RetrievalPort | None, scope: dict, attribution: dict, runlog_of=lambda: runlog.NULL,
+                 stopped: threading.Event | None = None):
         self._port, self._scope, self._attr = port, scope, attribution
         self._log = runlog_of
+        self._stopped = stopped
         self._packs = None
         self._lock = threading.Lock()
 
@@ -175,6 +190,7 @@ class RetrievalCap:
     def retrieve(self, query: str, k: int, packs=None, where=None, purpose: str | None = None) -> dict:
         if self._port is None:
             raise RetrievalError("no retrieval service is configured")
+        _not_cancelled(self._stopped)
         t0, out, err = time.monotonic(), None, None
         try:
             out = self._port.retrieve(self._scope, dict(self._attr), query, k, packs=packs, where=where,
@@ -196,6 +212,14 @@ class JobCap:
     def __init__(self):
         self._lock = threading.Lock()
         self.done, self.total = 0, 1
+        self.stopped = threading.Event()  # set when a person cancels the job
+
+    def stop(self):
+        self.stopped.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self.stopped.is_set()
 
     def progress(self, done: int, total: int | None = None):
         with self._lock:
@@ -230,15 +254,16 @@ class Capabilities:
         self.usage = Usage()
         self.runlog = runlog.NULL  # the dogfood run log, opened when a job is bound
         of = lambda: self.runlog  # noqa: E731
-        self.model = ModelCap(model_port, self.usage, self.attribution, model_semaphore, of)
-        self.research = ResearchCap(research_port, self.attribution, research_semaphore, of)
-        self.retrieval = RetrievalCap(retrieval_port, self._scope, self.attribution, of)
-        self.jev = JevCap(jev_port, of)
+        self.jobs = jobs or JobCap()
+        st = self.jobs.stopped
+        self.model = ModelCap(model_port, self.usage, self.attribution, model_semaphore, of, st)
+        self.research = ResearchCap(research_port, self.attribution, research_semaphore, of, st)
+        self.retrieval = RetrievalCap(retrieval_port, self._scope, self.attribution, of, st)
+        self.jev = JevCap(jev_port, of, st)
         try:
             self.layers = layer_store.open(self._scope, self.attribution)
         except TypeError:  # a store whose open() takes the scope only
             self.layers = layer_store.open(self._scope)
-        self.jobs = jobs or JobCap()
 
     def bind_job(self, job_id: str):
         """The job id every later call is attributed to, and the job's run log."""

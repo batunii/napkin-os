@@ -57,7 +57,8 @@ class Host:
     def clan(self):
         c = {"id": DOC, "version": f"v{self.version}", "revision": "r", "data": copy.deepcopy(self.data),
              "facts": copy.deepcopy(self.facts),
-             "findings": [], "decision_chain": {"decisions": copy.deepcopy(self.chain)}}
+             "findings": [], "decision_chain": {"decisions": copy.deepcopy(self.chain)},
+             "sources": copy.deepcopy(getattr(self, "sources", []))}
         if self.pipeline:
             c["pipeline"] = self.pipeline
         return c

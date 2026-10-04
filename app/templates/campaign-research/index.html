@@ -62,7 +62,10 @@
 }
 
 *,*::before,*::after{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:120px}
+html{scroll-behavior:smooth;scroll-padding-top:calc(120px + var(--clan-top,0px))}
+/* What the OS's glass chrome covers (clan:insets): the page starts below its
+   bar, ends above its footer and keeps clear of its rail, and scrolls under them. */
+body{padding:var(--clan-top,0px) var(--clan-right,0px) var(--clan-bottom,0px) 0;box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:inherit}
@@ -74,7 +77,7 @@ a{color:inherit}
 .muted{color:var(--ink3)}
 
 /* ---------- top bar ---------- */
-.top{position:sticky;top:0;z-index:40;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line-soft)}
+.top{position:sticky;top:var(--clan-top,0px);z-index:40;background:var(--frost);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line-soft)}
 .top-in{max-width:1180px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .nav{display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:999px;flex-wrap:wrap}
 .nav a{text-decoration:none;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:500;color:var(--ink2);transition:background .2s var(--ease),color .2s var(--ease)}
@@ -339,7 +342,7 @@ details.preview pre{font-family:var(--mono);font-size:11px;background:var(--soft
 .blockers li a{color:inherit;font-weight:600}
 .blockers li .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;padding-top:2px}
 
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:999px;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:90;max-width:calc(100vw - 32px)}
+.toast{position:fixed;left:50%;bottom:calc(24px + var(--clan-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:999px;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:90;max-width:calc(100vw - 32px)}
 .toast.on{opacity:1;transform:translateX(-50%)}
 
 .empty-state{padding:22px;border:1px dashed var(--line);border-radius:16px;color:var(--ink2);background:var(--soft);font-size:13.5px}
@@ -588,12 +591,16 @@ body.working #report,body.working #records,body.working #hero,body.working #gate
 body.working .nav,body.working #extractBtn,body.working #researchBtn,body.working #synthBtn,body.working #lockBtn{display:none!important}
 body.fresh #judge,body.fresh #records{display:none!important}
 body.done #hero,body.done #gates,body.done #lockBtn{display:none!important}
+/* Under the OS's glass, the report needs two bars, the OS's and Jude's: this
+   one holds only the tool's name and Export there (the OS's More has Export),
+   so it goes. With the records open, or the run shown, it holds their links. */
+html.clan-glass body.done:not(.records-open):not(.show-run) .top{display:none}
 body.done:not(.records-open) .nav,body.done:not(.records-open) #extractBtn,body.done:not(.records-open) #researchBtn,body.done:not(.records-open) #synthBtn{display:none!important}
 /* With no report yet (a job that stopped, or never started) the run is what
    there is to show, so it stays. */
 body.done:not(.show-run):not(.no-report) #start{display:none}
 /* ---------- the report's checks: Jude's bar, each check under its sentence ---------- */
-.judgebar{position:sticky;top:var(--top-h,0px);z-index:30;background:var(--paper);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.judgebar{position:sticky;top:calc(var(--clan-top,0px) + var(--top-h,0px));z-index:30;background:var(--paper);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
 .jb-in{max-width:1180px;margin:0 auto;padding:10px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
 .jb-in > .agent-figure{width:34px;height:45px;flex:none}
 .jb-text{flex:1;min-width:min(240px,100%);margin:0;font-size:15px;line-height:1.45}
@@ -608,7 +615,7 @@ body.done:not(.show-run):not(.no-report) #start{display:none}
 #rep-layout > .rc-checks{padding:0 clamp(20px,5vw,64px);margin:14px 0}
 .rc-checks.in-cols{grid-column:1/-1;padding:0;border:0;margin:0}
 .cl-cols:has(> .rc-checks.in-cols),.cl-split:has(> .rc-checks.in-cols),.cl-grid:has(> .rc-checks.in-cols){grid-auto-flow:row dense}
-.rc-chk{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start;border:2px solid var(--create);border-radius:16px;padding:14px 16px;background:var(--paper);color:var(--ink);text-align:left;font-size:15px;line-height:1.5;scroll-margin-top:calc(var(--top-h,0px) + 90px)}
+.rc-chk{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start;border:2px solid var(--create);border-radius:16px;padding:14px 16px;background:var(--paper);color:var(--ink);text-align:left;font-size:15px;line-height:1.5;scroll-margin-top:calc(var(--clan-top,0px) + var(--top-h,0px) + 90px)}
 .rc-chk::before{content:"";position:absolute;top:-9px;left:36px;width:14px;height:14px;background:var(--paper);border-left:2px solid var(--create);border-top:2px solid var(--create);transform:rotate(45deg)}
 .rc-chk:focus{outline:none}
 .rc-chk:focus-visible{outline:3px solid var(--create);outline-offset:3px}
@@ -629,6 +636,37 @@ body.done:not(.show-run):not(.no-report) #start{display:none}
 .rc-rest h3{margin:0;font-size:19px;font-weight:700;letter-spacing:-.02em}
 .rc-rest > p{margin:0;color:var(--ink2);font-size:14.5px}
 .rc-rest .rc-chk::before{display:none}
+/* Stop the research: one quiet button, then a plain yes / no. */
+.rs-cancel{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 0;font-size:14.5px;color:var(--ink2)}
+.rs-cancel .ans{padding:8px 14px;min-height:44px;font-size:14.5px;border-radius:12px}
+.rs-stop{border:1px solid var(--line);background:transparent;color:var(--ink2);border-radius:999px;padding:8px 14px;min-height:40px;font-size:14px;cursor:pointer}
+.rs-stop:hover{border-color:var(--create);color:var(--create-ink)}
+/* Questions asked of the research: each answer in its section, and a way to ask. */
+.rq{display:grid;gap:10px;margin:6px 0 18px}
+#rep-layout .rq{padding:0 clamp(20px,5vw,64px) 36px;margin:-8px 0 0}
+.rq-a{border-left:3px solid var(--ink);padding:2px 0 2px 14px;font-size:15.5px;line-height:1.55;max-width:66ch}
+.rq-a.busy{border-left-color:var(--line)}
+.rq-q{margin:0;font-weight:600}
+.rq-s{margin:6px 0 0}
+.rq-how{margin:6px 0 0;font-size:13px;color:var(--ink3)}
+.rq-warn{color:var(--create-ink)}
+.rq-own{display:grid;gap:12px;margin:0 calc(-1*clamp(20px,5vw,64px));padding:40px clamp(20px,5vw,64px) 8px;border-top:1px solid var(--line)}
+.rep .rq-own{margin:0;padding:24px 0 8px}
+.rq-own h2{margin:0;font-size:22px;letter-spacing:-.02em}
+.rq-open{justify-self:start;border:1px dashed var(--line);background:transparent;color:var(--ink2);border-radius:999px;padding:8px 14px;min-height:40px;font-size:14px;cursor:pointer}
+.rq-open:hover{border-color:var(--ink);color:var(--ink)}
+.rq-box{display:grid;gap:8px;border:1px solid var(--line);background:var(--soft);border-radius:14px;padding:12px 14px;max-width:760px}
+.rq-box label{font-size:14px;font-weight:600;color:var(--ink)}
+.rq-box.rq-new{border-width:1.5px;border-color:var(--ink3)}
+.rq-hint{margin:0;font-size:13px;color:var(--ink3)}
+.rq-src{margin-top:6px;font-size:13px;color:var(--ink3)}
+.rq-src summary{cursor:pointer;min-height:32px;display:inline-flex;align-items:center}
+.rq-src ul{margin:2px 0 0;padding-left:18px;display:grid;gap:3px}
+.rq-src a{color:var(--ink2)}
+.rq-src span{color:var(--ink3);font-size:12px}
+.rq-box .r{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rq-box input{flex:1 1 240px;min-width:0;padding:10px 12px;border-radius:12px;font-size:15px}
+.rq-box .ans{padding:8px 14px;min-height:44px;font-size:14.5px;border-radius:12px}
 /* In the report's dark band the figures are drawn for the band. */
 .cl-band .rc-chk{--plan:var(--ink);--plan-eye:var(--paper)}
 /* What a person agreed to turns green; what waits is marked. */
@@ -945,8 +983,33 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     return fetch(clanScheme+'/chain').then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); })
       .then(function(c){ CHAIN={state:'ok', decisions:arr(c&&c.decisions)}; })
       .catch(function(e){ CHAIN={state:'unavailable', decisions:[], err:String(e&&e.message||e)}; })
-      .then(render);
+      .then(function(){ render(); reconsiderWrong(); });
   }
+  // ── a fact marked wrong: take it out, and rework what rested on it ──────
+  // The OS's drawer records the person's "No, this is wrong" on a fact. The
+  // crew then takes the fact out and checks every finding, answer and the
+  // report that rested on it without it, working out again whatever no longer
+  // stands (reconsider_fact). Once for each verdict.
+  var WRONG={started:{}};
+  try{ WRONG.started=JSON.parse(stored('clan.research.wrong.'+docId())||'{}')||{}; }catch(e){}
+  function reconsiderWrong(){
+    if(!(window.clan&&window.clan.apiProxy)||reportLocked()) return;
+    var all=decs();
+    all.forEach(function(d, i){
+      if(d.kind!=='verdict'||d.polarity!=='bad'||WRONG.started[d.id]) return;
+      var t=arr(d.targets).map(pathOf).filter(function(x){ return /^facts\[f_[0-9A-Z]+\]$/.test(x); })[0]; if(!t) return;
+      var fid=t.slice(6,-1);
+      // already done for this verdict: a newer reconsider_fact names the fact
+      var done=all.slice(0,i).some(function(x){ return x.action==='reconsider_fact'&&arr(x.targets).some(function(a){ return pathOf(a)==='facts['+fid+']'; }); });
+      // once per fact: not when it is already taken out, nor while a rework of it runs
+      var busy=JOBS.some(function(j){ return j.task==='reconsider_fact'&&j.fact===fid&&/^(sending|queued|running)$/.test(j.state||'')&&!j.error; });
+      if(done||busy||excludedIds()[fid]||!pins()[fid]) return;
+      WRONG.started[d.id]=1; store('clan.research.wrong.'+docId(), JSON.stringify(WRONG.started));
+      runTask('reconsider_fact', {fact_id:fid, why:String(d.rationale||'A person marked it wrong.'), verdict_id:d.id});
+      toast('Marked wrong. '+given('judge')+' is checking what rested on it.');
+    });
+  }
+  function excludedIds(){ var o={}; arr(sel().excluded).forEach(function(e){ if(e&&e.fact_id) o[e.fact_id]=e; }); return o; }
   function decs(){ return CHAIN.decisions; }
   function decById(id){ var d=decs(); for(var i=0;i<d.length;i++) if(d[i].id===id) return d[i]; return null; }
   // Which of two decisions came first is their place in the chain, stored
@@ -1862,7 +1925,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var line={
       research_lens:['The researchers', 'We now have '+s(np,'fact')+' pinned.'],
       synthesise_findings:[given('synthesis'), 'I’ve found '+s(nf,'point')+' in all. '+(open?open+' '+(open===1?'waits':'wait')+' for you to check.':'None waits for you.')],
-      extract_ask:[given('extract'), 'I’ve read the ask. '+Object.keys(camp()).length+' of its '+FIELDS.length+' parts are filled.']
+      extract_ask:[given('extract'), 'I’ve read the ask. '+Object.keys(camp()).length+' of its '+FIELDS.length+' parts are filled.'],
+      reconsider_fact:[given('judge'), 'I took the fact out. '+String(j.summary||'')]
     }[j.task];
     return line&&line[0]?'<b>'+esc(line[0])+':</b> '+esc(line[1]):'';
   }
@@ -1876,9 +1940,10 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       var sc=j.scope?Object.keys(j.scope).map(function(k){ return k+' '+j.scope[k]; }).join(' · '):'';
       return '<article class="card job"><div class="fh"><span class="pill '+st+'"><span class="d"></span>'+esc(stl)+'</span><span class="lab mono" style="font-weight:500">'+esc(j.task)+'</span>'
         +(j.handler?'<span class="pill">'+esc(j.handler)+'</span>':'')+'<span class="sp" style="flex:1"></span>'+(j.jobId?'<span class="path">'+esc(j.jobId)+'</span>':'')+'</div>'
-        +(pg?'<div class="prog" role="progressbar" aria-valuemin="0" aria-valuemax="'+pg.total+'" aria-valuenow="'+pg.done+'" aria-label="'+esc(j.task)+' progress"><i style="width:'+pct+'%"></i></div><div class="srcline">'+pg.done+' of '+pg.total+' runs</div>':'')
+        +(pg?'<div class="prog" role="progressbar" aria-valuemin="0" aria-valuemax="'+pg.total+'" aria-valuenow="'+pg.done+'" aria-label="'+esc(j.task)+' progress"><i style="width:'+pct+'%"></i></div><div class="srcline">'+pg.done+' of '+pg.total+(j.task==='research_lens'?' runs':' steps')+'</div>':'')
         +(jobLine(j)?'<div style="font-size:14px;margin-top:6px">'+jobLine(j)+'</div>':'')
         +(j.error?'<div class="flag" style="margin-top:8px"><div>'+esc(j.error)+'</div></div>':'')
+        +(j.jobId&&/^(queued|running)$/.test(j.state||'')&&!j.error?'<div class="no-print" style="margin-top:8px"><button type="button" class="btn sm" data-act="job-cancel" data-i="'+JOBS.indexOf(j)+'"'+(j.cancelling?' disabled':'')+'>'+(j.cancelling?'Stopping…':'Stop')+'</button></div>':'')
         +'<dl class="kv" style="margin-top:8px">'
         +(sc?'<dt>Scope</dt><dd class="mono" style="font-size:12px">'+esc(sc)+'</dd>':'')
         +(j.backend?'<dt>Backend</dt><dd class="mono" style="font-size:12px">'+esc(j.backend)+'</dd>':'')
@@ -1904,7 +1969,9 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   }
   function runTask(task, input){
     if(!(window.clan&&window.clan.apiProxy)){ toast('Research runs through the host’s api-proxy.'); return; }
-    var j={task:task, state:'sending'}; JOBS.unshift(j); renderJobs();
+    // The client's documents are research sources: the host adds their text.
+    if(task==='research_lens'&&!input.attachments&&attachments().length) input=Object.assign({}, input, {attachments:attachments()});
+    var j={task:task, state:'sending', fact:input&&input.fact_id}; JOBS.unshift(j); renderJobs();
     var el=$('jobs'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'nearest'});
     window.clan.apiProxy('middleware', {task:task, input:input}).then(function(res){
       var err=mwError(res);
@@ -1913,6 +1980,15 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       if(res.job && (res.job.state==='queued'||res.job.state==='running') && j.jobId) poll(j, 1200);
       else afterApplied(j);
     }).catch(function(e){ j.error='The middleware could not be reached: '+(e&&e.message||e); renderJobs(); });
+  }
+  function cancelTask(j){
+    if(!j||!j.jobId||j.cancelling) return;
+    j.cancelling=true; renderJobs();
+    window.clan.apiProxy('middleware', {task:'cancel_job', input:{job_id:j.jobId}}).then(function(res){
+      j.cancelling=false;
+      var err=mwError(res); if(err){ j.error=err; renderJobs(); return; }
+      res=mwBody(res); jobFrom(j, res); renderJobs(); afterApplied(j);
+    }, function(e){ j.cancelling=false; toast('Not stopped: the middleware could not be reached ('+(e&&e.message||e)+').'); renderJobs(); });
   }
   function attachments(){
     return Object.keys(mats()).filter(function(id){ return mats()[id].asset; }).map(function(id){ var m=mats()[id];
@@ -2146,7 +2222,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     STAGES.forEach(function(S){
       var s='todo';
       if(j&&j.state==='done') s='done';
-      else if(ci>=0) s=(S.i<ci||S.i<doneN)?'done':S.i===ci?(j.state==='needs_input'?'wait':j.state==='failed'?'fail':'now'):'todo';
+      else if(ci>=0) s=(S.i<ci||S.i<doneN)?'done':S.i===ci?(j.state==='needs_input'?'wait':j.state==='failed'?'fail':j.state==='cancelled'?'stop':'now'):'todo';
       else if(seen[S.k]) s='done';
       st[S.k]=s;
     });
@@ -2255,8 +2331,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   function stepsHtml(){
     var st=stageStates();
     return '<ol class="rs-steps" aria-label="How far we are">'+STAGES.map(function(S){
-      var s=st[S.k], tick={done:'Done', skip:'Skipped', now:'Now', wait:'Needs you', fail:'Stopped', todo:'Next'}[s];
-      return '<li class="rs-stp '+(s==='todo'?'':s)+'"'+(s==='now'||s==='wait'?' aria-current="step"':'')+'>'
+      var s=st[S.k], tick={done:'Done', skip:'Skipped', now:'Now', wait:'Needs you', fail:'Stopped', stop:'You stopped it', todo:'Next'}[s];
+      return '<li class="rs-stp '+(s==='todo'?'':s==='stop'?'fail':s)+'"'+(s==='now'||s==='wait'?' aria-current="step"':'')+'>'
         +fig(S.k, s==='now'?'working':s==='wait'?'needs-you':'idle')+'<span class="rs-lane" aria-hidden="true"></span>'
         +'<span>'+esc(stageLabel(S.k))+'</span><span class="tick">'+esc(tick)+'</span></li>';
     }).join('')+'</ol>';
@@ -2307,6 +2383,11 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
     if(lq){ sp.mood='needs-you'; sp.text='I need you for a moment. My question is just below.'; return sp; }
     sp.mood='idle';
+    if(j&&j.state==='cancelled'){
+      sp.text='You stopped the research'+(STAGE[j.stage]?' at the '+j.stage+' step':'')+'. What we’d already found stays in the document.';
+      if(started) sp.acts='<button type="button" class="rs-go" data-act="chat-retry">Start it again</button>';
+      return sp;
+    }
     if(j&&(j.state==='failed'||j.error)){
       sp.mood='needs-you';
       sp.text=j.state==='failed'?'I had to stop. What we already found stays in the document.':'I can’t reach the crew right now.';
@@ -2369,8 +2450,25 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       +acts.map(function(x){ var m=x.m; return '<li>'+(m.at?'<time datetime="'+esc(m.at)+'">'+esc(fmtDate(m.at))+'</time>':'')+'<b>'+esc(stageWho(m.stage))+'</b>'+esc(m.text)+(x.stored?'':'<span class="pill dash" title="From the job’s reply; the host has not written it yet">in flight</span>')+'</li>'; }).join('')
       +'</ol></details>';
   }
+  // Stop the research: a person may cancel the job at any step. What it
+  // already found stays; it writes nothing more (cancel_job).
+  function cancelHtml(){
+    var j=CHAT.job; if(!(j&&j.id&&(jobActive()||liveQuestion())&&j.state!=='checking')) return '';
+    if(CHAT.cancelAsk) return '<div class="rs-cancel no-print" role="group" aria-label="Stop the research"><span>Stop the research? What’s been found so far stays.</span>'
+      +'<button type="button" class="ans primary" data-act="chat-cancel-yes"'+(CHAT.cancelling?' disabled':'')+'>'+(CHAT.cancelling?'Stopping…':'Yes, stop it')+'</button>'
+      +'<button type="button" class="ans" data-act="chat-cancel-no"'+(CHAT.cancelling?' disabled':'')+'>Keep going</button></div>';
+    return '<div class="rs-cancel no-print"><button type="button" class="rs-stop" data-act="chat-cancel">Stop the research</button></div>';
+  }
+  function doCancelJob(){
+    var j=CHAT.job; if(!(j&&j.id)||CHAT.cancelling) return;
+    CHAT.cancelling=true; renderChat();
+    window.clan.apiProxy('middleware', {task:'cancel_job', input:{job_id:j.id}}).then(function(r){
+      CHAT.cancelling=false; CHAT.cancelAsk=false; clearTimeout(POLL.t); onJobReply(r);
+      if(CHAT.job&&CHAT.job.state==='cancelled') toast('Stopped. What was found so far stays.');
+    }, function(e){ CHAT.cancelling=false; toast('Not stopped: the middleware could not be reached ('+(e&&e.message||e)+').'); renderChat(); });
+  }
   function workHtml(T, Q){
-    return '<div class="rs-work">'+stepsHtml()+nowCardHtml(T)+(Q?questionCard(Q, T):'')+laterHtml(T)+activityHtml(T)
+    return '<div class="rs-work">'+stepsHtml()+nowCardHtml(T)+cancelHtml()+(Q?questionCard(Q, T):'')+laterHtml(T)+activityHtml(T)
       +'<details class="rs-asked" id="asked"'+(CHAT.sheetOpen?' open':'')+'><summary><span>What you asked for</span><span class="chev" aria-hidden="true">'+ICON.chev+'</span></summary>'+sheetHtml(T)+'</details></div>';
   }
 
@@ -2630,7 +2728,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       arr(b.result.messages).forEach(function(m){ if(isObj(m)&&m.id&&m.text&&!CHAT.live[m.id]) CHAT.live[m.id]={role:'agent', text:m.text, stage:m.stage, job_id:j.id}; });
     }
     if(isObj(b.change)){ j.applied=b.change.applied; j.reason=b.change.reason; if(b.change.applied) loadChain(); }
-    if(j.id) store(jobKey(), (j.state==='done'||j.state==='failed')?null:j.id);
+    if(j.id) store(jobKey(), /^(done|failed|cancelled)$/.test(j.state||'')?null:j.id);
     render();
     if(j.state==='queued'||j.state==='running') schedulePoll();
   }
@@ -2802,6 +2900,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var w=reportWriter(); if(w<0) return out;
     var why={};
     decs().slice(0,w).forEach(function(d){
+      // What a question asked of the research found is shown in its answer.
+      if(arr(d.targets).some(function(a){ return /^asks\[/.test(pathOf(a)); })) return;
       var k=STALE_BY[d.action]||(touchesExcluded(d)?'a fact excluded':touchesCampaign(d)&&d.action!=='verified'?'the ask changed':'');
       if(k) why[k]=(why[k]||0)+1;
     });
@@ -2829,6 +2929,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       var stale=reportStale(r);
       var bar='<div class="rep-bar no-print"><span class="derived">'+ICON.agent+(r.layout_by==='agent'?'laid out by '+esc(given('drafter')):'laid out from the report')+'</span><span>written '+esc(fmtWhen(r.built_at))+'</span><span class="sp"></span>'
         +(stale.length?'<span style="color:var(--create-ink)">'+esc(staleText(stale))+' Refresh to include it.</span>':'')
+        +'<button type="button" class="btn sm" data-act="rq-jump">Ask the research</button>'
         +'<button type="button" class="btn sm ghost" data-act="show-run">How it ran</button>'
         +refreshBtn(stale, '')+'</div>'
         +(CHAT.reportErr?'<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>':'');
@@ -2838,12 +2939,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
         ClanFields.mount($('rep-layout'), r.layout); MOUNTED=key;
       } else ClanFields.refresh();
       $('rep-bar').innerHTML=bar;
+      renderAsks();
       return;
     }
     MOUNTED=null;
     var stale=reportStale(r), hl=isObj(r.headline)?r.headline:{};
     var h='<div class="rep"><div class="rep-top"><span class="eyebrow">Report</span><span class="derived">'+ICON.agent+'written by '+esc(given('drafter'))+'</span><span class="sp"></span>'
       +'<span class="srcline">'+esc(fmtWhen(r.built_at))+'</span>'
+      +'<button type="button" class="btn sm no-print" data-act="rq-jump">Ask the research</button>'
       +refreshBtn(stale, 'compose_report: re-compose from the document as it stands')+'</div>';
     if(stale.length) h+='<div class="rep-stale" role="status"><div><b>Out of date.</b> '+esc(staleText(stale))+' Refresh the report to include it.</div></div>';
     if(CHAT.reportErr) h+='<div class="flag" role="alert"><div>'+esc(CHAT.reportErr)+'</div></div>';
@@ -2851,7 +2954,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(arr(r.summary).length) h+='<ul class="rep-sum">'+arr(r.summary).map(function(s){ return '<li><span>'+esc(s&&s.text)+' '+citeChips(s&&s.cites)+'</span></li>'; }).join('')+'</ul>';
     arr(r.sections).forEach(function(s){
       if(!isObj(s)) return;
-      h+='<div class="rep-sec" id="rs-'+esc(slug(s.id||''))+'"><h3>'+esc(s.title)+(s.lens?'<span class="pill">'+esc((LENS[s.lens]||{}).l||s.lens)+'</span>':'')+(s.market?'<span class="pill">'+esc(s.market)+'</span>':'')+'</h3>'+arr(s.blocks).map(blockHtml).join('')+'</div>';
+      h+='<div class="rep-sec" id="rs-'+esc(slug(s.id||''))+'"'+(s.lens?' data-lens="'+esc(s.lens)+'"':'')+'><h3>'+esc(s.title)+(s.lens?'<span class="pill">'+esc((LENS[s.lens]||{}).l||s.lens)+'</span>':'')+(s.market?'<span class="pill">'+esc(s.market)+'</span>':'')+'</h3>'+arr(s.blocks).map(blockHtml).join('')+'</div>';
     });
     var conf=arr(r.confirm);
     if(conf.length){
@@ -2869,6 +2972,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     var bo=isObj(r.based_on)?r.based_on:{};
     h+='<div class="rep-foot"><span>'+esc(r.handler)+'</span><span title="'+esc(bo.version)+'">composed from version '+esc(String(bo.version||'?').slice(7,19))+'</span><span title="'+esc(bo.facts_sha256)+'">facts '+esc(String(bo.facts_sha256||'?').slice(7,19))+'</span><span title="'+esc(bo.findings_sha256)+'">findings '+esc(String(bo.findings_sha256||'?').slice(7,19))+'</span><span>every claim cites a pin or a finding below</span></div></div>';
     el.innerHTML=h;
+    renderAsks();
   }
   function doRefreshReport(){
     if(!(window.clan&&window.clan.apiProxy)){ toast('Refreshing the report runs through the host.'); return; }
@@ -2919,7 +3023,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   }
   function srcRecs(){ var p=proj(); return p&&isObj(p.sources)?p.sources:{}; }
   // A person's correction records their id as its publisher: say what it is instead.
-  function srcName(sid){ var s=srcRecs()[sid]; if(!s) return ''; if(s.tier==='reviewer-verified') return 'a correction made here'; return (s.publisher||s.domain||'')+(s.published_at?', '+String(s.published_at).slice(0,4):''); }
+  function srcName(sid){ var s=srcRecs()[sid]; if(!s) return ''; if(s.tier==='reviewer-verified') return 'a correction made here';
+    if(/^material:/.test(s.uri||'')) return 'your file '+(s.title||''); return (s.publisher||s.domain||'')+(s.published_at?', '+String(s.published_at).slice(0,4):''); }
   function pinSource(fid){ var p=pins()[fid], s=arr(p&&p.sources).filter(function(x){ return /^src_/.test(x); })[0]; return s?srcName(s):''; }
   // The OS's money and counts; this view's own percent units.
   function fmtAny(v){ return window.ClanFields&&ClanFields.format&&!/^percent/.test(v&&v.unit||'')?ClanFields.format(v):fmtPinValue(v); }
@@ -2964,7 +3069,7 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     if(c.kind==='contest') arr((contestById(c.ref)||{}).values).forEach(function(v){ if(v.fact_id) refs.push(v.fact_id); });
     var hit=null, exact=false;
     Array.prototype.some.call(root.querySelectorAll('[data-ref],[data-anchor]'),function(el){
-      if(el.closest('.rc-checks,.rc-rest')) return false;
+      if(el.closest('.rc-checks,.rc-rest,.rq')) return false;
       var r=el.getAttribute('data-ref')||el.getAttribute('data-anchor')||'';
       var list=/^cite:/.test(r)?r.slice(5).split(','):[r];
       if(!list.some(function(x){ return refs.indexOf(x)!==-1; })) return false;
@@ -2998,13 +3103,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
           ?'<span class="rc-ok out" id="'+id+'" tabindex="-1">'+esc((by?(by==='You'?'You took this out':by+' took this out'):'Taken out')+q)+'</span>'
           :'<span class="rc-ok" id="'+id+'" tabindex="-1">✓ '+esc((by?(by==='You'?'You agreed':by+' agreed'):'Agreed')+q)+'</span>';
       }
-      var cites=arr(f.cites), pubs=[];
+      var cites=arr(f.cites), pubs=[], gone=cites.filter(function(x){ return excludedIds()[x]; });
       cites.forEach(function(x){ var s=pinSource(x); if(s&&pubs.indexOf(s)===-1) pubs.push(s); });
       var from='I worked this out from '+cites.length+' fact'+(cites.length===1?'':'s')
         +(pubs.length?(pubs.length===1&&cites.length>1?(cites.length===2?', both from ':', all from '):', from ')+listJoin(pubs):'')+'.';
       var h='<div class="rc-chk open" id="'+id+'" tabindex="-1" role="group" aria-label="'+esc(given('synthesis')+' asks: is this right?')+'">'+figK('synthesis','needs-you')
         +'<div><span class="q">'+esc(given('synthesis'))+' · is this right?</span>'
-        +(shown?'':'<p class="claim">'+esc(f.statement||c.ref)+'</p>')+'<p class="t">'+esc(from)+'</p>';
+        +(shown?'':'<p class="claim">'+esc(f.statement||c.ref)+'</p>')+'<p class="t">'+esc(from)+'</p>'
+        +(gone.length?'<p class="t" style="color:var(--create-ink)">'+esc('It rests on a fact someone marked wrong'+(gone.length>1?' ('+gone.length+' of them)':'')+'. If there is a new point in its place, check that one and take this one out.')+'</p>':'');
       if(ui.mode==='no'){
         h+='<div class="rc-why"><label for="chkwhy-'+slug(c.ref)+'">What’s wrong with it? '+esc(given('synthesis'))+' will use this to fix it.</label>'
           +'<div class="r"><input type="text" id="chkwhy-'+slug(c.ref)+'" data-ref="'+ref+'" value="'+esc(ui.why||'')+'" autocomplete="off"'+off+'>'
@@ -3210,6 +3316,191 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     }
   }
 
+  // ── asking more of the research (ask_research) ───────────────────────────
+  // A question asked at the end of a section is answered there; one asked at
+  // the end of the report, about something it does not cover, gets a section
+  // of its own. The middleware answers from the facts the document holds, and
+  // its researchers search only when jev says that answer does not answer it.
+  // The answers are the document's (data.asks); this view asks and shows them.
+  var ASK={ui:{}, jobs:[]};
+  var KEY_LENS={market:'market_structure', positioning:'brands_positioning', consumer:'consumer_culture', codes:'category_codes',
+    rhythm:'rhythm_moments', media:'media_spend', regulation:'regulation_clearance', effectiveness:'effectiveness_evidence',
+    awareness:'brands_positioning', launch:'brands_positioning', product:'brands_positioning', share:'market_structure'};
+  function asks(){
+    var a=isObj(D().asks)?D().asks:{};
+    return Object.keys(a).map(function(k){ return a[k]; }).filter(function(x){ return isObj(x)&&x.question; })
+      .sort(function(x,y){ return String(x.asked_at||'')<String(y.asked_at||'')?-1:1; });
+  }
+  function refLens(r){
+    if(/^f_/.test(r)){ var p=pins()[r]; return p?KEY_LENS[String(p.key||'').split('.')[0]]||'':''; }
+    if(/^fi_/.test(r)){ var f=fnds()[r]; if(!f) return ''; if(LENS[f.lens]) return f.lens; return arr(f.cites).map(refLens).filter(Boolean)[0]||''; }
+    if(/^gap_/.test(r)){ var g=arr(sel().gaps).filter(function(x){ return x&&x.id===r; })[0]; return g&&LENS[g.lens]?g.lens:''; }
+    return '';
+  }
+  // The element the agent's sections sit in: the layout, or the one wrapper
+  // (an <article>, a <div>) it put everything inside.
+  function askBox(){
+    var box=$('rep-layout');
+    while(box){
+      var kids=Array.prototype.filter.call(box.children, function(c){ return !c.matches('.rq,.rc-checks,.rc-rest'); });
+      if(kids.length!==1||kids[0].matches('section,.cl-block')) break;
+      box=kids[0];
+    }
+    return box;
+  }
+  // Where each lens's section ends: in the agent's layout, the last block with
+  // a heading whose evidence is mostly that lens's; in the record, its section.
+  function askSections(){
+    var out={}, root=askBox();
+    if(!root){
+      Array.prototype.forEach.call(document.querySelectorAll('#report .rep-sec[data-lens]'), function(el){ out[el.getAttribute('data-lens')]=el; });
+      return out;
+    }
+    Array.prototype.forEach.call(root.children, function(el){
+      if(el.matches('.rq,.rc-checks,.rc-rest,header,footer,.cl-head,.cl-foot')||!el.querySelector('h2,h3')) return;
+      var n={};
+      Array.prototype.forEach.call(el.querySelectorAll('clan-field[ref],clan-cite[refs],clan-chart[refs],clan-quote[ref],clan-gap[ref]'), function(x){
+        String(x.getAttribute('ref')||x.getAttribute('refs')||'').split(/[\s,]+/).forEach(function(r){ var l=refLens(r); if(l) n[l]=(n[l]||0)+1; });
+      });
+      var best=Object.keys(n).sort(function(a,b){ return n[b]-n[a]; })[0];
+      if(best) out[best]=el;
+    });
+    return out;
+  }
+  function askCite(ids){
+    ids=arr(ids); if(!ids.length) return '';
+    return window.ClanFields?' <clan-cite refs="'+esc(ids.join(' '))+'"></clan-cite>':' '+citeChips(ids);
+  }
+  function askAnswerHtml(a){
+    var n=arr(a.new_facts).length, s=arr(a.answer);
+    var note=a.status==='partial'?'This only partly answers it.':a.status==='not_found'?'Nothing in the research'+(a.searched?' or the new search':'')+' answers this yet.':'';
+    if(arr(a.missing).length&&a.status!=='answered') note+=(note?' ':'')+'Still missing: '+arr(a.missing).join('; ')+'.';
+    return '<div class="rq-a" id="rq-'+esc(slug(a.id||''))+'"><p class="rq-q">'+esc(a.question)+'</p>'
+      +s.map(function(x){ return '<p class="rq-s">'+esc(x&&x.text)+askCite(x&&x.cites)+'</p>'; }).join('')
+      +'<p class="rq-how">'+esc(askHow(a, n))
+      +(note?' · <span class="rq-warn">'+esc(note)+'</span>':'')+'</p>'+askSources(a)+'</div>';
+  }
+  // Where an answer came from, in words: the research already here, or the web.
+  function askHow(a, n){
+    if(!a.searched) return 'From the research already here';
+    var S=arr(a.searches), k=S.length, w=+a.web_sources||0;
+    if(!k) return n?'Looked up: '+n+' new fact'+(n===1?'':'s'):'Looked up: nothing new found';  // an answer from before searches were recorded
+    var where='Looked on the web'+(k>1?' ('+k+' searches)':'');
+    return where+': '+(w?w+' source'+(w===1?'':'s'):'no sources found')+(n?', '+n+' new fact'+(n===1?'':'s'):', nothing new it could use');
+  }
+  // The pages it read, to open and check.
+  function askSources(a){
+    var urls=[]; arr(a.searches).forEach(function(x){ arr(x.urls).forEach(function(u){ if(/^https?:\/\//.test(u)&&urls.indexOf(u)===-1) urls.push(u); }); });
+    if(!urls.length) return '';
+    return '<details class="rq-src no-print"><summary>What it read on the web</summary><ul>'+urls.map(function(u){
+      var h=u.replace(/^https?:\/\/(www\.)?/,'').split('/')[0];
+      return '<li><a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+esc(h)+'</a> <span>'+esc(u.replace(/^https?:\/\/[^/]+/,'').slice(0,80))+'</span></li>'; }).join('')+'</ul></details>';
+  }
+  function askPendingHtml(j){
+    var i=ASK.jobs.indexOf(j);
+    return '<div class="rq-a busy no-print" role="status"><p class="rq-q">'+esc(j.question)+'</p>'
+      +(j.error?'<p class="rq-how"><span class="rq-warn">Not answered: '+esc(j.error)+'</span></p><div class="answers sm"><button type="button" class="ans" data-act="rq-retry" data-i="'+i+'">Ask again</button><button type="button" class="ans" data-act="rq-drop" data-i="'+i+'">Dismiss</button></div>'
+        :'<p class="rq-how">Looking into it… the researchers search only if what’s here doesn’t answer it.</p>'
+          +(j.jobId?'<div class="answers sm"><button type="button" class="ans" data-act="rq-stop" data-i="'+i+'"'+(j.stopping?' disabled':'')+'>'+(j.stopping?'Stopping…':'Stop')+'</button></div>':''))+'</div>';
+  }
+  // Always open: the place to ask is a box you can type in, not a link to find.
+  function askBoxHtml(key, label){
+    var ui=ASK.ui[key]||{}, id='rqin-'+slug(key);
+    return '<div class="rq-box no-print'+(key==='_new'?' rq-new':'')+'" id="rqbox-'+esc(slug(key))+'"><label for="'+id+'">'+esc(label)+'</label><div class="r">'
+      +'<input type="text" id="'+id+'" data-k="'+esc(key)+'" value="'+esc(ui.draft||'')+'" maxlength="1000" autocomplete="off" placeholder="'+esc(key==='_new'?'What should the research look into?':'What do you want to know?')+'">'
+      +'<button type="button" class="ans primary" data-act="rq-send" data-k="'+esc(key)+'">Ask</button></div>'
+      +(key==='_new'?'<p class="rq-hint">A new question gets a section of its own. The crew answers from what the research found, and looks further only if that isn’t enough.</p>':'')+'</div>';
+  }
+  function renderAsks(){
+    var root=$('report'); if(!root) return;
+    var ae=document.activeElement, keep=ae&&ae.id&&ae.closest&&ae.closest('.rq')?{id:ae.id, s:ae.selectionStart, e:ae.selectionEnd}:null;
+    Array.prototype.forEach.call(root.querySelectorAll('.rq'), function(n){ n.remove(); });
+    if(root.hidden||!isObj(D().report)) return;
+    var can=hasHost()&&!reportLocked(), secs=askSections(), all=asks(), own=[], ownJobs=[], cites=false;
+    function put(el, html, where){ var d=document.createElement('div'); d.className='rq'; d.innerHTML=html; el.insertAdjacentElement(where, d); cites=cites||/<clan-cite/.test(html); }
+    LENSES.forEach(function(L){
+      var mine=all.filter(function(a){ return a.in_section&&a.lens===L.k; }), jobs=ASK.jobs.filter(function(j){ return j.lens===L.k; }), el=secs[L.k];
+      if(!el){ own=own.concat(mine); ownJobs=ownJobs.concat(jobs); return; }
+      var h=mine.map(askAnswerHtml).join('')+jobs.map(askPendingHtml).join('')+(can?askBoxHtml(L.k, 'Ask about '+L.l.toLowerCase()):'');
+      if(h) put(el, h, 'afterend');
+    });
+    own=all.filter(function(a){ return !a.in_section; }).concat(own);
+    ownJobs=ASK.jobs.filter(function(j){ return !j.lens; }).concat(ownJobs);
+    var tail=own.map(function(a){ return '<section class="rq-own"><h2>'+esc(a.topic||a.question)+'</h2>'+askAnswerHtml(a)+'</section>'; }).join('')
+      +ownJobs.map(askPendingHtml).join('')+(can?askBoxHtml('_new', 'Ask about something the research didn’t cover'):'');
+    if(tail){
+      var lay=askBox(), foot=lay?lay.querySelector(':scope > footer, :scope > .cl-foot'):root.querySelector('.rep-foot');
+      if(foot) put(foot, tail, 'beforebegin'); else put(lay||root.querySelector('.rep')||root, tail, 'beforeend');
+    }
+    if(cites&&window.ClanFields) ClanFields.refresh();
+    if(keep){ var n=$(keep.id); if(n){ try{ n.focus({preventScroll:true}); if(keep.s!=null&&n.setSelectionRange) n.setSelectionRange(keep.s, keep.e); }catch(e){} } }
+  }
+  function askStoreKey(){ return 'clan.research.asks.'+docId(); }
+  function saveAskJobs(){
+    var o=ASK.jobs.filter(function(j){ return j.jobId&&!j.error; }).map(function(j){ return {jobId:j.jobId, question:j.question, lens:j.lens}; });
+    store(askStoreKey(), o.length?JSON.stringify(o):null);
+  }
+  function doAsk(key){
+    // what is in the box, whatever the view has kept of it
+    var box=$('rqin-'+slug(key)), ui=ASK.ui[key]||{}, q=String((box&&box.value)||ui.draft||'').trim();
+    if(!q){ toast('Type a question first.'); var i=$('rqin-'+slug(key)); if(i) i.focus(); return; }
+    if(!(window.clan&&window.clan.apiProxy)){ toast('Asking runs through the host.'); return; }
+    var j={lens:key==='_new'?null:key, question:q, state:'sending'};
+    ASK.jobs.push(j); ASK.ui[key]={open:false, draft:''}; renderAsks();
+    sendAsk(j);
+  }
+  function sendAsk(j){
+    var input={question:j.question}; if(j.lens) input.lens=j.lens;
+    if(attachments().length) input.attachments=attachments();
+    j.error=null; j.state='sending';
+    window.clan.apiProxy('middleware', {task:'ask_research', input:input}).then(function(res){ onAskReply(j, res); },
+      function(e){ j.error='the middleware could not be reached ('+(e&&e.message||e)+')'; renderAsks(); });
+  }
+  function pollAsk(j){
+    window.clan.apiProxy('middleware', {task:'job_status', input:{job_id:j.jobId}}).then(function(res){ onAskReply(j, res); },
+      function(e){ j.error='the middleware could not be reached ('+(e&&e.message||e)+')'; saveAskJobs(); renderAsks(); });
+  }
+  function onAskReply(j, res){
+    if(ASK.jobs.indexOf(j)===-1) return;
+    var err=mwError(res);
+    if(err){ j.error=err.replace(/^Job failed: /,''); saveAskJobs(); renderAsks(); return; }
+    var b=mwBody(res);
+    if(isObj(b.job)){ j.jobId=b.job.id||j.jobId; j.state=b.job.state||j.state; }
+    if(j.state==='cancelled'){ ASK.jobs.splice(ASK.jobs.indexOf(j), 1); saveAskJobs(); renderAsks(); return; }
+    if(j.state==='queued'||j.state==='running'){
+      saveAskJobs(); renderAsks();
+      j.delay=Math.min((j.delay||1200)*1.4, 8000); setTimeout(function(){ pollAsk(j); }, j.delay); return;
+    }
+    var ch=isObj(b.change)?b.change:null;
+    if(ch&&!ch.applied&&ch.reason&&ch.reason!=='already applied') j.error='the host did not save the answer: '+ch.reason;
+    else ASK.jobs.splice(ASK.jobs.indexOf(j), 1);
+    saveAskJobs(); loadChain(); render();
+  }
+  function resumeAsks(){
+    if(!(window.clan&&window.clan.apiProxy)) return;
+    var o=[]; try{ o=JSON.parse(stored(askStoreKey())||'[]'); }catch(e){}
+    arr(o).forEach(function(x){ if(!isObj(x)||!x.jobId) return; var j={jobId:x.jobId, question:x.question, lens:x.lens||null, state:'running'}; ASK.jobs.push(j); pollAsk(j); });
+  }
+  function onAskAct(act, b){
+    var k=b.getAttribute('data-k')||'', j=ASK.jobs[+b.getAttribute('data-i')];
+    switch(act){
+      case 'rq-open': ASK.ui[k]={open:true, draft:''}; renderAsks(); var i=$('rqin-'+slug(k)); if(i) i.focus(); break;
+      case 'rq-cancel': delete ASK.ui[k]; renderAsks(); break;
+      case 'rq-send': doAsk(k); break;
+      case 'rq-retry': if(j){ sendAsk(j); renderAsks(); } break;
+      case 'rq-drop': if(j){ ASK.jobs.splice(ASK.jobs.indexOf(j), 1); saveAskJobs(); renderAsks(); } break;
+      case 'rq-stop':
+        if(!j||!j.jobId||j.stopping) break;
+        j.stopping=true; renderAsks();
+        window.clan.apiProxy('middleware', {task:'cancel_job', input:{job_id:j.jobId}}).then(function(res){
+          var err=mwError(res); j.stopping=false;
+          if(err){ toast('Not stopped: '+err); renderAsks(); return; }
+          ASK.jobs.splice(ASK.jobs.indexOf(j), 1); saveAskJobs(); renderAsks(); toast('Stopped. Nothing from it was saved.');
+        }, function(e){ j.stopping=false; toast('Not stopped: the middleware could not be reached ('+(e&&e.message||e)+').'); renderAsks(); });
+        break;
+    }
+  }
+
   // ── title: the brand and its markets, else the working name ─────────────────
   // "Lunasa · Ireland and Great Britain": what the research is about, so the
   // home, the bar and a brief started from it never call it "Untitled
@@ -3262,12 +3553,14 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     else if(id==='cmp-who') CHAT.who=t.value.trim();
     else if(id&&id.indexOf('qtext-')===0) CHAT.qdraft[t.getAttribute('data-q')]=t.value;
     else if(id&&id.indexOf('chkwhy-')===0){ var ui=CHK.ui[t.getAttribute('data-ref')]; if(ui) ui.why=t.value; }
+    else if(id&&id.indexOf('rqin-')===0){ var ak=t.getAttribute('data-k'); (ASK.ui[ak]||(ASK.ui[ak]={})).draft=t.value; }
   });
   document.addEventListener('keydown', function(e){
     var t=e.target; if(e.key!=='Enter'||e.isComposing||!t||!t.id) return;
     // The box is a search box: Enter starts the research, Shift+Enter is a new line.
     if((t.id==='cmp-prompt'&&!e.shiftKey)||t.id==='cmp-who'){ e.preventDefault(); doSend(); }
     else if(t.id.indexOf('qtext-')===0){ e.preventDefault(); doAnswer(t.getAttribute('data-q'), null, t.value); }
+    else if(t.id.indexOf('rqin-')===0){ e.preventDefault(); doAsk(t.getAttribute('data-k')); }
     else if(t.id.indexOf('chkwhy-')===0){ e.preventDefault(); var cb=t.closest('.rc-chk'), go=cb&&cb.querySelector('[data-act=chk-reject],[data-act=chk-use]'); if(go) go.click(); }
   });
   document.addEventListener('change', function(e){ if(e.target&&e.target.id==='cmp-file'){ addFiles(e.target.files); e.target.value=''; } });
@@ -3347,6 +3640,11 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       case 'cmp-name': CHAT.showName=true; renderChat(); var ni=$('cmp-name'); if(ni) ni.focus(); break;
       case 'chat-retry': doRetry(); break;
       case 'chat-poll': POLL.delay=1000; pollNow(); break;
+      case 'chat-cancel': CHAT.cancelAsk=true; renderChat(); var cy=document.querySelector('[data-act=chat-cancel-yes]'); if(cy) cy.focus(); break;
+      case 'chat-cancel-no': CHAT.cancelAsk=false; renderChat(); break;
+      case 'chat-cancel-yes': doCancelJob(); break;
+      case 'job-cancel': cancelTask(JOBS[+b.getAttribute('data-i')]); break;
+      case 'rq-stop': onAskAct(act, b); break;
       case 'q-opt': doAnswer(b.getAttribute('data-q'), b.getAttribute('data-opt')); break;
       case 'q-send': var qi=$('qtext-'+b.getAttribute('data-q')); doAnswer(b.getAttribute('data-q'), null, qi?qi.value:''); break;
       case 'q-resend': doResend(b.getAttribute('data-q')); break;
@@ -3358,6 +3656,8 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
       case 'chk-next': nextCheck(); break;
       case 'lock': doLock(); break;
       case 'spin-brief': doSpinBrief(); break;
+      case 'rq-open': case 'rq-cancel': case 'rq-send': case 'rq-retry': case 'rq-drop': onAskAct(act, b); break;
+      case 'rq-jump': var bx=$('rqbox-_new'), bi=$('rqin-_new'); if(bx){ bx.scrollIntoView({block:'center', behavior:calm()?'auto':'smooth'}); if(bi) setTimeout(function(){ try{ bi.focus({preventScroll:true}); }catch(x){} }, calm()?0:350); } else toast('Asking needs a report first.'); break;
     }
   });
   $('lockBtn').addEventListener('click', doLock);
@@ -3373,6 +3673,9 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
   window.addEventListener('clan:dataupdated', render);
   // The OS's fields have read what needs a person again (clan://decisions).
   window.addEventListener('clan:viewloaded', renderChecks);
+  // A verdict given in the OS's drawer is in the chain: read it again (a fact
+  // marked wrong is reconsidered from it).
+  window.addEventListener('clan:viewloaded', function(){ loadChain(); });
   // The lock is read with the host's view: the report's bar follows it.
   var REPORT_LOCK=null;
   window.addEventListener('clan:viewloaded', function(){ var l=reportLocked(); if(l!==REPORT_LOCK){ REPORT_LOCK=l; renderReport(); } });
@@ -3408,13 +3711,28 @@ a.pin-card.missing{border-style:dashed;background:transparent;color:var(--ink3)}
     el.scrollIntoView({block:'center',behavior:'smooth'});
     el.classList.add('focus-flash'); setTimeout(function(){ el.classList.remove('focus-flash'); },1600);
   });
+  // The OS's chrome lies over the research as glass, tinted with its paper:
+  // the shell says what it covers, and the page keeps clear of that.
+  window.addEventListener('message', function(e){
+    var m=e.data; if(e.source!==window.parent||!m||m.type!=='clan:insets') return;
+    var r=document.documentElement.style;
+    ['top','right','bottom'].forEach(function(k){ var v=+m[k]; r.setProperty('--clan-'+k, (v>=0&&v<600?v:0)+'px'); });
+    document.documentElement.classList.toggle('clan-glass', +m.top>0);
+    mode();
+  });
+  function askGlass(){
+    var c=getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+    try{ window.parent.postMessage({type:'clan:chrome', mode:'glass', tint:/^#[0-9a-f]{6}$/i.test(c)?c:null}, '*'); }catch(e){}
+  }
+  askGlass();
+  window.addEventListener('clan:colorscheme', function(){ setTimeout(askGlass, 0); });
   readShellWho();
   render();
   loadChain();
   // The host injects the bridge after this script, so window.clan exists only
   // once the document has parsed.
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ readShellWho(); resumeJob(); render(); });
-  else setTimeout(function(){ readShellWho(); resumeJob(); render(); }, 0);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ readShellWho(); resumeJob(); resumeAsks(); render(); });
+  else setTimeout(function(){ readShellWho(); resumeJob(); resumeAsks(); render(); }, 0);
 })();
 </script>
 </body>

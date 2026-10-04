@@ -12,136 +12,111 @@
      shell's app/src/index.css). The OS top bar carries the product; this app
      carries its own identity only: its mark and name, on Plan.
 
-     Where it lands: Brief Maker is a Plan tool, so the brief's header is the
-     Plan band — ink, with the figures drawn light on it — and the brief itself
-     sits on paper. Every screen asks one question, with one box and one
-     primary action (--go: the studio's orange, or the kind's own accent).
+     One look: the brief is made of paper. Warm, fibrous paper on a warm desk;
+     the brief's header is a manila folder cover with a tab, its title on a
+     pasted label; the brief itself is a sheet tucked under it, the edges of
+     the pad beneath; buttons are pressed card; the crew speak on paper slips;
+     the parts being written are index cards. Every surface is lit from the top
+     left and lifts off what it sits on.
 
-     The page takes the look of the kind of brief the person picks (see "the
-     three kinds of brief" below): Paper, Studio or Brand.
+     Dark is the same paper in low light (the OS's colour scheme, pushed in as
+     data-color-scheme, or the OS preference): dark warm stock, light warm ink,
+     the same grain and the same lift.
 
      Two token layers, as in the shell:
      - design tokens (--paper, --ink, --plan, --create …)
-     - the legacy names the immersive brand theme overrides inline on <html>
-       (--bg, --surface, --border, --text, --muted, --accent, --accent2,
-       --btnText, --fieldFont, --bg2). Everything themeable reads those. */
+     - the legacy names the components read (--bg, --surface, --border, --text,
+       --muted, --accent, --btnText, --fieldFont, --bg2). */
   :root{
     color-scheme:light;
-    --paper:#FFFFFF; --card:#FFFFFF; --soft:#F5F6F8; --soft-2:#F2F3F6;
-    --line:#D6DAE2; --line-soft:#E7E9EE;
-    --ink:#14161B; --ink2:#4A4F5C; --ink3:#737987;
-    --create:#FF4F2E; --create-soft:#FFF1EE; --create-ink:#B8321A; --produce:#8B919E; --learn:#DADDE3;
-    --plan:#14161B; --plan-fg:#FFFFFF; --plan-eye:#FFFFFF; --produce-eye:#14161B; --learn-eye:#14161B;
-    --green:#22C55E; --green-soft:#DCFCE7; --green-ink:#146C35;
-    --amber-dot:#F5A524; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
-    --frost:rgba(255,255,255,.82);
-    --shadow:0 10px 30px rgba(20,30,60,.08); --shadow-pill:0 1px 3px rgba(20,22,27,.1);
+    /* the desk, the sheet, and the card things are cut from */
+    --desk:#EFE7D8; --paper:#FBF7EE; --card:#FCF9F2; --soft:#F1EADC; --soft-2:#EAE1CF;
+    --line:#D9CDB6; --line-soft:#E6DCCA;
+    --ink:#221D15; --ink2:#4A4236; --ink3:#71675A;
+    --create:#C9462A; --create-2:#A9371F; --create-soft:#F5E1D5; --create-ink:#9E321A; --produce:#8F8676; --learn:#DDD3C1;
+    --plan:#221D15; --plan-fg:#FCF9F2; --plan-eye:#FCF9F2; --produce-eye:#221D15; --learn-eye:#221D15;
+    --green:#5E8A35; --green-soft:#E4EBD2; --green-ink:#3D5A1E;
+    --amber-dot:#C98A1B; --amber-soft:#F4E7C6; --amber-ink:#704C00;
+    /* the folder: manila card, its darker fold, its edge, and what is written on it */
+    --folder:#E7D5AC; --folder-2:#DCC48F; --folder-edge:#C4AA75; --folder-ink:#2E2416;
+    --label:#FDFAF3;
+    --frost:rgba(252,249,242,.85);
+    /* light from the top left; shadows are warm, never grey */
+    --lift:0 1px 1px rgba(70,50,20,.10),0 2px 4px -1px rgba(70,50,20,.10),0 14px 26px -16px rgba(70,50,20,.38);
+    --lift-sm:0 1px 1px rgba(70,50,20,.12),0 4px 10px -6px rgba(70,50,20,.32);
+    --edge-hi:inset 0 1px 0 rgba(255,255,255,.7);
+    --shadow:var(--lift); --shadow-pill:var(--lift-sm);
     --ease:cubic-bezier(.2,.8,.2,1);
-    --r-pill:999px; --r-card:12px; --r-panel:18px;
+    --r-pill:999px; --r-card:10px; --r-panel:14px;
     --ui:"Geist","Helvetica Neue",Arial,system-ui,sans-serif;
     --serif:'Iowan Old Style','Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;
     --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    /* paper fibres: a fine noise, warm brown, a few per cent */
+    --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .42  0 0 0 0 .33  0 0 0 0 .2  0 0 0 .085 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    /* longer fibres, for the folder's card */
+    --fibre:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.02 .6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .38  0 0 0 0 .28  0 0 0 0 .12  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
 
     /* legacy / themeable names → design tokens */
-    --bg:var(--paper); --bg2:var(--soft); --surface:var(--card); --border:var(--line);
+    --bg:var(--desk); --bg2:var(--soft); --surface:var(--card); --border:var(--line);
     --text:var(--ink); --muted:var(--ink2); --accent:var(--create); --accent2:var(--create);
-    --btnText:#FFFFFF; --fieldFont:var(--ui);
-    /* the screen's one primary action */
-    --go:var(--create); --goText:#FFFFFF;
-    /* a faint paper grain (Paper brief) */
-    --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .38  0 0 0 0 .25  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    --btnText:#FFFFFF; --fieldFont:var(--serif);
+    /* the screen's one primary action: a pressed card in stamp red */
+    --go:var(--create); --go-2:var(--create-2); --goText:#FFF8F0;
     --ok:var(--green-ink); --amber:var(--amber-ink); --indigo:var(--ink);
-    /* roles that follow the immersive theme when one is applied (see below) */
     --faint:var(--ink3); --tint:var(--soft); --tint-2:var(--soft-2); --rule:var(--line-soft);
-    --sec:var(--ink3); --primary:var(--ink); --primaryText:var(--paper); --sel:var(--surface);
-    /* the Plan band: ground, what is written on it, and its quieter lines */
-    --zone-bg:var(--plan); --zone-fg:var(--plan-fg);
-    --zone-2:rgba(255,255,255,.68); --zone-3:rgba(255,255,255,.5); --zone-line:rgba(255,255,255,.14); --zone-tint:rgba(255,255,255,.08);
+    --sec:var(--create-ink); --primary:var(--ink); --primaryText:var(--card); --sel:var(--surface);
+    /* the folder band: ground, what is written on it, and its quieter lines */
+    --zone-bg:var(--folder); --zone-fg:var(--folder-ink);
+    --zone-2:rgba(46,36,22,.74); --zone-3:rgba(46,36,22,.62); --zone-line:rgba(46,36,22,.2); --zone-tint:rgba(255,250,236,.4);
   }
-  /* The shell pushes its colour scheme in (clan:colorscheme → data-color-scheme);
-     with no attribute the OS preference decides. Dark inverts the ink/paper
-     axis, and Plan with it: the band goes light, as it does on the home screen. */
+  /* Dark paper: the same sheets in low light. */
   @media (prefers-color-scheme:dark){
     :root:not([data-color-scheme="light"]){
       color-scheme:dark;
-      --paper:#0F1114; --card:#161A1F; --soft:#1B1F25; --soft-2:#22262D;
-      --line:#2A2F38; --line-soft:#22262D;
-      --ink:#F2F3F5; --ink2:#A6ACB8; --ink3:#7A808C;
-      --create-soft:#2A1612; --create-ink:#FF8A70; --learn:#3A3F48;
-      --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
-      --zone-2:rgba(15,17,20,.7); --zone-3:rgba(15,17,20,.52); --zone-line:rgba(15,17,20,.14); --zone-tint:rgba(15,17,20,.07);
-      --green-soft:#10281A; --green-ink:#6EE7A0; --amber-soft:#2A2110; --amber-ink:#F7C361;
-      --frost:rgba(15,17,20,.8);
-      --shadow:0 10px 30px rgba(0,0,0,.4); --shadow-pill:0 1px 3px rgba(0,0,0,.5);
+      --desk:#1B1814; --paper:#2A251F; --card:#2E2922; --soft:#26221C; --soft-2:#332D25;
+      --line:#4A4137; --line-soft:#3B342B;
+      --ink:#EEE6D6; --ink2:#CDBFA9; --ink3:#A39681;
+      --create:#E0704C; --create-2:#C65A37; --create-soft:#3B2419; --create-ink:#F2A584; --learn:#4A4137;
+      --plan:#EEE6D6; --plan-fg:#2A251F; --plan-eye:#2A251F; --produce-eye:#EEE6D6; --learn-eye:#EEE6D6;
+      --green:#8DB35E; --green-soft:#28301D; --green-ink:#B8D58F; --amber-soft:#382D16; --amber-ink:#EAC67A;
+      --folder:#4B3F2D; --folder-2:#3F3425; --folder-edge:#2C241A; --folder-ink:#F1E7D2; --label:#332D25;
+      --frost:rgba(42,37,31,.85);
+      --lift:0 1px 1px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.35),0 16px 28px -16px rgba(0,0,0,.7);
+      --lift-sm:0 1px 1px rgba(0,0,0,.4),0 4px 10px -6px rgba(0,0,0,.6);
+      --edge-hi:inset 0 1px 0 rgba(255,240,215,.07);
+      --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .95  0 0 0 0 .88  0 0 0 0 .74  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      --fibre:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.02 .6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .95  0 0 0 0 .85  0 0 0 0 .66  0 0 0 .05 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
+      --goText:#FFF6EC;
+      --zone-2:rgba(241,231,210,.78); --zone-3:rgba(241,231,210,.62); --zone-line:rgba(241,231,210,.18); --zone-tint:rgba(241,231,210,.07);
     }
   }
   :root[data-color-scheme="dark"]{
     color-scheme:dark;
-    --paper:#0F1114; --card:#161A1F; --soft:#1B1F25; --soft-2:#22262D;
-    --line:#2A2F38; --line-soft:#22262D;
-    --ink:#F2F3F5; --ink2:#A6ACB8; --ink3:#7A808C;
-    --create-soft:#2A1612; --create-ink:#FF8A70; --learn:#3A3F48;
-    --plan:#F2F3F5; --plan-fg:#0F1114; --plan-eye:#0F1114; --learn-eye:#F2F3F5;
-    --zone-2:rgba(15,17,20,.7); --zone-3:rgba(15,17,20,.52); --zone-line:rgba(15,17,20,.14); --zone-tint:rgba(15,17,20,.07);
-    --green-soft:#10281A; --green-ink:#6EE7A0; --amber-soft:#2A2110; --amber-ink:#F7C361;
-    --frost:rgba(15,17,20,.8);
-    --shadow:0 10px 30px rgba(0,0,0,.4); --shadow-pill:0 1px 3px rgba(0,0,0,.5);
-  }
-  /* ---------- the three kinds of brief ----------
-     The kind the person picks is the page's own look, set as data-kind on
-     <html>: paper (brief_style basic), studio (creative), brand (immersive).
-     Paper and Studio are light in either scheme, as a sheet of paper is;
-     Brand is the brand theme, written inline (below). */
-  :root[data-kind="paper"],:root[data-kind="studio"]{
-    color-scheme:light;
-    --create-soft:#FFF1EE; --create-ink:#B8321A; --learn:#DADDE3; --learn-eye:#14161B;
-    --zone-2:rgba(255,255,255,.7); --zone-3:rgba(255,255,255,.52); --zone-line:rgba(255,255,255,.16); --zone-tint:rgba(255,255,255,.08);
-    --green-soft:#DCFCE7; --green-ink:#146C35; --amber-soft:#FEF3DC; --amber-ink:#8A5A00;
-    --frost:rgba(255,255,255,.82);
-    --shadow:0 10px 30px rgba(40,30,10,.08); --shadow-pill:0 1px 3px rgba(22,20,15,.1);
-  }
-  /* Paper: warm off-white with a faint grain and near-black warm ink. Never
-     bright white. */
-  :root[data-kind="paper"]{
-    --paper:#F4EFE4; --card:#FAF6EE; --soft:#EFE9DD; --soft-2:#EAE3D5; --line:#DCD3C2; --line-soft:#E6DECF;
-    --ink:#16140F; --ink2:#3A362E; --ink3:#6B6456;
-    --plan:#16140F; --plan-fg:#FAF6EE; --plan-eye:#FAF6EE;
-    --fieldFont:var(--serif);
-  }
-  /* Studio: soft Napkin colours, nothing too bright or too dark. Slate blue
-     is its accent and its button. */
-  :root[data-kind="studio"]{
-    --paper:#F3F1EC; --card:#FFFFFF; --soft:#ECE8DF; --soft-2:#E7E3D9; --line:#DDD8CC; --line-soft:#E7E3D9;
-    --ink:#1C1F26; --ink2:#4A5A8C; --ink3:#6C7282;
-    --plan:#1C1F26; --plan-fg:#FFFFFF; --plan-eye:#FFFFFF;
-    --accent:#4A5A8C; --go:#4A5A8C; --sec:#4A5A8C;
-  }
-  /* Immersive: the brand theme is written inline on <html> (--bg, --text …).
-     Derive the soft roles from it so every surface follows the brand, the band
-     included: it becomes the brand's raised surface. */
-  :root[style*="--bg:"]{
-    --go:var(--accent); --goText:var(--btnText);
-    --faint:var(--muted);
-    --tint:color-mix(in srgb,var(--text) 6%,var(--surface));
-    --tint-2:color-mix(in srgb,var(--text) 6%,var(--bg));
-    --sel:color-mix(in srgb,var(--text) 18%,var(--bg));
-    --rule:color-mix(in srgb,var(--border) 70%,var(--bg));
-    --sec:var(--accent); --primary:var(--accent); --primaryText:var(--btnText);
-    --ok:var(--green); --amber:var(--amber-dot);
-    --zone-bg:var(--surface); --zone-fg:var(--text);
-    --zone-2:var(--muted); --zone-3:var(--muted); --zone-line:var(--border); --zone-tint:color-mix(in srgb,var(--text) 7%,transparent);
+    --desk:#1B1814; --paper:#2A251F; --card:#2E2922; --soft:#26221C; --soft-2:#332D25;
+    --line:#4A4137; --line-soft:#3B342B;
+    --ink:#EEE6D6; --ink2:#CDBFA9; --ink3:#A39681;
+    --create:#E0704C; --create-2:#C65A37; --create-soft:#3B2419; --create-ink:#F2A584; --learn:#4A4137;
+    --plan:#EEE6D6; --plan-fg:#2A251F; --plan-eye:#2A251F; --produce-eye:#EEE6D6; --learn-eye:#EEE6D6;
+    --green:#8DB35E; --green-soft:#28301D; --green-ink:#B8D58F; --amber-soft:#382D16; --amber-ink:#EAC67A;
+    --folder:#4B3F2D; --folder-2:#3F3425; --folder-edge:#2C241A; --folder-ink:#F1E7D2; --label:#332D25;
+    --frost:rgba(42,37,31,.85);
+    --lift:0 1px 1px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.35),0 16px 28px -16px rgba(0,0,0,.7);
+    --lift-sm:0 1px 1px rgba(0,0,0,.4),0 4px 10px -6px rgba(0,0,0,.6);
+    --edge-hi:inset 0 1px 0 rgba(255,240,215,.07);
+    --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .95  0 0 0 0 .88  0 0 0 0 .74  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    --fibre:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.02 .6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .95  0 0 0 0 .85  0 0 0 0 .66  0 0 0 .05 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>");
+    --goText:#FFF6EC;
+    --zone-2:rgba(241,231,210,.78); --zone-3:rgba(241,231,210,.62); --zone-line:rgba(241,231,210,.18); --zone-tint:rgba(241,231,210,.07);
   }
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
-  body{background-color:var(--bg);color:var(--text);font-family:var(--ui);font-size:14.5px;-webkit-font-smoothing:antialiased;line-height:1.5;min-height:100%;transition:background-color .45s var(--ease),color .3s var(--ease)}
-  body.grad{background:linear-gradient(155deg,var(--bg) 0%,var(--bg2) 100%);background-attachment:fixed}
-  :root[data-kind="paper"] body{background-image:var(--grain)}
-  /* Studio's ground: soft pale patches of blue, green, yellow and lilac. */
-  body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .45s var(--ease);
-    background:radial-gradient(300px 220px at 10% 20%,#DCE6FB 0,transparent 70%),radial-gradient(280px 210px at 90% 16%,#DDF1E6 0,transparent 70%),
-      radial-gradient(320px 240px at 82% 88%,#FBEFD2 0,transparent 70%),radial-gradient(290px 220px at 12% 84%,#EFE9F8 0,transparent 70%)}
-  :root[data-kind="studio"] body::before{opacity:1}
+  /* What the OS's glass chrome covers (clan:insets): the page starts below the
+     bar, ends above the footer and keeps clear of the rail; it scrolls under them. */
+  body{padding:var(--clan-top,0px) var(--clan-right,0px) var(--clan-bottom,0px) 0}
+  html{scroll-padding-top:var(--clan-top,0px)}
+  /* The desk: warm paper with its grain, lit from the top left, its corners a little darker. */
+  body{background-color:var(--bg);background-image:var(--grain),radial-gradient(130% 90% at 15% 0%,color-mix(in srgb,var(--paper) 70%,transparent),transparent 62%),radial-gradient(150% 120% at 50% 45%,transparent 60%,rgba(70,50,20,.07) 100%);background-attachment:fixed;color:var(--text);font-family:var(--ui);font-size:14.5px;-webkit-font-smoothing:antialiased;line-height:1.5;min-height:100%;transition:background-color .45s var(--ease),color .3s var(--ease)}
   button,input,select,textarea{font:inherit;color:inherit}
   :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
   [hidden]{display:none!important}
@@ -149,17 +124,25 @@
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .app{max-width:1120px;margin:0 auto;padding:24px 28px 110px;min-height:100vh;display:flex;flex-direction:column;position:relative;z-index:1}
 
-  /* ---------- the Plan band ----------
-     Inside it the figures are redrawn for the ground, the way the design
-     draws them on Plan: ink bodies and legs go light, their eyes go to the
-     ground. Slate and mist bodies keep their tone. */
-  .band{background:var(--zone-bg);color:var(--zone-fg);border-radius:var(--r-panel);position:relative;
-    --ink:var(--zone-fg); --plan:var(--zone-fg); --plan-eye:var(--zone-bg)}
+  /* ---------- the folder ----------
+     The brief's header is the cover of a manila folder: card with long
+     fibres, lit from the top left, a tab on its top edge, a crease along the
+     fold, and the brief tucked out from under it. The figures are drawn in
+     the folder's ink, their eyes in its card. */
+  .band{position:relative;color:var(--zone-fg);border-radius:4px 14px 6px 6px;
+    background:var(--fibre),var(--grain),radial-gradient(120% 140% at 12% 0%,rgba(255,250,236,.45),transparent 55%),linear-gradient(172deg,var(--folder) 0%,var(--folder-2) 100%);
+    border:1px solid var(--folder-edge);
+    box-shadow:inset 0 1px 0 rgba(255,250,236,.55),inset 0 -1px 0 rgba(0,0,0,.08),0 1px 1px rgba(70,50,20,.14),0 20px 34px -20px rgba(70,50,20,.5);
+    --ink:var(--zone-fg); --plan:var(--zone-fg); --plan-eye:var(--folder)}
+  :root[data-color-scheme="dark"] .band{box-shadow:inset 0 1px 0 rgba(255,240,215,.1),inset 0 -1px 0 rgba(0,0,0,.3),0 1px 1px rgba(0,0,0,.4),0 20px 34px -20px rgba(0,0,0,.8)}
+  @media (prefers-color-scheme:dark){:root:not([data-color-scheme="light"]) .band{box-shadow:inset 0 1px 0 rgba(255,240,215,.1),inset 0 -1px 0 rgba(0,0,0,.3),0 1px 1px rgba(0,0,0,.4),0 20px 34px -20px rgba(0,0,0,.8)}}
+  /* the tab, cut from the same card, on the folder's top edge */
+  .band::before{content:"";position:absolute;left:22px;top:-15px;width:min(210px,40%);height:16px;border-radius:9px 9px 0 0;
+    background:var(--fibre),linear-gradient(180deg,color-mix(in srgb,var(--folder) 88%,white),var(--folder));
+    border:1px solid var(--folder-edge);border-bottom:0;box-shadow:inset 0 1px 0 rgba(255,250,236,.5)}
+  /* the crease the folder bends along */
+  .band::after{content:"";position:absolute;left:14px;right:14px;bottom:9px;height:0;border-top:1px solid rgba(70,50,20,.14);box-shadow:0 1px 0 rgba(255,250,236,.35);pointer-events:none}
   .band .agent-figure .af-shadow{opacity:.18}
-  /* Immersive: the brand's ground can be anything, so figures take their ink
-     from the brand's text and their eyes from its ground. */
-  :root[style*="--bg:"] .agent-figure{--ink:var(--text);--plan:var(--text);--plan-eye:var(--bg)}
-  :root[style*="--bg:"] .flag .agent-figure,:root[style*="--bg:"] .note-v .agent-figure{--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
   .ident{display:inline-flex;align-items:center;gap:9px;font-size:13px;font-weight:600;letter-spacing:-.01em}
   .ident svg{width:22px;height:22px;flex:none;display:block}
   .ident .kind{font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin-left:4px}
@@ -168,23 +151,24 @@
   /* ---------- the crew speaks: a speech bubble, signed ----------
      First person, from the agent doing the work. The tail inherits the
      bubble's ground and border, so a variant only restyles the bubble. */
-  .say{position:relative;display:block;background:var(--surface);color:var(--text);border:1.5px solid var(--text);border-radius:16px;padding:10px 14px;font-size:15px;line-height:1.42;text-align:left;box-shadow:3px 3px 0 var(--text);transition:background-color .35s var(--ease),border-color .35s var(--ease),color .35s var(--ease),box-shadow .35s var(--ease)}
-  .say::after{content:"";position:absolute;left:22px;bottom:-8px;width:13px;height:13px;background:inherit;border:0 solid;border-color:inherit;border-right-width:1.5px;border-bottom-width:1.5px;transform:rotate(45deg) skew(8deg,8deg)}
+  /* a slip of paper, its corner tail cut from the same sheet */
+  .say{position:relative;display:block;background:var(--grain),linear-gradient(180deg,var(--card),color-mix(in srgb,var(--card) 92%,var(--soft-2)));color:var(--text);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:15px;line-height:1.42;text-align:left;box-shadow:var(--edge-hi),var(--lift-sm);transition:background-color .35s var(--ease),border-color .35s var(--ease),color .35s var(--ease),box-shadow .35s var(--ease)}
+  .say::after{content:"";position:absolute;left:22px;bottom:-7px;width:12px;height:12px;background:var(--card);border:0 solid;border-color:inherit;border-right-width:1px;border-bottom-width:1px;transform:rotate(45deg) skew(8deg,8deg)}
   .say.up::after{bottom:auto;top:-8px;transform:rotate(225deg) skew(8deg,8deg)}
   .say.left::after{left:-8px;bottom:14px;transform:rotate(135deg) skew(8deg,8deg)}
   .say .sayer{display:block;font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
   .say b{font-weight:700}
   /* the one working now, and the one who needs the person */
-  .say.now{border-color:var(--go);box-shadow:3px 3px 0 var(--go)}
-  .say.warn{border-color:var(--create);box-shadow:3px 3px 0 var(--create)}
-  /* On the band the bubble is drawn in the band's colours. */
-  .band .say{background:color-mix(in srgb,var(--zone-fg) 9%,var(--zone-bg));color:var(--zone-fg);border-color:var(--zone-fg);box-shadow:3px 3px 0 rgba(0,0,0,.55)}
-  .band .say .sayer{color:var(--zone-3)}
-  .band .say.warn{border-color:var(--create)}
+  .say.now{border-color:color-mix(in srgb,var(--go) 55%,var(--line));box-shadow:var(--edge-hi),inset 3px 0 0 var(--go),var(--lift-sm)}
+  .say.warn{border-color:color-mix(in srgb,var(--create) 60%,var(--line));box-shadow:var(--edge-hi),inset 3px 0 0 var(--create),var(--lift-sm)}
+  /* On the folder the slips are paper laid on card. */
+  .band .say{color:var(--ink)}
+  .band .say .sayer{color:var(--faint)}
   /* answers are buttons */
   .answers{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-  .answers button{font-size:14px;font-weight:600;border:1.5px solid currentColor;background:transparent;color:inherit;border-radius:12px;padding:8px 14px;min-height:40px;cursor:pointer;transition:box-shadow .15s var(--ease)}
-  .answers button:hover{box-shadow:3px 3px 0 currentColor}
+  .answers button{font-size:14px;font-weight:600;border:1px solid var(--line);background:linear-gradient(180deg,var(--card),var(--soft));color:inherit;border-radius:10px;padding:8px 14px;min-height:40px;cursor:pointer;box-shadow:var(--edge-hi),0 1px 0 rgba(70,50,20,.12);transition:box-shadow .15s var(--ease),transform .15s var(--ease)}
+  .answers button:hover{box-shadow:var(--edge-hi),var(--lift-sm)}
+  .answers button:active{transform:translateY(1px);box-shadow:inset 0 1px 2px rgba(70,50,20,.18)}
 
   /* ---------- start: one question, one box, the crew standing on it ---------- */
   .intake{flex:1;display:flex;flex-direction:column;align-items:center;gap:22px;padding:4px 0 24px}
@@ -192,7 +176,6 @@
   .hello{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;max-width:680px}
   .hello .h1{font-size:clamp(32px,4.6vw,48px);font-weight:800;letter-spacing:-.035em;line-height:1.04;text-wrap:balance;transition:color .35s var(--ease)}
   .hello .lede{color:var(--muted);font-size:17px;line-height:1.5;max-width:560px;transition:color .35s var(--ease)}
-  .kindline{display:block;margin-top:8px;font-weight:600;color:var(--go);transition:color .35s var(--ease)}
   .stage{width:min(760px,100%);display:flex;flex-direction:column}
 .madefrom{margin-top:6px;font-size:13.5px;color:var(--ink2)}
 .madefrom b{color:var(--ink);font-weight:600}
@@ -209,25 +192,23 @@
   .onbox .m:last-child .tip .say::after{left:auto;right:22px}
   .onbox .m:hover .tip,.onbox .m:focus .tip{opacity:1}
   .onbox:has(.m:not(.lead):hover) .first,.onbox:has(.m:not(.lead):focus) .first{opacity:0}
-  .composer{position:relative;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;background:var(--surface);border:2px solid var(--text);border-radius:28px;padding:8px 8px 8px 22px;box-shadow:0 14px 40px -18px rgba(20,22,27,.45);transition:background-color .35s var(--ease),border-color .35s var(--ease),box-shadow .2s var(--ease)}
-  .composer:focus-within{box-shadow:0 0 0 4px color-mix(in srgb,var(--go) 24%,transparent),0 14px 40px -18px rgba(20,22,27,.45)}
+  /* the box is a card laid on the desk: you write on it */
+  .composer{position:relative;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;background:var(--grain),linear-gradient(180deg,var(--paper),var(--card));border:1px solid var(--line);border-radius:18px;padding:8px 8px 8px 22px;box-shadow:var(--edge-hi),var(--lift);transition:background-color .35s var(--ease),border-color .35s var(--ease),box-shadow .2s var(--ease)}
+  .composer:focus-within{border-color:color-mix(in srgb,var(--go) 45%,var(--line));box-shadow:var(--edge-hi),0 0 0 4px color-mix(in srgb,var(--go) 16%,transparent),var(--lift)}
   .composer textarea{flex:1 1 260px;min-width:0;height:52px;min-height:52px;max-height:320px;resize:none;border:none;outline:none;background:transparent;color:var(--text);font-size:18px;line-height:1.45;padding:13px 0;align-self:center}
   .composer textarea::placeholder{color:var(--faint)}
-  .attach{width:52px;height:52px;border-radius:50%;background:var(--tint-2);color:var(--text);display:grid;place-items:center;cursor:pointer;flex:none;transition:background-color .2s var(--ease)}
-  .attach:hover{background:var(--sel)}
+  .attach{width:52px;height:52px;border-radius:50%;background:linear-gradient(180deg,var(--card),var(--soft-2));border:1px solid var(--line);color:var(--text);display:grid;place-items:center;cursor:pointer;flex:none;box-shadow:var(--edge-hi),0 1px 0 rgba(70,50,20,.12);transition:box-shadow .2s var(--ease)}
+  .attach:hover{box-shadow:var(--edge-hi),var(--lift-sm)}
   .attach .ic{width:21px;height:21px}
   .attach:focus-within{outline:3px solid var(--accent);outline-offset:2px}
-  /* Brand brief: the brand's ground can be dark, and a disc a shade darker
-     than the box reads as a hole. It is a raised, ringed button instead. */
-  :root[style*="--bg:"] .attach{background:color-mix(in srgb,var(--text) 14%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--text) 50%,transparent)}
-  :root[style*="--bg:"] .attach:hover{background:color-mix(in srgb,var(--text) 24%,var(--surface))}
-  .go{cursor:pointer;border:none;border-radius:var(--r-pill);background:var(--go);color:var(--goText);min-height:52px;padding:14px 24px;font-size:16.5px;font-weight:600;letter-spacing:-.01em;display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;flex:none;transition:background-color .35s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease),opacity .2s var(--ease)}
-  .go:hover{box-shadow:0 2px 6px rgba(20,32,64,.1),0 14px 34px -10px color-mix(in srgb,var(--go) 60%,transparent)}
-  .go:active{transform:translateY(1px)}
+  /* the one primary action: a raised stamp-red card that presses in */
+  .go{cursor:pointer;border:1px solid var(--go-2);border-radius:14px;background:linear-gradient(180deg,color-mix(in srgb,var(--go) 88%,white),var(--go) 55%,var(--go-2));color:var(--goText);text-shadow:0 1px 0 rgba(0,0,0,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 2px 0 var(--go-2),0 8px 16px -10px rgba(120,40,20,.55);min-height:52px;padding:14px 24px;font-size:16.5px;font-weight:600;letter-spacing:-.01em;display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;flex:none;transition:background-color .35s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease),opacity .2s var(--ease)}
+  .go:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 2px 0 var(--go-2),0 12px 22px -10px rgba(120,40,20,.6)}
+  .go:active{transform:translateY(2px);box-shadow:inset 0 2px 3px rgba(0,0,0,.2),0 0 0 var(--go-2)}
   .go:disabled{opacity:.5;cursor:default;box-shadow:none}
   .chips{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%;padding:0 8px 6px 0}
   .chips:empty{display:none}
-  .chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;background:var(--tint);color:var(--text);border:1px solid var(--rule);border-radius:var(--r-pill);padding:4px 6px 4px 10px;max-width:100%}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;background:var(--grain),var(--soft);color:var(--text);border:1px solid var(--line);border-radius:6px;box-shadow:var(--edge-hi),0 1px 0 rgba(70,50,20,.1);padding:4px 6px 4px 10px;max-width:100%}
   .chip .ic{width:13px;height:13px;color:var(--faint)}
   .chip .x{cursor:pointer;color:var(--faint);width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;border:0;background:none}
   .chip .x:hover{background:var(--surface);color:var(--text)}
@@ -235,36 +216,6 @@
   #intakeStatus:empty{display:none}
   .note{font-size:13px;color:var(--faint);line-height:1.5}
   .note.err{color:var(--create-ink)}
-  .kinds-q{margin-top:34px;text-align:center;font-weight:600;font-size:17px}
-  .kinds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}
-  .kpick{text-align:left;background:var(--surface);border:2px solid var(--rule);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:background-color .35s var(--ease),border-color .2s var(--ease),box-shadow .2s var(--ease)}
-  .kpick:hover{border-color:var(--faint)}
-  .kpick[aria-pressed="true"]{border-color:var(--text);box-shadow:4px 4px 0 var(--text)}
-  .kpick b{font-size:16px;font-weight:700;letter-spacing:-.01em}
-  .kpick .kd{color:var(--muted);font-size:13.5px;line-height:1.4}
-  .kpick .kt{display:flex;flex-direction:column;gap:3px;min-width:0}
-  .drop{margin-top:14px;font-size:14px;color:var(--faint);text-align:center}
-  /* Small pictures of each kind's result: fixed colours, as the result has
-     them; the brand one takes the brand's colours (--kb-*, set from theme). */
-  .kpv{height:96px;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:5px;overflow:hidden;flex:none}
-  .kpv i{display:block;height:5px;border-radius:3px}
-  .kpv i.h{height:9px;width:60%}
-  .kpv em{display:block;height:18px;border-radius:5px;background:#E9EEFB}
-  .kpics{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:auto}
-  .kpics u{height:26px;border-radius:4px}
-  .kp-paper{background:var(--grain),#FAF6EE;border:1px solid #E2DACB}
-  .kp-paper i{background:#8C8578}
-  .kp-paper i.h{background:#16140F}
-  .kp-studio{background:#F3F1EC;border:1px solid #E4E0D6}
-  .kp-studio i{background:#B9BEC8}
-  .kp-studio i.h{background:#4A5A8C}
-  .kp-studio u{background:#DCE6FB}.kp-studio u:nth-child(2){background:#DDF1E6}.kp-studio u:nth-child(3){background:#FBEFD2}
-  .kp-brand{background:linear-gradient(135deg,var(--kb-bg,#0F1114),var(--kb-bg2,#1B1F25));border:1px solid color-mix(in srgb,var(--kb-tx,#F2F3F5) 14%,transparent)}
-  .kp-brand i{background:color-mix(in srgb,var(--kb-tx,#F2F3F5) 32%,var(--kb-bg,#0F1114))}
-  .kp-brand i.h{background:var(--kb-ac,#FF4F2E)}
-  .kp-brand u{background:color-mix(in srgb,var(--kb-ac,#FF4F2E) 75%,var(--kb-bg,#0F1114))}
-  .kp-brand u:nth-child(2){background:color-mix(in srgb,var(--kb-ac,#FF4F2E) 45%,var(--kb-bg,#0F1114))}
-  .kp-brand u:nth-child(3){background:color-mix(in srgb,var(--kb-tx,#F2F3F5) 30%,var(--kb-bg,#0F1114))}
   .nomw{display:flex;gap:12px;align-items:flex-end;margin-top:14px}
   .nomw .agent-figure{width:40px;height:53px;flex:none}
   .nomw .say{flex:1;min-width:0}
@@ -284,11 +235,12 @@
   .mate .st{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:14px;color:var(--muted)}
   .mate .st.ok{color:var(--ok)}
   .mate .st.err{color:var(--create-ink)}
-  .mate .pbar{display:block;height:6px;border-radius:6px;background:var(--tint-2);overflow:hidden}
+  .mate .pbar{display:block;height:7px;border-radius:6px;background:var(--tint-2);box-shadow:inset 0 1px 2px rgba(70,50,20,.2);overflow:hidden}
   .mate .pbar i{display:block;height:100%;background:var(--go);border-radius:6px;transition:width .4s var(--ease)}
   .mate.next{opacity:.75}
   .procActs{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   .procActs:empty{display:none}
+  .procActs .stopq{flex-basis:100%;text-align:center;font-size:15px;color:var(--ink2)}
   .parts{width:min(980px,100%)}
   .parts summary{cursor:pointer;display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:14px;font-weight:500;color:var(--muted)}
   .parts summary::before{content:"";width:0;height:0;border-left:6px solid currentColor;border-top:4.5px solid transparent;border-bottom:4.5px solid transparent;transition:transform .2s var(--ease)}
@@ -297,7 +249,8 @@
   .parts .tiles{margin-top:8px}
   .later{font-size:14px;color:var(--muted);text-align:center;max-width:62ch}
   .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
-  .tile{display:flex;gap:10px;align-items:flex-start;padding:11px 12px 12px 8px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);min-height:74px;transition:border-color .3s var(--ease),background .3s var(--ease)}
+  /* each part being written is an index card: a ruled head line, lifted off the desk */
+  .tile{display:flex;gap:10px;align-items:flex-start;padding:11px 12px 12px 8px;border:1px solid var(--line);border-radius:4px;background:var(--grain),linear-gradient(180deg,transparent 30px,color-mix(in srgb,var(--create) 30%,transparent) 30px,color-mix(in srgb,var(--create) 30%,transparent) 31px,transparent 31px),var(--card);min-height:74px;box-shadow:var(--edge-hi),var(--lift-sm);transition:border-color .3s var(--ease),background .3s var(--ease)}
   .tile .agent-figure{width:24px;height:32px;margin-top:2px}
   .tile .tb{min-width:0;flex:1}
   .tile .ts{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
@@ -307,7 +260,7 @@
   .tile.work .tv::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(4,end) infinite}
   .tile.done{border-color:var(--border)}
   .tile.done .tv{color:var(--text)}
-  .tile.skip{background:transparent;border-style:dashed}
+  .tile.skip{background:transparent;border-style:dashed;box-shadow:none}
   .tile.kept{background:var(--tint)}
   .tile.wait{opacity:.72}
   .tile.fail{border-color:transparent;background:var(--create-soft);color:var(--create-ink)}
@@ -325,21 +278,16 @@
   .spacer{flex:1}
   .proj.derived{opacity:.82}
   .dtitle{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.6;margin-top:6px}
-  .proj{font-size:clamp(28px,4.2vw,44px);font-weight:800;letter-spacing:-.045em;line-height:1.04;text-wrap:balance;max-width:24ch;margin-top:10px}
+  /* the title, typed on a label pasted on the folder */
+  .proj{display:table;font-size:clamp(28px,4.2vw,44px);font-weight:800;letter-spacing:-.045em;line-height:1.04;text-wrap:balance;max-width:24ch;margin-top:12px;color:var(--ink);
+    background:var(--grain),linear-gradient(180deg,var(--label),color-mix(in srgb,var(--label) 94%,var(--soft-2)));padding:12px 18px 14px;border:1px solid color-mix(in srgb,var(--folder-edge) 70%,var(--line));border-radius:3px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 1px 1px rgba(70,50,20,.16),0 8px 14px -10px rgba(70,50,20,.5)}
   .cli{color:var(--zone-2);font-size:15px;margin-top:6px}
   .cli:empty{display:none}
-  /* the kind of brief, as small pictures of it */
-  .lookpick{display:flex;gap:8px;flex-wrap:wrap}
-  .lookpick button{font-size:13px;font-weight:500;color:var(--zone-fg);background:var(--zone-tint);border:1.5px solid var(--zone-line);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:6px;align-items:flex-start;cursor:pointer;width:122px;transition:border-color .2s var(--ease),background-color .2s var(--ease)}
-  .lookpick button:hover{border-color:var(--zone-2)}
-  .lookpick button[aria-pressed="true"]{border-color:var(--zone-fg);background:color-mix(in srgb,var(--zone-fg) 13%,transparent)}
-  .lookpick .kpv{width:100%;height:46px;padding:7px;gap:4px;border-radius:8px}
-  .lookpick .kpv i{height:4px}
-  .lookpick .kpv i.h{height:6px}
-  .lookpick .kpics u{height:12px;border-radius:3px}
-  .lookpick .kpv em{height:10px;border-radius:3px}
-  .bghost{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;background:transparent;border:1px solid var(--zone-line);color:var(--zone-fg);border-radius:var(--r-pill);padding:8px 14px;min-height:40px;cursor:pointer;white-space:nowrap;transition:border-color .2s var(--ease),background .2s var(--ease)}
-  .bghost:hover{border-color:var(--zone-2);background:var(--zone-tint)}
+  /* buttons on the folder: paper tabs laid on the card */
+  .bghost{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;background:var(--grain),linear-gradient(180deg,var(--card),var(--soft));border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 14px;min-height:40px;cursor:pointer;white-space:nowrap;box-shadow:var(--edge-hi),0 1px 1px rgba(70,50,20,.16),0 4px 8px -6px rgba(70,50,20,.4);transition:box-shadow .2s var(--ease),transform .15s var(--ease)}
+  .bghost:hover{box-shadow:var(--edge-hi),var(--lift-sm)}
+  .bghost:active{transform:translateY(1px);box-shadow:inset 0 1px 2px rgba(70,50,20,.2)}
   /* Dara and Jude say where the brief stands, from real state */
   .bcrew{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 22px}
   .bcrew:empty{display:none}
@@ -347,59 +295,26 @@
   .bcrew .agent-figure{width:40px;height:53px;flex:none}
   .bcrew .say{flex:1;min-width:0;font-size:14.5px}
   .flag{--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
-  /* Brand brief: the brand's colours, in the header */
-  .brandrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;border-top:1px solid var(--zone-line);padding-top:16px;font-size:14px;color:var(--zone-2)}
-  .presets{display:flex;gap:10px;flex-wrap:wrap}
-  .preset{width:44px;height:44px;border-radius:50%;border:2px solid var(--zone-bg);box-shadow:0 0 0 1.5px var(--zone-line);cursor:pointer;padding:0;transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
-  .preset:hover{transform:scale(1.06)}
-  .preset[aria-pressed="true"]{box-shadow:0 0 0 3px var(--zone-fg)}
   .linkbtn{font-size:14px;background:none;border:0;padding:8px 0;min-height:40px;color:var(--zone-fg);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-  .ghost,.save-as{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:var(--r-pill);padding:7px 14px;cursor:pointer;white-space:nowrap;transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
-  .ghost:hover,.save-as:hover{border-color:var(--faint);box-shadow:var(--shadow)}
-  .ghost:active,.save-as:active{transform:translateY(1px)}
+  .ghost,.save-as{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;background:var(--grain),linear-gradient(180deg,var(--card),var(--soft));border:1px solid var(--line);color:var(--text);border-radius:10px;padding:7px 14px;cursor:pointer;white-space:nowrap;box-shadow:var(--edge-hi),0 1px 0 rgba(70,50,20,.14);transition:border-color .2s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
+  .ghost:hover,.save-as:hover{box-shadow:var(--edge-hi),var(--lift-sm)}
+  .ghost:active,.save-as:active{transform:translateY(1px);box-shadow:inset 0 1px 2px rgba(70,50,20,.2)}
   .ghost.big{font-size:15px;padding:11px 20px;min-height:46px}
-  /* The sheet: the brief on paper, tucked under the header. */
-  .sheet{position:relative;max-width:860px;width:calc(100% - 68px);margin:-10px auto 0;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:clamp(36px,6vw,64px) clamp(22px,7vw,76px) clamp(40px,6vw,68px);box-shadow:0 1px 0 var(--line),0 18px 40px -24px rgba(20,22,27,.4);transition:background-color .45s var(--ease),border-color .45s var(--ease)}
-  /* Paper: a real sheet. Lit from the top left, fibres in it, its edges a
-     shade warmer than its middle, the edges of two more sheets of the pad
-     under it, and it lifts off the desk with a soft contact shadow. */
-  :root[data-kind="paper"] .sheet{
-    background:
-      var(--grain),
-      radial-gradient(120% 90% at 18% 0%,rgba(255,253,247,.9),rgba(255,253,247,0) 60%),
-      radial-gradient(140% 120% at 50% 40%,rgba(0,0,0,0) 62%,rgba(120,96,56,.07) 100%),
-      linear-gradient(180deg,#FBF7EF,#F4EEE2);
-    border-color:#E2DACB;border-radius:3px;
-    box-shadow:
-      0 1px 1px rgba(60,44,20,.08),
-      0 5px 0 -2px #F3EDE1,0 5px 0 -1px #DBD1BE,
-      0 10px 0 -5px #EEE7D9,0 10px 0 -4px #D6CBB7,
-      0 3px 6px -2px rgba(60,44,20,.10),0 30px 50px -26px rgba(60,44,20,.40)}
-  :root[data-kind="paper"] #fields .row{border-top-color:rgba(120,100,70,.14)}
-  :root[data-kind="paper"] .sechead{border-top-color:rgba(120,100,70,.22)}
-  :root[data-kind="paper"] .lab{color:var(--ink2)}
-  :root[data-kind="studio"] .sheet{background:#F3F1EC;border-color:#E4E0D6}
-  /* Studio: each part on a soft tinted panel, in turn */
-  :root[data-kind="studio"] #fields .row{border:0;border-radius:14px;padding:12px 16px 14px;margin-top:10px;background:#FFFFFF}
-  :root[data-kind="studio"] #fields .row.t0{background:#E9EEFB}
-  :root[data-kind="studio"] #fields .row.t1{background:#E6F4EC}
-  :root[data-kind="studio"] #fields .row.t2{background:#FBF1DA}
-  :root[data-kind="studio"] #fields .row.t3{background:#EFE9F8}
-  :root[data-kind="studio"] .sechead{border-top:none;padding-top:4px}
-  :root[data-kind="brand"] .sheet{background:var(--bg);border-color:transparent}
-  :root[data-kind="brand"] body.grad .sheet{background:linear-gradient(180deg,var(--bg),var(--bg2))}
+  /* The sheet: the brief, a page of the pad tucked out from under the
+     folder. Lit from the top left, fibres in it, its edges a shade warmer
+     than its middle, the edges of two more sheets under it, and it lifts off
+     the desk with a soft contact shadow. */
+  .sheet{position:relative;z-index:0;max-width:860px;width:calc(100% - 68px);margin:-12px auto 0;border:1px solid var(--line);border-radius:3px;padding:clamp(40px,6vw,68px) clamp(22px,7vw,76px) clamp(40px,6vw,68px);
+    background:var(--grain),radial-gradient(120% 90% at 18% 0%,color-mix(in srgb,var(--paper) 60%,white 40%),transparent 60%),radial-gradient(140% 120% at 50% 40%,transparent 62%,rgba(120,96,56,.07) 100%),linear-gradient(180deg,var(--paper),color-mix(in srgb,var(--paper) 94%,var(--soft-2)));
+    box-shadow:0 1px 1px rgba(60,44,20,.08),0 5px 0 -2px var(--soft),0 5px 0 -1px var(--line),0 10px 0 -5px var(--soft-2),0 10px 0 -4px var(--line),0 3px 6px -2px rgba(60,44,20,.10),0 30px 50px -26px rgba(60,44,20,.40);
+    transition:background-color .45s var(--ease),border-color .45s var(--ease)}
+  .docband{z-index:1}
+  :root[data-color-scheme="dark"] .sheet{background:var(--grain),radial-gradient(120% 90% at 18% 0%,rgba(255,240,215,.05),transparent 60%),linear-gradient(180deg,var(--paper),color-mix(in srgb,var(--paper) 90%,black))}
+  @media (prefers-color-scheme:dark){:root:not([data-color-scheme="light"]) .sheet{background:var(--grain),radial-gradient(120% 90% at 18% 0%,rgba(255,240,215,.05),transparent 60%),linear-gradient(180deg,var(--paper),color-mix(in srgb,var(--paper) 90%,black))}}
+  #fields .row{border-top-color:color-mix(in srgb,var(--line) 70%,transparent)}
+  .sechead{border-top-color:var(--line)}
+  .lab{color:var(--ink2)}
 
-  /* Brand brief: "Choose my own colours and font" opens the full controls */
-  .themebar{display:none;flex-wrap:wrap;align-items:center;gap:12px 18px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-panel);padding:14px 18px;margin:0 0 8px;box-shadow:var(--shadow)}
-  .themebar.on{display:flex}
-  .tb-lab{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);width:100%}
-  .themebar label,.swatch{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
-  .themebar input[type=color]{width:28px;height:28px;border:1px solid var(--border);border-radius:50%;background:none;cursor:pointer;padding:2px;overflow:hidden}
-  .themebar input[type=color]::-webkit-color-swatch-wrapper{padding:0}
-  .themebar input[type=color]::-webkit-color-swatch{border:none;border-radius:50%}
-  .themebar input[type=checkbox],.editrow input[type=checkbox]{accent-color:var(--accent)}
-  .themebar select,.editrow select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--r-pill);padding:5px 10px;font-size:12.5px}
-  .gradtog{cursor:pointer;user-select:none}
 
   .sechead{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--sec);margin:44px 0 6px;padding-top:20px;border-top:1px solid var(--rule);display:flex;align-items:center;gap:10px}
   #fields > .sechead:first-child{border-top:none;margin-top:18px}
@@ -417,7 +332,7 @@
   .ctrls{margin-left:auto;display:flex;gap:4px;opacity:0;transition:opacity .18s var(--ease)}
   .row:hover .ctrls,.row:focus-within .ctrls{opacity:1}
   @media (hover:none) and (pointer:coarse){.ctrls{opacity:1}}
-  .iconbtn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s var(--ease),color .15s var(--ease),box-shadow .15s var(--ease);line-height:1}
+  .iconbtn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:linear-gradient(180deg,var(--card),var(--soft));box-shadow:var(--edge-hi),0 1px 0 rgba(70,50,20,.12);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s var(--ease),color .15s var(--ease),box-shadow .15s var(--ease);line-height:1}
   .iconbtn .ic{width:14px;height:14px}
   .iconbtn:hover{border-color:var(--faint);color:var(--text);box-shadow:var(--shadow-pill)}
   .iconbtn:disabled{cursor:default}
@@ -453,11 +368,12 @@
   .srcs .rl{display:block;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
   .srcs ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:8px}
   .srcs blockquote{margin:0;font-family:var(--serif);font-size:14px;line-height:1.5;color:var(--text);border-left:2px solid var(--rule);padding-left:10px}
+  .srcs cite a{color:inherit;text-decoration:underline;text-underline-offset:2px}
   .srcs cite{display:block;font-style:normal;font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;color:var(--faint);margin-top:3px;padding-left:12px}
   .notes:empty{display:none}
   .notes{display:grid;gap:8px;margin-top:10px;max-width:72ch}
   .note-v,.note-p{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.45}
-  .note-v{background:var(--create-soft);color:var(--create-ink);--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
+  .note-v{background:var(--grain),var(--create-soft);box-shadow:var(--edge-hi),var(--lift-sm);color:var(--create-ink);--ink:var(--create-ink);--plan:var(--create-ink);--plan-eye:var(--create-soft)}
   .note-v p{margin:2px 0 0}
   .note-v ul{margin:4px 0 4px;padding-left:18px}
   .note-v .muted{color:inherit;opacity:.8}
@@ -467,7 +383,7 @@
   .note-v.flash,.note-p.flash,.row.flash{animation:vflash 1.2s ease-out}
   @keyframes vflash{0%{box-shadow:0 0 0 3px var(--create-ink)}100%{box-shadow:0 0 0 0 transparent}}
   @media (prefers-reduced-motion:reduce){.note-v.flash,.note-p.flash,.row.flash{animation:none}}
-  .note-p{background:var(--amber-soft);color:var(--text)}
+  .note-p{background:var(--grain),var(--amber-soft);box-shadow:var(--edge-hi),var(--lift-sm);color:var(--text)}
   .note-p .pb{min-width:0;flex:1;display:grid;gap:6px}
   .note-p .pv{font-family:var(--fieldFont);font-size:15px;line-height:1.55;white-space:pre-wrap}
   .note-p .pv ul{margin:0;padding-left:18px;white-space:normal}
@@ -500,7 +416,8 @@
 
   .boards{display:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}
   .boards.on{display:grid}
-  .board{border:1px solid var(--rule);border-radius:var(--r-card);overflow:hidden;background:var(--surface);position:relative;transition:box-shadow .2s var(--ease)}
+  /* a picture the person sent, as a print with a white border */
+  .board{border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--grain),var(--card);padding:7px 7px 0;position:relative;box-shadow:var(--lift-sm);transition:box-shadow .2s var(--ease)}
   .board:hover{box-shadow:var(--shadow)}
   .board img{width:100%;height:108px;object-fit:cover;display:block}
   .board.big img{height:156px}
@@ -522,10 +439,10 @@
   .addboard:focus-within{outline:3px solid var(--accent);outline-offset:2px}
 
   .footer{display:flex;align-items:center;gap:8px;margin-top:36px;padding-top:20px;border-top:1px solid var(--rule);flex-wrap:wrap}
-  .lock{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;letter-spacing:-.01em;border:none;border-radius:var(--r-pill);padding:12px 22px;min-height:46px;cursor:pointer;background:var(--go);color:var(--goText);margin-right:4px;transition:background-color .35s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
-  .lock:hover{box-shadow:0 2px 6px rgba(20,32,64,.08),0 16px 40px rgba(40,64,120,.16)}
-  .lock:active{transform:translateY(1px)}
-  .lock.locked{background:var(--green-soft);color:var(--green-ink);box-shadow:none}
+  .lock{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;letter-spacing:-.01em;border:1px solid var(--go-2);border-radius:12px;padding:12px 22px;min-height:46px;cursor:pointer;background:linear-gradient(180deg,color-mix(in srgb,var(--go) 88%,white),var(--go) 55%,var(--go-2));color:var(--goText);text-shadow:0 1px 0 rgba(0,0,0,.18);margin-right:4px;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 2px 0 var(--go-2),0 8px 16px -10px rgba(120,40,20,.55);transition:background-color .35s var(--ease),box-shadow .2s var(--ease),transform .2s var(--ease)}
+  .lock:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 2px 0 var(--go-2),0 12px 22px -10px rgba(120,40,20,.6)}
+  .lock:active{transform:translateY(2px);box-shadow:inset 0 2px 3px rgba(0,0,0,.2)}
+  .lock.locked{background:var(--green-soft);color:var(--green-ink);border-color:transparent;text-shadow:none;box-shadow:inset 0 1px 2px rgba(40,60,20,.18)}
   .lock:disabled{opacity:.55;cursor:default;box-shadow:none;transform:none}
   .lock .n{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;padding:0 6px;font-size:12px;background:color-mix(in srgb,var(--goText) 22%,transparent)}
   /* What the lock waits for (the host's lock list): Jude names each, and a
@@ -534,8 +451,8 @@
   .locklist .agent-figure{width:24px;height:32px;flex:none}
   .locklist .lb{min-width:0;flex:1;display:grid;gap:8px;font-size:14px}
   .lkitems{display:flex;flex-wrap:wrap;gap:8px}
-  .lkitem{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;min-height:44px;max-width:100%;padding:6px 12px;border:1.5px solid var(--text);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;font-size:13.5px;line-height:1.3;transition:box-shadow .15s var(--ease)}
-  .lkitem:hover{box-shadow:3px 3px 0 var(--text)}
+  .lkitem{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;min-height:44px;max-width:100%;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--grain),var(--card);color:var(--text);cursor:pointer;font-size:13.5px;line-height:1.3;box-shadow:var(--edge-hi),0 1px 0 rgba(70,50,20,.14);transition:box-shadow .15s var(--ease)}
+  .lkitem:hover{box-shadow:var(--edge-hi),var(--lift-sm)}
   .lkitem .k{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
   .lkitem .x{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   /* A list part opens its evidence on a tap, as a clan-field does. */
@@ -543,7 +460,7 @@
   .val.opens:hover{background:color-mix(in srgb,var(--text) 5%,transparent)}
   /* A brief started from research: what it carried, and what changed there
      since (the notice on the design tokens, so it reads under a brand's colours) */
-  .fromup{width:100%;background:var(--surface);color:var(--text);border:2px solid var(--text);border-radius:22px;padding:18px 20px;margin-bottom:26px;display:grid;gap:12px;box-shadow:4px 4px 0 var(--text);transition:background-color .35s var(--ease),border-color .35s var(--ease)}
+  .fromup{width:100%;background:var(--grain),var(--card);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:18px 20px;margin-bottom:26px;display:grid;gap:12px;box-shadow:var(--edge-hi),var(--lift);transition:background-color .35s var(--ease),border-color .35s var(--ease)}
   .fromup .fu-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
   .fromup .fu-t{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
   .fromup blockquote{margin:0;font-family:var(--fieldFont);font-size:16px;line-height:1.5;border-left:3px solid var(--go);padding-left:12px}
@@ -563,16 +480,13 @@
 
   .foot{margin-top:auto;padding:28px 0 8px;display:flex;align-items:center;justify-content:center;gap:9px;font-size:11px;color:var(--faint);font-family:var(--mono);letter-spacing:.04em;flex-wrap:wrap;text-align:center}
   .foot .dot{width:4px;height:4px;border-radius:50%;background:var(--faint)}
-  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:var(--r-pill);font-size:13px;font-weight:500;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:50;max-width:calc(100vw - 32px)}
+  .toast{position:fixed;bottom:calc(22px + var(--clan-bottom,0px));left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:var(--r-pill);font-size:13px;font-weight:500;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:50;max-width:calc(100vw - 32px)}
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
   @media (max-width:860px){
     .meet{grid-template-columns:1fr;gap:14px;max-width:560px}
     .mfig{height:auto}
     .mfig .agent-figure{width:52px;height:69px}
-    .kinds{grid-template-columns:1fr}
-    .kpick{flex-direction:row;align-items:center;gap:12px}
-    .kpick .kpv{width:96px;height:76px}
   }
   @media (max-width:640px){
     .app{padding:12px 16px 90px}
@@ -580,14 +494,12 @@
     .hello .lede{font-size:15.5px}
     .onbox{gap:40px;min-height:186px;padding:0 8px}
     .onbox .agent-figure{width:44px;height:59px;margin-bottom:-6px}
-    .composer{padding:8px;border-radius:24px}
+    .composer{padding:8px;border-radius:16px}
     .composer textarea{flex-basis:100%;height:78px;min-height:78px;padding:10px 10px 4px;font-size:17px}
     .go{flex:1;padding:14px 16px}
     .chips{padding:0 4px 4px}
     .docband{padding:18px 16px}
     .sheet{width:calc(100% - 16px);padding:26px 16px 26px}
-    .lookpick{width:100%}
-    .lookpick button{width:calc((100% - 16px)/3)}
     .bcrew .pair{flex-basis:100%}
     .tiles{grid-template-columns:1fr 1fr;gap:8px}
     .tile{min-height:64px;padding:9px 9px 10px 6px;gap:7px}
@@ -604,13 +516,12 @@
 </head>
 <body>
 <div class="app">
-  <!-- PHASE 1 — START: one question, one box, the crew standing on it; the
-       kind of brief under it (picking one changes the page with it) -->
+  <!-- PHASE 1 — START: one question, one box, the crew standing on it -->
   <section class="intake" id="intake">
     <div class="ident"><svg viewBox="0 0 44 44" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 8.5h14.2l5.8 5.8v21.2H12z M16.5 18h11v2.6h-11z M16.5 23h11v2.6h-11z M16.5 28h7v2.6h-7z"/><path fill="currentColor" opacity=".5" d="M27.4 7.6 33 13.2h-5.6z"/></svg>Brief Maker<span class="kind">Plan</span></div>
     <div class="hello">
       <h1 class="h1" id="introH">What’s the brief?</h1>
-      <p class="lede"><span id="ledeText">Paste the client’s words, or drop in their notes, deck or voice memo.</span><span class="kindline" id="kindLine"></span></p>
+      <p class="lede"><span id="ledeText">Paste the client’s words, or drop in their notes, deck or voice memo.</span></p>
     </div>
     <div class="stage">
       <div class="fromup" id="fromUp" hidden></div>
@@ -619,18 +530,11 @@
         <label class="sr" for="prompt">The brief, in your words</label>
         <textarea id="prompt" rows="1" placeholder="Paste what the client said, or tell us about the brief"></textarea>
         <label class="attach" title="Add the client’s files"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 7.6 8.3 12.8a3.2 3.2 0 0 1-4.6-4.6l5.4-5.4a2.1 2.1 0 0 1 3 3L6.8 11a1.1 1.1 0 0 1-1.5-1.5l4.9-4.9"/></svg><span class="sr">Add the client’s files</span><input type="file" class="sr" id="addAny" multiple /></label>
-        <button type="button" class="go" id="genBtn">Write the paper brief</button>
+        <button type="button" class="go" id="genBtn">Write the brief</button>
         <div class="chips" id="chips"></div>
       </div>
       <div class="note" id="intakeStatus" role="status"></div>
       <div class="nomw" id="noMw" hidden></div>
-      <p class="kinds-q" id="kindsQ">Which kind of brief do you want?</p>
-      <div class="kinds" id="kinds" role="group" aria-labelledby="kindsQ">
-        <button type="button" class="kpick" data-style="basic" aria-pressed="false"><span class="kpv kp-paper" aria-hidden="true"><i class="h"></i><i></i><i></i><i style="width:70%"></i><i></i></span><span class="kt"><b>Paper brief</b><span class="kd">Black on white, like a printed page. Quick to read and send.</span></span></button>
-        <button type="button" class="kpick" data-style="creative" aria-pressed="false"><span class="kpv kp-studio" aria-hidden="true"><i class="h"></i><i></i><em></em><span class="kpics"><u></u><u></u><u></u></span></span><span class="kt"><b>Studio brief</b><span class="kd">Soft Napkin colours, with a mood board of your pictures.</span></span></button>
-        <button type="button" class="kpick" data-style="immersive" aria-pressed="false"><span class="kpv kp-brand" aria-hidden="true"><i class="h"></i><i></i><i></i><span class="kpics"><u></u><u></u><u></u></span></span><span class="kt"><b>Brand brief</b><span class="kd">In the client’s own colours, with the mood board.</span></span></button>
-      </div>
-      <p class="drop">You can switch at any time. The words stay the same.</p>
     </div>
   </section>
 
@@ -652,40 +556,13 @@
       <div class="dtop">
         <div><div class="ident" id="docIdent"></div><div class="proj" id="hProj"></div><div class="dtitle" id="hDerived" hidden></div><div class="cli" id="hCli"></div><div class="madefrom" id="madeFrom" hidden></div></div>
         <span class="spacer"></span>
-        <div class="lookpick" id="modes" role="group" aria-label="Which kind of brief">
-          <button type="button" data-style="basic" aria-pressed="false"><span class="kpv kp-paper" aria-hidden="true"><i class="h"></i><i></i><i></i></span>Paper brief</button>
-          <button type="button" data-style="creative" aria-pressed="false"><span class="kpv kp-studio" aria-hidden="true"><i class="h"></i><i></i><em></em></span>Studio brief</button>
-          <button type="button" data-style="immersive" aria-pressed="false"><span class="kpv kp-brand" aria-hidden="true"><i class="h"></i><i></i><span class="kpics"><u></u><u></u><u></u></span></span>Brand brief</button>
-        </div>
         <button type="button" class="bghost" id="redraft" title="Run the whole crew again on the same ask: Ellis, Sam, Dara and Jude. Parts you wrote yourself are kept, with a suggestion beside them."><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V5h-2.5"/></svg>Draft it again</button>
         <button type="button" class="bghost" id="newDraft" title="Start again from a new brief"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New brief</button>
       </div>
       <div class="bcrew" id="crewline" aria-live="polite"></div>
-      <div class="brandrow" id="brandrow" hidden>
-        <span>The brand’s colours</span>
-        <div class="presets" id="presets" role="group" aria-label="The brand’s colours"></div>
-        <button type="button" class="linkbtn" id="ownColours" aria-expanded="false" aria-controls="themebar">Choose my own colours and font</button>
-      </div>
     </header>
 
     <div class="sheet">
-      <div class="themebar" id="themebar">
-        <span class="tb-lab">My own colours and font</span>
-        <label class="swatch">Background <input type="color" id="thBg" /></label>
-        <label class="gradtog"><input type="checkbox" id="thGradOn" /> blend</label>
-        <label class="swatch" id="thBg2Wrap" style="display:none">→ <input type="color" id="thBg2" /></label>
-        <label class="swatch">Accent <input type="color" id="thAccent" /></label>
-        <label class="swatch">Text <input type="color" id="thText" /></label>
-        <label class="swatch">Field font
-          <select id="thFont">
-            <option value="var(--serif)">Serif</option>
-            <option value="var(--ui)">Sans</option>
-            <option value="var(--mono)">Mono</option>
-          </select>
-        </label>
-        <span class="muted" style="width:100%">Change the font, size or colour of one part with the palette button beside it.</span>
-      </div>
-
       <div class="upnote" id="upNote" role="status" hidden></div>
       <div id="fields"></div>
       <div class="review" id="review" hidden></div>
@@ -768,9 +645,9 @@
   var CONTENT_KEYS=FIELDS.map(function(f){return f.key;});
   function hasVal(v){ return v!=null&&(Array.isArray(v)?v.length:String(v).trim()); }
   function hasContent(){ return CONTENT_KEYS.some(function(k){return hasVal(get(k));}); }
-  // PICKED: a kind the person just picked, shown before its write lands.
-  var PICKED=null;
-  function style(){ return PICKED||get('brief_style')||'basic'; }
+  // One look: the brief on warm paper, light or dark with the OS. A brief_style
+  // an older brief recorded (studio, brand) is kept in its data and not used.
+  function style(){ return 'basic'; }
   function lockedList(){ var l=get('locked_fields'); return Array.isArray(l)?l:[]; }
   function isLocked(k){ return lockedList().indexOf(k)!==-1; }
   var forceIntake=false, handWrite=false, phase='intake';
@@ -1066,10 +943,27 @@
         .forEach(function(c){ if(out.indexOf(c)===-1) out.push(c); }); });
     return out;
   }
-  // The passages and client words a field rests on, quoted.
+  // Where a research fact was read: its source record, in words.
+  function srcLine(s){
+    if(!s) return 'A source';
+    if(/^material:/.test(s.uri||'')) return 'Your file '+(s.title||'');
+    if(s.tier==='reviewer-verified') return 'Checked by a person';
+    var y=/^\d{4}/.exec(s.published_at||'');
+    return [s.publisher||s.domain, s.title].filter(Boolean).join(', ')+(y?' · '+y[0]:'');
+  }
+  // The passages, client words, research facts and points a field rests on, quoted.
   function sourcesHtml(ids){
+    var pr=get('projection')||{}, P=pr.pins||{}, F=pr.findings||{}, S=pr.sources||{};
     var h=ids.map(function(id){
       var p=/^psg_/.test(id)?passage(id):null, c=/^cap_/.test(id)?captureItem(id):null;
+      if(/^f_/.test(id)&&P[id]){
+        var pn=P[id], sid=arr(pn.sources).filter(function(x){ return S[x]; })[0]||arr(pn.sources)[0], src=S[sid], q=(pn.quotes||{})[sid];
+        var web=src&&/^https?:\/\//.test(src.uri||'');
+        return '<li><blockquote>'+esc(short(q||String(pn.value),320))+'</blockquote><cite>'+esc(srcLine(src))
+          +(web?' · <a href="'+esc(src.uri)+'" target="_blank" rel="noopener noreferrer">Open it ↗</a>':'')+'</cite></li>';
+      }
+      if(/^fi_/.test(id)&&F[id]){ var fi=F[id], n=arr(fi.cites).length;
+        return '<li><blockquote>'+esc(short(fi.statement||'',320))+'</blockquote><cite>Worked out from '+n+' fact'+(n===1?'':'s')+' in the research'+(fi.status==='verified'?' · checked by a person':'')+'</cite></li>'; }
       if(p) return '<li><blockquote>'+esc(short(p.text,320))+'</blockquote><cite>'+esc(citationOf(p))+'</cite></li>';
       if(c&&(c.quote||c.value)) return '<li><blockquote>'+esc(short(c.quote||c.value,320))+'</blockquote><cite>The client'+(c.material_id?' · '+esc(citeLabel(c.material_id)):'')+(c.status==='assumption'?' · an assumption':'')+'</cite></li>';
       return '';
@@ -1251,8 +1145,7 @@
     else if(caNo) dt='Your brief is locked: '+head+'.';
     else if(locked) dt='Your brief is locked and ready to hand over: '+head+'.';
     else dt='Your brief is ready: '+head+'.'
-      +(by.you?' You wrote or changed '+num(by.you)+'.':'')
-      +' Switch the kind of brief up here any time; the words stay the same.';
+      +(by.you?' You wrote or changed '+num(by.you)+'.':'');
     dt=esc(dt);
     if(dNeeds) dt+=' <b>I’ve a new version of '+esc(listWords(props.map(partName)))+' for you.</b> You hold '+(props.length===1?'that part':'those parts')+', so I didn’t change '+(props.length===1?'it':'them')+'.';
     var h='<div class="pair">'+fig('drafter',{state:dNeeds?'needs-you':'idle',decorative:true})
@@ -1362,52 +1255,14 @@
   }
   function resetViewerTheme(){ if(window.napkin && window.napkin.setTheme){ var d=derive({}); window.napkin.setTheme({bg:d.bg,surface:d.surface,border:d.border,muted:d.muted,accent:d.accent,text:d.text}); } }
 
-  // ---------- the kind of brief: the page takes its look ----------
-  // brief_style keeps its stored values; a person sees the kinds by these
-  // names, and the page itself turns into the kind they pick.
-  var KINDS={
-    basic:    {look:'paper',  go:'Write the paper brief',  line:'A paper brief: black on white, ready to print.',
-               hi:function(){ return 'Hi, I’m '+ELLIS+'! Paste what the client said, or add their files. I’ll read it all, and we’ll make you a clean paper brief.'; }},
-    creative: {look:'studio', go:'Write the studio brief', line:'A studio brief: soft colours and a mood board.',
-               hi:function(){ return 'A studio brief! I’m '+ELLIS+'. Add any pictures, sound or video, and they’ll go on your mood board.'; }},
-    immersive:{look:'brand',  go:'Write the brand brief',  line:'A brand brief: in the client’s own colours.',
-               hi:function(){ return 'A brand brief! I’m '+ELLIS+'. Add the client’s deck or pictures if you have them. You’ll pick the brand’s colours when the brief is ready.'; }}
-  };
-  function kindOf(s){ return KINDS[s]||KINDS.basic; }
-  // What a kind is called in the record of how the brief looks.
-  var KIND_NAME={basic:'Paper brief',creative:'Studio brief',immersive:'Brand brief'};
-  function applyModeChrome(){
-    document.documentElement.setAttribute('data-kind', kindOf(style()).look);
-    if(style()==='immersive') { applyThemeLocal(); pushThemeToViewer(); }
-    else { resetThemeLocal(); resetViewerTheme(); }
-  }
-  // The small pictures of the Brand brief take the brand's own colours.
-  function brandPreview(){
-    var t=get('theme')||{}, d=derive(t), bg2=t.grad&&t.bg2?t.bg2:mix(d.bg,d.text,.06);
-    document.querySelectorAll('.kp-brand').forEach(function(el){
-      el.style.setProperty('--kb-bg',d.bg); el.style.setProperty('--kb-bg2',bg2); el.style.setProperty('--kb-ac',d.accent); el.style.setProperty('--kb-tx',d.text);
-    });
-  }
-  // What names the kind: the picked card and picture, the line under the
-  // heading, Ellis's words and the button.
+  // ---------- the look: warm paper, nothing to pick ----------
+  function applyModeChrome(){ resetThemeLocal(); resetViewerTheme(); }
+  // Ellis's words and the button on the start screen.
   function syncKind(){
-    var s=style(), K=kindOf(s);
-    document.querySelectorAll('#kinds .kpick,#modes button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.getAttribute('data-style')===s)); });
-    $('kindLine').textContent=K.line;
-    var fed=isResearchFed(), hi=fed?researchHi():K.hi();
-    $('genBtn').textContent=fed?'Draft from the research':K.go;
+    var fed=isResearchFed(), hi=fed?researchHi():'Hi, I’m '+ELLIS+'! Paste what the client said, or add their files. I’ll read it all, and we’ll write the brief together.';
+    $('genBtn').textContent=fed?'Draft from the research':'Write the brief';
     var l=$('ellisLine'); if(l&&l.textContent!==hi) l.textContent=hi;
-    brandPreview();
   }
-  // Picking a kind shows at once (PICKED), and is recorded as the style
-  // selection always was; the write landing clears the stand-in.
-  function pickKind(s, how){
-    if(s===style()) return;
-    PICKED=s; render();
-    var w=patch('brief_style',s,{actor:'human',pinned:false,action:'look',rationale:KIND_NAME[s]||s});
-    if(w&&w.then) w.then(null,function(){ PICKED=null; render(); });
-  }
-  document.querySelectorAll('#kinds .kpick').forEach(function(b){ b.addEventListener('click',function(){ pickKind(b.getAttribute('data-style'),'Selected'); }); });
 
   // ---------- phase routing ----------
   function setPhase(p){
@@ -1551,6 +1406,14 @@
   }
   function unreachable(j, e){ j.error='The middleware could not be reached: '+(e&&e.message||e); j.state=j.state==='sending'?'unsent':'stalled'; endJob(j); }
   function endJob(j){ store(jobKey(j.task,j.field), null); loadChain(); j.onEnd(j); }
+  // A person stops a job: the reply is the job's own, as a poll's.
+  function cancelJob(j){
+    if(!j||!j.id||j.stopping) return;
+    j.stopping=true; j.onUpdate(j);
+    window.clan.apiProxy('middleware', {task:'cancel_job', input:{job_id:j.id}}).then(function(r){
+      j.stopping=false; j.stopAsk=false; clearTimeout(j.t); onJobReply(j, r);
+    }, function(e){ j.stopping=false; j.onUpdate(j); toast('Not stopped: the middleware could not be reached ('+(e&&e.message||e)+').'); });
+  }
 
   // ---------- working: the crew and a tile per field, as the job reports them ----------
   var DRAFT=null;              // the running draft_brief job
@@ -1638,10 +1501,10 @@
     var c=crewStates(j), fs=j.fields||{}, at=STAGES.indexOf(j.stage);
     var live=j.state==='queued'||j.state==='running'||j.state==='sending'||j.state==='checking';
     var stopAt=!live&&j.state!=='done'?Math.max(at,0):-1;
-    var H={done:'Your brief is ready', failed:'We had to stop', unsent:'We couldn’t start', stalled:'We lost touch with the work'};
+    var H={done:'Your brief is ready', failed:'We had to stop', unsent:'We couldn’t start', stalled:'We lost touch with the work', cancelled:'You stopped the draft'};
     $('procH').textContent=H[j.state]||'Meet your crew';
     var MEET=meetOf(j);
-    $('procS').textContent=j.error?j.error:j.state==='done'?'Opening it now…':(MEET.length===4?'Four':'Three')+' of us are on your brief. We’ll tell you what we’re doing as we go.';
+    $('procS').textContent=j.error?j.error:j.state==='done'?'Opening it now…':j.state==='cancelled'?'What the crew had written before you stopped it stays in the brief.':(MEET.length===4?'Four':'Three')+' of us are on your brief. We’ll tell you what we’re doing as we go.';
     $('procS').classList.toggle('err', !!j.error);
     var d=daraCount(j), eN=Object.keys(j.eDone).length, failed=FIELDS.filter(function(f){ return (fs[f.key]||{}).state==='failed'; }).length;
     var busyDraft=FIELDS.filter(function(f){ var x=fs[f.key]||{}; return x.by==='drafter'&&BUSY[x.state]; });
@@ -1687,13 +1550,21 @@
       if(m.getAttribute('data-st')!==fst){ m.setAttribute('data-st',fst); m.querySelector('.mfig').innerHTML=fig(k,{state:fst,label:sayer(k)}); }
       var now=s==='working'&&live, warn=stop||s==='needs-you', next=!now&&!warn&&s==='idle';
       m.className='mate'+(now?' now':'')+(next?' next':'');
-      var line=stop?['err','I had to stop here.']:M[k].st;
+      var line=stop?['err', j.state==='cancelled'?'You stopped it here.':'I had to stop here.']:M[k].st;
       m.querySelector('.say').className='say up'+(warn?' warn':now?' now':'');
       m.querySelector('.say').innerHTML='<span class="sayer">'+esc(sayer(k))+'</span>'+M[k].intro+'<span class="st'+(line[0]?' '+line[0]:'')+'">'+line[1]+'</span>';
     });
     $('tiles').innerHTML=FIELDS.map(function(f){ return tileHtml(f, fs[f.key]||{state:isLocked(f.key)?'kept':'waiting', by:null}); }).join('');
     var acts=$('procActs');
-    acts.innerHTML=!live&&j.state!=='done'?(hasContent()?'<button type="button" class="ghost big" id="procSee">See what was written</button>':'')+'<button type="button" class="ghost big" id="procBack">Back to the start</button>':'';
+    // Stop the draft: a person may cancel it at any stage (cancel_job). What
+    // the crew already sent stays; it writes nothing more.
+    var canStop=live&&j.id&&j.state!=='checking';
+    acts.innerHTML=!live&&j.state!=='done'?(hasContent()?'<button type="button" class="ghost big" id="procSee">See what was written</button>':'')+'<button type="button" class="ghost big" id="procBack">Back to the start</button>'
+      :canStop?(j.stopAsk?'<span class="stopq">Stop the draft? What’s written so far stays.</span><button type="button" class="ghost big" id="procStopYes"'+(j.stopping?' disabled':'')+'>'+(j.stopping?'Stopping…':'Yes, stop it')+'</button><button type="button" class="ghost big" id="procStopNo"'+(j.stopping?' disabled':'')+'>Keep going</button>'
+        :'<button type="button" class="ghost big" id="procStop">Stop the draft</button>'):'';
+    var stp=$('procStop'); if(stp) stp.addEventListener('click',function(){ j.stopAsk=true; renderProc(); var y=$('procStopYes'); if(y) y.focus(); });
+    var sno=$('procStopNo'); if(sno) sno.addEventListener('click',function(){ j.stopAsk=false; renderProc(); });
+    var syes=$('procStopYes'); if(syes) syes.addEventListener('click',function(){ cancelJob(j); });
     var see=$('procSee'); if(see) see.addEventListener('click',function(){ DRAFT=null; forceIntake=false; setPhase('doc'); render(); });
     var back=$('procBack'); if(back) back.addEventListener('click',function(){ DRAFT=null; forceIntake=true; setPhase('intake'); render(); });
   }
@@ -1952,16 +1823,7 @@
     $('hDerived').hidden=!(!pn&&dt);
     $('hDerived').textContent=!pn&&dt?'Working title, from the client and the commercial objective. The project name is empty.':'';
     $('hCli').textContent=get('client')||'';
-    var s=style(), brand=s==='immersive';
     syncKind();
-    // Brand brief: the brand's colours in the header; its own colours and
-    // font behind the link.
-    $('brandrow').hidden=!brand;
-    if(brand) syncPresets();
-    var own=brand&&OWN, ob=$('ownColours');
-    ob.setAttribute('aria-expanded', String(own)); ob.textContent=own?'Hide my own colours and font':'Choose my own colours and font';
-    $('themebar').classList.toggle('on', own);
-    if(own) syncThemeInputs();
     // While the shell records a client's answer, the parts stay as they are:
     // the fields snippet has put its marks under them.
     var host=$('fields'), keep=CLIENT.on&&host.childNodes.length, sec=null;
@@ -1972,11 +1834,12 @@
         var row=fieldRow(f,i); row.classList.add('t'+(i%4)); host.appendChild(row);   // Studio tints the parts in turn
       });
     }
-    var showBoards=(s==='creative'||brand);
+    // The pictures, sound and video the person sent, when there are any.
+    var showBoards=arr(data().reference_assets).length>0;
     $('boardsHead').style.display=showBoards?'flex':'none';
     $('boardsNote').hidden=!showBoards;
     $('boards').classList.toggle('on',showBoards);
-    if(showBoards) renderBoards(s==='immersive');
+    if(showBoards) renderBoards(false);
     $('newDraft').hidden=approveLocked();
     renderLock(); renderUpNote($('upNote'));
     renderCrewline(); renderReview();
@@ -2012,7 +1875,7 @@
     // reopened for the client's request offers its pencil, and only that.
     var ctrls=!approveLocked()
       ? '<button class="iconbtn act-edit" title="Change this" aria-label="Change '+esc(f.label)+'">'+IC.edit+'</button>'+
-        (style()==='immersive'&&(EDIT_MODE||OWN)?'<button class="iconbtn act-style" title="Font, size, colour" aria-label="Font, size and colour of '+esc(f.label)+'">'+IC.style+'</button>':'')+
+
         '<button class="iconbtn act-regen" title="'+(noMiddleware()?'Writing it again needs the middleware':'Ask '+esc(DARA)+' to write this again')+'" aria-label="Write again: '+esc(f.label)+'"'+(REGEN[f.key]||noMiddleware()?' disabled':'')+'>'+IC.regen+'</button>'+
         '<button class="iconbtn act-lock'+(locked?' on':'')+'" title="'+(locked?'Let the crew change this again':'Keep this as it is')+'" aria-label="'+(locked?'Unlock ':'Lock ')+esc(f.label)+'">'+(locked?IC.lock:IC.unlock)+'</button>'
       : reo ? '<button class="iconbtn act-edit" title="Make the change the client asked for" aria-label="Make the change the client asked for: '+esc(f.label)+'">'+IC.edit+'</button>' : '';
@@ -2232,63 +2095,8 @@
     box.appendChild(add);
   }
 
-  // ---------- the kind of brief (mid-brief) ----------
-  document.querySelectorAll('#modes button').forEach(function(b){
-    b.addEventListener('click',function(){ pickKind(b.getAttribute('data-style'),'Switched to'); });
-  });
-  // Brand brief: "Choose my own colours and font" opens the controls, and
-  // with them each part's own font, size and colour (as the OS's edit mode does).
-  var OWN=false, EDIT_MODE=!!window.__clan_edit_mode;
-  $('ownColours').addEventListener('click',function(){ OWN=!OWN; renderStructured(); });
+  var EDIT_MODE=!!window.__clan_edit_mode;
   window.addEventListener('clan:editmode',function(e){ EDIT_MODE=!!(e.detail&&e.detail.active); if(phase==='doc') renderStructured(); });
-
-  // ---------- theme controls ----------
-  function syncThemeInputs(){
-    var t=get('theme')||{};
-    $('thBg').value=t.bg||DEF.bg;
-    $('thBg2').value=t.bg2||'#000000';
-    $('thAccent').value=t.accent||DEF.accent;
-    $('thText').value=t.text||DEF.text;
-    $('thGradOn').checked=!!t.grad;
-    $('thBg2Wrap').style.display=t.grad?'flex':'none';
-    if(t.font) $('thFont').value=t.font;
-  }
-  // Every colour and font change rolls into the brief's one look entry.
-  var OWN_COLOURS={actor:'human',pinned:false,action:'look',rationale:'Own brand colours'};
-  function setTheme(key,val){ var t=Object.assign({},get('theme')||{}); t[key]=val; patch('theme',t,OWN_COLOURS); applyThemeLocal(t); pushThemeToViewer(t); }
-  // Bind BOTH 'input' and 'change': WebKitGTK's native colour chooser (Tauri on
-  // Linux) fires only 'change' on commit, not the live 'input' Chromium fires.
-  function onColor(id,key){ var el=$(id);
-    ['input','change'].forEach(function(ev){ el.addEventListener(ev,function(e){ setTheme(key,e.target.value); }); }); }
-  onColor('thBg','bg'); onColor('thBg2','bg2'); onColor('thAccent','accent'); onColor('thText','text');
-  $('thFont').addEventListener('change',function(e){ setTheme('font',e.target.value); renderStructured(); });
-  $('thGradOn').addEventListener('change',function(e){ $('thBg2Wrap').style.display=e.target.checked?'flex':'none';
-    var t=Object.assign({},get('theme')||{}); t.grad=e.target.checked; if(t.grad&&!t.bg2) t.bg2=mix(t.bg||DEF.bg,'#000000',.4);
-    patch('theme',t,OWN_COLOURS); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); });
-
-  var PRESETS=[
-    {name:'Dark with orange', bg:'#0F1114',bg2:'#1B1F25',grad:true,accent:'#FF4F2E',text:'#F2F3F5',font:'var(--ui)'},
-    {name:'Plum with coral',  bg:'#1a1320',bg2:'#2a1518',grad:true,accent:'#ff5c49',text:'#f3e9dd',font:'var(--serif)'},
-    {name:'Cream with rust',  bg:'#f6f3ec',bg2:'#ece3d4',grad:true,accent:'#c0492f',text:'#221a14',font:'var(--serif)'},
-    {name:'Forest with mint', bg:'#08130f',bg2:'#0c241b',grad:true,accent:'#34d399',text:'#e6f5ee',font:'var(--mono)'}
-  ];
-  // The theme a preset writes (its name is only for the button).
-  function paletteOf(p){ var t=Object.assign({},p); delete t.name; return t; }
-  function samePalette(p,t){
-    function lc(v,d){ return String(v||d).toLowerCase(); }
-    return lc(t.bg,DEF.bg)===lc(p.bg)&&lc(t.accent,DEF.accent)===lc(p.accent)&&lc(t.text,DEF.text)===lc(p.text);
-  }
-  function syncPresets(t){
-    t=t||get('theme')||{};
-    document.querySelectorAll('#presets .preset').forEach(function(b,i){ b.setAttribute('aria-pressed', String(samePalette(PRESETS[i],t))); });
-  }
-  (function(){ var pc=$('presets');
-    PRESETS.forEach(function(p){ var s=document.createElement('button'); s.className='preset'; s.type='button';
-      s.style.background='linear-gradient(135deg,'+p.bg2+' 0%,'+p.accent+' 130%)'; s.title=p.name; s.setAttribute('aria-label',p.name);
-      s.addEventListener('click',function(){ var t=paletteOf(p);
-        patch('theme',t,{actor:'human',pinned:false,action:'look',rationale:p.name+' palette'}); applyThemeLocal(t); pushThemeToViewer(t); syncThemeInputs(); syncPresets(t); });
-      pc.appendChild(s); });
-  })();
 
   // ---------- export (HTML / PDF) ----------
   // Build a clean, print-styled, standalone document from the brief data — a
@@ -2544,12 +2352,26 @@
   loadUpstream();
   // A write lands: re-render, and re-read the chain it was recorded in.
   window.addEventListener('clan:dataupdated', function(){
-    if(PICKED&&get('brief_style')===PICKED) PICKED=null;   // the kind's write has landed
     if(phase==='proc') renderProc(); render();
     loadUpstream();
   });
   // The OS toolbar shows whether this app is trusted; the app does not repeat it.
   window.addEventListener('napkin:ready', function(){ applyModeChrome(); });
+  // The OS's chrome lies over the brief as glass: the paper shows through it.
+  // The shell says what it covers, and the page keeps clear of that.
+  window.addEventListener('message', function(e){
+    var m=e.data; if(e.source!==window.parent||!m||m.type!=='clan:insets') return;
+    var r=document.documentElement.style;
+    ['top','right','bottom'].forEach(function(k){ var v=+m[k]; r.setProperty('--clan-'+k, (v>=0&&v<600?v:0)+'px'); });
+    document.documentElement.classList.toggle('clan-glass', +m.top>0);
+  });
+  // The glass takes the desk's colour, light or dark; it is asked for again when the scheme changes.
+  function askGlass(){
+    var c=getComputedStyle(document.documentElement).getPropertyValue('--desk').trim();
+    try{ window.parent.postMessage({type:'clan:chrome', mode:'glass', tint:/^#[0-9a-f]{6}$/i.test(c)?c:null}, '*'); }catch(e){}
+  }
+  askGlass();
+  window.addEventListener('clan:colorscheme', function(){ setTimeout(askGlass, 0); });
 </script>
 </body>
 </html>

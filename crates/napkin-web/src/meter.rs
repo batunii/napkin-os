@@ -63,7 +63,8 @@ impl Meter {
 ///
 /// Only work is charged: every call is, except a `request_kind: middleware`
 /// call whose `payload.task` is `job_status` — the poll of a job already
-/// paid for when it was submitted (owner decision, chat intake). A long job
+/// paid for when it was submitted (owner decision, chat intake) — or
+/// `cancel_job`, which stops one and starts nothing. A long job
 /// such as `start_campaign` is polled for minutes; charging each poll would
 /// spend a session's budget on waiting. `start_campaign`, `answer_question`,
 /// `compose_report` and every other task are submissions and are charged.
@@ -82,7 +83,8 @@ pub fn charged(body: &[u8]) -> bool {
         .and_then(|p| p.get("task"))
         .and_then(|v| v.as_str());
     !(kind == Some(napkin_host::ops::middleware::REQUEST_KIND)
-        && task == Some(napkin_host::ops::middleware::JOB_STATUS))
+        && (task == Some(napkin_host::ops::middleware::JOB_STATUS)
+            || task == Some(napkin_host::ops::middleware::CANCEL_JOB)))
 }
 
 #[cfg(test)]
@@ -103,9 +105,11 @@ mod tests {
     }
 
     #[test]
-    fn only_a_job_status_poll_is_free() {
+    fn only_a_job_status_poll_or_a_cancel_is_free() {
         let free = br#"{"request_kind":"middleware","payload":{"task":"job_status","input":{"job_id":"job_1"}}}"#;
         assert!(!charged(free));
+        let cancel = br#"{"request_kind":"middleware","payload":{"task":"cancel_job","input":{"job_id":"job_1"}}}"#;
+        assert!(!charged(cancel));
         for body in [
             &br#"{"request_kind":"middleware","payload":{"task":"start_campaign","input":{}}}"#[..],
             br#"{"request_kind":"middleware","payload":{"task":"answer_question","input":{}}}"#,

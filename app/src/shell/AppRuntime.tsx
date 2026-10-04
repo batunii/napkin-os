@@ -33,6 +33,14 @@ interface Props {
    * reopened one part, and the part opens in edit mode with the reason filled in.
    */
   onEditRequest?: () => void
+  /**
+   * The app asks to be shown under glass chrome (`clan:chrome`, mode glass):
+   * the shell's bar, footer and rail lie over it, frosted, and the app is told
+   * how much of it they cover (`clan:insets`) so it can keep its content clear.
+   */
+  onChrome?: (mode: 'glass' | 'solid', tint: string | null) => void
+  /** What the shell's chrome covers of the frame, in CSS pixels, when it is glass. */
+  insets?: { top: number; right: number; bottom: number } | null
 }
 
 /**
@@ -43,6 +51,7 @@ interface Props {
  */
 export default function AppRuntime({
   htmlContent, hasHumanView, manifest, renderModel, editMode, clientMode, onParts, onPartMark, onEditRequest,
+  onChrome, insets,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const editModeRef = useRef(editMode)
@@ -147,8 +156,8 @@ export default function AppRuntime({
   // What the app says about its parts. Its contentWindow is the frame's for
   // the frame's whole life, loads included, so nothing it posts before its
   // load event is missed. Only our own frame is heard.
-  const handlers = useRef({ onParts, onPartMark, onEditRequest })
-  useEffect(() => { handlers.current = { onParts, onPartMark, onEditRequest } })
+  const handlers = useRef({ onParts, onPartMark, onEditRequest, onChrome })
+  useEffect(() => { handlers.current = { onParts, onPartMark, onEditRequest, onChrome } })
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const frame = iframeRef.current?.contentWindow
@@ -158,10 +167,24 @@ export default function AppRuntime({
       else if (m?.type === 'clan:part-mark' && typeof m.address === 'string') {
         handlers.current.onPartMark?.({ address: m.address, marked: m.marked === true, words: typeof m.words === 'string' ? m.words : '' })
       } else if (m?.type === 'clan:edit-request') handlers.current.onEditRequest?.()
+      else if (m?.type === 'clan:chrome') {
+        const { mode, tint } = m as { mode?: unknown; tint?: unknown }
+        handlers.current.onChrome?.(mode === 'glass' ? 'glass' : 'solid',
+          typeof tint === 'string' && /^#[0-9a-f]{6}$/i.test(tint) ? tint : null)
+      }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [])
+
+  // What the glass chrome covers, sent whenever it changes (and on load).
+  const insetsRef = useRef(insets)
+  const postInsets = useCallback(() => {
+    const i = insetsRef.current
+    if (!i) return
+    iframeRef.current?.contentWindow?.postMessage({ type: 'clan:insets', top: i.top, right: i.right, bottom: i.bottom }, '*')
+  }, [])
+  useEffect(() => { insetsRef.current = insets; postInsets() }, [insets?.top, insets?.right, insets?.bottom, postInsets])
 
   const [iframeSrc, setIframeSrc] = useState<string>('')
 
@@ -253,12 +276,14 @@ export default function AppRuntime({
     <iframe
       ref={iframeRef}
       {...(host.frameLoad === 'srcdoc' ? { srcDoc: prepared } : { src: iframeSrc })}
+      className="ch-frame"
       style={{ width: '100%', flex: 1, border: 'none', background: 'var(--paper)' }}
       sandbox="allow-scripts allow-popups"
       title={manifest.title}
       onLoad={() => {
         postScheme(getTheme())
         postClientMode()
+        postInsets()
         // An app that declared its parts before the shell heard says them again.
         iframeRef.current?.contentWindow?.postMessage({ type: 'clan:parts?' }, '*')
         setExportFrame(iframeRef.current?.contentWindow ?? null)

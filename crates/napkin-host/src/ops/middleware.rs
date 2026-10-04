@@ -36,6 +36,8 @@ use super::{json_merge, Outcome};
 /// The transport verb that reads a job without starting work: the one
 /// middleware task the web product does not charge to the agent quota.
 pub const JOB_STATUS: &str = "job_status";
+/// A person stopping a job: like a poll, it starts no work.
+pub const CANCEL_JOB: &str = "cancel_job";
 
 /// The one API version this host speaks.
 pub const API: &str = "napkin.middleware/1";

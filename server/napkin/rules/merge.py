@@ -28,6 +28,21 @@ def _vkey(v) -> str:
     return json.dumps(v, sort_keys=True)
 
 
+def _combined(cs: list[dict]) -> dict:
+    """Candidates that agree, as one: the first, with every source, quote, run and source
+    record. One that rests on the client's material keeps the whole fact at brand scope."""
+    m = dict(cs[0])
+    m["sources"] = list(dict.fromkeys(s for c in cs for s in c["sources"]))
+    m["quotes"] = _quotes(cs)
+    m["runs"] = list(dict.fromkeys(c["run"] for c in cs))
+    recs = {r.get("id"): r for c in cs for r in c.get("records") or []}
+    if recs:
+        m["records"] = list(recs.values())
+    if any(c.get("confidential") for c in cs):
+        m["layer"], m["confidential"] = "brand", True
+    return m
+
+
 def _quotes(cs: list[dict]) -> dict:
     """Each source's quote across candidates that agree: the first one a source gave."""
     out: dict = {}
@@ -81,10 +96,7 @@ def merge(candidates: list[dict], pinned: dict[tuple, dict], open_contest_keys: 
             by_value.setdefault(_vkey(c["value"]), []).append(c)
         prior = pinned.get(ident)
         if len(by_value) == 1:
-            merged = dict(cs[0])
-            merged["sources"] = list(dict.fromkeys(s for c in cs for s in c["sources"]))
-            merged["quotes"] = _quotes(cs)
-            merged["runs"] = list(dict.fromkeys(c["run"] for c in cs))
+            merged = _combined(cs)
             if prior is not None:
                 if _vkey(prior.get("value")) == _vkey(merged["value"]):
                     already.append(ident)
@@ -99,10 +111,6 @@ def merge(candidates: list[dict], pinned: dict[tuple, dict], open_contest_keys: 
                 continue
             vals = []
             for vs in by_value.values():
-                m = dict(vs[0])
-                m["sources"] = list(dict.fromkeys(s for c in vs for s in c["sources"]))
-                m["quotes"] = _quotes(vs)
-                m["runs"] = list(dict.fromkeys(c["run"] for c in vs))
-                vals.append(m)
+                vals.append(_combined(vs))
             contests.append({"key": ckey, "identity": ident, "pinned": prior, "values": vals})
     return {"pins": pins, "contests": contests, "already": already}

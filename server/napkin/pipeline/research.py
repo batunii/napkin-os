@@ -11,6 +11,13 @@ Per unit (lens, market):
      excerpts, or whose number is not in its quote, is rejected;
   4. a unit that fails (timeout, upstream error, invalid output) becomes a gap
      carrying its error — never a silent success.
+The client's own material (the documents attached to the campaign) is read
+as a source like any web page, at tier primary, and counts as high
+confidence on its own (rules/confidence.py): its excerpts go to the same
+extraction call, under the same quote check. A fact that rests on it is the
+client's: it is written to the brand layer, client-confidential, and never to
+the shared category layer. Where it and the web disagree, the merge opens a
+contest like any other, and a person picks.
 Then, across units: the merge by entity + key + market (contests for
 disagreements, nothing picked), D1 — every fact is appended to the layers with
 the merge decision FIRST, then pinned from the row the layer returns —, and
@@ -20,7 +27,9 @@ coverage per market and merged.
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from ..doc import (CONF, ISO_3166, LENS_NAMESPACE, LENSES, LICENCE_RANK, ctx_data, ctx_facts, decision,
@@ -33,6 +42,31 @@ from ..rules.quotes import verbatim
 from ..rules.tiering import registrable, tier_for
 from ..util import bad, iso, lid, slug, today, uid
 from .. import reasoning as rsn
+
+log = logging.getLogger("napkin.research")
+# How much of the client's material one extraction call reads: excerpts of at
+# most EXCERPT characters, at most MATERIAL_CHARS from one document and
+# MATERIALS_CHARS from all of them.
+EXCERPT, MATERIAL_CHARS, MATERIALS_CHARS = 1500, 40_000, 80_000
+
+
+def material_excerpts(text: str, cap: int = MATERIAL_CHARS) -> list[str]:
+    """The document's paragraphs as excerpts, long ones split at sentence ends, in order."""
+    out, total = [], 0
+    for para in re.split(r"\n\s*\n", text):
+        para = para.strip()
+        while para:
+            piece = para
+            if len(piece) > EXCERPT:
+                cut = max(piece.rfind(". ", 0, EXCERPT), piece.rfind("\n", 0, EXCERPT))
+                piece = piece[:cut + 1] if cut > EXCERPT // 3 else piece[:EXCERPT]
+            para = para[len(piece):].strip()
+            if total + len(piece) > cap:
+                return out
+            out.append(piece.strip())
+            total += len(piece)
+    return out
+
 
 # The standing question each lens asks (Planner Research Taxonomy, panel 3),
 # and the facts it wants — the wanted keys become gaps when not found.
@@ -69,7 +103,8 @@ evidence: the source_id and the exact quote from that source's excerpts (charact
 character). Numbers: a percentage is a proportion between 0 and 1; money in the currency
 stated (eur / gbp / usd), as a plain number. Never compute, convert beyond that, or use
 outside knowledge. List the wanted facts you could not find in not_found.
-Statements are facts too: what a brand claims or stands for, a habit, an occasion, a cultural tension,
+Some sources are the client's own documents (kind "client_material"): read them exactly as the web
+sources, with the same evidence rule. Statements are facts too: what a brand claims or stands for, a habit, an occasion, a cultural tension,
 a moment in the calendar, a rule. Give each as value_text (a short phrase in the source's own terms,
 unit "text"), one fact per item, with the quote it rests on. When `focus` is given, it is what the brief
 needs from this lens: extract what answers it first."""
@@ -129,8 +164,14 @@ class Researcher:
     """One research_lens run (or start_campaign's research stage)."""
 
     def __init__(self, doc, base, clan, handler, caps, lenses, markets, cats, pairs=None, reuse_days=30,
-                 concurrency=4, seed=None, competitors=None, subject=None):
+                 concurrency=4, seed=None, competitors=None, subject=None, materials=None, question_first=False):
         self.doc, self.base, self.clan, self.handler, self.caps = doc, base, clan, handler, caps
+        # the client's documents with readable text (the person's prompt is not a source)
+        self.materials = [m for m in materials or [] if getattr(m, "kind", "") != "prompt"
+                          and isinstance(getattr(m, "text", None), str) and m.text.strip()]
+        self._mat_srcs, self._mat_lock = None, threading.Lock()
+        # a person's question searched for: the question leads the query, the lens is context
+        self.question_first = question_first
         self.data = ctx_data(clan)
         self.lenses, self.markets, self.cats = lenses, markets, cats
         self.pairs = [(l, m) for l in lenses for m in markets if pairs is None or (l, m) in pairs]
@@ -159,6 +200,35 @@ class Researcher:
         out += [(c["ref"], "category") for c in self.comps]
         return out
 
+    # -- the client's material, as sources ---------------------------------------
+    def material_sources(self) -> list[dict]:
+        """Each attached document as a source: recorded once in the layer (tier
+        primary, client-confidential, visible to this agency only), read as excerpts."""
+        with self._mat_lock:
+            if self._mat_srcs is not None:
+                return self._mat_srcs
+            out, left = [], MATERIALS_CHARS
+            for m in self.materials:
+                ex = material_excerpts(m.text, min(MATERIAL_CHARS, left))
+                if not ex:
+                    break
+                left -= sum(len(x) for x in ex)
+                if sum(len(x) for x in ex) < len(m.text.strip()) - 200:
+                    log.info("research: read the first %d of %d characters of %s", sum(len(x) for x in ex),
+                             len(m.text), m.name)
+                sha = str(m.sha or "")
+                uri = f"material:{sha}"
+                rec = {"uri": uri, "publisher": "Your material", "title": m.name, "tier": "primary",
+                       "domain": f"material-{sha[7:19] or slug(m.name)}", "licence": "client-confidential",
+                       "retrieved_at": today(), "published_at": None}
+                sid = self.caps.layers.add_source(rec)
+                out.append({"sid": sid, "url": uri, "publisher": rec["publisher"], "title": m.name, "tier": "primary",
+                            "domain": rec["domain"], "licence": "client-confidential", "retrieved_at": today(),
+                            "published_at": None, "excerpts": ex, "material": m.id})
+                self.hits.append({"id": sid, "scope": "brand", "source": uri})
+            self._mat_srcs = out
+            return out
+
     # -- one unit ----------------------------------------------------------------
     def unit(self, lens: str, market: str, focus: str | None = None) -> dict:
         ns = LENS_NAMESPACE[lens]
@@ -172,24 +242,47 @@ class Researcher:
                     continue
                 u["cands"].append(self._cand_from_row(row, lens, market))
                 u["reused"] += 1
-        if u["reused"] and not focus:  # a focused ask (what the brief needs) searches even when facts are fresh
+        mats = self.material_sources() if self.materials else []
+        fresh = bool(u["reused"]) and not focus  # a focused ask (what the brief needs) searches even when facts are fresh
+        if fresh:
             self.hits += [{"id": c["row"]["id"], "scope": c["layer"], "source": c["row"]["origin"]} for c in u["cands"]]
-            return u
-        # 1. research
+            if not mats:
+                return u
+        # 1. research (the web, unless the layers' facts are fresh), and the client's material
         brand = self.subject["name"] if self.subject else None
         cat_names = [self.leaf_names.get(c, c) for c in self.cats]
         question, wanted = LENS_QUESTIONS[lens]
-        query = (f"{question} Category: {', '.join(cat_names)}. Market: {market_list([market])} ({market})."
-                 + (f" Brand: {brand}." if brand else "")
-                 + (f" Comparators: {', '.join(c['name'] for c in self.comps)}." if self.comps else "")
-                 + (f" What the brief needs: {focus}" if focus else ""))
+        srcs = []
+        if not fresh:
+            srcs = self._search(u, lens, market, focus, brand, cat_names, question, wanted, mats)
+            if srcs is None:
+                return u
+        srcs = srcs + mats
+        u["sources"] = srcs
+        if not srcs:
+            for w in wanted[:2]:
+                u["gaps"].append(self._gap(lens, market, w, tried=u["queries"]))
+            return u
+        return self._extract(u, lens, market, focus, brand, question, wanted, srcs)
+
+    def _search(self, u, lens, market, focus, brand, cat_names, question, wanted, mats):
+        """The web sources for one unit, recorded in the layer; None when the search failed
+        and there is no material to read instead (the unit is then a gap)."""
+        if self.question_first and focus:
+            query = (f"{focus} Market: {market_list([market])} ({market})."
+                     + (f" About: {brand}, in {', '.join(cat_names)}." if brand else f" Category: {', '.join(cat_names)}."))
+        else:
+            query = (f"{question} Category: {', '.join(cat_names)}. Market: {market_list([market])} ({market})."
+                     + (f" Brand: {brand}." if brand else "")
+                     + (f" Comparators: {', '.join(c['name'] for c in self.comps)}." if self.comps else "")
+                     + (f" What the brief needs: {focus}" if focus else ""))
         try:
             res = self.caps.research.search(query, lens, market, entity=self.subject["ref"] if self.subject else None,
                                             category=self.cats[0])
         except Exception as e:
             u["error"] = str(e)
             u["gaps"].append(self._gap(lens, market, wanted[0], note=f"research failed: {e}"))
-            return u
+            return [] if mats else None  # the client's material is still read
         u["queries"] = res["trace"]["queries"] or [query]
         srcs = []
         for s in res["sources"]:
@@ -202,19 +295,19 @@ class Researcher:
                                                "tier": tier, "domain": registrable(s["url"]), "licence": "open",
                                                "retrieved_at": s["retrieved_at"],
                                                "published_at": s["published_at"]})
-            srcs.append(dict(s, sid=sid, tier=tier, domain=registrable(s["url"])))
+            srcs.append(dict(s, sid=sid, tier=tier, domain=registrable(s["url"]), licence="open"))
             self.hits.append({"id": sid, "scope": "category", "source": s["url"]})
-        u["sources"] = srcs
-        if not srcs:
-            for w in wanted[:2]:
-                u["gaps"].append(self._gap(lens, market, w, tried=u["queries"]))
-            return u
+        return srcs
+
+    def _extract(self, u, lens, market, focus, brand, question, wanted, srcs):
         # 3. the model extracts; the rules check
+        ns = LENS_NAMESPACE[lens]
         comp_names = [c["name"] for c in self.comps]
         payload = {"lens": lens, "lens_question": question, "key_namespace": ns, "wanted": wanted, "focus": focus,
                    "market": market, "subject_brand": brand, "comparators": comp_names,
                    "categories": [{"code": c, "name": self.leaf_names.get(c, c)} for c in self.cats],
-                   "sources": [{"source_id": s["sid"], "url": s["url"], "publisher": s["publisher"],
+                   "sources": [{"source_id": s["sid"], "kind": "client_material" if s.get("material") else "web",
+                                "url": None if s.get("material") else s["url"], "publisher": s["publisher"],
                                 "title": s["title"], "published_at": s["published_at"], "excerpts": s["excerpts"]}
                                for s in srcs]}
         try:
@@ -230,6 +323,8 @@ class Researcher:
             c = self._check(f, lens, market, by_sid)
             if c:
                 u["cands"].append(c)
+        if all(s.get("material") for s in srcs):
+            return u  # only the client's material was read: what it does not say is not a gap of the lens
         found = {c["key"].split(".", 1)[1] for c in u["cands"]}
         for w in (raw.get("not_found") or []):
             w = re.sub(r"[^a-z0-9_]+", "_", str(w).lower()).strip("_")
@@ -311,11 +406,14 @@ class Researcher:
         if as_of > retrieved_at:
             return None  # a fact cannot be true after it was learned
         mk = market if f.get("market_specific", True) else None
+        # The client's material is the client's: a fact resting on it stays at brand scope (C3).
+        confidential = any(by_sid[s].get("material") for s in sources)
         return {"entity": entity, "key": key, "market": mk, "value": value, "unit": unit, "as_of": as_of,
-                "retrieved_at": retrieved_at, "layer": layer, "lens": lens, "run": f"{lens}/{market}",
-                "sources": sources, "quotes": quotes, "method": "report",
+                "retrieved_at": retrieved_at, "layer": "brand" if confidential else layer, "lens": lens,
+                "run": f"{lens}/{market}", "sources": sources, "quotes": quotes, "method": "report",
+                **({"confidential": True} if confidential else {}),
                 "records": [{"id": s, "tier": by_sid[s]["tier"], "domain": by_sid[s]["domain"],
-                             "licence": "open", "uri": by_sid[s]["url"]} for s in sources]}
+                             "licence": by_sid[s].get("licence") or "open", "uri": by_sid[s]["url"]} for s in sources]}
 
     def _gap(self, lens, market, wanted, tried=None, note=None) -> dict:
         entity = self.subject["ref"] if lens == "brands_positioning" and self.subject else "category/" + self.cats[0]
@@ -328,10 +426,10 @@ class Researcher:
         return g
 
     # -- the run ------------------------------------------------------------------
-    def run(self, progress=None):
+    def run(self, progress=None, focus=None):
         units = []
         with ThreadPoolExecutor(max_workers=max(1, self.concurrency)) as ex:
-            futs = [ex.submit(self.unit, l, m) for l, m in self.pairs]
+            futs = [ex.submit(self.unit, l, m, focus) for l, m in self.pairs]
             for fu in futs:
                 units.append(fu.result())
                 self.done += 1
@@ -490,7 +588,7 @@ class Researcher:
             if s:
                 rec = {"id": sid, "uri": s["url"], "title": s["title"], "publisher": s["publisher"],
                        "published_at": s["published_at"], "retrieved_at": s["retrieved_at"],
-                       "tier": s["tier"], "domain": s["domain"], "licence": "open"}
+                       "tier": s["tier"], "domain": s["domain"], "licence": s.get("licence") or "open"}
             elif sid in from_layer and from_layer[sid].get("uri"):
                 r = from_layer[sid]
                 rec = {"id": sid, **{k: r[k] for k in ("uri", "title", "publisher", "published_at", "retrieved_at",
@@ -501,7 +599,8 @@ class Researcher:
         return out
 
     def _write(self, c: dict, dec: dict, status: str) -> dict:
-        if c.get("row") and status == "active":
+        # a layer row reused as it is; not when the client's material now backs it outside the brand layer
+        if c.get("row") and status == "active" and not (c.get("confidential") and c["row"]["layer"] != "brand"):
             return c["row"]
         lic = max((r.get("licence", "open") for r in c.get("records") or []), key=LICENCE_RANK.index,
                   default="open")
@@ -567,12 +666,18 @@ def run_reasoning(u, cov, reuse_days, doc) -> dict:
     sids = [s["sid"] for s in u["sources"]]
     gids = [g["id"] for g in u["gaps"]]
     because, rejected = [], []
+    # A focused unit (a brief's need, a person's question) searches even when
+    # the layers hold fresh facts: it reuses them and searches as well.
+    searched = bool(u["sources"] or u["error"] or u["queries"])
     if u["reused"]:
-        rows = [c["row"]["id"] for c in u["cands"]]
+        rows = [c["row"]["id"] for c in u["cands"] if c.get("row")]
         because.append(rsn.point(f"The layers already held {u['reused']} fresh fact(s) for this lens and market",
                                  rows))
-        rejected.append(rsn.rej("research it again", f"the layers' facts are within the {reuse_days}-day reuse "
-                                                     f"window, so a new call would spend for nothing"))
+        if not searched:
+            rejected.append(rsn.rej("research it again", f"the layers' facts are within the {reuse_days}-day "
+                                                         f"reuse window, so a new call would spend for nothing"))
+    if not searched:
+        pass
     elif u["error"]:
         because.append(rsn.point(f"The research call failed: {u['error'][:160]}", gids or [run_addr]))
         rejected.append(rsn.rej("report the lens as covered", "a failed run is a gap, never a silent success"))
@@ -581,7 +686,7 @@ def run_reasoning(u, cov, reuse_days, doc) -> dict:
         # run's entry, and the sources of what it pinned or contested.
         because.append(rsn.point(f"{len(sids)} source(s) came back for {lens.replace('_', ' ')}{_where(market)}",
                                  run_addr) if sids else rsn.point("No source came back for the lens here", gids))
-        passed = [c for c in u["cands"]]
+        passed = [c for c in u["cands"] if not c.get("row")]
         if passed:
             because.append(rsn.point(f"{len(passed)} fact(s) passed the quote check: the quote is verbatim in "
                                      f"the source and the figure is in the quote",

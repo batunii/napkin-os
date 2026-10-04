@@ -93,6 +93,31 @@ tasks:
     reads: the document as it now stands — campaign, selection, pins, findings (a rejected finding is never cited)
     writes: report (replaced whole), one intake message (role agent, stage report)
 
+  ask_research:
+    handler: ask_research@1
+    job: long                      # one question; a search only when the facts here do not answer it
+    input: "{ question, lens? }"   # lens: the section it was asked in; none = something the research did not cover
+    order:
+      - ONE structured-output call answers it from the pins and findings the document holds; every sentence is cite-checked as a report claim
+      - jev says whether that answer answers the question; when it does not (or nothing could be said), the lens's researchers search with the question as their focus, and it is answered again over everything
+    writes: asks[<id>] (the question, its answer, whether it searched), and what a search found as pins, sources and contests
+    never:
+      - changes the lens's runs, coverage or gaps (a search on one question is not the lens's run)
+      - shows jev's scores on the page; they are in the decisions' reasoning
+    decision: check_answer (jev's verdict, search or not), the search's research decisions, then ask_research (the answer)
+
+  reconsider_fact:
+    handler: reconsider_fact@1
+    job: long                      # asked by the view once a person marks a fact wrong (a bad verdict on facts[...])
+    input: "{ fact_id, why, verdict_id? }"
+    order:
+      - the fact goes to selection.excluded with the person's reason; nothing cites it from here on
+      - every finding citing it is checked without it (nothing else left = it falls; otherwise jev says whether what remains still supports it)
+      - ONE structured-output call reworks the fallen findings from what remains (cite-checked, proposed for a person); each answer citing it is answered again; the report is recomposed without it
+    never:
+      - rejects a finding (a person's); the host flags a verified finding on an excluded fact until a person settles it
+    decision: reconsider_fact (what stood, what was reworked), then the reworked findings, the answers and the report
+
   # ---- a person's review (Contract 3 §6.2, Contract 4 §4) ----
   verify_finding:
     handler: verify_finding@1
@@ -147,6 +172,8 @@ merge_policies:
   # A map keyed by message id: branches add keys and a key-wise union keeps both.
   # Ids never collide across writers; the same id with different content is ask.
   intake.messages: append
+  # A map keyed by ask id, one per question asked; the same key is the same answer.
+  asks: append
   # Written by the middleware only and replaced wholesale on every write; the
   # newest composition wins. The view flags it out of date against based_on.
   report: last-write

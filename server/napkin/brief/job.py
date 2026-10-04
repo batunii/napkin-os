@@ -179,9 +179,9 @@ class BriefJob:
                 if k in self.fields and self.fields[k]["state"] != "kept":
                     self.fields[k] = {"state": state, "by": by}
 
-    def add_chunk(self, stage, patch, decisions, facts=(), sources=()):
-        if abandoned():
-            raise Abandoned(stage)  # the job went on without this stage: what it would write is dropped
+    def add_chunk(self, stage, patch, decisions, facts=(), sources=(), cancelling=False):
+        if abandoned() or (self.caps.jobs.cancelled and not cancelling):
+            raise Abandoned(stage)  # the job went on without this stage, or was cancelled: what it would write is dropped
         paths = field_paths(patch)
         for p in paths:  # every field the patch writes is named by a decision's targets (§3)
             a = f"{self.doc}#{address(p)}"
@@ -208,8 +208,36 @@ class BriefJob:
     def start(self):
         self.thread.start()
 
+    def cancel(self) -> bool:
+        """A person stopped the job: `cancelled` at once. What it sent stays;
+        the fields still in flight are `failed`; one decision says where."""
+        with self.lock:
+            if self.state not in ("queued", "running"):
+                return False
+            stage = self.stages[min(self.stage_idx, len(self.stages) - 1)]
+            self.state, self.finished_at = "cancelled", iso()
+            self.caps.jobs.stop()
+            for k, f in self.fields.items():
+                if f["state"] in IN_FLIGHT:
+                    self.fields[k] = {"state": "failed", "by": f["by"]}
+        self.caps.runlog.gap(stage, "cancelled", "a person cancelled the job")
+        action, worker = GAP_ACTION[stage]
+        r = rsn.make(f"Stopped at the {stage} stage: a person cancelled the job.",
+                     [rsn.point("A person asked to stop the job"), rsn.point(f"Without the rest, {WITHOUT[stage]}")],
+                     rsn.certainty("high", "the person asked to stop it"),
+                     "the brief is drafted again, or a field is redrafted", only_option="a person stopped it",
+                     attention=f"Cancelled at the {stage} stage; what finished before it stays.")
+        try:
+            self.add_chunk(stage, {}, [self.dec((stage, "cancelled"), "edit", action, [], [], r, worker)],
+                           cancelling=True)
+        except Exception:  # noqa: BLE001 - the job is cancelled either way
+            log.error("%s %s: the cancel could not be recorded", self.task, self.id)
+        return True
+
     def _run(self):
         with self.lock:
+            if self.state == "cancelled":
+                return
             self.state = "running"
         rl = self.caps.runlog
         rl.start(self.task, self.doc, self.stages, model=self.caps.model.model_id, engine=type(self).__name__,
@@ -218,17 +246,23 @@ class BriefJob:
         try:
             for i, stage in enumerate(self.stages):
                 with self.lock:
+                    if self.state == "cancelled":
+                        break
                     self.stage_idx = i
                 self._stage(stage)
         except Exception as e:  # the runner itself, not a stage: the job still ends, and says so
+            if self.state == "cancelled":
+                self._log_end()
+                return
             log.error("%s %s runner failed: %s\n%s", self.task, self.id, e, traceback.format_exc())
             self._fail(self.stages[min(self.stage_idx, len(self.stages) - 1)], "internal",
                        f"the job's runner failed ({type(e).__name__})")
             self._log_end()
             return
         with self.lock:
-            self.stage_idx = len(self.stages)
-            self.state, self.finished_at = "done", iso()
+            if self.state != "cancelled":
+                self.stage_idx = len(self.stages)
+                self.state, self.finished_at = "done", iso()
         self._log_end()
 
     def _log_end(self):
@@ -245,7 +279,14 @@ class BriefJob:
         with self.lock:
             before = {k: f["state"] for k, f in self.fields.items()}
         with self.caps.runlog.stage(stage):
-            _, err, left = bounded(getattr(self, "stage_" + stage), STAGE_TIMEOUT, f"{self.task}-{self.id}-{stage}")
+            _, err, left = bounded(getattr(self, "stage_" + stage), STAGE_TIMEOUT, f"{self.task}-{self.id}-{stage}",
+                                   stop=lambda: self.caps.jobs.cancelled)
+        if self.caps.jobs.cancelled:
+            if left is not None:
+                with self.lock:
+                    self._abandoned.add(stage)
+                    abandon(left)
+            return  # cancelled: nothing to record but the cancel itself (cancel)
         if left is not None or err is not None:
             self._unplace(stage, before)
         if left is not None:
@@ -314,7 +355,7 @@ class BriefJob:
             known = _known_ids(clan)
             pending = [c for c in self.chunks if not c.ids <= known]
             change = combine(self.doc, pending)
-            if change is None and self.state in ("done", "failed"):
+            if change is None and self.state in ("done", "failed", "cancelled"):
                 change = self.last_change
             if change is not None:
                 self.last_change = change
@@ -343,6 +384,8 @@ class BriefJob:
                 else self._regen_summary(fields)
         elif v["state"] == "failed":
             s = f"Failed at {v['stage']}: {self.error['message']}"
+        elif v["state"] == "cancelled":
+            s = f"Cancelled at the {v['stage']} stage: what finished before it is in the brief."
         elif v["stage"] == "draft" and drafting:
             s = f"Drafting {len(drafting)} field(s) in parallel."
         else:

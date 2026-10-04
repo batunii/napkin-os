@@ -28,7 +28,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .. import reasoning as rsn
 from .. import runlog
-from ..doc import ISO_3166, LENSES, ctx_facts, ctx_findings
+from ..doc import ISO_3166, LENSES, ctx_data, ctx_facts, ctx_findings, ctx_sources, lens_of_key
+from ..jev import JevError, noul
 from ..rules import merge as merge_rules
 from ..util import iso
 from . import capture as cap_stage
@@ -36,6 +37,11 @@ from . import fill as fill_stage
 from .drafters import _query
 from .fields import ARRAY_KEYS, KEYS, LABELS, clean, filled, get, put
 from .job import BriefJob, log
+
+# The facts the plan, the draft and the judge read (every fact the brief holds, up to this many).
+FACTS_MAX = 400
+# jev's "the facts held already answer the need" at or above this: the planned search is skipped.
+HELD = 0.6
 
 # Who handles a part, from what the plan says it rests on (the owner, 2026-10-01: mix and match,
 # decided part by part on what the brief receives, steered by one plan).
@@ -103,7 +109,9 @@ Plan:
   (consumer_culture), the category's worn-out codes (category_codes), key moments and timing
   (rhythm_moments), media spend benchmarks (media_spend), what the rules require (regulation_clearance),
   proof that has worked before (effectiveness_evidence), the market's size and players (market_structure).
-  Facts already held need no research.
+  Facts already held need no research: read the facts given first, and list a run only for what they
+  do not answer (say in `why` what is missing from them). A brief made from research usually needs little
+  or none.
 - category: the category code from the list that fits the brief best, or null.
 - ask_client: the questions only the client can answer, each with the part it serves.
 Never restate the person's request ("make me a brief") as content. Plain British English."""
@@ -238,24 +246,67 @@ class PlannedBriefJob(BriefJob):
     def _captured(self):
         return {k: v for k, v in self._values().items() if self.fm[k]["class"] == "captured" and filled(v)}
 
+    def _held(self):
+        """Every fact the brief holds and may use: its pins (those carried from the research
+        included) and those pinned in this job; never one a person marked wrong."""
+        excluded = {e.get("fact_id") for e in ((ctx_data(self.clan).get("selection") or {}).get("excluded") or [])
+                    if isinstance(e, dict)}
+        seen, out = set(), []
+        for f in list(ctx_facts(self.clan)) + list(self.new_pins):
+            fid = f.get("id")
+            if isinstance(fid, str) and fid not in seen and fid not in excluded and f.get("status") != "superseded":
+                seen.add(fid)
+                out.append(f)
+        return out
+
     def _evidence(self):
-        """The facts the brief holds (its pins, plus those pinned in this job), with the quote and the
-        source each was read from, the findings, and the research the brief was made from."""
+        """Every fact the brief holds, each with the quote and the source it was read from (the
+        document's own source records, and those of this job's research), the findings, and the
+        research the brief was made from. All of them: what the plan cannot see, it researches
+        again, and what the draft cannot see, it cannot cite (2026-10-03: 80 of 331 were sent,
+        and the 89 facts this job researched were never seen)."""
         view = fill_stage.research_view(self.clan, self.data0)
-        srcs = {**{s["id"]: s for s in self.new_sources}}
-        pins = list(ctx_facts(self.clan)) + list(self.new_pins)
+        srcs = {**ctx_sources(self.clan), **{s["id"]: s for s in self.new_sources}}
         facts = []
-        for f in pins:
-            if not isinstance(f.get("id"), str):
-                continue
-            sid = next(iter(f.get("sources") or []), None)
+        for f in self._held()[:FACTS_MAX]:
+            sid = next((s for s in f.get("sources") or [] if s in srcs), next(iter(f.get("sources") or []), None))
             s = srcs.get(sid) or {}
+            q = next(iter((f.get("quotes") or {}).values()), None)
             facts.append({"id": f["id"], "entity": f.get("entity"), "key": f.get("key"), "value": f.get("value"),
                           "unit": f.get("unit"), "market": f.get("market"), "as_of": f.get("as_of"),
-                          "quote": next(iter((f.get("quotes") or {}).values()), None),
+                          "quote": q[:240] if isinstance(q, str) else None,
                           "source": {k: s.get(k) for k in ("publisher", "title", "uri", "published_at") if s.get(k)}
                           or None})
-        return {"facts": facts[:80], "findings": view["findings"], "research": view["research"]}
+        findings = [{"id": x["id"], "statement": x.get("statement"), "status": x.get("status")}
+                    for x in ctx_findings(self.clan) if isinstance(x.get("id"), str) and x.get("status") != "rejected"]
+        return {"facts": facts, "findings": findings[:60], "research": view["research"]}
+
+    def _already_held(self, asks):
+        """The planned research the brief's facts already answer: jev reads the facts held for each
+        ask's lens and market against its focus. -> (to run, skipped with jev's score). Without jev,
+        every ask runs."""
+        if not asks or not self.caps.jev.configured:
+            return asks, []
+        held = self._held()
+        run, skipped = [], []
+        for a in asks:
+            mine = [f for f in held if lens_of_key(f.get("key")) == a["lens"] and f.get("market") in (a["market"], None)]
+            if not mine:
+                run.append(a)
+                continue
+            lines = [f"{f.get('key')} = {f.get('value')}{' (' + f['market'] + ')' if f.get('market') else ''}"
+                     for f in mine[:120]]
+            try:
+                p = self.caps.jev.ask({"need": a.get("focus") or a["lens"], "facts_held": lines},
+                                      {"held": noul("Do the facts held already answer the need?",
+                                                    "They answer it: no new research is needed",
+                                                    "They leave the need unanswered, or only partly answered")},
+                                      "brief_research_held")["held"]
+            except JevError:
+                run.append(a)
+                continue
+            (skipped if p >= HELD else run).append({**a, "held_p": p, "held_facts": len(mine)} if p >= HELD else a)
+        return run, skipped
 
     def _ids(self, ev):
         return {f["id"] for f in ev["facts"]} | {x["id"] for x in ev["findings"]} | set(self.lib)
@@ -330,6 +381,21 @@ class PlannedBriefJob(BriefJob):
                 seen.add(pair)
                 asks.append({**a, "market": m})
         cat = plan.get("category")
+        # What the brief already holds is not researched again: jev reads each planned search's
+        # need against the facts held for its lens and market.
+        asks, held = self._already_held(asks)
+        if held:
+            rl.note("research_held", skipped=[{"lens": a["lens"], "market": a["market"], "focus": _short(a.get("focus"), 160),
+                                               "p": round(a["held_p"], 2), "facts": a["held_facts"]} for a in held])
+            decisions.append(self.dec(("research-held",), "edit", "research_held", [], [self.plan_dec["id"]], rsn.make(
+                f"Did not research again what the brief already holds: {len(held)} planned search(es) skipped.",
+                [rsn.point(f"{a['lens'].replace('_', ' ')} in {a['market']}: {_short(a.get('focus'), 160)} "
+                           f"(jev: the {a['held_facts']} fact(s) held answer it, {a['held_p']:.2f})", [self.plan_dec["id"]])
+                 for a in held],
+                rsn.certainty("medium", "jev judged the facts held against each need"),
+                "the plan asks for something the facts do not cover",
+                rejected=[rsn.rej("search again for what is held", "it spends a search for facts the brief has")]),
+                "synthesise"))
         dropped = asks[self.research_max:]
         asks = asks[:self.research_max] if cat else []
         if dropped:

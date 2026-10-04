@@ -58,10 +58,15 @@ def compose(doc, clan, handler, caps):
     data = ctx_data(clan)
     camp = data.get("campaign") or {}
     sel = data.get("selection") or {}
-    pins = [f for f in ctx_facts(clan) if re.fullmatch(r"f_[0-9A-Z]{6,}", str(f.get("id", "")))]
+    # a fact a person marked wrong (excluded) is never cited
+    excluded = {e.get("fact_id") for e in (sel.get("excluded") or []) if isinstance(e, dict)}
+    pins = [f for f in ctx_facts(clan) if re.fullmatch(r"f_[0-9A-Z]{6,}", str(f.get("id", "")))
+            and f.get("id") not in excluded]
     pin_by = {f["id"]: f for f in pins}
+    # nor a finding that rests on one: the finding worked out again in its place is used instead
     findings = [f for f in ctx_findings(clan) if f.get("status") in ("proposed", "verified")
-                and re.fullmatch(r"fi_[0-9A-Z]{6,}", str(f.get("id", "")))]
+                and re.fullmatch(r"fi_[0-9A-Z]{6,}", str(f.get("id", "")))
+                and not set(f.get("cites") or []) & excluded]
     fi_by = {f["id"]: f for f in findings}
     if not pins and not findings:
         raise bad("nothing to cite: the document holds no pin and no finding, so no claim could be sourced")
@@ -191,7 +196,8 @@ def compose(doc, clan, handler, caps):
               "headline": headline, "summary": summary, "sections": sections,
               "confirm": confirm_list(doc, camp), "not_researched": not_researched(sel, markets)}
     # How it looks: the agent's layout over the same record, checked in code (Contract 5).
-    all_findings = {f["id"]: f for f in ctx_findings(clan) if isinstance(f.get("id"), str)}
+    all_findings = {f["id"]: f for f in ctx_findings(clan) if isinstance(f.get("id"), str)
+                    and not set(f.get("cites") or []) & excluded}
     report["layout"], report["layout_by"], ldropped = layout.compose(
         report, pin_by, all_findings, {c["id"]: c for c in sel.get("contested") or [] if c.get("id")},
         {g["id"]: g for g in sel.get("gaps") or [] if g.get("id")}, caps, names, brand, markets,

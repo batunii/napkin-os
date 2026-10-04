@@ -1167,6 +1167,44 @@ fn lock_blockers(ctx: &Lookup, clan: &clan_sdk::ClanFile) -> Vec<Attention> {
         ));
     }
 
+    // 3b. Verified findings that rest on a fact a person marked wrong and took
+    //     out (`selection.excluded`): the crew works one out again in its
+    //     place, but only a person takes a verified finding back.
+    let excluded: BTreeSet<&str> = ctx
+        .data
+        .get("selection")
+        .and_then(|s| s.get("excluded"))
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|e| e.get("fact_id")?.as_str()).collect())
+        .unwrap_or_default();
+    if !excluded.is_empty() {
+        for (id, f) in &ctx.findings {
+            if str_of(f, "status") != Some("verified") {
+                continue;
+            }
+            let gone: Vec<&str> = f
+                .get("cites")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).filter(|c| excluded.contains(c)).collect())
+                .unwrap_or_default();
+            if gone.is_empty() {
+                continue;
+            }
+            let statement = str_of(f, "statement").map(|s| clip(s, 140)).unwrap_or_default();
+            out.push(blocker(
+                "finding_on_excluded_fact",
+                format!(
+                    "Finding “{statement}” rests on {}, which a person marked wrong and took out. Take the finding back, or keep it with a reason, before lock.",
+                    gone.join(", ")
+                ),
+                str_of(f, "decision")
+                    .filter(|d| ctx.index_of(d).is_some())
+                    .map(String::from),
+                Some(ctx.address(&format!("findings[{id}]"))),
+            ));
+        }
+    }
+
     // 4. Fields that cite a rejected finding: through an envelope's
     //    `finding_ids`, or — a bare value, like a brief's — through the
     //    decision that wrote it as it stands.
@@ -1632,6 +1670,10 @@ fn wrote(ctx: &Lookup, d: &Decision, key: &str) -> bool {
 /// (Contract 4 §7.2, item 4). A brief's fields are bare values with no
 /// envelope to carry `finding_ids`; the drafter's decision is where it says
 /// what it rests on. A redraft that no longer cites the finding answers it.
+/// Targets a decision may name while citing a finding that are not content a
+/// person would revise: see [`written_citing_findings`].
+const NOT_REVISED: &[&str] = &["intake.messages", "facts[", "findings[", "selection.excluded"];
+
 fn written_citing_findings<'r>(
     ctx: &Lookup,
     rejected: &BTreeMap<&'r str, &Value>,
@@ -1663,6 +1705,12 @@ fn written_citing_findings<'r>(
             else {
                 continue;
             };
+            // Not a part a person revises to stop citing a finding: the chat,
+            // the facts and findings themselves (each is settled by its own
+            // review), and the record of a fact taken out.
+            if NOT_REVISED.iter().any(|p| key.starts_with(p)) {
+                continue;
+            }
             let rewritten = ctx.chain.decisions.iter().enumerate().any(|(j, e)| {
                 j != i && ctx.after(j, i) && writes(e) && wrote(ctx, e, key)
             });

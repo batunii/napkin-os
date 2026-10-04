@@ -6,6 +6,8 @@ Fact confidence (Contract 3 §4, middleware-api §3):
   +1 per independent corroborating source (distinct registrable domain),
      at most +2, capped at high
   a fact resting on tertiary sources only is capped at medium
+  a fact resting on the client's own material (a `material:` source, tier
+  primary) is high: the owner, 2026-10-02 — the client's documents are tier 1
 
 Finding confidence (Contract 3 §6.1): the lowest cited pin's confidence,
 one level lower for a single citation or any stale citation, floor low.
@@ -22,6 +24,8 @@ def fact_confidence(sources: list[dict]) -> str:
     """`sources`: [{tier, domain}] — every source the layer row rests on."""
     if not sources:
         return "low"
+    if any(str(s.get("uri") or "").startswith("material:") for s in sources):
+        return "high"
     base = max(TIER_BASE.get(s.get("tier"), 0) for s in sources)
     independent = len({s.get("domain") or s.get("id") for s in sources})
     level = min(2, base + min(2, independent - 1))

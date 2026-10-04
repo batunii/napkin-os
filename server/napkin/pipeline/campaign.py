@@ -37,7 +37,7 @@ import traceback
 from ..doc import (CAMPAIGN_FIELDS, GATES, LENS_NAMESPACE, LENS_TITLES, LENSES, STAGES, address, apply_patch,
                    build_materials, ctx_data, ctx_decisions, ctx_facts, ctx_findings, decision, deep_merge, field_paths,
                    get_dotted, human_owned, known_ids, market_list, read_of)
-from ..jobs import Abandoned, abandon, abandoned, bounded
+from ..jobs import Abandoned, Cancelled, abandon, abandoned, bounded
 from ..layers import origin_uri
 from ..model import ModelError
 from ..rules import identify as id_rules
@@ -274,9 +274,9 @@ class CampaignJob:
         return uid("d_", self.doc, self.id, *parts)
 
     def add_chunk(self, stage, patch, decisions, facts=(), findings=(), text=None, question=None,
-                  msg_decision=None, base=None, read_from=None, sources=(), gap=False):
-        if abandoned():
-            raise Abandoned(stage)  # the job went on without this stage: what it would write is dropped
+                  msg_decision=None, base=None, read_from=None, sources=(), gap=False, cancelling=False):
+        if abandoned() or (self.caps.jobs.cancelled and not cancelling):
+            raise Abandoned(stage)  # the job went on without this stage, or was cancelled: what it would write is dropped
         patch = copy.deepcopy(patch)
         decisions = list(decisions)
         message = None
@@ -341,10 +341,39 @@ class CampaignJob:
                 state, err, gaps = self.state, self.error, list(self.gaps)
             self.caps.runlog.end(state, summary=(err or {}).get("message"), gaps=gaps)
 
+    def cancel(self) -> bool:
+        """A person stopped the job: it is `cancelled` at once and holds its
+        document no longer. What it sent stays; the stage running now is left
+        behind (it can write nothing more); one decision and a chat message
+        say where it stopped."""
+        with self.lock:
+            if self.state not in ("queued", "running", "needs_input"):
+                return False
+            stage = STAGES[min(self.stage_idx, len(STAGES) - 1)]
+            self.state, self.finished_at, self.question = "cancelled", iso(), None
+            self.caps.jobs.stop()
+            self.cond.notify_all()
+        self.caps.runlog.gap(stage, "cancelled", "a person cancelled the job")
+        d = decision(self.doc, self.did(stage, "cancelled"), "edit", self.handler, "cancel_job", "", [],
+                     reasoning=rsn.make(
+                         f"Stopped at the {stage} step: a person cancelled the job.",
+                         [rsn.point("A person asked to stop the job"),
+                          rsn.point(f"Without the rest, {WITHOUT[stage]}")],
+                         rsn.certainty("high", "the person asked to stop it"),
+                         "the step is asked for again, or the campaign is started again",
+                         only_option="a person stopped it",
+                         attention=f"Cancelled at the {stage} step; what finished before it stays."))
+        try:
+            self.add_chunk(stage, {}, [d], text=f"Stopped: you cancelled it at the {stage} step. "
+                                                f"What finished before it stays.", gap=True, cancelling=True)
+        except Exception:  # noqa: BLE001 - the job is cancelled either way
+            log.error("start_campaign %s: the cancel could not be recorded", self.id)
+        return True
+
     def _loop(self):
         while True:
             with self.lock:
-                if self.state in ("done", "failed"):
+                if self.state in ("done", "failed", "cancelled"):
                     return
                 if self.state == "needs_input":
                     left = (self._asked_at or 0) + self._limit("question_wait") - time.monotonic()
@@ -358,6 +387,8 @@ class CampaignJob:
                     continue
             finished = self._stage(stage)
             with self.lock:
+                if self.state == "cancelled":
+                    return
                 if finished is None:
                     continue  # the stage runs again: identify, once a question went on without its answer
                 if not finished:
@@ -396,7 +427,12 @@ class CampaignJob:
         it again). What it raises, however it fails, is a gap, never the end."""
         limit = self._limit("stage_timeout")
         with self.caps.runlog.stage(stage):
-            value, err, left = bounded(getattr(self, "stage_" + stage), limit, f"campaign-{self.id}-{stage}")
+            value, err, left = bounded(getattr(self, "stage_" + stage), limit, f"campaign-{self.id}-{stage}",
+                                       stop=lambda: self.caps.jobs.cancelled)
+        if self.caps.jobs.cancelled:
+            if left is not None:
+                abandon(left)
+            return True  # cancelled: nothing to record but the cancel itself (cancel)
         if left is not None:
             with self.lock:
                 abandon(left)
@@ -570,7 +606,7 @@ class CampaignJob:
             send = pending[:1] if pending and pending[0].solo else pending
             self._last_sent = {id(c) for c in send}
             change = combine(self.doc, send)
-            if change is None and self.state == "done":
+            if change is None and self.state in ("done", "cancelled"):
                 change = self.last_change
             if change is not None:
                 self.last_change = change
@@ -608,6 +644,8 @@ class CampaignJob:
             return f"{head}, with {len(self.gaps)} gap(s) ({stages}); each is named in the chat."
         if v["state"] == "failed":
             return f"Failed at {v['stage']}: {self.error['message']}"
+        if v["state"] == "cancelled":
+            return f"Cancelled at {v['stage']}: what finished before it is in the document."
         return f"{v['stage']}: {self.stage_idx} of {len(STAGES)} stage(s) done"
 
     def answer(self, clan, inp):
@@ -1277,7 +1315,7 @@ class CampaignJob:
             return True
         r = Researcher(self.doc, self.W_version, self.wclan(), self.handler, self.caps, lenses, markets, cats,
                        pairs=set(pairs), reuse_days=self.settings.reuse_days,
-                       concurrency=self.settings.research_concurrency, seed=self.id)
+                       concurrency=self.settings.research_concurrency, seed=self.id, materials=self.materials())
         result, change, hits = r.run()
         self.hits += hits
         decs = change["decisions"]

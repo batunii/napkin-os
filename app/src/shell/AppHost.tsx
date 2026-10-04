@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Toolbar from '../components/Toolbar'
 import Sidebar from '../components/Sidebar'
 import AppRuntime from './AppRuntime'
@@ -142,8 +142,57 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
   const marked = review ? markedOf(review.draft, parts, review.marks).length : 0
   const authored = open.render_model === 'authored'
 
+  // ── glass chrome ──────────────────────────────────────────────────────────
+  // An app may ask to be shown under glass (`clan:chrome`): the bar, footer
+  // and rail lie over it, frosted, so the document shows through them, and it
+  // is told what they cover. Client review keeps the solid layout (its panel
+  // and band are part of the page's flow).
+  const [chromeMode, setChromeMode] = useState<'glass' | 'solid'>('solid')
+  // The glass takes the document's own ground as its tint, when the app gives
+  // one the chrome's ink still reads on (4.5:1); never any other colour.
+  const [glassTint, setGlassTint] = useState<string | null>(null)
+  useEffect(() => { setChromeMode('solid'); setGlassTint(null) }, [docPath])
+  const onChrome = useCallback((mode: 'glass' | 'solid', tint: string | null) => {
+    setChromeMode(mode)
+    setGlassTint(tint && readsWithChromeInk(tint) ? tint : null)
+  }, [])
+  const glass = chromeMode === 'glass' && !clientOn
+  const topRef = useRef<HTMLDivElement>(null)
+  const workRef = useRef<HTMLDivElement>(null)
+  const footRef = useRef<HTMLElement>(null)
+  const [insets, setInsets] = useState<{ top: number; right: number; bottom: number } | null>(null)
+  useEffect(() => {
+    if (!glass) { setInsets(null); return }
+    const measure = () => {
+      const top = topRef.current?.getBoundingClientRect().height ?? 0
+      const bottom = footRef.current?.getBoundingClientRect().height ?? 0
+      // The rail (or the open panel) on the right; on a narrow screen it floats
+      // in the footer instead, and covers nothing.
+      const side = workRef.current?.querySelector(':scope > .dp-rail, :scope > .dp-panel') as HTMLElement | null
+      const right = side && getComputedStyle(side).position === 'absolute' ? side.getBoundingClientRect().width : 0
+      setInsets(i => (i && i.top === Math.round(top) && i.right === Math.round(right) && i.bottom === Math.round(bottom)
+        ? i : { top: Math.round(top), right: Math.round(right), bottom: Math.round(bottom) }))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (topRef.current) ro.observe(topRef.current)
+    if (footRef.current) ro.observe(footRef.current)
+    if (workRef.current) ro.observe(workRef.current)
+    const mo = new MutationObserver(() => {
+      measure()
+      workRef.current?.querySelectorAll(':scope > .dp-rail, :scope > .dp-panel').forEach(el => ro.observe(el))
+    })
+    if (workRef.current) mo.observe(workRef.current, { childList: true })
+    workRef.current?.querySelectorAll(':scope > .dp-rail, :scope > .dp-panel').forEach(el => ro.observe(el))
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure) }
+  }, [glass])
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className={glass ? 'ch-doc ch-doc-glass' : 'ch-doc'} style={{ display: 'flex', flexDirection: 'column', height: '100vh',
+      ...(insets ? { ['--glass-top' as string]: insets.top + 'px', ['--glass-bottom' as string]: insets.bottom + 'px' } : {}),
+      ...(glass && glassTint ? { ['--glass-tint' as string]: glassTint } : {}) }}>
+      <div className="ch-top" ref={topRef}>
       {/* Accent strip — recolors with a trusted app's theme (clan://set-theme). */}
       <div className="ch-strip" />
       <Toolbar
@@ -172,7 +221,8 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
         clientMode={clientOn ? { onCancel: endReview, busy: saving !== 'no' } : undefined}
       />
       {banner}
-      <div className={`ch-work ${clientOn ? 'ch-work-review' : ''}`}>
+      </div>
+      <div className={`ch-work ${clientOn ? 'ch-work-review' : ''}`} ref={workRef}>
         {sidebarOpen && <Sidebar manifest={open.manifest} path={open.path} onOpenDocument={onOpenDocument} />}
         <main className="ch-work-main">
           {!clientOn && decisions.view && (
@@ -193,6 +243,8 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
             onParts={onParts}
             onPartMark={onPartMark}
             onEditRequest={onEditRequest}
+            onChrome={onChrome}
+            insets={insets}
           />
         </main>
         {clientOn ? (
@@ -211,10 +263,27 @@ export default function AppHost({ running, onHome, onOpenFile, onSave, onKeepOff
           <DecisionPanel decisions={decisions} />
         )}
       </div>
-      <footer className="ch-footer">
+      <footer className="ch-footer" ref={footRef}>
         <PoweredByClan />
       </footer>
       {workspaceOpen && <WorkspaceView manifest={open.manifest} onClose={() => setWorkspaceOpen(false)} />}
     </div>
   )
+}
+
+/** Whether the chrome's own ink reads on `hex` (WCAG contrast 4.5:1 or more). */
+function readsWithChromeInk(hex: string): boolean {
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()
+  const lum = (h: string) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h)
+    if (!m) return null
+    const [r, g, b] = [0, 2, 4].map(i => {
+      const v = parseInt(m[1].slice(i, i + 2), 16) / 255
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const a = lum(hex), b = lum(ink)
+  if (a == null || b == null) return false
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5
 }

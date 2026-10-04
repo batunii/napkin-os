@@ -201,7 +201,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app_id: APP_ID.into(),
             // 0.2: the Plan-zone identity; figures from the shared snippet.
             // 0.4: its card on the OS home (app.home).
-            version: "0.4.3".into(),
+            version: "0.4.13".into(),
             icon: Some(app_ui::ICON_PATH.into()),
             entry: "human/index.html".into(),
             schema: Some("agent/output-schema.json".into()),

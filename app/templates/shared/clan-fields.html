@@ -140,7 +140,15 @@ clan-tray{display:block}
 .clf-srcrow.more .n{visibility:hidden}
 
 /* ── the tray: what needs a person, computed by the host ─────────────── */
-.clf-tray{position:sticky;top:0;z-index:19;background:var(--clf-paper);border-bottom:1px solid var(--clf-line);box-shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07)}
+/* Under the OS's glass chrome (clan:insets): the page blurs what scrolls
+   beneath the shell's bar and footer itself. The shell cannot blur a frame
+   drawn apart from it, so the frost is made here, and the shell's tint lies
+   over it. Nothing when there is no glass (the insets are 0). */
+html::before,html::after{content:"";position:fixed;left:0;right:0;z-index:2147483000;pointer-events:none;
+  -webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6)}
+html::before{top:0;height:var(--clan-top,0px)}
+html::after{bottom:0;height:var(--clan-bottom,0px)}
+.clf-tray{position:sticky;top:var(--clan-top,0px);z-index:19;background:var(--clf-paper);border-bottom:1px solid var(--clf-line);box-shadow:0 1px 2px rgba(20,32,64,.06),0 8px 24px rgba(40,64,120,.07)}
 .clf-tray-in{max-width:1120px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .clf-tray .who{display:flex;align-items:center;gap:10px;min-width:0}
 .clf-tray .who .agent-figure{width:30px;height:40px}
@@ -169,7 +177,7 @@ clan-tray{display:block}
 /* ── the evidence drawer ─────────────────────────────────────────────── */
 .clf-scrim{position:fixed;inset:0;background:rgba(10,12,16,.28);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s var(--clf-ease)}
 .clf-scrim.on{opacity:1;pointer-events:auto}
-.clf-drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);z-index:41;background:var(--clf-paper);color:var(--clf-ink);box-shadow:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.18);transform:translateX(104%);transition:transform .28s var(--clf-ease);display:flex;flex-direction:column;font-size:14px;line-height:1.5}
+.clf-drawer{position:fixed;top:var(--clan-top,0px);right:var(--clan-right,0px);bottom:var(--clan-bottom,0px);width:min(460px,100%);z-index:41;background:var(--clf-paper);color:var(--clf-ink);box-shadow:0 2px 6px rgba(20,32,64,.08),0 24px 60px rgba(40,64,120,.18);transform:translateX(104%);transition:transform .28s var(--clf-ease);display:flex;flex-direction:column;font-size:14px;line-height:1.5}
 .clf-drawer.on{transform:none}
 .clf-dh{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--clf-line2)}
 .clf-dh .crumb{flex:1;min-width:0;margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em;line-height:1.25;color:var(--clf-ink)}
@@ -261,7 +269,7 @@ clan-tray{display:block}
 .clf-hist li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--clf-ink3);margin-top:7px}
 .clf-err{font-size:14px;color:var(--clf-create-ink);background:var(--clf-create-soft);border-radius:10px;padding:8px 12px}
 .clf-muted{color:var(--clf-ink3);font-size:13.5px;margin:0}
-.clf-toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);background:var(--clf-ink);color:var(--clf-paper);padding:12px 20px;border-radius:999px;font-size:15px;opacity:0;pointer-events:none;transition:all .25s var(--clf-ease);z-index:60;max-width:calc(100% - 32px)}
+.clf-toast{position:fixed;left:50%;bottom:calc(20px + var(--clan-bottom,0px));transform:translate(-50%,20px);background:var(--clf-ink);color:var(--clf-paper);padding:12px 20px;border-radius:999px;font-size:15px;opacity:0;pointer-events:none;transition:all .25s var(--clf-ease);z-index:60;max-width:calc(100% - 32px)}
 .clf-toast.on{opacity:1;transform:translate(-50%,0)}
 
 /* ── the layout vocabulary an agent composes a report from ───────────── */
@@ -436,6 +444,7 @@ var ClanFields=(function(){
   function saidBy(q,rec){ var id=String(rec&&rec.publisher||''); q=String(q); return id&&q.indexOf(id+': ')===0?q.slice(id.length+2):q; }
   function srcShort(p){ var s=srcOf(p); if(!s||!s.rec) return s?'source details missing':'';
     if(s.rec.tier==='reviewer-verified') return (/correct/.test(s.rec.title||'')?'corrected by ':'checked by ')+personName(whoOfSrc(s.rec));
+    if(/^material:/.test(s.rec.uri||'')) return 'your file'+(s.rec.title?' '+s.rec.title:'');
     return (pubName(s.rec.publisher)||s.rec.domain||'source')+(s.rec.published_at?' · '+yr(s.rec.published_at):''); }
   // Where a source came from, in plain words: 'ShelfLife Magazine · March 2025
   // · we read it on 28 Sept'.
@@ -882,7 +891,7 @@ var ClanFields=(function(){
     }
     el.innerHTML=h+'</div></div>';
   }
-  var KIND_LABEL={open_contest:'Sources disagree',unverified_finding:'Is this right?',flagged_field:'Needs changing',bad_verdict:'Marked wrong',unmerged_branch:'Copy not brought back',client_rejected:'Client rejected',client_rejected_parts_unknown:'Which parts?'};
+  var KIND_LABEL={finding_on_excluded_fact:'Rests on a fact marked wrong',open_contest:'Sources disagree',unverified_finding:'Is this right?',flagged_field:'Needs changing',bad_verdict:'Marked wrong',unmerged_branch:'Copy not brought back',client_rejected:'Client rejected',client_rejected_parts_unknown:'Which parts?'};
   function cssEsc(s){ return String(s).replace(/["\\]/g,'\\$&'); }
 
   // ── carried items nothing here can settle ───────────────────────────
@@ -1144,6 +1153,22 @@ var ClanFields=(function(){
         +(bad&&!editableValue(valueAt(ref))?'<p class="clf-muted">Or change it: choose <b>Edit</b> under More at the top, then tap it.</p>':'');
       return h; }).join('')+'</div>';
   }
+  // A fact a person marked wrong: it says so, with their reason, and what the
+  // crew does with it (the app takes it out and checks what rested on it), in
+  // place of "Is this right?", so it is never marked twice.
+  function wrongBlock(ref){
+    var me=docId()+'#facts['+ref+']';
+    var vb=arr(VIEW&&VIEW.decisions).filter(function(b){ var d=b.decision||{};
+      return d.kind==='verdict'&&d.polarity==='bad'&&!b.superseded&&isPerson(d)&&arr(d.targets).some(function(t){ return qualify(t)===me; }); })[0];
+    var ex=arr(obj(data().selection).excluded).filter(function(e){ return e&&e.fact_id===ref; })[0];
+    if(!vb&&!ex) return '';
+    var by=vb?(vb.who&&vb.who.you?'You':personName(vb.decision.actor||'')):'';
+    var why=(vb&&vb.decision.rationale)||(ex&&ex.reason)||'';
+    return '<div class="clf-sec" data-clf-anchor><h3 class="ask">'+(by?esc(by.charAt(0).toUpperCase()+by.slice(1))+' marked this wrong':'Marked wrong')+'</h3>'
+      +(why?'<blockquote class="clf-q said">'+esc(why)+'</blockquote>':'')
+      +'<p class="clf-ex">'+(ex?'It is taken out: nothing in the research uses it now. What rested on it was checked again without it, and anything that changed is in “What happened”.'
+        :'The crew is taking it out and checking everything that rested on it. That takes a minute or two; this changes when it is done.')+'</p></div>';
+  }
   // What else needs a person on a path: a field resting on a point someone
   // marked wrong, or a person's own "it's wrong" nobody has answered.
   function needsBlock(ref){
@@ -1181,7 +1206,9 @@ var ClanFields=(function(){
         if(p.replaced_by) b+='<button type="button" class="clf-row" data-open="'+esc(p.replaced_by.fact_id)+'"><span>Now replaced by<small>a person picked another value</small></span><b>'+esc(fmt(pins()[p.replaced_by.fact_id]))+'</b></button>';
         var oc=openContestOf(ref); if(oc) b+='<button type="button" class="clf-row" data-open="'+esc(oc.id)+'"><span>Another source says something else<small>pick one before you lock the report</small></span><b>'+arr(oc.values).map(fmt).map(esc).join(' or ')+'</b></button>';
         b+=evidence(p);
-        if(!L&&!p.replaced_by) b+=(t.fix?correctForm(ref,p):'')+'<div class="clf-sec" data-clf-anchor><h3 class="ask">Is this right?</h3><div class="clf-answers"><button type="button" class="clf-btn big primary" data-clf="good">Yes, this is right</button><button type="button" class="clf-btn big" data-clf="bad">No, this is wrong</button><button type="button" class="clf-btn big quiet" data-clf="fix">Change it to the right value</button></div>'+privBlock()+'</div>';
+        var wb=wrongBlock(ref);
+        if(wb) b+=wb;
+        else if(!L&&!p.replaced_by) b+=(t.fix?correctForm(ref,p):'')+'<div class="clf-sec" data-clf-anchor><h3 class="ask">Is this right?</h3><div class="clf-answers"><button type="button" class="clf-btn big primary" data-clf="good">Yes, this is right</button><button type="button" class="clf-btn big" data-clf="bad">No, this is wrong</button><button type="button" class="clf-btn big quiet" data-clf="fix">Change it to the right value</button></div>'+privBlock()+'</div>';
         b+=history('facts['+ref+']');
       }
     } else if(k==='finding'){

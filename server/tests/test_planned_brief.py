@@ -279,3 +279,47 @@ def test_a_file_read_as_pages_still_lands_in_a_brief_the_schema_takes(tmp_path):
     assert set(rec["transcribed"]) <= {"model", "backend"}
     assert host.data.get("insight"), "the brief landed"
     check_change_rules(host)  # the whole document validates against Brief Maker's schema
+
+
+class HeldJev(FakeJev):
+    """jev reading the facts held for a planned search: the market's players are held, the
+    audience's habits are not."""
+
+    def ask(self, state, questions):
+        if "held" in questions:
+            self.calls.append(questions)
+            return {"held": 0.9 if "who sells" in str(state.get("need")) else 0.2}
+        return super().ask(state, questions)
+
+
+def carried_facts(n=100):
+    """What a brief made from research carries: many pins, each with the source it was read from."""
+    out = [{"id": f"f_CARRIED{i:04d}", "entity": "category/food_drink.coffee_shops", "key": f"market.player_{i}",
+            "value": f"Chain {i}", "unit": "text", "market": "IE", "as_of": "2026-01-01",
+            "retrieved_at": "2026-09-20", "sources": ["src_cso0001"], "quotes": {"src_cso0001": f"Chain {i} sells"},
+            "confidence": "medium", "status": "active", "version": 1, "layer": "category",
+            "origin": f"fact://category/food_drink.coffee_shops/market.player_{i}@1", "decision": "d_CARRIED001",
+            "pinned_at": "2026-09-20T00:00:00Z", "pin_reason": "carried", "licence": "open", "method": "report"}
+           for i in range(n)]
+    return out, [{"id": "src_cso0001", "uri": "https://www.cso.ie/coffee", "publisher": "CSO",
+                  "title": "Coffee shops in Ireland", "tier": "primary", "domain": "cso.ie", "licence": "open"}]
+
+
+def test_a_brief_from_research_sees_every_fact_with_its_source_and_does_not_search_what_it_holds(tmp_path):
+    seen, jev = {}, HeldJev()
+    s = Server(tmp_path, model=planned_model(seen), retrieval=retrieval(), jev=jev,
+               settings_kw={"brief_flow": "planned", "brief_research_max": 3, "brief_judge": "review"})
+    try:
+        host = Host()
+        host.facts, host.sources = carried_facts(100)
+        run(s, host, inp={"prompt": THIN, "attachments": []})
+        research_calls = list(s.research.calls)
+    finally:
+        s.stop()
+    # Sam and Dara see every fact the brief holds (not the first 80), each with where it was read
+    assert len(seen["plan"]["facts"]) >= 100 and len(seen["draft"]["facts"]) >= 100
+    assert seen["plan"]["facts"][0]["source"]["publisher"] == "CSO"
+    # the market's players are held: that search is skipped; the audience is not: it runs
+    assert ("market_structure", "IE") not in research_calls and ("consumer_culture", "IE") in research_calls
+    held = [d for d in host.chain if d.get("action") == "research_held"]
+    assert held and "jev" in json.dumps(held[0]["reasoning"])

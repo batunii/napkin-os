@@ -116,6 +116,14 @@ def ctx_decisions(clan: dict) -> list:
     return [x for x in (d or []) if isinstance(x, dict)]
 
 
+def ctx_sources(clan: dict) -> dict:
+    """The document's source records by id (shared/sources.yaml, as the host sends it)."""
+    s = clan.get("sources")
+    if isinstance(s, dict):
+        s = s.get("sources")
+    return {x["id"]: x for x in (s or []) if isinstance(x, dict) and isinstance(x.get("id"), str)}
+
+
 def ctx_data(clan: dict) -> dict:
     d = clan.get("data")
     return d if isinstance(d, dict) else {}

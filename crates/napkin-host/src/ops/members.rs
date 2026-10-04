@@ -113,13 +113,24 @@ pub fn projects_sources(clan: &ClanFile) -> bool {
     let Ok(bytes) = clan.read_entry("agent/output-schema.json") else {
         return false;
     };
-    serde_json::from_slice::<Value>(&bytes)
-        .ok()
-        .and_then(|s| {
-            s.pointer("/properties/projection/properties/sources")
-                .map(|_| ())
-        })
-        .is_some()
+    let Ok(s) = serde_json::from_slice::<Value>(&bytes) else {
+        return false;
+    };
+    // `projection` written in place, or (Brief Maker's schema) a `$ref` to a
+    // definition in the same schema: both are followed.
+    let Some(mut p) = s.pointer("/properties/projection") else {
+        return false;
+    };
+    for _ in 0..4 {
+        match p.get("$ref").and_then(Value::as_str).and_then(|r| r.strip_prefix('#')) {
+            Some(path) => match s.pointer(path) {
+                Some(next) => p = next,
+                None => return false,
+            },
+            None => break,
+        }
+    }
+    p.pointer("/properties/sources").is_some()
 }
 
 /// Whether the document has either member — in its archive or its registry.
@@ -338,4 +349,23 @@ pub fn projection(
         out["sources"] = Value::Object(by_id);
     }
     out
+}
+
+#[cfg(test)]
+mod projects_sources_tests {
+    use super::*;
+
+    fn app(name: &str) -> ClanFile {
+        let p = format!("{}/../../app/public/apps/{name}.app.clan", env!("CARGO_MANIFEST_DIR"));
+        ClanFile::from_bytes(std::fs::read(p).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_schema_whose_projection_is_a_ref_still_has_room_for_sources() {
+        // Brief Maker's projection is a `$ref` to its definitions; the Research
+        // Tool's is written in place. Both carry sources and quotes (2026-10-03:
+        // briefs showed no source for a research fact).
+        assert!(projects_sources(&app("brief-maker")));
+        assert!(projects_sources(&app("campaign-research")));
+    }
 }

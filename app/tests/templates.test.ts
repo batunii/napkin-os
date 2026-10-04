@@ -298,23 +298,30 @@ function reportEnv(locked: boolean, chain: unknown[]) {
     CHAT: { reportBusy: false }, ...((CF: unknown) => ({ ClanFields: CF, window: { ClanFields: CF } }))({ locked: () => (locked ? { decision: {} } : null) }),
   }
 }
-const REPORT_FNS = ['touchesAsk', 'reportWriter', 'reportLocked', 'reportStale', 'refreshBtn']
+const REPORT_FNS = ['touchesAsk', 'reportWriter', 'reportLocked', 'touchesExcluded', 'touchesCampaign', 'reportStale', 'staleText', 'refreshBtn']
+const STALE_BY = new Function(`${obj(RT, 'STALE_BY')} return STALE_BY;`)() as Record<string, string>
+type StaleFns = ReportFns & { staleText(kinds: string[]): string }
 
 test('a report is out of date by what came after it in the chain, never by the clock', () => {
   // Newest first. The edit after the report carries an older stamp: the chain says it came after.
   const chain = [
     { action: 'edit', actor: 'human:aoife', targets: ['doc#campaign.objective'], timestamp: '2020-01-01T00:00:00Z' },
+    // A person's check and a question asked of the research are shown live: neither dates the report.
+    { action: 'verified', actor: 'human:aoife', targets: ['doc#findings[fi_A]', 'doc#campaign.audience'] },
+    { action: 'research_merge', actor: 'process:middleware', targets: ['doc#facts[f_NEW]', 'doc#asks[ask_1]'] },
     { action: 'compose_report', actor: 'process:middleware', targets: ['doc#report'], timestamp: '2026-09-30T10:00:00Z' },
     { action: 'edit', actor: 'human:aoife', targets: ['doc#campaign.problem'], timestamp: '2030-01-01T00:00:00Z' },
   ]
-  const env = reportEnv(false, chain)
-  const f = lift<ReportFns>(RT, REPORT_FNS, env)
+  const f = lift<StaleFns>(RT, REPORT_FNS, { ...reportEnv(false, chain), STALE_BY })
   const r = { built_at: '2026-09-30T10:00:00Z', based_on: {} }
   const stale = f.reportStale(r)
-  assert.equal(stale.length, 1)
-  assert.match(stale[0], /^1 decision about the ask or the selection since \(edit by human:aoife\)\.$/)
+  assert.deepEqual(stale, ['the ask changed'])
+  assert.equal(f.staleText(stale), 'Since this report: the ask changed.')
+  // Research the report has not taken in does date it.
+  const more = lift<StaleFns>(RT, REPORT_FNS, { ...reportEnv(false, [{ action: 'research_run', targets: ['doc#selection.lenses_run[media_spend/IE]'] }, ...chain]), STALE_BY })
+  assert.equal(more.staleText(more.reportStale(r)), 'Since this report: new research and the ask changed.')
   // No decision wrote the report: nothing is said to be newer than it.
-  const none = reportEnv(false, [chain[0], chain[2]])
+  const none = { ...reportEnv(false, [chain[0], chain[4]]), STALE_BY }
   assert.deepEqual(lift<ReportFns>(RT, REPORT_FNS, none).reportStale(r), [])
   assert.doesNotMatch(fn(RT, 'reportStale'), /Date\.parse|timestamp|built_at/)
   // Out of date and open: Refresh report is the thing to press.
@@ -327,15 +334,15 @@ test('a locked report is the version agreed to: never out of date, Refresh not o
     { action: 'edit', actor: 'human:aoife', targets: ['doc#campaign.objective'] },
     { action: 'compose_report', targets: ['doc#report'] },
   ]
-  const env = reportEnv(true, chain)
+  const env = { ...reportEnv(true, chain), STALE_BY }
   const f = lift<ReportFns>(RT, REPORT_FNS, env)
   assert.deepEqual(f.reportStale({ based_on: { facts_sha256: 'a' } }), [])
   const b = f.refreshBtn(['anything'], 'compose_report: re-compose')
   assert.doesNotMatch(b, /primary/)
   assert.match(b, / disabled/)
   assert.match(b, /title="The report is locked: this version is the one agreed to\."/)
-  // And "moved on since" is said only of a stale report, which a locked one never is.
-  assert.match(fn(RT, 'renderReport'), /stale\.length\?'<span style="color:var\(--create-ink\)">The document has moved on since\.<\/span>'/)
+  // And what came since is said only of a stale report, which a locked one never is.
+  assert.match(fn(RT, 'renderReport'), /stale\.length\?'<span style="color:var\(--create-ink\)">'\+esc\(staleText\(stale\)\)/)
   assert.match(fn(RT, 'doRefreshReport'), /if\(reportLocked\(\)\)\{ toast\(/)
 })
 
