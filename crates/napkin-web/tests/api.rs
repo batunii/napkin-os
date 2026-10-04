@@ -1208,3 +1208,101 @@ async fn upstream_names_the_tenants_parent_and_what_changed_in_it() {
     assert_eq!(v["upstream"][0]["changed"]["data"], true);
     assert_eq!(v["upstream"][0]["decisions_since"], 1);
 }
+
+// ── Accounts (NAPKIN_AUTH=local) ─────────────────────────────────────────────
+
+fn accounts_server() -> (Server, napkin_web::auth::Local) {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = Arc::new(AppCtx::new(dir.path().to_path_buf(), Arc::new(NoConfig), None, 40));
+    let users = dir.path().join("accounts.json");
+    let identity = napkin_web::tenant::Identity {
+        mode: napkin_web::tenant::Mode::Accounts {
+            provider: napkin_web::auth::Provider::Local(napkin_web::auth::Local::new(users.clone())),
+            sessions: napkin_web::auth::Sessions::new(&[9u8; 32]).unwrap(),
+        },
+        secure: false,
+    };
+    let app = napkin_web::router_with(ctx.clone(), None, Arc::new(identity));
+    (Server { _dir: dir, ctx, app }, napkin_web::auth::Local::new(users))
+}
+
+fn json_body(v: Value) -> Body {
+    Body::from(v.to_string())
+}
+
+fn json_req(uri: &str, cookie: Option<&str>, v: Value) -> Request<Body> {
+    let mut b = Request::builder().method("POST").uri(uri).header(header::CONTENT_TYPE, "application/json");
+    if let Some(c) = cookie {
+        b = b.header(header::COOKIE, c);
+    }
+    b.body(json_body(v)).unwrap()
+}
+
+fn session_cookie(r: &Reply) -> String {
+    r.headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|v| v.starts_with("napkin_session="))
+        .map(|v| v.split(';').next().unwrap().to_string())
+        .expect("a session cookie")
+}
+
+#[tokio::test]
+async fn a_person_signs_in_as_user_at_agency_and_chooses_their_password_first() {
+    let (s, local) = accounts_server();
+    local.add("engineer@napkin", "Temporary-1234", Some("Shrey")).unwrap();
+    local.add("visionary@napkin", "Temporary-5678", Some("Laurance")).unwrap();
+
+    // without a session, the API asks for one; sign-in itself is answered
+    let r = send(&s, request("GET", "/api/session", None, Body::empty())).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(r.json()["signin"], true);
+
+    let r = send(&s, json_req("/api/auth/sign-in", None, serde_json::json!({"username": "engineer@napkin", "password": "nope"}))).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+
+    // the temporary password leads to choosing one's own
+    let r = send(&s, json_req("/api/auth/sign-in", None,
+        serde_json::json!({"username": "Engineer@Napkin", "password": "Temporary-1234"}))).await;
+    assert_eq!(r.json()["step"], "new_password");
+    let challenge = r.json()["session"].as_str().unwrap().to_string();
+    let r = send(&s, json_req("/api/auth/new-password", None,
+        serde_json::json!({"username": "engineer@napkin", "session": challenge, "password": "short"}))).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED, "a weak password is refused");
+    let r = send(&s, json_req("/api/auth/new-password", None,
+        serde_json::json!({"username": "engineer@napkin", "session": challenge, "password": "MyOwnPassword9"}))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let mine = session_cookie(&r);
+
+    // signed in: the agency's workspace, the person named
+    let r = send(&s, request("GET", "/api/session", Some(&mine), Body::empty())).await;
+    let me = r.json();
+    assert_eq!(me["user"]["username"], "engineer@napkin");
+    assert_eq!(me["user"]["name"], "Shrey");
+    let workspace = me["tenant"].as_str().unwrap().to_string();
+    assert_eq!(workspace, napkin_web::tenant::TenantId::of_agency("napkin").to_string());
+
+    // a colleague in the same agency works in the same workspace
+    let r = send(&s, json_req("/api/auth/sign-in", None,
+        serde_json::json!({"username": "visionary@napkin", "password": "Temporary-5678"}))).await;
+    let c = r.json()["session"].as_str().unwrap().to_string();
+    let r = send(&s, json_req("/api/auth/new-password", None,
+        serde_json::json!({"username": "visionary@napkin", "session": c, "password": "Laurances-own-1"}))).await;
+    let theirs = session_cookie(&r);
+    let r = send(&s, request("GET", "/api/session", Some(&theirs), Body::empty())).await;
+    assert_eq!(r.json()["tenant"], workspace.as_str());
+    assert_eq!(r.json()["user"]["username"], "visionary@napkin");
+
+    // a workspace that is not yours is refused, and a forged cookie is no session
+    let other = napkin_web::tenant::TenantId::of_agency("javelin");
+    let r = send(&s, request("GET", &format!("/api/t/{other}/apps"), Some(&mine), Body::empty())).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = send(&s, request("GET", "/api/session", Some("napkin_session=e30.forged"), Body::empty())).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+
+    // signing out clears the cookie
+    let r = send(&s, json_req("/api/auth/sign-out", Some(&mine), serde_json::json!({}))).await;
+    assert!(r.headers.get_all(header::SET_COOKIE).iter().any(|v| v.to_str().unwrap().contains("Max-Age=0")));
+    let _ = &s.ctx;
+}

@@ -11,6 +11,8 @@ import { AgentFigure } from '../studio/AgentFigure'
 import { AGENTS, type AgentKey } from '../studio/model'
 import type { InstalledApp } from './types'
 import { docTitle } from './docTitle'
+import { signedInUser } from '../host/http'
+import { signOut } from './SignIn'
 import '../components/chrome.css'
 import './Launcher.css'
 
@@ -213,6 +215,9 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
   const filtering = visible.length > FILTER_FROM && tools.length > 1
   const listed = visible.filter(d => !filtering || filter === 'all' || d.app_id === filter)
   const shown = showAll ? listed : listed.slice(0, RECENT_SHOWN)
+  // On a server with accounts: who is signed in, and a way out.
+  const [user, setUser] = useState<{ username: string; name?: string } | null>(null)
+  useEffect(() => { signedInUser().then(u => setUser(u ?? null)) }, [])
 
   return (
     <div className="ln">
@@ -370,7 +375,15 @@ export default function Launcher({ installed, loading, onLaunchApp, onOpenFile, 
         )}
       </div>
 
-      <div className="ln-footer"><PoweredByClan /></div>
+      <div className="ln-footer">
+        {user && (
+          <span className="ln-who">
+            Signed in as <b>{user.name ? `${user.name} (${user.username})` : user.username}</b>
+            <button className="ln-signout" onClick={() => { void signOut() }}>Sign out</button>
+          </span>
+        )}
+        <PoweredByClan />
+      </div>
     </div>
   )
 }

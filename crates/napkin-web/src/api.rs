@@ -17,7 +17,7 @@ use axum::http::{header, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use futures_core::Stream;
 use napkin_host::{
     export, library, proxy, Change, DocId, InstalledApp, OpenResult, RecentDoc, SpinoffTarget,
@@ -29,7 +29,7 @@ use tokio_stream::StreamExt;
 use crate::error::{ApiError, ApiResult};
 use crate::state::{AppCtx, Workspace};
 use crate::store::doc_id;
-use crate::tenant::{Tenant, TenantId};
+use crate::tenant::{Acting, Person, Tenant, TenantId};
 
 type Ctx = State<Arc<AppCtx>>;
 
@@ -38,6 +38,11 @@ pub fn router() -> Router<Arc<AppCtx>> {
         // Unauthenticated on purpose: a platform health check has no session,
         // and this must answer before the first visitor ever arrives.
         .route("/healthz", get(|| async { "ok" }))
+        // Signing in: answered without a session (the identity layer lets
+        // `/auth/*` through), and off in anonymous mode.
+        .route("/auth/sign-in", post(sign_in))
+        .route("/auth/new-password", post(new_password))
+        .route("/auth/sign-out", post(sign_out))
         .route("/session", get(session))
         .route("/t/{tenant}/apps", get(list_apps))
         .route("/t/{tenant}/apps/from/{doc}", post(install_from_document))
@@ -72,20 +77,20 @@ struct OpenView {
     sandbox_origin: Option<String>,
 }
 
-fn view(ctx: &AppCtx, tenant: &TenantId, doc: &DocId, open: OpenResult) -> OpenView {
+fn view(ctx: &AppCtx, tenant: &TenantId, person: &str, doc: &DocId, open: OpenResult) -> OpenView {
     OpenView {
         open,
-        token: ctx.tokens.mint(tenant, doc),
+        token: ctx.tokens.mint(tenant, person, doc),
         sandbox_origin: ctx.sandbox_origin.clone(),
     }
 }
 
 /// Open `doc` and describe it. The session is cached, so this is cheap on the
 /// second call and every tab of the same document shares one archive.
-fn open_view(ctx: &AppCtx, tenant: &TenantId, ws: &Workspace, doc: DocId) -> ApiResult<OpenView> {
+fn open_view(ctx: &AppCtx, tenant: &TenantId, person: &str, ws: &Workspace, doc: DocId) -> ApiResult<OpenView> {
     let session = ws.session(&doc)?;
     let open = session.open(doc.clone())?;
-    Ok(view(ctx, tenant, &doc, open))
+    Ok(view(ctx, tenant, person, &doc, open))
 }
 
 // ── Session ──────────────────────────────────────────────────────────────────
@@ -95,15 +100,92 @@ struct SessionInfo {
     tenant: String,
     sandbox_origin: Option<String>,
     quota: crate::meter::Usage,
+    /// The signed-in person, when this server runs with accounts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user: Option<crate::auth::Account>,
 }
 
 /// The shell's first call: who am I, and where do app frames live.
-async fn session(State(ctx): Ctx, Tenant(tenant): Tenant) -> Json<SessionInfo> {
+async fn session(
+    State(ctx): Ctx,
+    Tenant(tenant): Tenant,
+    user: Option<Extension<crate::auth::Account>>,
+) -> Json<SessionInfo> {
     Json(SessionInfo {
         tenant: tenant.to_string(),
         sandbox_origin: ctx.sandbox_origin.clone(),
         quota: ctx.meter.usage(&tenant),
+        user: user.map(|Extension(a)| a),
     })
+}
+
+// ── Signing in ───────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct SignInBody {
+    username: String,
+    password: String,
+}
+
+#[derive(serde::Deserialize)]
+struct NewPasswordBody {
+    username: String,
+    session: String,
+    password: String,
+}
+
+fn signed_in(identity: &crate::tenant::Identity, account: crate::auth::Account) -> Response {
+    let crate::tenant::Mode::Accounts { sessions, .. } = &identity.mode else {
+        return refused(StatusCode::NOT_FOUND, "sign-in is off on this server");
+    };
+    let cookie = identity.cookie(crate::auth::SESSION_COOKIE, &sessions.issue(&account), crate::auth::SESSION_SECS);
+    let mut r = Json(serde_json::json!({ "ok": true, "user": account })).into_response();
+    if let Ok(v) = header::HeaderValue::from_str(&cookie) {
+        r.headers_mut().append(header::SET_COOKIE, v);
+    }
+    r
+}
+
+fn refused(status: StatusCode, msg: &str) -> Response {
+    (status, Json(serde_json::json!({ "ok": false, "error": msg }))).into_response()
+}
+
+fn answer(identity: &crate::tenant::Identity, out: crate::auth::SignIn) -> Response {
+    match out {
+        crate::auth::SignIn::Done(a) => signed_in(identity, a),
+        // the first sign-in: the person chooses their own password next
+        crate::auth::SignIn::NewPassword { session } => {
+            Json(serde_json::json!({ "ok": false, "step": "new_password", "session": session })).into_response()
+        }
+        crate::auth::SignIn::Refused(why) => refused(StatusCode::UNAUTHORIZED, &why),
+    }
+}
+
+async fn sign_in(Extension(identity): Extension<Arc<crate::tenant::Identity>>, Json(b): Json<SignInBody>) -> Response {
+    let crate::tenant::Mode::Accounts { provider, .. } = &identity.mode else {
+        return refused(StatusCode::NOT_FOUND, "sign-in is off on this server");
+    };
+    let out = provider.sign_in(&b.username, &b.password).await;
+    answer(&identity, out)
+}
+
+async fn new_password(
+    Extension(identity): Extension<Arc<crate::tenant::Identity>>,
+    Json(b): Json<NewPasswordBody>,
+) -> Response {
+    let crate::tenant::Mode::Accounts { provider, .. } = &identity.mode else {
+        return refused(StatusCode::NOT_FOUND, "sign-in is off on this server");
+    };
+    let out = provider.new_password(&b.username, &b.session, &b.password).await;
+    answer(&identity, out)
+}
+
+async fn sign_out(Extension(identity): Extension<Arc<crate::tenant::Identity>>) -> Response {
+    let mut r = Json(serde_json::json!({ "ok": true })).into_response();
+    if let Ok(v) = header::HeaderValue::from_str(&identity.cookie(crate::auth::SESSION_COOKIE, "", 0)) {
+        r.headers_mut().append(header::SET_COOKIE, v);
+    }
+    r
 }
 
 // ── The app library ──────────────────────────────────────────────────────────
@@ -137,12 +219,12 @@ struct NewDocument {
 
 async fn new_document(
     State(ctx): Ctx,
-    Tenant(tenant): Tenant,
+    Tenant(tenant): Tenant, Extension(Person(person)): Extension<Person>,
     Json(body): Json<NewDocument>,
 ) -> ApiResult<Json<OpenView>> {
     let ws = ctx.workspace(&tenant);
     let doc = library::create_instance(&*ws.store, &body.app_id, body.title)?;
-    Ok(Json(open_view(&ctx, &tenant, &ws, doc)?))
+    Ok(Json(open_view(&ctx, &tenant, &person, &ws, doc)?))
 }
 
 /// Which installed apps will take this document as a spin-off source.
@@ -175,20 +257,21 @@ struct Spinoff {
 /// tenant's is refused (`403`, Contract 4 §5.1).
 async fn spinoff_document(
     State(ctx): Ctx,
-    Tenant(tenant): Tenant,
+    Acting(acting): Acting,
+    Tenant(tenant): Tenant, Extension(Person(person)): Extension<Person>,
     Path((_t, doc)): Path<(String, String)>,
     Json(body): Json<Spinoff>,
 ) -> ApiResult<Json<OpenView>> {
     let ws = ctx.workspace(&tenant);
     let out = library::spinoff_document_as(
         &*ws.store,
-        &tenant.ctx(),
+        &acting,
         &DocId::new(doc),
         &body.app_id,
         body.title,
         body.map,
     )?;
-    Ok(Json(open_view(&ctx, &tenant, &ws, out)?))
+    Ok(Json(open_view(&ctx, &tenant, &person, &ws, out)?))
 }
 
 /// Accept an uploaded `.clan` as a document of this tenant and open it.
@@ -197,7 +280,7 @@ async fn spinoff_document(
 /// to install, exactly as the desktop does when a template is opened.
 async fn upload_document(
     State(ctx): Ctx,
-    Tenant(tenant): Tenant,
+    Tenant(tenant): Tenant, Extension(Person(person)): Extension<Person>,
     body: Bytes,
 ) -> ApiResult<Json<OpenView>> {
     if body.is_empty() {
@@ -213,13 +296,13 @@ async fn upload_document(
     // A fresh uuid: this is a new document, never a replacement.
     ws.store
         .apply(&Change::create(doc.clone(), body.to_vec()))?;
-    Ok(Json(open_view(&ctx, &tenant, &ws, doc)?))
+    Ok(Json(open_view(&ctx, &tenant, &person, &ws, doc)?))
 }
 
-async fn home(State(ctx): Ctx, Tenant(tenant): Tenant) -> ApiResult<Json<OpenView>> {
+async fn home(State(ctx): Ctx, Tenant(tenant): Tenant, Extension(Person(person)): Extension<Person>) -> ApiResult<Json<OpenView>> {
     let ws = ctx.workspace(&tenant);
     let doc = library::ensure_home(&*ws.store)?;
-    Ok(Json(open_view(&ctx, &tenant, &ws, doc)?))
+    Ok(Json(open_view(&ctx, &tenant, &person, &ws, doc)?))
 }
 
 // ── One document ─────────────────────────────────────────────────────────────
@@ -238,11 +321,11 @@ fn doc_session(
 
 async fn open_document(
     State(ctx): Ctx,
-    Tenant(tenant): Tenant,
+    Tenant(tenant): Tenant, Extension(Person(person)): Extension<Person>,
     Path((_t, doc)): Path<(String, String)>,
 ) -> ApiResult<Json<OpenView>> {
     let ws = ctx.workspace(&tenant);
-    Ok(Json(open_view(&ctx, &tenant, &ws, DocId::new(doc))?))
+    Ok(Json(open_view(&ctx, &tenant, &person, &ws, DocId::new(doc))?))
 }
 
 async fn human_html(
@@ -313,11 +396,12 @@ struct PatchBody {
 async fn patch(
     State(ctx): Ctx,
     Tenant(tenant): Tenant,
+    Acting(acting): Acting,
     Path((_t, doc)): Path<(String, String)>,
     Json(body): Json<PatchBody>,
 ) -> ApiResult<Json<Value>> {
     let (_ws, session, _) = doc_session(&ctx, &tenant, &doc)?;
-    session.save_patch(body.id, body.content)?;
+    session.save_patch_as(&acting, &body.id, &body.content)?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 

@@ -1,0 +1,53 @@
+/* Signing in: one card on the studio's paper, one question at a time. */
+.si {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px 16px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.si-card {
+  width: min(420px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-soft);
+  padding: 28px 28px 24px;
+}
+.si-mark { margin-bottom: 18px; }
+.si-h { margin: 0 0 18px; font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.si-lede { margin: -6px 0 18px; font-size: 14.5px; line-height: 1.5; color: var(--ink2); }
+.si-lede b { color: var(--ink); font-weight: 600; }
+.si-f { display: grid; gap: 6px; margin-bottom: 14px; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.si-f input {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+}
+.si-f input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent); }
+.si-err { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; background: var(--warn-bg, #FFF1EE); color: var(--warn, #B8321A); }
+.si-go {
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.si-go:disabled { opacity: 0.6; cursor: default; }
+.si-note { margin: 14px 0 0; font-size: 12.5px; color: var(--ink3); text-align: center; }
+.si-foot { opacity: 0.9; }

@@ -14,6 +14,7 @@
 //! Everything else is the built React app.
 
 pub mod api;
+pub mod auth;
 pub mod error;
 pub mod events;
 pub mod exports;
@@ -71,15 +72,21 @@ fn shell_service(static_dir: Option<&Path>) -> Router<Arc<AppCtx>> {
 /// reported it as a CORS error, the refusal carrying no CORS header (the owner, 2026-10-01).
 pub const UPLOAD_MAX: usize = 64 * 1024 * 1024;
 
+/// The service with anonymous sessions (tests, demos).
 pub fn router(ctx: Arc<AppCtx>, static_dir: Option<&Path>, secure_cookie: bool) -> Router {
+    router_with(ctx, static_dir, Arc::new(tenant::Identity::anonymous(secure_cookie)))
+}
+
+/// The service, knowing people as `identity` says (anonymous, or accounts).
+pub fn router_with(ctx: Arc<AppCtx>, static_dir: Option<&Path>, identity: Arc<tenant::Identity>) -> Router {
     Router::new()
         // The shell API is the only part that runs on a cookie session.
         .nest(
             "/api",
-            api::router().layer(DefaultBodyLimit::max(UPLOAD_MAX)).layer(axum::middleware::from_fn_with_state(
-                secure_cookie,
-                tenant::layer,
-            )),
+            api::router()
+                .layer(DefaultBodyLimit::max(UPLOAD_MAX))
+                .layer(axum::middleware::from_fn_with_state(identity.clone(), tenant::layer))
+                .layer(axum::Extension(identity)),
         )
         // The sandbox authenticates with its token and nothing else, so the
         // session layer deliberately does not apply to it.

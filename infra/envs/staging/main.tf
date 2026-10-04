@@ -9,6 +9,7 @@
 #   databases napkin_category + napkin_agency_<slug> in the cluster (S3)
 #   storage   S3: corpus (ingestion input), blobs, backups
 #   admin     an SSM-only host to run migrations, ingestion and psql
+#   identity  the Cognito user pool people sign in with (user@agency)
 #
 # Services (web, middleware, layers, retrieval) come in stage 2 and join the
 # `data_clients` security group to reach Aurora and Qdrant.
@@ -34,6 +35,13 @@ data "aws_caller_identity" "me" {}
 
 locals {
   name = "napkin-${var.env}"
+}
+
+# Who can sign in: accounts `user@agency`, made by an admin (scripts/create-users.sh).
+module "identity" {
+  source      = "../../modules/identity"
+  name        = local.name
+  kms_key_arn = aws_kms_key.data.arn
 }
 
 module "network" {

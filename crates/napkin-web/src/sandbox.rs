@@ -88,7 +88,7 @@ async fn dispatch(
     let req = HostRequest::new(path, query.unwrap_or_default(), body.to_vec());
     // The grant, not the request, says who this is: an app frame cannot name
     // its own actor or scope.
-    let resp = napkin_host::dispatch_async(&grant.tenant.ctx(), &session, &*ctx.config, req).await;
+    let resp = napkin_host::dispatch_async(&grant.tenant.ctx_for(&grant.person), &session, &*ctx.config, req).await;
     // An app that builds its own export (`clan://export`) gets back a temp file
     // on this server. The browser cannot fetch a server path, so it is stashed
     // behind a handle here, as `/export` does for the export the OS composes.

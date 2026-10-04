@@ -34,6 +34,13 @@ interface SessionInfo {
   tenant: string
   sandbox_origin: string | null
   quota: { used: number; cap: number }
+  /** The signed-in person, on a server with accounts (`name@agency`). */
+  user?: { username: string; agency: string; name?: string }
+}
+
+/** The signed-in person, when the server has accounts; null when it is anonymous. */
+export async function signedInUser(): Promise<SessionInfo['user'] | null> {
+  try { return (await session()).user ?? null } catch { return null }
 }
 
 /** An opened document, plus what the frame needs to talk to the host. */
@@ -205,10 +212,11 @@ export async function fetchOpenDocument(): Promise<{ manifest: OpenResult['manif
 }
 
 export const httpHost: Host = {
-  // The tenant is the person: napkin-web's TenantId::ctx (tenant.rs) acts as
-  // `human:<tenant>`, and /session is where the page learns the tenant.
+  // Signed in, the person is their account (`human:engineer@napkin`, as
+  // napkin-web's Acting records them); anonymous, the tenant is the person.
   whoAmI: async () => {
-    const { tenant } = await session()
+    const { tenant, user } = await session()
+    if (user) return { actor: `human:${user.username}`, id: user.username, name: user.name ?? null }
     return { actor: `human:${tenant}`, id: tenant, name: null }
   },
 

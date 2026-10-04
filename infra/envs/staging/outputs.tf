@@ -59,3 +59,18 @@ output "model_invoke_policy_arn" {
   description = "Attach to any role that calls Claude on Bedrock (NAPKIN_MODEL_API=bedrock)."
   value       = aws_iam_policy.model_invoke.arn
 }
+
+output "cognito_user_pool_id" {
+  description = "For scripts/create-users.sh"
+  value       = module.identity.user_pool_id
+}
+
+output "cognito_client_id" {
+  description = "NAPKIN_COGNITO_CLIENT_ID for napkin-web"
+  value       = module.identity.client_id
+}
+
+output "session_secret_arn" {
+  description = "NAPKIN_SESSION_SECRET for napkin-web (Secrets Manager)"
+  value       = module.identity.session_secret_arn
+}

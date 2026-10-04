@@ -8,6 +8,8 @@ import { LogoSpinner } from '../brand/LogoSpinner'
 import { host } from '../host'
 import { useSpinoffTargets } from './ContinueIn'
 import ThemeToggle from './ThemeToggle'
+import { signedInUser } from '../host/http'
+import { signOut } from '../shell/SignIn'
 import './chrome.css'
 
 interface Props {
@@ -192,6 +194,9 @@ export default function Toolbar({
 }: Props) {
   const invalid = !!validation && validation !== 'OK'
   const targets = useSpinoffTargets(docPath)
+  // On a server with accounts: who is signed in, and a way out.
+  const [user, setUser] = useState<string | null>(null)
+  useEffect(() => { signedInUser().then(u => setUser(u ? u.username : null)) }, [])
 
   const items: MenuItem[] = [
     ...(onToggleEdit && !editMode
@@ -215,6 +220,7 @@ export default function Toolbar({
       run: onToggleSidebar,
       apart: true,
     },
+    ...(user ? [{ label: 'Sign out', hint: `Signed in as ${user}`, run: () => { void signOut() }, apart: true }] : []),
   ]
 
   if (clientMode) {

@@ -26,6 +26,8 @@ const TTL: Duration = Duration::from_secs(12 * 60 * 60);
 #[derive(Clone)]
 pub struct Grant {
     pub tenant: TenantId,
+    /// Who opened it: the app frame writes as this person.
+    pub person: String,
     pub doc: DocId,
 }
 
@@ -44,14 +46,14 @@ impl TokenStore {
     ///
     /// Re-use keeps a reload from stranding the previous token, and means the
     /// set never grows with page views — only with documents.
-    pub fn mint(&self, tenant: &TenantId, doc: &DocId) -> String {
+    pub fn mint(&self, tenant: &TenantId, person: &str, doc: &DocId) -> String {
         let mut entries = self.entries.lock().unwrap();
         let now = Instant::now();
         entries.retain(|_, e| e.expires > now);
 
         if let Some((token, entry)) = entries
             .iter_mut()
-            .find(|(_, e)| &e.grant.tenant == tenant && &e.grant.doc == doc)
+            .find(|(_, e)| &e.grant.tenant == tenant && e.grant.person == person && &e.grant.doc == doc)
         {
             entry.expires = now + TTL;
             return token.clone();
@@ -63,6 +65,7 @@ impl TokenStore {
             Entry {
                 grant: Grant {
                     tenant: tenant.clone(),
+                    person: person.to_string(),
                     doc: doc.clone(),
                 },
                 expires: now + TTL,
@@ -91,8 +94,8 @@ mod tests {
         let b = TenantId::mint();
         let doc = DocId::new("doc-x");
 
-        let ta = store.mint(&a, &doc);
-        let tb = store.mint(&b, &doc);
+        let ta = store.mint(&a, a.as_str(), &doc);
+        let tb = store.mint(&b, b.as_str(), &doc);
         assert_ne!(ta, tb, "the same document for two tenants is two grants");
 
         let g = store.resolve(&ta).unwrap();
@@ -107,7 +110,7 @@ mod tests {
         let store = TokenStore::default();
         let t = TenantId::mint();
         let doc = DocId::new("doc-x");
-        assert_eq!(store.mint(&t, &doc), store.mint(&t, &doc));
-        assert_ne!(store.mint(&t, &doc), store.mint(&t, &DocId::new("doc-y")));
+        assert_eq!(store.mint(&t, "p", &doc), store.mint(&t, "p", &doc));
+        assert_ne!(store.mint(&t, "p", &doc), store.mint(&t, "p", &DocId::new("doc-y")));
     }
 }

@@ -279,7 +279,7 @@
 .ln-item.ln-skel i:last-child { grid-column: span 3; width: 60%; }
 @keyframes ln-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
-.ln-footer { margin-top: auto; padding: 32px 0 24px; display: flex; justify-content: center; }
+.ln-footer { margin-top: auto; padding: 32px 0 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .ln-app, .ln-app-go span { transition: none; }
@@ -297,3 +297,9 @@
   .ln-rhead { flex-direction: column; align-items: flex-start; }
   .ln-note { flex-wrap: wrap; }
 }
+
+/* Who is signed in, on a server with accounts. */
+.ln-who { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink2); margin-right: 14px; }
+.ln-who b { color: var(--ink); font-weight: 600; }
+.ln-signout { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.ln-signout:hover { background: var(--soft); }
