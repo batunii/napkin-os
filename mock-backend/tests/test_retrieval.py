@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,6 +53,8 @@ def agency_fixture(root: Path) -> Path:
 
 class Units(unittest.TestCase):
     def test_split_h2_is_the_engines(self):
+        # rag.py imports its sibling modules (chunking, …) by name, as the engine runs it
+        sys.path.insert(0, str(REPO / "engine" / "rag"))
         spec = importlib.util.spec_from_file_location("engine_rag", REPO / "engine" / "rag" / "rag.py")
         rag = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rag)

@@ -26,6 +26,7 @@ PRIMARY_DOMAINS = {
     # regulators and state agencies (IE / GB / EU)
     "seai.ie", "cru.ie", "comreg.ie", "centralbank.ie", "ccpc.ie", "asai.ie", "adstandards.ie", "hpra.ie", "grai.ie",
     "rsa.ie", "ndls.ie", "revenue.ie", "citizensinformation.ie", "epa.ie", "bai.ie", "cnam.ie",
+    "fsai.ie", "safefood.net", "irishstatutebook.ie", "hrb.ie", "bordbia.ie",
     "asa.org.uk", "cap.org.uk", "ofcom.org.uk", "ofgem.gov.uk", "fca.org.uk", "cma.gov.uk",
     "dvla.gov.uk", "gov.ie", "gov.uk", "europa.eu", "ec.europa.eu", "eea.europa.eu",
     # company filings and registries
@@ -38,7 +39,9 @@ FILING_PATH = re.compile(r"/(investor[s-]?(relations)?|ir|annual[-_]?report[s]?|
 SECONDARY_DOMAINS = {
     # industry bodies
     "simi.ie", "smmt.co.uk", "acea.auto", "acea.be", "evireland.ie", "ibec.ie", "drinksireland.ie",
-    "iapi.ie", "ipa.co.uk", "iabireland.ie", "iabuk.com", "thinkbox.tv", "bordbia.ie", "fooddrinkeurope.eu",
+    "iapi.ie", "ipa.co.uk", "iabireland.ie", "iabuk.com", "thinkbox.tv", "fooddrinkeurope.eu",
+    "drinksindustry.ie", "retailexcellence.ie", "tamireland.ie", "copyclear.ie", "onecore.ie", "redcresearch.ie",
+    "amarach.com", "esri.ie", "kinsalesharks.com",
     "effie.org", "warc.com", "nielsen.com", "kantar.com", "mintel.com", "statista.com", "euromonitor.com",
     # trade and business press
     "marketing.ie", "adworld.ie", "irishadvertisingnews.ie", "campaignlive.co.uk", "campaignlive.com",
@@ -47,6 +50,7 @@ SECONDARY_DOMAINS = {
     "electrive.com", "insideevs.com", "just-auto.com", "carzone.ie", "motors.ie", "irishcar.ie",
     "businesspost.ie", "siliconrepublic.com", "thecurrency.news", "reuters.com", "bloomberg.com",
     "ft.com", "fleet.ie", "fleetnews.co.uk", "thegrocer.co.uk", "checkout.ie", "shelflife.ie",
+    "just-drinks.com", "hospitalityireland.com",
 }
 TIERS = ("primary", "secondary", "tertiary")
 

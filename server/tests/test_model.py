@@ -1,4 +1,4 @@
-"""The model port on both wires (peripherals.md §1), with fake transports."""
+"""The model port on every wire (peripherals.md §1), with fake transports."""
 
 import base64
 import json
@@ -209,6 +209,134 @@ def test_wire_selection_by_config():
         build_wire(Settings(model_api="openai"))  # the base URL is required
     with pytest.raises(ValueError):
         build_wire(Settings(model_api="gemini"))
+
+
+# ---------------------------------------------------------------------------- Bedrock wire
+
+def _mantle(handler, **auth):
+    """A real AnthropicBedrockMantle client whose HTTP goes to `handler`."""
+    import httpx2
+    from anthropic import AnthropicBedrockMantle
+    return AnthropicBedrockMantle(aws_region="eu-west-1", max_retries=1,
+                                  http_client=httpx2.Client(transport=httpx2.MockTransport(handler)), **auth)
+
+
+def _message(text):
+    return {"id": "msg_1", "type": "message", "role": "assistant", "model": "anthropic.claude-opus-5",
+            "content": [{"type": "text", "text": text}], "stop_reason": "end_turn", "stop_sequence": None,
+            "usage": {"input_tokens": 7, "output_tokens": 3}}
+
+
+def test_bedrock_sends_the_same_messages_request_to_the_regional_mantle_endpoint():
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        import httpx2
+        return httpx2.Response(200, json=_message(json.dumps(GOOD)))
+
+    wire = AnthropicWire(_mantle(handler, api_key="bedrock-token"), api="bedrock")
+    u = Usage()
+    p = ModelPort(wire, "anthropic.claude-opus-5", 30)
+    assert p.api == "bedrock"
+    assert p.call("extract", "sys", {"x": 1}, SCHEMA, usage=u, attribution="t", effort="high") == GOOD
+    req = seen[0]
+    assert str(req.url) == "https://bedrock-mantle.eu-west-1.api.aws/anthropic/v1/messages"
+    body = json.loads(req.content)
+    assert body["model"] == "anthropic.claude-opus-5"
+    assert body["output_config"]["format"]["type"] == "json_schema" and body["output_config"]["effort"] == "high"
+    for banned in ("tools", "stream", "thinking", "temperature"):
+        assert banned not in body
+    assert u.as_dict() == {"input_tokens": 7, "output_tokens": 3}
+    assert len(seen) == 1  # one call, through the client's own transport (never a copy)
+
+
+def test_bedrock_with_aws_credentials_signs_sigv4_for_bedrock_mantle():
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        import httpx2
+        return httpx2.Response(200, json=_message(json.dumps(GOOD)))
+
+    client = _mantle(handler, aws_access_key="AKIDEXAMPLE", aws_secret_key="secret")
+    ModelPort(AnthropicWire(client, api="bedrock"), "anthropic.claude-opus-5", 30).call(
+        "p", "s", {}, SCHEMA, usage=Usage(), attribution="t")
+    auth = seen[0].headers["authorization"]
+    assert auth.startswith("AWS4-HMAC-SHA256") and "/eu-west-1/bedrock-mantle/aws4_request" in auth
+
+
+def test_bedrock_refusing_structured_output_is_unsupported_and_never_resent_without_it():
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        import httpx2
+        return httpx2.Response(400, json={"type": "error", "error": {
+            "type": "invalid_request_error", "message": "output_config.format: Extra inputs are not permitted"}})
+
+    wire = AnthropicWire(_mantle(handler, api_key="t"), api="bedrock")
+    with pytest.raises(ModelError) as e:
+        ModelPort(wire, "anthropic.claude-opus-5", 30).call("p", "s", {}, SCHEMA, usage=Usage(), attribution="t")
+    assert e.value.kind == "unsupported" and len(calls) == 1
+
+
+def test_bedrock_without_aws_credentials_is_auth_not_a_transient_failure():
+    sdk = FakeSDK([RuntimeError("Could not resolve AWS credentials from session")])
+    with pytest.raises(ModelError) as e:
+        ModelPort(AnthropicWire(sdk, api="bedrock"), "anthropic.claude-opus-5", 30).call(
+            "p", "s", {}, SCHEMA, usage=Usage(), attribution="t")
+    assert e.value.kind == "auth"
+
+
+def _runtime(handler, **auth):
+    """A real AnthropicBedrock (bedrock-runtime InvokeModel) client whose HTTP goes to `handler`."""
+    import httpx2
+    from anthropic import AnthropicBedrock
+    return AnthropicBedrock(aws_region="eu-west-1", max_retries=1,
+                            http_client=httpx2.Client(transport=httpx2.MockTransport(handler)), **auth)
+
+
+def test_bedrock_runtime_wraps_the_same_request_in_invokemodel():
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        import httpx2
+        return httpx2.Response(200, json=_message(json.dumps(GOOD)))
+
+    wire = AnthropicWire(_runtime(handler, aws_access_key="AKIDEXAMPLE", aws_secret_key="secret"), api="bedrock")
+    u = Usage()
+    out = ModelPort(wire, "global.anthropic.claude-opus-5-5", 30).call("extract", "sys", {"x": 1}, SCHEMA,
+                                                                        usage=u, attribution="t", effort="high")
+    assert out == GOOD and len(seen) == 1
+    req = seen[0]
+    assert str(req.url) == ("https://bedrock-runtime.eu-west-1.amazonaws.com"
+                            "/model/global.anthropic.claude-opus-5-5/invoke")
+    body = json.loads(req.content)
+    assert body["anthropic_version"] == "bedrock-2023-05-31" and "model" not in body  # the model is in the URL
+    assert body["output_config"]["format"]["type"] == "json_schema" and body["output_config"]["effort"] == "high"
+    for banned in ("tools", "stream", "thinking", "temperature"):
+        assert banned not in body
+    assert "/eu-west-1/bedrock/aws4_request" in req.headers["authorization"]
+    assert u.as_dict() == {"input_tokens": 7, "output_tokens": 3}
+
+
+def test_bedrock_endpoint_selection_and_default_model(monkeypatch):
+    w = build_wire(Settings(model_api="bedrock", model_region="eu-west-1", model_api_key="tok"))
+    assert w.api == "bedrock" and str(w.client.base_url).startswith("https://bedrock-runtime.eu-west-1.amazonaws.com")
+    w = build_wire(Settings(model_api="bedrock", model_bedrock_endpoint="mantle", model_region="eu-west-1",
+                            model_api_key="tok"))
+    assert str(w.client.base_url) == "https://bedrock-mantle.eu-west-1.api.aws/anthropic/"
+    with pytest.raises(ValueError):
+        build_wire(Settings(model_api="bedrock", model_bedrock_endpoint="converse", model_region="eu-west-1"))
+    for k in ("NAPKIN_MODEL", "NAPKIN_MODEL_REGION", "NAPKIN_MODEL_BEDROCK_ENDPOINT"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("NAPKIN_MODEL_API", "bedrock")
+    st = Settings.from_env()
+    assert st.model == "global.anthropic.claude-opus-5-5" and st.model_bedrock_endpoint == "runtime"
+    monkeypatch.setenv("NAPKIN_MODEL_API", "anthropic")
+    assert Settings.from_env().model == "claude-opus-5"
 
 
 def test_the_middleware_names_no_mock():

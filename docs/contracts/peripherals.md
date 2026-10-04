@@ -115,16 +115,18 @@ The middleware's one door to a language model: **structured output on every
 call** (W2-C3), validated against the declared schema before it reaches any
 writer, retried once with the validation error fed back, then a loud failure.
 There is no prose salvage. That rule (today's `server/napkin/model.py`) is
-unchanged; what changes is that two wire shapes can carry it.
+unchanged; what changes is that three wires can carry it.
 
 ### 1.1 Selection
 
 | Setting | Values | |
 |---|---|---|
-| `NAPKIN_MODEL_API` | `anthropic` (default) \| `openai` | which wire shape the port speaks |
-| `NAPKIN_MODEL_BASE_URL` | URL | `anthropic`: the API root (the SDK appends `/v1/messages`); unset = the SDK's own resolution (`ANTHROPIC_BASE_URL`, else the real API). `openai`: the root that `/chat/completions` is appended to, **including** `/v1`; required |
-| `NAPKIN_MODEL_API_KEY` | secret | `anthropic`: unset = the SDK's own resolution (`ANTHROPIC_API_KEY`, …). `openai`: required unless the endpoint is keyless |
-| `NAPKIN_MODEL` | model id | sent verbatim as `model` |
+| `NAPKIN_MODEL_API` | `anthropic` (default) \| `bedrock` \| `openai` | which wire the port speaks |
+| `NAPKIN_MODEL_BASE_URL` | URL | `anthropic`: the API root (the SDK appends `/v1/messages`); unset = the SDK's own resolution (`ANTHROPIC_BASE_URL`, else the real API). `bedrock`: unset = `https://bedrock-mantle.<region>.api.aws/anthropic`. `openai`: the root that `/chat/completions` is appended to, **including** `/v1`; required |
+| `NAPKIN_MODEL_API_KEY` | secret | `anthropic`: unset = the SDK's own resolution (`ANTHROPIC_API_KEY`, …). `bedrock`: a Bedrock bearer token; unset = SigV4 with the AWS credential chain (the normal case: an instance or task role). `openai`: required unless the endpoint is keyless |
+| `NAPKIN_MODEL_REGION` | AWS region | `bedrock` only: unset = `AWS_REGION` / `AWS_DEFAULT_REGION` / the profile's region |
+| `NAPKIN_MODEL_BEDROCK_ENDPOINT` | `runtime` (default) \| `mantle` | `bedrock` only: which Bedrock endpoint (§1.3a) |
+| `NAPKIN_MODEL` | model id | sent verbatim as `model`. Unset = `claude-opus-5`, or `global.anthropic.claude-opus-5-5` on `bedrock` |
 | `NAPKIN_VISION_MODEL` | model id | used for image transcription (§1.6); unset = `NAPKIN_MODEL` |
 | `NAPKIN_MODEL_EXTRA_BODY` | JSON object | `openai` only: merged into every request body (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}` for a NIM reasoning model). Never keys the port itself sets |
 
@@ -187,6 +189,52 @@ Read from the response: the first `content` block of `type: text` is the JSON;
 | `max_tokens` | `ModelError(truncated)` — no retry (a retry would be cut off again) |
 | `refusal` | `ModelError(refusal)` — no retry; `stop_details.category` is logged, never shown |
 | anything else | `ModelError(invalid_output)` |
+
+### 1.3a Wire A on Amazon Bedrock — `NAPKIN_MODEL_API=bedrock`
+
+Wire A's request, sent to Claude in Amazon Bedrock. Bedrock has two endpoints
+that both serve it; `NAPKIN_MODEL_BEDROCK_ENDPOINT` picks one:
+
+| | `runtime` (default) | `mantle` |
+|---|---|---|
+| Endpoint | `bedrock-runtime.<region>.amazonaws.com` `POST /model/<id>/invoke` (InvokeModel) | `bedrock-mantle.<region>.api.aws/anthropic/v1/messages` |
+| SDK client | `AnthropicBedrock` | `AnthropicBedrockMantle` |
+| Body | the Messages body, `model` moved into the URL, plus `anthropic_version: bedrock-2023-05-31` (the SDK does both) | the Messages body unchanged |
+| Model ids | inference profiles: `global.anthropic.claude-opus-5-5`, `eu.anthropic.claude-opus-5-5`, `eu.anthropic.claude-opus-4-6-v1` | `anthropic.claude-opus-5-5` |
+| IAM | `bedrock:InvokeModel` on the profile and the models it routes to | `bedrock-mantle:CreateInference` |
+| SigV4 service | `bedrock` | `bedrock-mantle` |
+
+`runtime` is the default: AWS recommends it for new applications, and it is
+the only one serving the 5.5 models in `eu-west-1` (verified 2026-09-30: on
+`mantle` there they are a 404). The model and its guarantees are the same
+behind both; the difference is only the envelope and how fast each endpoint
+gets a model in a region.
+
+- **Structured output is enforced** (verified 2026-09-30 on `runtime`,
+  `eu-west-1`): `output_config.format` is applied by the model service. Opus 4.6
+  and Haiku 4.5 returned valid objects, and a malformed schema came back as
+  `400 output_config.format.schema: Invalid JSON Schema in output format`. If an
+  endpoint ever refuses the field, the 400 becomes `ModelError(unsupported)` and
+  the call is never resent without it (§1.4's rule).
+- **Auth is AWS:** SigV4 with the AWS credential chain (an SSO profile on a
+  laptop, the instance role on the admin host, a task role in stage 2). A
+  Bedrock bearer token in `NAPKIN_MODEL_API_KEY` is the fallback. No AWS
+  credentials is `ModelError(auth)`, never retried as transient.
+- **Model access is per account and per model, outside the code:** a $0
+  Marketplace agreement per model (`aws bedrock
+  create-foundation-model-agreement`) and a tokens-per-minute quota above 0
+  (Service Quotas). A missing agreement or a zero quota is a `403 … is not
+  available for this account` → `ModelError(auth)`.
+- **Routing:** `global.` profiles route anywhere at list price; `eu.` keeps
+  inference in the EU at a 10% premium. The owner accepted global (2026-09-30).
+- **Not on Bedrock**, and not used by the port anyway: server tools (web
+  search, web fetch), the Models API, top-level automatic `cache_control`,
+  server-side `fallbacks`. Research does not run through this port (§2).
+- The SDK's Bedrock clients drop their HTTP client in `with_options()`, so the
+  wire sets retries at construction and passes the timeout per call.
+
+Errors, stop reasons and usage map exactly as §1.3 and §1.7. `trace.backend`
+reads `napkin-middleware/0.1+model-bedrock`.
 
 ### 1.4 Wire B — OpenAI-compatible chat completions (NIM)
 
@@ -956,10 +1004,11 @@ Environment only (`server/napkin/config.py`); handlers never see any of it.
 
 | Variable | Default | Mock value | Real value |
 |---|---|---|---|
-| `NAPKIN_MODEL_API` | `anthropic` | `anthropic` or `openai` | `anthropic` (Claude API) or `openai` (NIM) |
+| `NAPKIN_MODEL_API` | `anthropic` | `anthropic` or `openai` | `bedrock` (Claude in Amazon Bedrock), `anthropic` (Claude API) or `openai` (NIM) |
 | `NAPKIN_MODEL_BASE_URL` | unset (SDK default) | `http://127.0.0.1:8797` (anthropic) · `http://127.0.0.1:8797/v1` (openai) | unset / `https://api.anthropic.com` · `https://<nim host>/v1` |
-| `NAPKIN_MODEL_API_KEY` | unset (SDK resolution) | any non-empty, e.g. `dummy` | the API or NIM key |
-| `NAPKIN_MODEL` | `claude-opus-5` | `claude-opus-5` (or a NIM id in `MOCK_MODEL_ALIASES`) | `claude-opus-5` · the NIM model (O1) |
+| `NAPKIN_MODEL_API_KEY` | unset (SDK resolution) | any non-empty, e.g. `dummy` | bedrock: unset (IAM role) · the API or NIM key |
+| `NAPKIN_MODEL_REGION` | unset (`AWS_REGION`) | unset | `eu-west-1` |
+| `NAPKIN_MODEL` | `claude-opus-5` (`global.anthropic.claude-opus-5-5` on bedrock) | `claude-opus-5` (or a NIM id in `MOCK_MODEL_ALIASES`) | `global.anthropic.claude-opus-5-5` · `claude-opus-5` · the NIM model (O1) |
 | `NAPKIN_VISION_MODEL` | = `NAPKIN_MODEL` | same | `claude-opus-5` · `nvidia/llama-3.1-nemotron-nano-vl-8b-v1` |
 | `NAPKIN_MODEL_EXTRA_BODY` | unset | unset | e.g. `{"chat_template_kwargs":{"enable_thinking":false}}` for a NIM reasoning model |
 | `NAPKIN_MODEL_TIMEOUT` | `600` | `600` (never tune to the mock's latency) | `600` |
@@ -1101,6 +1150,7 @@ recommendation.
 | O10 | N4's parallel drafters vs the engine's sequential dependency (insight → SMP → RTBs → desired response); the golden schema even makes SMP and RTBs depend on each other | Parallel, per N4; the serial Judge's coherence checks (`smp_derivation`, `rtb_supports_smp`, `response_ladders`) and one serial revision own the dependency. Watch the engine's SMP-derives-from-insight check as the quality measure; fall back to two waves (insight first) only if it regresses |
 | O11 | Verdict reason codes for the Judge's failures (`middleware-api.md` §10.8 maps rubric checks to the ten codes) | Use the mapping; it needs the creative director's redline with the codes themselves |
 | O12 | The Brief Maker `capture` and `review` blocks (`middleware-api.md` §10.4) are additions to its schema | Accept: without `capture` the verbatim client words and the ledger have no home in the document, and today they are lost after the context panel |
+| O13 | ~~Whether Bedrock enforces structured output~~ **Closed 2026-09-30:** it does on `bedrock-runtime` (§1.3a: valid objects from Opus 4.6 and Haiku 4.5, a malformed schema rejected with 400). Routing: global, as the owner decided | Nothing to change; re-check on `mantle` before switching `NAPKIN_MODEL_BEDROCK_ENDPOINT` |
 
 ## 10. What the current code contradicts
 

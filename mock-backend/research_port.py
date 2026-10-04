@@ -29,7 +29,7 @@ from common import (ClaudeCall, ClaudeFailure, Config, DiskCache, PeripheralErro
 API = "napkin.research/1"
 BACKEND = "claude-code-websearch"
 # Bump when the prompt or the validation changes, so old cache entries miss.
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 DEFAULT_MAX_SOURCES = 8
 MAX_MAX_SOURCES = 20
@@ -175,8 +175,11 @@ def build_prompt(req: dict) -> str:
         "   under 400 characters each) that bear directly on the question: figures, dates,",
         "   named rules, stated positions. Copy them EXACTLY as written on the page — no",
         "   paraphrase, no ellipses that join separate passages, no added words.",
-        "4. Prefer the most recent data. Set published_at (YYYY-MM-DD) only when the page",
-        "   states its publication or update date; otherwise leave it out.",
+        "4. Prefer the most recent data, and passages that state the period a figure describes",
+        "   (the year, quarter or month), not just the figure. Set published_at (YYYY-MM-DD)",
+        "   only when the page states its publication or update date; otherwise leave it out.",
+        "   Independent publishers stating the same figure are valuable: include each of them.",
+        "   When the research question names sources to try first, search those first.",
         "5. publisher is the organisation behind the page (e.g. 'Central Statistics Office'),",
         "   title is the page or document title as shown.",
         "6. List in `queries` every search query you ran, verbatim.",
@@ -307,7 +310,10 @@ class Research:
         out = env.get("structured_output")
         if not isinstance(out, dict):
             raise PeripheralError(502, "upstream_failed", "the research CLI returned no structured output")
-        return {"output": out, "cost_usd": env.get("total_cost_usd")}
+        u = env.get("usage") if isinstance(env.get("usage"), dict) else {}
+        usage = {k: int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_read_input_tokens",
+                                                   "cache_creation_input_tokens")}
+        return {"output": out, "cost_usd": env.get("total_cost_usd"), "usage": usage}
 
     def research(self, req: dict, fresh: bool) -> dict:
         key = cache_key(req, self.cfg.research_model)
@@ -328,7 +334,8 @@ class Research:
                         "trace": {"backend": BACKEND, "queries": queries, "model": self.cfg.research_model,
                                   "cost_usd": result["cost_usd"], "cached": False}}
             log(f"research {req['lens']}/{req['market']}: {len(sources)} sources in "
-                f"{time.monotonic() - t0:.1f}s, dropped {drops}, cost {result['cost_usd']}")
+                f"{time.monotonic() - t0:.1f}s, dropped {drops}, cost {result['cost_usd']}, "
+                f"tokens {result['usage']}")
             # The query parameters (a public-web question) and public excerpts only.
             self.cache.put(key, {"request": req, "created": _dt.datetime.now(_dt.timezone.utc)
                                  .isoformat(timespec="seconds"), "dropped": drops, "response": response})

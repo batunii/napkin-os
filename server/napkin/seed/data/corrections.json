@@ -1,0 +1,4 @@
+{
+ "about": "Reviewed corrections, applied on every build after facts are promoted and before cells are written. Fact ids are stable across rebuilds from the same cache. Each entry: {\"fact\": \"f_…\", \"reason\": \"why it is wrong\"}.",
+ "retract": []
+}

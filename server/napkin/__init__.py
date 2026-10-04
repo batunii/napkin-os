@@ -3,8 +3,8 @@
 The middleware holds the logic — stage orchestration, the identify rules,
 tiering, derived confidence, the per-market merge, contests, the cite rule,
 Brief Maker's capture, drafters and Judge — and talks to four peripherals
-through ports (docs/contracts/peripherals.md): the model (Anthropic Messages
-or an OpenAI-compatible endpoint), research, retrieval and the knowledge
+through ports (docs/contracts/peripherals.md): the model (Anthropic Messages,
+direct or on Amazon Bedrock, or an OpenAI-compatible endpoint), research, retrieval and the knowledge
 layers (all HTTP). Which implementation sits behind each port is
 configuration only.
 """

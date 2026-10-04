@@ -1,12 +1,21 @@
 """Configuration, from the environment only (peripherals.md §7). Handlers never
 see any of it.
 
-  NAPKIN_MODEL_API             anthropic (default) | openai — the model port's wire shape
+  NAPKIN_MODEL_API             anthropic (default) | bedrock | openai — the model port's wire
   NAPKIN_MODEL_BASE_URL        anthropic: the API root (unset = the SDK's own resolution,
-                               ANTHROPIC_BASE_URL); openai: the root /chat/completions is
-                               appended to, including /v1 (required)
-  NAPKIN_MODEL_API_KEY         anthropic: unset = the SDK's resolution; openai: the bearer key
-  NAPKIN_MODEL                 model id, sent verbatim (claude-opus-5)
+                               ANTHROPIC_BASE_URL); bedrock: unset = the region's
+                               bedrock-mantle endpoint; openai: the root /chat/completions
+                               is appended to, including /v1 (required)
+  NAPKIN_MODEL_API_KEY         anthropic: unset = the SDK's resolution; bedrock: a Bedrock
+                               bearer token, unset = SigV4 with the AWS credential chain;
+                               openai: the bearer key
+  NAPKIN_MODEL_REGION          bedrock: the AWS region (unset = AWS_REGION / the profile)
+  NAPKIN_MODEL_BEDROCK_ENDPOINT  bedrock: runtime (default; InvokeModel, inference-profile
+                               ids such as global.anthropic.claude-opus-5-5) | mantle
+                               (the native Messages endpoint; ids such as
+                               anthropic.claude-opus-5-5)
+  NAPKIN_MODEL                 model id, sent verbatim (claude-opus-5; on bedrock
+                               global.anthropic.claude-opus-5-5)
   NAPKIN_VISION_MODEL          model id for image transcription (= NAPKIN_MODEL)
   NAPKIN_MODEL_EXTRA_BODY      openai only: a JSON object merged into every request body
   NAPKIN_MODEL_TIMEOUT         seconds per HTTP attempt (600)
@@ -51,6 +60,8 @@ class Settings:
     model_api: str = "anthropic"
     model_base_url: str | None = None
     model_api_key: str | None = None
+    model_region: str | None = None
+    model_bedrock_endpoint: str = "runtime"
     model: str = "claude-opus-5"
     vision_model: str | None = None
     model_extra_body: dict = field(default_factory=dict)
@@ -95,10 +106,15 @@ class Settings:
             raise SystemExit(f"NAPKIN_MODEL_EXTRA_BODY is not JSON: {err.msg}") from None
         if not isinstance(extra_body, dict):
             raise SystemExit("NAPKIN_MODEL_EXTRA_BODY must be a JSON object")
-        return cls(model_api=(e("NAPKIN_MODEL_API") or "anthropic").strip().lower(),
+        api = (e("NAPKIN_MODEL_API") or "anthropic").strip().lower()
+        return cls(model_api=api,
                    model_base_url=e("NAPKIN_MODEL_BASE_URL") or None,
                    model_api_key=e("NAPKIN_MODEL_API_KEY") or None,
-                   model=e("NAPKIN_MODEL") or "claude-opus-5",
+                   model_region=e("NAPKIN_MODEL_REGION") or None,
+                   model_bedrock_endpoint=(e("NAPKIN_MODEL_BEDROCK_ENDPOINT") or "runtime").strip().lower(),
+                   # Bedrock ids carry the provider prefix; a bare claude-* id is a 400 there.
+                   model=e("NAPKIN_MODEL") or ("global.anthropic.claude-opus-5-5" if api == "bedrock"
+                                               else "claude-opus-5"),
                    vision_model=e("NAPKIN_VISION_MODEL") or None,
                    model_extra_body=extra_body,
                    model_timeout=float(e("NAPKIN_MODEL_TIMEOUT") or 600),

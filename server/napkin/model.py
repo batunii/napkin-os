@@ -6,14 +6,19 @@ failure the call is retried once with the validation error fed back (the last
 turn is always `user`, never a prefill), then fails loudly. There is no prose
 salvage and no unconstrained fallback.
 
-Two wire shapes carry it, chosen by configuration (`NAPKIN_MODEL_API`):
+Three wires carry it, chosen by configuration (`NAPKIN_MODEL_API`):
 
   anthropic  the Anthropic Messages API through the official SDK
              (`output_config.format = json_schema`)
+  bedrock    the same Messages request to Claude in Amazon Bedrock, IAM-signed
+             (or a Bedrock bearer token): on `bedrock-runtime` InvokeModel
+             through the SDK's `AnthropicBedrock` (default), or on
+             `bedrock-mantle` through `AnthropicBedrockMantle`
+             (`NAPKIN_MODEL_BEDROCK_ENDPOINT`)
   openai     an OpenAI-compatible `/chat/completions` (self-hosted NIM)
              (`response_format = json_schema, strict: true`)
 
-No handler knows which wire is in use. Both wires' failures map to one
+No handler knows which wire is in use. Every wire's failures map to one
 `ModelError(kind)` (§1.7).
 """
 
@@ -114,14 +119,19 @@ def check_images(images) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Wire A — Anthropic Messages (the official SDK)
+# Wire A — Anthropic Messages (the official SDK), direct or on Bedrock
 # ---------------------------------------------------------------------------
 
-class AnthropicWire:
-    api = "anthropic"
+# A 400 naming these means the endpoint refused structured output itself.
+_REFUSED_FORMAT = re.compile(r"output_config|json_schema|structured output|output format", re.I)
 
-    def __init__(self, client):
+
+class AnthropicWire:
+    """`api` is `anthropic` or `bedrock`: one request shape, two endpoints."""
+
+    def __init__(self, client, api: str = "anthropic"):
         self.client = client
+        self.api = api
 
     @staticmethod
     def _content(turn):
@@ -140,9 +150,20 @@ class AnthropicWire:
         if headers:
             kwargs["extra_headers"] = dict(headers)
         try:
-            resp = self.client.with_options(timeout=timeout, max_retries=1).messages.create(**kwargs)
+            if self.api == "bedrock":
+                # The Bedrock clients' with_options() drops their http client (a new pool
+                # per call); they are built with max_retries=1 and take the timeout per call.
+                resp = self.client.messages.create(timeout=timeout, **kwargs)
+            else:
+                resp = self.client.with_options(timeout=timeout, max_retries=1).messages.create(**kwargs)
         except Exception as e:  # transport / API failure: mapped to a kind, attributable
-            raise ModelError(f"{purpose}: the model call failed ({type(e).__name__})", _anthropic_kind(e)) from e
+            kind = _anthropic_kind(e)
+            if kind == "invalid_request" and getattr(e, "status_code", None) == 400 \
+                    and _REFUSED_FORMAT.search(str(getattr(e, "message", "") or e)):
+                # Structured output is enforced or the call fails: never resent without it (§1.4).
+                raise ModelError(f"{purpose}: the {self.api} endpoint refused output_config.format json_schema",
+                                 "unsupported") from e
+            raise ModelError(f"{purpose}: the model call failed ({type(e).__name__})", kind) from e
         u = getattr(resp, "usage", None)
         usage = None
         if u is not None:
@@ -173,6 +194,8 @@ def _anthropic_kind(e) -> str:
             return _status_kind(e.status_code, anthropic_wire=True)
         if isinstance(e, anthropic.APIConnectionError):
             return "server"
+    if isinstance(e, RuntimeError) and re.search(r"resolve (aws )?credentials", str(e), re.I):
+        return "auth"  # the Bedrock client found no AWS credentials: never transient
     return "server"
 
 
@@ -384,8 +407,28 @@ def build_wire(settings, client=None, transport=None):
     if settings.model_api == "openai":
         return OpenAIWire(settings.model_base_url, settings.model_api_key, settings.model_extra_body,
                           transport=transport)
+    if settings.model_api == "bedrock":
+        if settings.model_bedrock_endpoint not in ("runtime", "mantle"):
+            raise ValueError("NAPKIN_MODEL_BEDROCK_ENDPOINT must be runtime or mantle, "
+                             f"not {settings.model_bedrock_endpoint!r}")
+        if client is None:
+            # runtime: bedrock-runtime InvokeModel, AWS's primary endpoint, with the eu./global.
+            # inference profiles. mantle: bedrock-mantle's native Messages API. One request body.
+            from anthropic import AnthropicBedrock, AnthropicBedrockMantle
+            cls = AnthropicBedrock if settings.model_bedrock_endpoint == "runtime" else AnthropicBedrockMantle
+            kw = {"max_retries": 1}
+            if settings.model_region:
+                kw["aws_region"] = settings.model_region
+            if settings.model_base_url:
+                kw["base_url"] = settings.model_base_url
+            if settings.model_api_key:
+                kw["api_key"] = settings.model_api_key   # a Bedrock bearer token; unset = SigV4 (IAM)
+            # Unset values: the SDK's AWS resolution (AWS_REGION, the credential chain:
+            # env, SSO profile, instance or task role).
+            client = cls(**kw)
+        return AnthropicWire(client, api="bedrock")
     if settings.model_api != "anthropic":
-        raise ValueError(f"NAPKIN_MODEL_API must be anthropic or openai, not {settings.model_api!r}")
+        raise ValueError(f"NAPKIN_MODEL_API must be anthropic, bedrock or openai, not {settings.model_api!r}")
     if client is None:
         import anthropic
         kw = {}

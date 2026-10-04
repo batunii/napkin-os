@@ -1,0 +1,36 @@
+#!/bin/bash
+# First boot of the RAG host: install Docker and the reconcile script, and run
+# it at every boot. Which stores exist lives in SSM, not here, so adding an
+# agency or bumping Qdrant never rebuilds the host.
+set -euo pipefail
+
+dnf install -y docker jq
+systemctl enable --now docker
+
+cat > /etc/napkin-rag.conf <<'EOF'
+REGION=${region}
+PARAM=${param_name}
+EOF
+
+echo '${reconcile_b64}' | base64 -d > /usr/local/bin/napkin-rag-reconcile
+chmod 755 /usr/local/bin/napkin-rag-reconcile
+
+cat > /etc/systemd/system/napkin-rag-reconcile.service <<'EOF'
+[Unit]
+Description=Start one Qdrant per Napkin RAG store
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/napkin-rag-reconcile
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable napkin-rag-reconcile.service
+systemctl start --no-block napkin-rag-reconcile.service

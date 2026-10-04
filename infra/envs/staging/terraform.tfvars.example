@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars. Every value here has a default; set only what differs.
+
+# budget_emails      = ["you@example.com", "team@example.com"]
+# monthly_budget_usd = 150
+
+# Aurora: 0 = pause when idle (up to ~15 s to resume); 0.5 = never pause.
+# aurora_min_acu                  = 0
+# aurora_max_acu                  = 4
+# aurora_seconds_until_auto_pause = 1800
+
+# Set false only for a throwaway stack you mean to destroy.
+# deletion_protection = true
+
+# Agencies, keyed by org slug. slot (1-20) fixes the port (6340 + slot) and
+# must never be reused while the store exists.
+# agencies = {
+#   acme   = { slot = 1 }
+#   globex = { slot = 2, volume_gb = 10 }
+# }
