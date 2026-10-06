@@ -29,6 +29,7 @@ def _placeholder_claude_key(monkeypatch):
     # The gap-filler (ADR 0019) never searches or writes the real fact store in tests.
     monkeypatch.setenv("BRIEF_GAP_FILL", "0")
     monkeypatch.setenv("BRIEF_FACT_CHECK", "0")      # one more judge call (ADR 0021); its own tests turn it on
+    monkeypatch.setenv("BRIEF_SECTIONS", "0")        # seven section writers (ADR 0022); test_sections turns them on
     monkeypatch.delenv("BRIEF_RESEARCH_URL", raising=False)
     import sys as _sys
     jc = _sys.modules.get("jev_checks")

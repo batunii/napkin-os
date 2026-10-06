@@ -24,7 +24,9 @@ from pathlib import Path
 # A parenthesised aside about a sentence number goes whole; a bare 'sentence 12' or
 # 'sentences 2-3' loses only the reference itself; '[5]' goes.
 _MARKER_RE = re.compile(r"\(\s*sentences?\s+\d+[^)\n]{0,80}\)|\bsentences?\s+\d+(?:\s*[-–,]\s*\d+)*|\[\d+\]", re.I)
-_CITE_RE = re.compile(r"\[(?:F|D):[^\]\s]+(?:\s+v\d+)?\]")
+_CITE_RE = re.compile(r"\[(?:F|D):[^\]\s]+(?:\s+v\d+)?\]"
+                      # a section writer's source tags left in its text: '(s6)', '(s6, s7)', '(F:f_x; R:ie-1)'
+                      r"|\(\s*(?:(?:s\d+|[FR]:[^\s,;)]+)\s*[,;]?\s*)+\)|\b[FR]:[A-Za-z0-9_-]+")
 
 
 def _scrub_markers(text):
@@ -135,6 +137,9 @@ def captured_extras(brief) -> list:
     cap = ((brief.get("loop1_capture") or {}).get("fields") or {})
     gf = (brief.get("loop2_golden") or {}).get("fields", {}) or {}
     said = set(_norm_words(" ".join(str((f.get("value") if isinstance(f, dict) else f) or "") for f in gf.values())))
+    for sec in ((brief.get("sections") or {}).get("sections") or {}).values():   # P3 sections say it too
+        said |= set(_norm_words(" ".join(str(v) for it in sec.get("items") or [] for k, v in it.items()
+                                         if k not in ("source", "refs", "figure_unchecked", "cite", "unsupported", "detail_unchecked"))))
     out = []
     for key, heading in CAPTURE_EXTRAS:
         items = cap.get(key)
@@ -154,6 +159,55 @@ def captured_extras(brief) -> list:
         if lines:
             out.append((heading, lines))
     return out
+
+
+def section_lines(sid: str, sec: dict, unreviewed: bool = False, n_of: "dict | None" = None) -> list:
+    """One P3 section (sections.py, ADR 0022) as markdown lines under its '## title'. Measurement is a table;
+    the rest are '- **label:** text' items. A proposed item says so; a figure no source states is marked;
+    a rule-pack item names its source. A section the writers could not fill reads as to be agreed."""
+    L = [f"## {sec.get('title') or sid}"]
+    items = sec.get("items") or []
+    if not items:
+        return L + ["_To be agreed — see open questions._", ""]
+    if all(it.get("source") == "proposed" for it in items):
+        built = any(str(r).startswith("s") for it in items for r in it.get("refs") or [])
+        L += ["_Proposed by the agency, built on the client's documents where cited. To confirm with the client._" if built
+              else "_Proposed by the agency: the client's documents do not cover this. To confirm with the client._", ""]
+    if sid == "safety_legal" and unreviewed and any(it.get("source") == "pack" for it in items):
+        L += ["_Rules from the agency's rule packs, not yet reviewed by a person: check each source before use._", ""]
+
+    def mark(it):
+        bits = []
+        if it.get("source") == "proposed" and not all(x.get("source") == "proposed" for x in items):
+            bits.append("_(proposed)_")
+        if it.get("figure_unchecked"):
+            bits.append("_(figure to check)_")
+        if it.get("detail_unchecked"):
+            bits.append("_(contact detail to check)_")
+        if it.get("unsupported"):
+            bits.append("_(no source: to confirm)_")
+        ns = [n_of[r[2:]] for r in it.get("refs") or [] if r.startswith("F:") and (n_of or {}).get(r[2:])]
+        if ns:
+            bits.append("[" + ", ".join(f"A{n}" for n in dict.fromkeys(ns)) + "]")
+        if it.get("cite"):
+            bits.append(f"— {it['cite']}")
+        return (" " + " ".join(bits)) if bits else ""
+
+    if sid == "measurement":
+        L += ["| Objective | Measure | Baseline | Target | How it is measured |", "|---|---|---|---|---|"]
+        for it in items:
+            cells = [_scrub_markers(str(it.get(k) or "—")).replace("|", "/") for k in ("label", "measure", "baseline", "target", "method")]
+            if it.get("method_proposed") and it.get("source") != "proposed":
+                cells[-1] += " _(method proposed)_"
+            cells[-1] += mark(it)
+            L.append("| " + " | ".join(cells) + " |")
+    else:
+        for it in items:
+            label = _scrub_markers(str(it.get("label") or "")).strip()
+            text = _scrub_markers(str(it.get("text") or "")).strip()
+            L.append(f"- **{label[:1].upper() + label[1:]}:** {text}{mark(it)}" if label and text
+                     else f"- {text or label}{mark(it)}")
+    return L + [""]
 
 
 def render_client_brief(brief) -> str:
@@ -206,6 +260,13 @@ def render_client_brief(brief) -> str:
             L.append(_scrub_markers(str(value)) + tag(fid) if value else TBD)
         L.append("")
 
+    secs = ((brief.get("sections") or {}).get("sections") or {})
+    unrev = bool(((brief.get("sections") or {}).get("meta") or {}).get("unreviewed"))
+
+    def put(sid):
+        if secs.get(sid):
+            L.extend(section_lines(sid, secs[sid], unrev, {a["id"]: a["n"] for a in numbered}))
+
     text_section("Background", gv("background"), "background")
 
     obj = gv("objectives")
@@ -220,9 +281,12 @@ def render_client_brief(brief) -> str:
     else:
         L.append(TBD)
     L.append("")
+    put("measurement")
 
     text_section("Audience", gv("audience"), "audience")
+    put("audience_depth")
     text_section("Competitor context", gv("competitor_context"), "competitor_context")
+    put("competitors")
     text_section("The insight", gv("insight"), "insight")
     text_section("Single-minded proposition", gv("smp"), "smp")
 
@@ -255,8 +319,12 @@ def render_client_brief(brief) -> str:
     L.append("")
 
     text_section("Tone & world", gv("tone_world_assets"), "tone_world_assets")
+    put("channel_roles")
     text_section("Budget & scope", gv("budget_scope"), "budget_scope")
     text_section("Mandatories", gv("mandatories"), "mandatories")
+    put("safety_legal")
+    put("language_adaptation")
+    put("practicalities")
 
     # A field kept as a draft because every draft failed its checks (Sai, 2026-09-28) gets
     # a visible tag under its heading, so a reader never takes it as final.
@@ -283,13 +351,13 @@ def render_client_brief(brief) -> str:
     if fc.get("unverified"):
         L.append("## Still to verify")
         L += ["_Claims that rest on a single, unchecked research source._", ""]
-        L += [f"- {c['claim']} ({c['field'].replace('_', ' ')})" for c in fc["unverified"]]
+        L += [f"- {c['claim']} ({_ev.where(c['field'])})" for c in fc["unverified"]]
         L.append("")
     if fc.get("unsupported"):
         L.append("## What we will not claim")
         L += ["_No source in the client's documents or the research supports these; they stay out of the work "
               "until confirmed._", ""]
-        L += [f"- {c['claim']} ({c['field'].replace('_', ' ')})" for c in fc["unsupported"]]
+        L += [f"- {c['claim']} ({_ev.where(c['field'])})" for c in fc["unsupported"]]
         L.append("")
     if numbered:
         L.append("## Evidence and sources")

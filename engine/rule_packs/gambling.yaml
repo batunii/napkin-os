@@ -1,0 +1,152 @@
+id: gambling
+kind: category
+name: Gambling and betting
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: []
+  categories: [gambling_betting]
+  topics: []
+rules:
+- id: gambling-ie-safer-gambling-message
+  markets: [IE]
+  media: all
+  rule: Irish gambling ads must include a responsible-gambling message and direct people to a source of information about gambling responsibly.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/gambling/
+    section: s.10.10
+    quote: All marketing communications for gambling services or products shall contain a message to encourage responsible gambling and shall direct people to a source of information about gambling and gambling responsibly.
+    checked: '2026-10-03'
+  note: Gambling Regulation Act 2024 ss.143-151 (advertising) are NOT commenced per the ISB directory (updated 17 Sept 2026); recheck. ASA s.10 does not cover the National Lottery (10.2).
+- id: gambling-ie-under-25
+  markets: [IE]
+  media: all
+  rule: No one under 25, or seeming under 25, may appear, except to illustrate a specific bet they are the subject of; no children except incidentally.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/gambling/
+    section: s.10.17(f) (see also 10.17(e))
+    quote: Feature anyone who is, or seems to be, under 25 (18-24) years old, unless those individuals feature only to illustrate specific betting selections or options
+    checked: '2026-10-03'
+- id: gambling-ie-no-financial-solution
+  markets: [IE]
+  media: all
+  rule: Do not suggest gambling solves financial or personal problems, or is a source of income or a substitute for work.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/gambling/
+    section: s.10.12(c) (see also 10.12(a)-(k))
+    quote: State or suggest that gambling may be a way to solve financial or personal issues, or represent it as an alternative source of income or substitution for working.
+    checked: '2026-10-03'
+- id: gambling-ie-schools-100m
+  markets: [IE]
+  media: outdoor
+  rule: No gambling ads displayed within 100 metres of a school entrance.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/gambling/
+    section: s.10.17(h)
+    quote: Be displayed within 100 meters of a school entrance.
+    checked: '2026-10-03'
+- id: gambling-ie-broadcast-no-inducements
+  markets: [IE]
+  media: broadcast
+  rule: 'Irish TV/radio gambling ads may not directly encourage gambling: no special offers, free bets, discounts or inducements to visit; only the operator''s address and factual service descriptions.'
+  source:
+    title: 'Media Service Code: General Commercial Communications Code (in effect 5 November 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2025/01/General-Commercial-Communications-Code-v2.pdf
+    section: s.25.4
+    quote: Broadcasters shall ensure that commercial communications do not contain anything which could be deemed to be a direct encouragement to gamble. This includes providing information detailing special offers, free bets as prizes in competitions, discounts,
+    checked: '2026-10-03'
+  note: 's.25.3: only duly licensed operators may be advertised on Irish broadcast.'
+- id: gambling-ie-broadcast-children
+  markets: [IE]
+  media: broadcast
+  rule: Irish broadcast gambling ads must not be aimed mainly at children and must not run in or around children's programmes.
+  source:
+    title: 'Media Service Code: General Commercial Communications Code (in effect 5 November 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2025/01/General-Commercial-Communications-Code-v2.pdf
+    section: s.25.6
+    quote: Broadcasters shall ensure that commercial communications for gambling do not contain material which is directed exclusively or principally at children and shall not be broadcast in or around children’s programmes.
+    checked: '2026-10-03'
+  note: Children's programmes = over 50% of audience under 18 (s.10 definitions).
+- id: gambling-gb-no-strong-under-18-appeal
+  markets: [GB]
+  media: all
+  rule: GB gambling ads must not be of strong appeal to under-18s, e.g. via youth culture, or feature anyone whose example under-18s would follow or who strongly appeals to them.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/16.html
+    section: rule 16.3.12
+    quote: be likely to be of strong appeal to children or young persons, especially by reflecting or being associated with youth culture.
+    checked: '2026-10-03'
+  note: BCAP Code rule 17.4.5 is equivalent for broadcast.
+- id: gambling-gb-under-25
+  markets: [GB]
+  media: all
+  rule: No one under, or seeming under, 25 may be shown gambling or in a significant role; no adolescent, juvenile or loutish behaviour.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/16.html
+    section: rule 16.3.14
+    quote: No-one who is, or seems to be, under 25 years old may be featured gambling or playing a significant role.
+    checked: '2026-10-03'
+  note: Narrow exception for bet-selection images on transactional pages. BCAP 17.4.6 is equivalent for broadcast.
+- id: gambling-gb-no-financial-solution
+  markets: [GB]
+  media: all
+  rule: Do not suggest gambling solves money worries, replaces a job or brings financial security.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/16.html
+    section: rule 16.3.4 (see also 16.3.1-16.3.17)
+    quote: suggest that gambling can be a solution to financial concerns, an alternative to employment or a way to achieve financial security
+    checked: '2026-10-03'
+  note: BCAP Code rule 17.3.3 is equivalent. Radio gambling ads need Radiocentre central clearance (BCAP 17.1).
+- id: gambling-ro-broadcast-hours
+  markets: [RO]
+  media: broadcast
+  rule: 'Romanian broadcast: gambling ads banned from 06:00 to 23:00, except betting spots during live sports broadcasts (gloss).'
+  source:
+    title: Decizia CNA nr. 573/2025 privind Codul de reglementare a conținutului audiovizual (consolidated to 11.12.2025)
+    publisher: Consiliul Național al Audiovizualului (CNA)
+    url: https://media.cna.ro/Decizia_CNA_nr_573_2025_Codul_audiovizualului_cu_modificarile_ulterioare_la_data_de_11_12_2025_ab2f6787a8.pdf
+    section: Art. 109(3)
+    quote: În intervalul orar 06,00 – 23,00 sunt interzise programele audiovizuale care conțin jocuri de noroc, precum și spoturile publicitare care promovează astfel de jocuri, cu excepția spoturilor publicitare referitoare la pariuri
+    checked: '2026-10-03'
+  note: 'The exception continues: betting spots ''care pot fi difuzate și în timpul transmisiunilor sportive în direct''. Art. 109(1): only gambling authorised under the law may be advertised; 109(5): no gambling in programmes for minors.'
+- id: gambling-ro-no-celebrities-influencers
+  markets: [RO]
+  media: broadcast
+  rule: Romanian audiovisual gambling ads must not feature public, cultural, scientific or sports personalities, or online-famous people, who could encourage participation (gloss).
+  source:
+    title: Decizia CNA nr. 573/2025 privind Codul de reglementare a conținutului audiovizual (consolidated to 11.12.2025)
+    publisher: Consiliul Național al Audiovizualului (CNA)
+    url: https://media.cna.ro/Decizia_CNA_nr_573_2025_Codul_audiovizualului_cu_modificarile_ulterioare_la_data_de_11_12_2025_ab2f6787a8.pdf
+    section: Art. 109(7)
+    quote: Este interzisă difuzarea de publicitate pentru jocuri de noroc în care sunt prezente personalități ale vieții publice, culturale, științifice, sportive sau alte persoane, care, datorită notorietății în mediul online, pot încuraja participarea la astfel de jocuri.
+    checked: '2026-10-03'
+  note: Art. 109(7) entered into force 6 October 2025 (90 days after publication). RAC Code Art. 37.7 has the same rule.
+- id: gambling-ro-mandatory-elements
+  markets: [RO]
+  media: all
+  rule: Romanian gambling promo materials must visibly show the ban on minors playing (visual symbol), the operating licence series and number, and the ONJN logo; never placed at schools or religious/socio-cultural sites.
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 37.3
+    quote: vor cuprinde în mod vizibil interdicția minorilor de participare la jocul de noroc, semnalizată prin simboluri vizuale, precum şi seria şi numărul licenței de organizare a activității de jocuri de noroc, precum și sigla ONJN.
+    checked: '2026-10-03'
+  note: RAC self-regulatory text that mirrors the legal regime (GEO 77/2009 and its norms); the official ONJN and legislatie.just.ro pages were behind a bot wall and could not be fetched, so the statute itself is unverified.

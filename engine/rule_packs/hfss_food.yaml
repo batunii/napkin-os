@@ -1,0 +1,151 @@
+id: hfss_food
+kind: category
+name: Less healthy (HFSS) food and drink
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: []
+  categories: [food_drink, fmcg]
+  topics: []
+rules:
+- id: hfss-gb-online-paid-ban
+  markets: [GB]
+  media: online
+  rule: No paid online advertising for an identifiable less healthy (HFSS, in-scope category) food or drink product; pure brand ads and food SMEs (<250 staff) are exempt.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/15.html
+    section: rule 15.19
+    quote: Persons must not pay for advertisements for an identifiable less healthy food or drink product to be placed on the internet.
+    checked: '2026-10-03'
+  note: 'In force UK-wide since 5 January 2026 (GOV.UK collection ''Less healthy food or drink: advertising and promotions restrictions''). Product scope: Advertising (Less Healthy Food Definitions and Exemptions) Regulations 2024.'
+- id: hfss-gb-tv-9pm-watershed
+  markets: [GB]
+  media: broadcast
+  rule: No TV ads for an identifiable less healthy food or drink product between 5.30am and 9pm (includes UK on-demand services).
+  source:
+    title: UK Code of Broadcast Advertising (BCAP Code)
+    publisher: Broadcast Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/broadcast/code_section/32.html
+    section: rule 32.21
+    quote: Television programme services must not include advertisements for an identifiable less healthy food or drink product between 5.30am and 9.00pm.
+    checked: '2026-10-03'
+  note: In force 5 January 2026. On-demand programme services are covered by CAP Appendix 2 rule 30.16 (not fetched).
+- id: hfss-gb-non-broadcast-audience-25pct
+  markets: [GB]
+  media: all
+  rule: HFSS ads must not target under-16s by media or context; no medium where over 25% of the audience is under 16.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/15.html
+    section: rule 15.20
+    quote: No medium should be used to advertise HFSS products, if more than 25% of its audience is under 16 years of age.
+    checked: '2026-10-03'
+- id: hfss-gb-tv-childrens-programmes
+  markets: [GB]
+  media: broadcast
+  rule: HFSS TV ads may not appear in or next to programmes made for, or likely to appeal particularly to, under-16s.
+  source:
+    title: UK Code of Broadcast Advertising (BCAP Code)
+    publisher: Broadcast Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/broadcast/code_section/32.html
+    section: rule 32.22
+    quote: Television advertisements for HFSS products may not appear in or adjacent to programmes commissioned for, principally directed at or likely to appeal particularly to audiences below the age of 16.
+    checked: '2026-10-03'
+- id: hfss-gb-no-licensed-characters
+  markets: [GB]
+  media: all
+  rule: HFSS ads aimed by content at pre-school or primary children must not use licensed characters or celebrities popular with children (own brand characters are allowed).
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/15.html
+    section: rule 15.15 (see also 15.14 on promotional offers)
+    quote: HFSS product advertisements that are targeted directly at pre-school or primary school children through their content must not include licensed characters or celebrities popular with children.
+    checked: '2026-10-03'
+  note: BCAP Code rule 13.10 is equivalent for TV.
+- id: hfss-ie-broadcast-not-in-childrens-programmes
+  markets: [IE]
+  media: broadcast
+  rule: 'Irish broadcast: no HFSS food ads in children''s programmes (over 50% of audience under 18).'
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.17.7(a)
+    quote: Commercial communications for HFSS food products and/or services shall not be permitted in children’s programmes.
+    checked: '2026-10-03'
+  note: General Commercial Communications Code s.21.13 also bars them 'in or around' children's programmes and caps HFSS at 25% of sold ad time (21.12).
+- id: hfss-ie-broadcast-no-licensed-characters
+  markets: [IE]
+  media: broadcast
+  rule: Irish broadcast children's ads for HFSS food must not use licensed characters.
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.17.7(b)
+    quote: Children’s commercial communications for HFSS food products and/or services shall not include licensed characters.
+    checked: '2026-10-03'
+- id: hfss-ie-broadcast-under-13-no-claims-or-offers
+  markets: [IE]
+  media: broadcast
+  rule: Irish broadcast children's ads for HFSS food aimed at under-13s must not include health or nutrition claims or promotional offers.
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.17.7(c)-(d)
+    quote: Children’s commercial communications for HFSS food products and/or services shall not include health and nutrition claims. U/13
+    checked: '2026-10-03'
+  note: s.17.7(d) applies the same U/13 bar to promotional offers.
+- id: hfss-ie-broadcast-no-celebrities-under-15
+  markets: [IE]
+  media: broadcast
+  rule: Irish broadcast children's ads must not use celebrities or sports stars to promote any food or drink (not only HFSS) to under-15s, unless part of a public health campaign.
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.17.6
+    quote: Broadcasters shall ensure that children’s commercial communications do not portray or refer to celebrities or sports stars to promote food or drink products (including HFSS food products and/or services),
+    checked: '2026-10-03'
+  note: Marked U/15 in the Code.
+- id: hfss-ie-broadcast-fast-food-message
+  markets: [IE]
+  media: broadcast
+  rule: 'Irish broadcast children''s ads for fast food must show or say: ''should be eaten in moderation and as part of a balanced diet''.'
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.17.4
+    quote: Broadcasters shall ensure that children’s commercial communications for fast food products, outlets and/or brands display an acoustic or visual message stating ‘should be eaten in moderation and as part of a balanced diet’.
+    checked: '2026-10-03'
+- id: hfss-ie-broadcast-confectionery-message
+  markets: [IE]
+  media: broadcast
+  rule: 'Irish broadcast children''s ads for confectionery (incl. sugary carbonated drinks) must show or say: ''snacking on sugary foods and drinks can damage teeth.'''
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.17.5
+    quote: Broadcasters shall ensure that children’s commercial communications for confectionery products display an acoustic or visual message stating that ‘snacking on sugary foods and drinks can damage teeth.’
+    checked: '2026-10-03'
+  note: '''Confectionery'' in this Code includes carbonated drinks other than water (s.10).'
+- id: hfss-ie-non-broadcast-audience-50pct
+  markets: [IE]
+  media: all
+  rule: Irish non-broadcast HFSS ads must not target under-15s by media or context; no medium with over 50% of its audience under 15.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/food-non-alcoholic-beverages/
+    section: s.8.20 (see also 8.19, 8.21-8.22)
+    quote: No medium should be used to advertise HFSS products if more than 50% of its audience is under 15 years of age.
+    checked: '2026-10-03'
+  note: 's.8.22: places mainly used by children (schools, crèches, playgrounds, youth centres) must be free of HFSS ads. Media-specific thresholds are in ASA''s HFSS Guidance Note (not fetched).'

@@ -49,7 +49,7 @@ _HTTP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 # `usage` when present; chars are always counted as the fallback ruler.
 # ---------------------------------------------------------------------------
 _LLM_STATS = {}
-_STATS_LOCK = __import__("threading").Lock()   # loops 3–7 retrieval/rerank run in threads
+_STATS_LOCK = __import__("threading").RLock()   # loops 3–7 retrieval/rerank run in threads; reentrant, since _stats_snapshot -> _ledger -> _stats_reset re-takes it on a fresh ledger
 # A run's ledger travels with the thread (and, via _scoped, with the threads it starts), so
 # two briefs in one process — or a name-derivation call next to a running brief on the
 # agent-server — never write into each other's numbers (audit 2026-09-24, critic-G11).
@@ -598,11 +598,12 @@ ROUTES = {
     "judge":           (SONNET, HAIKU),                          # every other field's judge
     "mechanical":      (SONNET, HAIKU),                          # scorecard, how-to-win, rerank
     "synth":           (SONNET, HAIKU),
+    "section":         (SONNET, "claude-opus-5-5"),            # P3 section writers: measurement, channels, safety... (2026-10-03)
     "vision":          (SONNET, "claude-opus-5-5"),            # page images and image files -> text (2026-10-02)                          # loop syntheses (Sai: Sonnet, not Haiku)
 }
 # Effort per job on thinking models (Opus 5.5, Sonnet 5): judges and mechanical calls
 # answer a rule, so they think little. None = the model's own default.
-ROUTE_EFFORT = {"vision": "low", "hero": "high", "hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
+ROUTE_EFFORT = {"section": "medium", "vision": "low", "hero": "high", "hero_judge": "low", "judge": "low", "mechanical": "low", "synth": "medium"}
 
 
 def route_effort(route: "str | None") -> "str | None":
@@ -1074,6 +1075,9 @@ def _loads_lenient(raw, whole=False):
         return None
 
     obj = _try(raw)
+    if obj is None:   # a reply fenced as ```json ... ``` is still one whole object
+        fenced = re.fullmatch(r"\s*```(?:json)?\s*(.*?)\s*```\s*", raw or "", re.S)
+        obj = _try(fenced.group(1)) if fenced else None
     if obj is not None:
         return obj
     if whole:

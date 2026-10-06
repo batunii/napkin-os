@@ -144,7 +144,9 @@ def line(f: dict) -> str:
     value = (f"{f['value']}{(' ' + str(f['unit'])) if f.get('unit') else ''}"
              + (f" ({', '.join(alt)})" if alt else ""))
     src = next((s.get("title") or s.get("uri") for s in (f.get("sources") or []) if isinstance(s, dict)), None)
-    meta = ", ".join(x for x in (f"{scope(f)} research", status_of(f),
+    # The market a fact describes (2026-10-03, P3 test: UK-only figures were applied to Ireland because the line
+    # never said which market a fact was about).
+    meta = ", ".join(x for x in (f"market {f['market']}" if f.get("market") else "", f"{scope(f)} research", status_of(f),
                                  f"as of {f['as_of']}" if f.get("as_of") else "") if x)
     return f"[{ref(f)}] {what + ': ' if what else ''}{value} ({meta}{'; ' + str(src) if src else ''})"
 

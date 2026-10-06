@@ -1,0 +1,155 @@
+id: suicide_self_harm
+kind: topic
+name: Suicide and self-harm
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: []
+  categories: []
+  topics: [\bsuicid, 'self[- ]?harm', 'crisis (?:line|helpline|text ?line)', mental health crisis, '\b(?:take|takes|taking|took|taken) (?:his|her|their|my|your|one''s) own life']
+rules:
+- id: suicide-no-method
+  markets: [ALL]
+  media: all
+  rule: Never show, describe or name a suicide method (including drug names or quantities); this raises imitation risk.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Don't describe the method used (p.18)
+    quote: The greatest area of concern with regard to media reporting on suicide is when the reporting includes a discussion, image or description of a suicide method.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-no-location
+  markets: [ALL]
+  media: all
+  rule: Do not name, picture or describe a specific site or location linked to suicide (bridges, cliffs, stations); never call it a 'hot spot'.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Don't name or provide details about the site/location (p.18)
+    quote: It is crucial not to promote such locations by, for instance, displaying images of them, naming them, using sensationalist language to describe them or overplaying the number of incidents occurring at them.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-not-a-solution
+  markets: [ALL]
+  media: all
+  rule: Do not sensationalise, romanticise or normalise suicide, or present it as a way to solve problems.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Don't use language/content which sensationalizes... (p.19)
+    quote: Don’t use language/content which sensationalizes, romanticizes or normalizes suicide, or that presents it as a viable solution to problems
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-avoid-committed
+  markets: [ALL]
+  media: all
+  rule: Say 'died by suicide' or 'took their own life', never 'committed suicide'; avoid 'successful/unsuccessful suicide' and 'suicide epidemic'.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: p.20
+    quote: The phrase “committed suicide” implies criminality
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide. Samaritans Ireland media guidelines (2020, p.13) also list 'Commit suicide', 'Suicide victim' and 'Suicide epidemic' under 'Don't use'.
+- id: suicide-signpost-support
+  markets: [ALL]
+  media: all
+  rule: 'Always include where to get help: a small number of trusted, 24/7 crisis services, ideally at the start, with contact details checked.'
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Do provide accurate information about where to seek help (p.12)
+    quote: Information about support services should be provided at the end of the news story or, even better, at the beginning of all stories about suicide.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-hope-and-recovery
+  markets: [ALL]
+  media: all
+  rule: Favour stories of coping, recovery and help-seeking; show that people come through suicidal crises.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Do report stories of how to cope... (p.13)
+    quote: Providing personal narratives of people who found ways to navigate through and cope with adverse circumstances and overcome suicidal thoughts may help others in difficult life situations to adopt similar positive coping strategies.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-no-scene-images
+  markets: [ALL]
+  media: all
+  rule: Do not use images, footage or audio of a suicide scene, especially showing a method or place; use photos of a person who died only with family permission and without glamour.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Don't use photographs, video footage... (p.21)
+    quote: The use of photographs, video footage, audio recordings or social/ digital media links of the scene of a suicide is discouraged, particularly if such media indicate a specific suicide method or location.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-no-single-cause
+  markets: [ALL]
+  media: all
+  rule: Do not present one event or problem (debt, a break-up, bullying) as the cause of a suicide; suicide always involves many factors.
+  source:
+    title: 'Preventing suicide: a resource for media professionals, update 2023'
+    publisher: World Health Organization (with the International Association for Suicide Prevention)
+    url: https://iris.who.int/server/api/core/bitstreams/92773496-dc8b-4d42-aef3-3a5a517dfa63/content
+    section: Don't oversimplify the reason for a suicide (p.20)
+    quote: It is inaccurate to imply that one factor alone causes a person to take his or her own life.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-ie-samaritans-helpline
+  markets: [IE]
+  media: all
+  rule: 'In Ireland, say suicide is preventable and signpost Samaritans: free call 116 123, jo@samaritans.ie, samaritans.ie.'
+  source:
+    title: Media Guidelines for Reporting Suicide (Ireland edition, 2020)
+    publisher: Samaritans Ireland
+    url: https://media.samaritans.org/documents/Media_Guidelines_Ireland_FINAL.pdf
+    section: 10 things to remember, item 2
+    quote: When life is difficult, Samaritans are here – day or night, 365 days a year. You can call them for free on 116 123, email them at jo@samaritans.ie, or visit www.samaritans.ie
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide. Check the helpline details are current before publishing.
+- id: self-harm-ie-no-images
+  markets: [IE]
+  media: all
+  rule: Do not show images of self-harm; they may trigger a desire to self-harm.
+  source:
+    title: Guidance for covering self-harm in the media (Republic of Ireland)
+    publisher: Samaritans Ireland
+    url: https://www.samaritans.org/documents/1079/ROI_Guidance_for_covering_self-harm_in_the_media_FINAL.pdf
+    section: Best practice for reporting on self-harm
+    quote: Don’t use images of self-harm as this may trigger a desire to self-harm.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide. Document is undated.
+- id: self-harm-ie-not-a-solution
+  markets: [IE]
+  media: all
+  rule: Never present self-harm as a solution, as a normal reaction to distress, or as something many young people do; do not call it a 'failed suicide attempt'.
+  source:
+    title: Guidance for covering self-harm in the media (Republic of Ireland)
+    publisher: Samaritans Ireland
+    url: https://www.samaritans.org/documents/1079/ROI_Guidance_for_covering_self-harm_in_the_media_FINAL.pdf
+    section: Best practice for reporting on self-harm
+    quote: Self-harming behaviour should never be presented as a solution to problems.
+    checked: '2026-10-03'
+  note: Written for news and media coverage; apply as best practice to advertising and campaign creative that depicts or discusses suicide.
+- id: suicide-ro-broadcast
+  markets: [RO]
+  media: broadcast
+  rule: 'Romanian broadcast: in covering suicide, avoid identifying the person (without family consent), detailing the method, or blaming life difficulties; give balanced prevention information and helper contacts (gloss).'
+  source:
+    title: Decizia CNA nr. 573/2025 privind Codul de reglementare a conținutului audiovizual (consolidated to 11.12.2025)
+    publisher: Consiliul Național al Audiovizualului (CNA)
+    url: https://media.cna.ro/Decizia_CNA_nr_573_2025_Codul_audiovizualului_cu_modificarile_ulterioare_la_data_de_11_12_2025_ab2f6787a8.pdf
+    section: Art. 83 lit. g)-h)
+    quote: 'în cazul relatării și a dezbaterii cazurilor de suicid să se evite: dezvăluirea identității persoanei care a decedat prin suicid, cu excepția situației în care există acordul familiei sau când prevalează un interes public justificat; prezentarea în detaliu a manierei'
+    checked: '2026-10-03'
+  note: Applies to news and debate programmes; use as best practice for ads. Lit. h) requires contact details of institutions offering specialised suicide-prevention help.

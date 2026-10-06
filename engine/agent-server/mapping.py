@@ -219,6 +219,9 @@ def engine_meta(brief: dict) -> dict:
     for k in ("evidence", "fact_check"):      # the appendix and the claim check (ADR 0021)
         if brief.get(k):
             out[k] = brief[k]
+    secs = brief.get("sections") or {}
+    if secs.get("sections"):                  # the sections beyond the 11 fields (ADR 0022), in render order
+        out["sections"] = {"order": list(secs["sections"]), "sections": secs["sections"], "meta": secs.get("meta") or {}}
     return out
 
 

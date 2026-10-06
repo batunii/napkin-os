@@ -1,0 +1,148 @@
+id: ro
+kind: market
+name: Romania
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: [RO]
+  categories: []
+  topics: []
+rules:
+- id: ro-honest-truthful-decent
+  markets: [RO]
+  media: all
+  rule: Communication must be honest, truthful, clear and decent (gloss of the RAC Code principle).
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 1.1
+    quote: Comunicarea trebuie să fie onestă, adevărată, clară și decentă.
+    checked: '2026-10-03'
+  note: RAC is self-regulation; binding on members and applied by its Ethics Committee.
+- id: ro-claim-substantiation
+  markets: [RO]
+  media: all
+  rule: The advertiser must be able to prove the truth of all data, descriptions, claims, illustrations and testimonials used; evidence must be current, relevant and documented.
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 7.1
+    quote: Anunțătorul trebuie să fie în măsură să probeze veridicitatea datelor, descrierilor, afirmațiilor, ilustrărilor și testimonialelor folosite în comunicare.
+    checked: '2026-10-03'
+- id: ro-unproven-claims-deemed-inaccurate
+  markets: [RO]
+  media: all
+  rule: If the advertiser cannot give the authorities (Ministry of Finance or ANPC) complete, timely evidence, the ad's claims are deemed inaccurate.
+  source:
+    title: Legea nr. 158/2008 privind publicitatea înşelătoare şi publicitatea comparativă (republicată 2013; consolidated form valid 19.02.2018)
+    publisher: Ministerul Antreprenoriatului și Turismului (prevenire.gov.ro), copy of Monitorul Oficial text
+    url: https://stk8sprevenirep01wp01.blob.unit13.cloudgov.ro/uploads/2018/04/LEGEA-158-DIN-2008.pdf
+    section: Art. 9(5)
+    quote: dacă aceste dovezi sunt considerate incomplete sau insuficiente, afirmaţiile din anunţul publicitar în cauză vor fi considerate inexacte.
+    checked: '2026-10-03'
+  note: Official Romanian portal legislatie.just.ro refused automated access; text taken from a government-hosted consolidated copy valid at 19 Feb 2018. Later amendments not checked.
+- id: ro-comparative-advertising
+  markets: [RO]
+  media: all
+  rule: 'Comparative ads are lawful only if all conditions are met: not misleading, same-need products, objective comparison of essential, relevant, verifiable, representative features, no denigration or confusion.'
+  source:
+    title: Legea nr. 158/2008 privind publicitatea înşelătoare şi publicitatea comparativă (republicată 2013; consolidated form valid 19.02.2018)
+    publisher: Ministerul Antreprenoriatului și Turismului (prevenire.gov.ro), copy of Monitorul Oficial text
+    url: https://stk8sprevenirep01wp01.blob.unit13.cloudgov.ro/uploads/2018/04/LEGEA-158-DIN-2008.pdf
+    section: Art. 6 lit. c)
+    quote: c) compară, în mod obiectiv, una sau mai multe caracteristici esenţiale, relevante, verificabile şi reprezentative ale respectivelor bunuri ori servicii, care pot include şi preţul;
+    checked: '2026-10-03'
+  note: Same doubt on currency as ro-unproven-claims-deemed-inaccurate. RAC Code Art. 12 repeats the same conditions.
+- id: ro-no-denigration
+  markets: [RO]
+  media: all
+  rule: Do not denigrate people, companies, professions, products or marketing of others, even without naming them (gloss).
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 13
+    quote: Denigrarea persoanelor, organizațiilor, companiilor, activităților comerciale și industriale, profesiilor, a produselor, elementelor de marketing sau a altor elemente asociate acestora, chiar fără a fi menționate explicit, este interzisă.
+    checked: '2026-10-03'
+- id: ro-ad-recognisability
+  markets: [RO]
+  media: all
+  rule: Advertising messages must be designed and presented so they are recognisable as such; native ads and ads in editorial media must be clearly marked.
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 1.9 (see also 5, 15.4-15.5)
+    quote: Mesajele publicitare trebuie să fie concepute și prezentate astfel încât să poată fi recunoscute ca atare.
+    checked: '2026-10-03'
+- id: ro-influencer-disclosure
+  markets: [RO]
+  media: online
+  rule: Influencer posts must disclose the paid relationship in every post, at the start where possible or via the platform's 'Paid Partnership' label, never hidden; the advertiser is responsible.
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 4.2 (see also 4.1)
+    quote: Divulgarea raportului contractual trebuie să fie făcută la începutul materialului pe cât posibil sau folosind mijloacele specifice fiecărei platforme (exemplu folosirea etichetei Paid Partnership) și nu trebuie să fie greu vizibilă sau ascunsă în cadrul conținutului.
+    checked: '2026-10-03'
+- id: ro-broadcast-ad-marking
+  markets: [RO]
+  media: broadcast
+  rule: 'Romanian TV: ad breaks need neutral bumpers marked ''Publicitate''; in-programme telepromotion must show the on-screen ''P'' symbol (replacing the written ''Publicitate''), legible, at least 30pt SD/60pt HD.'
+  source:
+    title: Decizia CNA nr. 573/2025 privind Codul de reglementare a conținutului audiovizual (consolidated to 11.12.2025)
+    publisher: Consiliul Național al Audiovizualului (CNA)
+    url: https://media.cna.ro/Decizia_CNA_nr_573_2025_Codul_audiovizualului_cu_modificarile_ulterioare_la_data_de_11_12_2025_ab2f6787a8.pdf
+    section: Art. 130(3) lit. a)-c)
+    quote: mențiunea scrisă prevăzută la lit. b) va fi eliminată după o perioadă de 6 luni de la data intrării în vigoare a prezentei decizii și va fi înlocuită cu simbolul „P”, afișat în aceleași condiții de lizibilitate;
+    checked: '2026-10-03'
+  note: Decision 573/2025 replaced CNA Decision 220/2011 (abrogated by Art. 174) and entered into force 7 August 2025, so the 'P' switch fell about February 2026; confirm with CNA. Lit. b) sets the size and a minimum 5-second display.
+- id: ro-broadcast-no-news-presenters
+  markets: [RO]
+  media: broadcast
+  rule: Romanian broadcast ads and teleshopping must not feature news presenters or current-affairs show hosts (gloss).
+  source:
+    title: Decizia CNA nr. 573/2025 privind Codul de reglementare a conținutului audiovizual (consolidated to 11.12.2025)
+    publisher: Consiliul Național al Audiovizualului (CNA)
+    url: https://media.cna.ro/Decizia_CNA_nr_573_2025_Codul_audiovizualului_cu_modificarile_ulterioare_la_data_de_11_12_2025_ab2f6787a8.pdf
+    section: Art. 130(3) lit. d)
+    quote: se interzice difuzarea de publicitate și de teleshopping în care apar prezentatori ai emisiunilor de știri și moderatori ai emisiunilor de actualități.
+    checked: '2026-10-03'
+- id: ro-children-no-pester-power
+  markets: [RO]
+  media: all
+  rule: Communication aimed at children must not urge them to persuade parents or other adults to buy products for them (gloss).
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 9.10 (see also 9.1-9.12)
+    quote: Comunicarea destinată copiilor trebuie să nu-i îndemne pe aceștia să-și convingă părinții sau alți adulți să le cumpere produse.
+    checked: '2026-10-03'
+- id: ro-environmental-claims-scope
+  markets: [RO]
+  media: all
+  rule: Environmental claims must not imply they cover more life-cycle stages or product properties than evidence supports; state which stage or property the claim refers to.
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 16.3 (see also 16.2, 16.4)
+    quote: Într-o comunicare afirmațiile legate de mediu nu trebuie să sugereze că se referă la mai multe stadii din ciclul de viață al unui produs sau la mai multe din proprietățile produsului decât poate fi susținut prin dovezi.
+    checked: '2026-10-03'
+- id: ro-generic-environmental-claims-ban
+  markets: [RO]
+  media: all
+  rule: From 27 September 2026, generic claims such as 'green', 'eco-friendly' or 'climate friendly' are banned unless the trader can show recognised excellent environmental performance.
+  source:
+    title: Directive (EU) 2024/825 (Empowering Consumers for the Green Transition), amending Annex I to Directive 2005/29/EC
+    publisher: Publications Office of the European Union (Official Journal)
+    url: http://publications.europa.eu/resource/celex/32024L0825
+    section: Annex, point 4a (new Annex I item to Directive 2005/29/EC)
+    quote: Making a generic environmental claim for which the trader is not able to demonstrate recognised excellent environmental performance relevant to the claim.
+    checked: '2026-10-03'
+  note: Applies through national law from 27 September 2026 (Directive Art. 4(1)). The national transposing measure was not located on 2026-10-03; check it before quoting as national law. Point 4c (offsetting-based climate claims) also applies from the same date.

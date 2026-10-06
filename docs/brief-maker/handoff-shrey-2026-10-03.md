@@ -35,6 +35,7 @@ made in the app is as good as one made from the CLI. Every item names its row in
 | W7 | Make the fallback to BriefJob loud, or remove it; `regenerate_field` still uses BriefJob's drafters in engine mode | A silent switch gives a different-quality brief | EC-022, EC-023 |
 | W8 | Default the `middleware` proxy; the engine takes one draft at a time with a 900 s wait | Wrong service without a proxy; concurrent drafts queue into the fallback | EC-024, EC-025 |
 | W9 | The user's only step is uploading the client's document. The agent-server now makes the full brief by default (`BRIEF_LOOPS37=0` for the light one), so the app should not ask for settings, flags or a research file; research arrives on its own when the research tool has run | Sai, 2026-10-03: "all the user has to do is upload the handoff document. keep it that simple" | - |
+| W10 | Render `reply.meta.sections` (ADR 0022): seven sections in `order`, each `{title, items: [{label, text or measure/baseline/target/method, source, refs, cite?, figure_unchecked?, detail_unchecked?, unsupported?, method_proposed?}]}`; show `source: proposed` items as proposals and the flags as "to check"; the client brief's placement is in `engine/brief_render.py` | The sections are most of what a creative team and producer work from | ADR 0022 |
 
 ## 3. Research tool
 
@@ -62,6 +63,6 @@ made in the app is as good as one made from the CLI. Every item names its row in
   Run it from `engine/`, with `RAG_STORE=local` for the local index. One file in gives the full
   brief: `--loops37 --golden` and `RAG_INDEX` are no longer needed (`--quick` gives the light one).
 - **Tests:** add `BRIEF_REQUIRE_STORE=1` so a missing store stops the run.
-- **Suites on 2026-10-03:** engine 1,097, agent-server 34, server 239 (+1 xfail), mock-backend 88.
+- **Suites on 2026-10-03:** engine 1,111, agent-server 34, server 239 (+1 xfail), mock-backend 88.
 - **Plan to reach a senior agency's brief:** `docs/brief-maker/reference-level-plan.md` (phases P0-P5).
   P0 and the gap-filler are done.

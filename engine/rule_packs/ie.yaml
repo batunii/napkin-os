@@ -1,0 +1,150 @@
+id: ie
+kind: market
+name: Ireland
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: [IE]
+  categories: []
+  topics: []
+rules:
+- id: ie-legal-decent-honest-truthful
+  markets: [IE]
+  media: all
+  rule: Every ad must be legal, decent, honest and truthful; the ASA judges the overall impression on consumers, not the advertiser's intention.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/general-rules/
+    section: s.3.2 (see also 3.5)
+    quote: Marketing communications should be legal, decent, honest and truthful.
+    checked: '2026-10-03'
+  note: ASA Code 7th edition is the edition published on adstandards.ie on 2026-10-03; ASA ran a public consultation in 2026 on a review of the Code, so check for a new edition before relying on numbering.
+- id: ie-claim-substantiation
+  markets: [IE]
+  media: all
+  rule: Hold documentary evidence for every claim consumers would read as objective (figures, performance, 'proven') before the ad runs; it must support the overall impression too.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/misleading-advertising/
+    section: s.4.10
+    quote: Before offering a marketing communication for publication, advertisers should satisfy themselves that they will be able to provide documentary evidence to substantiate all claims that consumers are likely to regard as objective.
+    checked: '2026-10-03'
+- id: ie-superiority-claims
+  markets: [IE]
+  media: all
+  rule: '''Number one'', ''leading'', ''largest'' and similar superiority claims need market-share data or similar proof; unqualified superlatives count as comparisons with all competitors.'
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/misleading-advertising/
+    section: s.4.33 (see also 4.31)
+    quote: Wording which implies superior or superlative status – such as, “number one”, “leading”, “largest”, or similar – should be capable of substantiation with market share data or similar proof.
+    checked: '2026-10-03'
+- id: ie-comparative-advertising
+  markets: [IE]
+  media: all
+  rule: Ads naming or implying a competitor must compare products meeting the same need, objectively on material, verifiable, representative features, and must not mislead, denigrate, or cause confusion with the competitor.
+  source:
+    title: European Communities (Misleading and Comparative Marketing Communications) Regulations 2007 (S.I. No. 774/2007)
+    publisher: Irish Statute Book
+    url: https://www.irishstatutebook.ie/eli/2007/si/774/made/en/print
+    section: reg. 4(2)(c)-(d)
+    quote: (c) it does not compare products meeting the same needs or intended for the same purpose, (d) it does not objectively compare one or more material, relevant, verifiable, and representative features of those products
+    checked: '2026-10-03'
+  note: Reg. 4(2)(b) also makes a comparison unlawful if it is a misleading commercial practice under ss.43-46 of the Consumer Protection Act 2007. Text is the 'made' version; amendments were not checked.
+- id: ie-ad-recognisability
+  markets: [IE]
+  media: all
+  rule: 'Ads must be obviously ads: never present marketing as user-generated content, a private blog, an independent review or research, and label advertorials clearly.'
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/general-rules/
+    section: s.3.32 (see also 3.31, 3.33)
+    quote: Marketing communications should not be presented as, for example, market research, consumer surveys, user-generated content, private blogs, or independent reviews if their purpose is marketing, i.e. the promotion of a product.
+    checked: '2026-10-03'
+- id: ie-influencer-ad-label
+  markets: [IE]
+  media: online
+  rule: 'Influencer posts for the brand must carry #ad (or #gifted, or the platform''s paid-partnership label) at the start, clearly visible without clicking; the brand is responsible for making sure this happens.'
+  source:
+    title: Social Media Influencer Guidance
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/social-media-influencers/
+    section: Primary labels
+    quote: You MUST include at least one primary label with all advertising content. The label must be at the start of your content and clearly visible.
+    checked: '2026-10-03'
+  note: Guidance page, not Code text; it applies Code s.3.31-3.32. The page also says brands are responsible for influencers' labels.
+- id: ie-paid-editorial-disclosure
+  markets: [IE]
+  media: all
+  rule: Paid editorial (sponsored articles, paid segments, paid content in media) must make clear it is a paid promotion; hiding this is a prohibited commercial practice.
+  source:
+    title: Consumer Protection Act 2007 (revised, Law Reform Commission)
+    publisher: Law Reform Commission (Revised Acts)
+    url: https://revisedacts.lawreform.ie/eli/2007/act/19/section/55/revised/en/html
+    section: s.55(1)(q)
+    quote: using editorial content in the media to promote a product (if a trader has paid for that promotion) if it is not made clear that the promotion is a paid promotion,
+    checked: '2026-10-03'
+  note: Revised Act updated to 24 November 2025; the LRC flags later unimplemented changes to the Act (as of 17 Sept 2026) that were not checked.
+- id: ie-children-no-pester-power
+  markets: [IE]
+  media: all
+  rule: Ads must not ask children to persuade parents or other adults to buy for them, nor undermine parents' authority or judgement.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/children/
+    section: s.7.5(c)
+    quote: Marketing communications should not include any appeal to children to persuade their parents or other adults to buy advertised products for them.
+    checked: '2026-10-03'
+- id: ie-broadcast-childrens-ads-banned-categories
+  markets: [IE]
+  media: broadcast
+  rule: On Irish TV and radio, children's commercial communications may not feature gambling, weight-loss products, dating services, sexual services, cosmetic procedures, or split-screen/interactive/virtual ad techniques.
+  source:
+    title: 'Media Service Code: Children''s Commercial Communications Code (in effect 6 December 2024)'
+    publisher: Coimisiún na Meán
+    url: https://www.cnam.ie/app/uploads/2024/12/Childrens-Commercial-Communications-Code-December-2024.pdf
+    section: s.11.2
+    quote: 'children’s commercial communications containing the following are prohibited: a) Gambling. b) Products and services relating to weight reduction, limitation or control. c) Introduction and dating services. d) Services of a sexual nature.'
+    checked: '2026-10-03'
+  note: A children's commercial communication is one promoting products of interest to children and/or broadcast in or around children's programmes (s.10 definitions); 'child' means under 18.
+- id: ie-environmental-claims-substantiation
+  markets: [IE]
+  media: all
+  rule: Green claims need clear qualification and evidence; absolute claims (e.g. 'eco-friendly', 'zero impact') need a high level of substantiation.
+  source:
+    title: Code of Standards for Advertising and Marketing Communications in Ireland, 7th edition (ASA Code)
+    publisher: Advertising Standards Authority (Ireland)
+    url: https://adstandards.ie/code/environmental-claims/
+    section: s.15.2 (see also 15.5-15.6 on basis and lifecycle)
+    quote: Environmental claims should not be used without qualification unless advertisers can provide substantiation that their product will cause no environmental damage. Absolute claims should be supported by a high level of substantiation.
+    checked: '2026-10-03'
+- id: ie-generic-environmental-claims-ban
+  markets: [IE]
+  media: all
+  rule: From 27 September 2026, generic claims such as 'green', 'eco-friendly' or 'climate friendly' are banned unless the trader can show recognised excellent environmental performance (e.g. EU Ecolabel).
+  source:
+    title: Directive (EU) 2024/825 (Empowering Consumers for the Green Transition), amending Annex I to Directive 2005/29/EC
+    publisher: Publications Office of the European Union (Official Journal)
+    url: http://publications.europa.eu/resource/celex/32024L0825
+    section: Annex, point 4a (new Annex I item to Directive 2005/29/EC)
+    quote: Making a generic environmental claim for which the trader is not able to demonstrate recognised excellent environmental performance relevant to the claim.
+    checked: '2026-10-03'
+  note: Applies through national law from 27 September 2026 (Directive Art. 4(1)). The national transposing measure was not located on 2026-10-03; check it before quoting as national law. The Department of Enterprise page https://enterprise.gov.ie/en/what-we-do/the-business-environment/empowering-consumers-for-the-green-transition/ describes the same ban for Ireland.
+- id: ie-offsetting-based-climate-claims-ban
+  markets: [IE]
+  media: all
+  rule: From 27 September 2026, do not claim a product is carbon neutral, climate positive or has reduced emissions on the basis of carbon offsetting.
+  source:
+    title: Directive (EU) 2024/825 (Empowering Consumers for the Green Transition), amending Annex I to Directive 2005/29/EC
+    publisher: Publications Office of the European Union (Official Journal)
+    url: http://publications.europa.eu/resource/celex/32024L0825
+    section: Annex, point 4c (new Annex I item to Directive 2005/29/EC)
+    quote: Claiming, based on the offsetting of greenhouse gas emissions, that a product has a neutral, reduced or positive impact on the environment in terms of greenhouse gas emissions.
+    checked: '2026-10-03'
+  note: Applies through national law from 27 September 2026 (Directive Art. 4(1)). The national transposing measure was not located on 2026-10-03; check it before quoting as national law.

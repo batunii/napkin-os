@@ -1,0 +1,149 @@
+id: charity_fundraising
+kind: category
+name: Charity and fundraising
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: []
+  categories: [charity]
+  topics: []
+rules:
+- id: charity-ie-no-misrepresentation
+  markets: [IE]
+  media: all
+  rule: Fundraising must not misrepresent the charity, its need for funds, or how donations will be used.
+  source:
+    title: Guidelines for Charitable Organisations on Fundraising from the Public (2017)
+    publisher: Charities Regulator (Ireland)
+    url: https://www.charitiesregulator.ie/media/o5ul004d/guidance-for-fundraising-english.pdf
+    section: 's.3 Core principles: Honesty and Integrity'
+    quote: Fundraisers will act with integrity and not misrepresent the charity, its need for funds or how they will be applied.
+    checked: '2026-10-03'
+  note: Best-practice guidelines issued under s.14(1)(i) Charities Act 2009 (2017), not a statutory code. Whether newer guidance exists under the Charities (Amendment) Act 2024 was not confirmed.
+- id: charity-ie-restricted-purpose
+  markets: [IE]
+  media: all
+  rule: Do not imply money goes to a specific person, animal or project if it may go to general funds; say what happens to any shortfall or surplus.
+  source:
+    title: Guidelines for Charitable Organisations on Fundraising from the Public (2017)
+    publisher: Charities Regulator (Ireland)
+    url: https://www.charitiesregulator.ie/media/o5ul004d/guidance-for-fundraising-english.pdf
+    section: s.7 Responsibilities of Fundraisers
+    quote: Charities must ensure that fundraising materials do not imply that money fundraised is for a restricted purpose (such as assisting a particular person or animal) when it may be used for different purposes or for general funds.
+    checked: '2026-10-03'
+- id: charity-ie-beneficiary-dignity
+  markets: [IE]
+  media: all
+  rule: Beneficiaries must not be shown disrespectfully in promotional material; where possible involve them in how they are portrayed.
+  source:
+    title: Guidelines for Charitable Organisations on Fundraising from the Public (2017)
+    publisher: Charities Regulator (Ireland)
+    url: https://www.charitiesregulator.ie/media/o5ul004d/guidance-for-fundraising-english.pdf
+    section: 's.3 Core principles: Respect'
+    quote: Beneficiaries will not be presented in a disrespectful way in promotional activities
+    checked: '2026-10-03'
+- id: charity-ie-identify-cause
+  markets: [IE]
+  media: all
+  rule: Clearly identify the cause being fundraised for and how donations will be used, and give an easy way to contact the charity.
+  source:
+    title: Guidelines for Charitable Organisations on Fundraising from the Public (2017)
+    publisher: Charities Regulator (Ireland)
+    url: https://www.charitiesregulator.ie/media/o5ul004d/guidance-for-fundraising-english.pdf
+    section: 's.3 Core principles: Transparency and Accountability'
+    quote: The charity will clearly identify to donors and the public the cause for which the fundraising is occurring and how donations will and are being used.
+    checked: '2026-10-03'
+- id: charity-gb-not-misleading
+  markets: [GB]
+  media: all
+  rule: Fundraising must not mislead donors by leaving out information, giving inaccurate or unclear information, or exaggerating.
+  source:
+    title: Code of Fundraising Practice (in effect 1 November 2025)
+    publisher: Fundraising Regulator (UK)
+    url: https://www.fundraisingregulator.org.uk/code/standards-which-apply-all-fundraising/behaviour-when-fundraising
+    section: 1.2.1 (see also 1.2.3 evidence for claims)
+    quote: 'Your fundraising must not mislead existing or potential donors. This includes by: leaving out information; giving inaccurate or unclear information; or exaggerating details.'
+    checked: '2026-10-03'
+  note: Code applies in England, Wales and Northern Ireland (Scotland has its own regulator).
+- id: charity-gb-shocking-content
+  markets: [GB]
+  media: all
+  rule: Do not use shocking claims or images merely to attract attention; if shocking content is used, include a warning.
+  source:
+    title: Code of Fundraising Practice (in effect 1 November 2025)
+    publisher: Fundraising Regulator (UK)
+    url: https://www.fundraisingregulator.org.uk/code/standards-which-apply-specific-fundraising-methods/fundraising-communications-and-advertising
+    section: 8.1.2
+    quote: You must not use claims or images in your fundraising communications that people may find shocking merely to attract attention. If you do use shocking content, you should include warnings about this.
+    checked: '2026-10-03'
+  note: CAP Code rule 4.2 (non-broadcast) and BCAP rule 4.10 also bar unjustified fear or distress.
+- id: charity-gb-case-studies-representative
+  markets: [GB]
+  media: all
+  rule: Case studies must be representative of real situations, and any changed details must be disclosed.
+  source:
+    title: Code of Fundraising Practice (in effect 1 November 2025)
+    publisher: Fundraising Regulator (UK)
+    url: https://www.fundraisingregulator.org.uk/code/standards-which-apply-specific-fundraising-methods/fundraising-communications-and-advertising
+    section: 8.1.4
+    quote: You must be able to show that all case studies are representative of real situations. If any details in a case study have been changed, you must make this clear.
+    checked: '2026-10-03'
+- id: charity-gb-case-study-consent
+  markets: [GB]
+  media: all
+  rule: Get clear, informed permission from anyone identifiable in a case study (or their estate if they have died) before using it.
+  source:
+    title: Code of Fundraising Practice (in effect 1 November 2025)
+    publisher: Fundraising Regulator (UK)
+    url: https://www.fundraisingregulator.org.uk/code/standards-which-apply-specific-fundraising-methods/fundraising-communications-and-advertising
+    section: 8.1.5
+    quote: You must get clear and informed permission from any people who could be identified from a case study before you use it.
+    checked: '2026-10-03'
+- id: charity-gb-broadcast-no-guilt
+  markets: [GB]
+  media: broadcast
+  rule: TV and radio charity appeals must not suggest people lack proper feeling or fail a responsibility by not giving.
+  source:
+    title: UK Code of Broadcast Advertising (BCAP Code)
+    publisher: Broadcast Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/broadcast/code_section/16.html
+    section: rule 16.3.2 (see also 16.3.1, 16.3.3, 16.3.4)
+    quote: suggest that anyone will lack proper feeling or fail in a responsibility by not supporting a charity
+    checked: '2026-10-03'
+  note: 16.3 also bars exaggerating the cause, disrespecting beneficiaries' dignity, and addressing fundraising to children. Radio charity ads need Radiocentre central clearance (16.1).
+- id: charity-gb-cause-related-amount
+  markets: [GB]
+  media: broadcast
+  rule: Broadcast promotions that donate part of the price to charity must state the actual amount or percentage (e.g. '£1 per sale') and name the charity.
+  source:
+    title: UK Code of Broadcast Advertising (BCAP Code)
+    publisher: Broadcast Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/broadcast/code_section/16.html
+    section: rule 16.9 (see also 16.6.2)
+    quote: the advertisement must state the actual amount or percentage of the price that will be paid to the charity or cause, for example, "£1 per sale" or "10% of the purchase price".
+    checked: '2026-10-03'
+  note: CAP Code Section 8 has charity-linked promotion rules for non-broadcast; not fetched.
+- id: charity-ro-no-exploiting-suffering
+  markets: [RO]
+  media: all
+  rule: Romanian social or charity appeals must not exploit human suffering or dignity, or use shocking facts to justify excessive asks or create fear or anxiety (gloss).
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 36.3 lit. b)-c)
+    quote: b) să exploateze suferința umană, aducând astfel atingere demnității oamenilor; c) să recurgă la fapte șocante, de natură să justifice solicitări exagerate sau să inducă sentimente de teamă sau anxietate;
+    checked: '2026-10-03'
+  note: Art. 36.3 also bars making non-donors feel guilty (d), exaggerating the problem (e), overstating the impact of donations (f) and asking minors for money (g).
+- id: charity-ro-name-advertiser-and-aim
+  markets: [RO]
+  media: all
+  rule: Romanian social or charity appeals must name the advertiser and the social goal; cause-related promotions must state the amount or percentage going to the cause (gloss).
+  source:
+    title: Codul de practică în comunicarea comercială (version approved 15 December 2025)
+    publisher: Consiliul Român pentru Publicitate (RAC)
+    url: https://www.rac.ro/ro/cod/codul-de-practic%C4%82-%C3%8En-comunicarea-comercial%C4%82
+    section: Art. 36.1 (see also 36.2)
+    quote: Pentru o înțelegere clară și o identificare ușoară, comunicarea cu caracter social (inclusiv publicitatea apel) trebuie să cuprindă numele anunțătorului, cât și obiectivul social care trebuie atins.
+    checked: '2026-10-03'

@@ -1,0 +1,153 @@
+id: gb
+kind: market
+name: Great Britain
+version: 1
+as_of: '2026-10-03'
+reviewed: false
+applies_when:
+  markets: [GB]
+  categories: []
+  topics: []
+rules:
+- id: gb-no-misleading
+  markets: [GB]
+  media: all
+  rule: Ads must not materially mislead or be likely to, including by omitting material information or presenting it unclearly.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/03.html
+    section: rule 3.1 (see also 3.3)
+    quote: Marketing communications must not materially mislead or be likely to do so.
+    checked: '2026-10-03'
+  note: BCAP Code rule 3.1 uses the same wording for TV and radio.
+- id: gb-claim-substantiation
+  markets: [GB]
+  media: all
+  rule: Hold documentary evidence for every objective claim before the ad runs; without adequate evidence the ASA may treat the claim as misleading.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/03.html
+    section: rule 3.7
+    quote: Before distributing or submitting a marketing communication for publication, marketers must hold documentary evidence to prove claims that consumers are likely to regard as objective and that are capable of objective substantiation.
+    checked: '2026-10-03'
+  note: BCAP Code rule 3.9 puts the same duty on broadcasters for TV and radio ads.
+- id: gb-superlative-claims
+  markets: [GB]
+  media: all
+  rule: Unqualified superlatives ('the best') are treated as comparisons with every competitor and need evidence unless obvious puffery; say which aspect is superior.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/03.html
+    section: 'Comparisons: Principle'
+    quote: The ASA will consider unqualified superlative claims as comparative claims against all competing products. Superiority claims must be supported by evidence unless they are obvious puffery
+    checked: '2026-10-03'
+- id: gb-comparative-advertising
+  markets: [GB]
+  media: all
+  rule: Comparisons with an identifiable competitor must be like-for-like, objective on material, relevant, verifiable and representative features, and must not mislead, confuse or denigrate.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/03.html
+    section: rule 3.34 (see also 3.32-3.35, 3.41)
+    quote: They must objectively compare one or more material, relevant, verifiable and representative feature of those products, which may include price.
+    checked: '2026-10-03'
+  note: BCAP Code rules 3.34-3.37 and 3.43 are equivalent for broadcast.
+- id: gb-ad-recognisability
+  markets: [GB]
+  media: all
+  rule: Ads must be obviously identifiable as ads, including influencer and affiliate content; never pose as a consumer or hide commercial intent.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/02.html
+    section: rule 2.1 (see also 2.3)
+    quote: Marketing communications must be obviously identifiable as such.
+    checked: '2026-10-03'
+  note: Rule 2.3 reflects a prohibited practice in Schedule 20 of the Digital Markets, Competition and Consumers Act 2024 (DMCCA).
+- id: gb-advertorial-label
+  markets: [GB]
+  media: all
+  rule: Advertorials must be clearly labelled as marketing, for example headed 'advertisement feature'; this applies to online advertorials as well as print.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/02.html
+    section: rule 2.4
+    quote: Marketers and publishers must make clear that advertorials are marketing communications; for example, by heading them "advertisement feature"
+    checked: '2026-10-03'
+- id: gb-reviews-fake-or-incentivised
+  markets: [GB]
+  media: all
+  rule: Never use fake consumer reviews, and make clear where reviews shown in ads were incentivised; do not cherry-pick positive reviews.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/03.html
+    section: rule 3.45 (see also 3.44, 3.46)
+    quote: Marketing communications must make clear where consumer reviews have been incentivised.
+    checked: '2026-10-03'
+  note: Rules 3.44-3.46 reflect DMCCA Schedule 20 prohibitions.
+- id: gb-children-direct-appeal
+  markets: [GB]
+  media: all
+  rule: Ads must not directly urge children (under 16) to buy, or to persuade parents or other adults to buy for them.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/05.html
+    section: rule 5.4.2
+    quote: must not include a direct appeal to children to buy an advertised product or persuade their parents or other adults to buy an advertised product for them.
+    checked: '2026-10-03'
+  note: CAP defines a child as under 16. BCAP Code Section 5 has equivalent broadcast rules.
+- id: gb-environmental-claims-basis
+  markets: [GB]
+  media: all
+  rule: State the basis of every environmental claim clearly; unqualified green claims can mislead by omitting material information.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/11.html
+    section: rule 11.1 (see also 11.2)
+    quote: The basis of environmental claims must be clear. Unqualified claims could mislead if they omit material information.
+    checked: '2026-10-03'
+  note: BCAP Code rule 9.2 is the same for broadcast. CAP says marketers should take account of the CMA Green Claims Code.
+- id: gb-environmental-absolute-and-lifecycle
+  markets: [GB]
+  media: all
+  rule: Absolute green claims need a high level of substantiation and are judged on the product's full life cycle unless the ad states otherwise.
+  source:
+    title: UK Code of Non-broadcast Advertising and Direct & Promotional Marketing (CAP Code)
+    publisher: Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/non_broadcast/code_section/11.html
+    section: rule 11.3 (see also 11.4)
+    quote: Absolute claims must be supported by a high level of substantiation.
+    checked: '2026-10-03'
+  note: BCAP Code rules 9.4-9.5 are the same for broadcast.
+- id: gb-broadcast-clearance
+  markets: [GB]
+  media: broadcast
+  rule: TV ads should be pre-cleared with Clearcast and radio ads with Radiocentre (some radio categories must be centrally cleared); broadcasters must clear every ad before transmission.
+  source:
+    title: UK Code of Broadcast Advertising (BCAP Code)
+    publisher: Broadcast Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/broadcast/code_folder/introduction.html
+    section: Introduction, para (e) (see also Section 1 background)
+    quote: Advertisers, advertising agencies or independent producers should seek pre-transmission guidance on scripted advertisements from Clearcast (for TV advertisements), Radiocentre (for radio advertisements) or from the broadcaster whose service they intend to use to advertise.
+    checked: '2026-10-03'
+  note: 'BCAP Section 1 background: ''Broadcasters must ensure that all advertisements are cleared before broadcast''. Radio ''special categories'' (e.g. gambling, alcohol, charities, environmental claims) need Radiocentre central clearance.'
+- id: gb-tv-no-newsreaders
+  markets: [GB]
+  media: broadcast
+  rule: TV ads must not feature anyone who currently and regularly presents news or current affairs on television, and must not look like a programme.
+  source:
+    title: UK Code of Broadcast Advertising (BCAP Code)
+    publisher: Broadcast Committee of Advertising Practice / ASA (UK)
+    url: https://www.asa.org.uk/type/broadcast/code_section/02.html
+    section: rule 2.4.2 (see also 2.1, 2.4.1)
+    quote: feature, visually or orally, anyone who currently and regularly presents news or current affairs on television
+    checked: '2026-10-03'
+  note: Rule 2.4 applies to television advertisements except programme promotions.

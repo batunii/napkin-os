@@ -162,6 +162,8 @@ import capture_fallback  # noqa: E402  (the fallback readers: jev, then determin
 import research_facts  # noqa: E402  (verified facts from the knowledge layer, C1a)
 import gap_filler  # noqa: E402  (facts for the brief's gaps: stored first, then the web; ADR 0019)
 import evidence  # noqa: E402  (evidence appendix and fact-check; ADR 0021)
+import rule_packs  # noqa: E402  (house rule packs for the safety and legal section; ADR 0022)
+import sections  # noqa: E402  (the sections beyond the 11 fields: measurement, channels, safety...; ADR 0022)
 _facts_mod = research_facts   # the module, where a parameter of the same name shadows it
 import research_decisions  # noqa: E402  (what people decided on the research, ADR 0015)
 _decisions_mod = research_decisions
@@ -4062,15 +4064,31 @@ def run(path: Path | None, client=None, project=None, loops37=False, golden=Fals
             gf_now = out["loop2_golden"].setdefault("fields", {})
             run_facts = {f["id"]: f for f in list(rf_usable) + list(_gap_ctx.get("facts") or [])
                          if isinstance(f, dict) and f.get("id")}
-            out["evidence"] = {"appendix": evidence.appendix(gf_now, run_facts)}
+            # The sections beyond the 11 fields (P3, ADR 0022): seven Sonnet writers in parallel, after the
+            # fields they build on and before the fact-check, which reads their claims too.
+            if os.environ.get("BRIEF_SECTIONS", "1").lower() in ("1", "true", "yes"):
+                ctx = gap_context()
+                markets = rule_packs.markets_in(text, list(run_facts.values())) or [m for m in [ctx.get("market")] if m]
+                try:
+                    out["sections"] = sections.run(out, run_facts, markets, ctx.get("category") or "", text, _json_call)
+                    gen_open_qs = list(gen_open_qs or []) + out["sections"]["questions"]
+                except Exception as e:  # noqa: BLE001 - the sections are added value: a failure is recorded, the brief stands
+                    print(f"[!] sections did not run: {type(e).__name__}: {e}", file=sys.stderr)
+                    out["sections"] = {"sections": {}, "questions": [], "meta": {"error": type(e).__name__}}
+            out["evidence"] = {"appendix": evidence.appendix(
+                gf_now, run_facts, more=sections.cited_facts((out.get("sections") or {}).get("sections")))}
             if os.environ.get("BRIEF_FACT_CHECK", "1").lower() in ("1", "true", "yes"):
                 try:
                     checked = evidence.check(gf_now, (out.get("loop1_capture") or {}).get("fields") or {},
-                                             run_facts, _json_call)
+                                             run_facts, _json_call,
+                                             extra=sections.claims_text((out.get("sections") or {}).get("sections")),
+                                             rules=((out.get("sections") or {}).get("meta") or {}).get("rules"))
                 except Exception as e:  # noqa: BLE001 - a check that cannot run is recorded, never a failed brief
                     print(f"[!] fact-check did not run: {type(e).__name__}: {e}", file=sys.stderr)
                     checked = None
                 gen_open_qs = list(gen_open_qs or []) + evidence.apply(out, checked)
+                sections.mark_unsupported(((out.get("sections") or {}).get("sections")),
+                                          (out.get("fact_check") or {}).get("unsupported"))
             if gen_open_qs:
                 out["loop2_golden"]["generation_open_questions"] = gen_open_qs
                 out["loop2_brief"].setdefault("open_questions", []).extend(gen_open_qs)

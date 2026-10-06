@@ -161,3 +161,14 @@ Measured on the 228k-character tender, with the same code twice:
 - **Step B is parked** until an input needs it: the other steps reading the capture instead of the
   whole input.
 - **The same run scored 13.5 of 27 reference sections**, up from 8-10 that morning.
+
+## P3 result (2026-10-06, ADR 0022)
+
+Seven section writers (measurement, the person, competitors and alternatives, channel roles, safety and legal
+with rule packs, language and adaptation, practicalities) in two waves, with code checks on sources, figures,
+contact details and legal lines. On six briefs: won 6 of 6 blind against the same brief without them; the
+Samaritans brief covers 16 of the reference's 27 sections (12 before); job check 5.0 to 6.2; at most $0.45
+and 50 s a brief. Eight of the nine criteria set beforehand pass; unsupported claims are 5.1 a brief against
+a target of 2 or fewer, highest where the research is single-source and unverified. The eight rule packs
+(IE, GB, RO; alcohol, gambling, food high in fat, salt or sugar, charity fundraising; suicide and self-harm)
+are off until Sai reviews them.
