@@ -1,0 +1,1 @@
+Before any task read `project_plan.clan` (`clan read agent project_plan.clan`, or unzip it and read `shared/data.yaml`, starting from the newest `brief_maker_*` key); update it after any change to behaviour, interface, decisions, plan or handoffs.
